@@ -149,7 +149,7 @@ fn stable_volume_name(scope: &str, logical_name: &str) -> String {
     )
 }
 
-fn stable_name_component(value: &str) -> String {
+pub(super) fn stable_name_component(value: &str) -> String {
     value
         .chars()
         .map(|character| {

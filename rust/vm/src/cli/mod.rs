@@ -53,6 +53,12 @@ pub enum ConfigSubcommand {
     Validate,
     /// Show the loaded configuration and its source
     Show,
+    /// Render the redacted provider configuration without applying it
+    Render {
+        /// Render a named instance instead of the default instance
+        #[arg(long)]
+        instance: Option<String>,
+    },
     /// Change a configuration value
     Set {
         /// Configuration field path (e.g., "vm.memory" or "services.docker.enabled")
@@ -560,8 +566,8 @@ pub enum Command {
 #[cfg(test)]
 mod tests {
     use super::{
-        Args, BaseSubcommand, Command, DbSubcommand, EnvironmentKind, PluginSubcommand,
-        SystemSubcommand,
+        Args, BaseSubcommand, Command, ConfigSubcommand, DbSubcommand, EnvironmentKind,
+        PluginSubcommand, SystemSubcommand,
     };
     use clap::Parser;
 
@@ -780,5 +786,22 @@ mod tests {
             },
             _ => panic!("Expected Command::Db"),
         }
+    }
+
+    #[test]
+    fn config_render_parses_instance() {
+        let args = Args::parse_from(["vm", "config", "render", "--instance", "feature"]);
+        match args.command {
+            Command::Config {
+                command: ConfigSubcommand::Render { instance },
+            } => assert_eq!(instance.as_deref(), Some("feature")),
+            _ => panic!("Expected ConfigSubcommand::Render"),
+        }
+    }
+
+    #[test]
+    fn shell_rejects_removed_refresh_flags() {
+        assert!(Args::try_parse_from(["vm", "ssh", "--force-refresh"]).is_err());
+        assert!(Args::try_parse_from(["vm", "ssh", "--no-refresh"]).is_err());
     }
 }

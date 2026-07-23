@@ -2,6 +2,7 @@
 use std::borrow::Cow;
 use std::fs;
 use std::io::IsTerminal;
+use std::io::{self, Write};
 use std::process::Command;
 use tracing::{error, info, warn};
 
@@ -11,11 +12,12 @@ use crate::{
     context::ProviderContext,
     docker::{build::BuildOperations, compose::ComposeOperations, ComposeCommand, DockerOps},
 };
+use vm_cli::msg;
 use vm_config::config::VmConfig;
 use vm_core::{
     command_stream::stream_command_visible,
     error::{Result, VmError},
-    prompts, vm_dbg,
+    vm_dbg,
 };
 use vm_messages::messages::MESSAGES;
 
@@ -127,7 +129,7 @@ impl<'a> LifecycleOperations<'a> {
         let modified_config = self.prepare_config_for_build()?;
 
         // Step 2: Prepare build context with embedded resources
-        let build_ops = BuildOperations::new(&modified_config, self.temp_dir, self.executable);
+        let build_ops = BuildOperations::new(&modified_config, self.generated_dir, self.executable);
         let (build_context, base_image, is_snapshot) = build_ops.prepare_build_context()?;
 
         // Step 2.5: Ensure Docker networks exist (create them if needed)
@@ -141,7 +143,7 @@ impl<'a> LifecycleOperations<'a> {
         // Step 3: Generate docker-compose.yml with build context and modified config
         let compose_ops = ComposeOperations::new(
             &modified_config,
-            self.temp_dir,
+            self.generated_dir,
             self.project_dir,
             self.executable,
         );
@@ -252,7 +254,8 @@ impl<'a> LifecycleOperations<'a> {
         container_name: &str,
     ) -> Result<()> {
         // 1. Start existing service containers directly to avoid compose name conflicts
-        let expected_services = compose_ops.get_expected_service_containers();
+        let instance = compose_ops.instance_name_from_container(container_name);
+        let expected_services = compose_ops.get_expected_service_containers(instance.as_deref());
         for service in &expected_services {
             if !DockerOps::container_exists(Some(self.executable), service).unwrap_or(false) {
                 continue;
@@ -309,11 +312,11 @@ impl<'a> LifecycleOperations<'a> {
             self.list_project_containers_for_user();
 
             eprintln!("\n💡 Recommended fix:");
-            eprintln!("      vm remove --force");
+            eprintln!("      vm destroy --force");
             if let Some(name) = instance_name {
-                eprintln!("      vm run linux as {}", name);
+                eprintln!("      vm create --instance {}", name);
             } else {
-                eprintln!("      vm run linux");
+                eprintln!("      vm create");
             }
             eprintln!();
 
@@ -359,18 +362,21 @@ impl<'a> LifecycleOperations<'a> {
                 MESSAGES.service.docker_container_exists_stopped
             };
 
-            info!("Container already exists. Choose how to proceed.");
+            info!(
+                "{}",
+                msg!(
+                    MESSAGES.service.docker_container_exists_prompt,
+                    option1 = option1
+                )
+            );
+            print!("{}", MESSAGES.service.docker_container_choice_prompt);
+            io::stdout().flush()?;
 
-            let options = [
-                option1,
-                "Recreate the container (remove and rebuild)",
-                "Cancel operation",
-            ];
-            let selection = prompts::select_index("Choose an option", &options, 0)
-                .map_err(|e| VmError::Internal(format!("Failed to read selection: {e}")))?;
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
 
-            match selection {
-                0 => {
+            match input.trim() {
+                "1" => {
                     if is_running {
                         info!("Using existing running container.");
                         Ok(())
@@ -379,7 +385,7 @@ impl<'a> LifecycleOperations<'a> {
                         self.start_container(None, context)
                     }
                 }
-                1 => {
+                "2" => {
                     info!("{}", MESSAGES.service.docker_container_recreating);
                     self.destroy_container(None, context)?;
                     // Continue with creation below
@@ -394,8 +400,8 @@ impl<'a> LifecycleOperations<'a> {
             // Non-interactive mode: fail with informative error
             Err(VmError::Internal(format!(
                 "Container '{container_name}' already exists. In non-interactive mode, please use:\n\
-                 - 'vm run linux' to start the existing container\n\
-                 - 'vm remove --force' followed by 'vm run linux' to recreate it"
+                 - 'vm start' to start the existing container\n\
+                 - 'vm destroy' followed by 'vm create' to recreate it"
             )))
         }
     }
@@ -428,18 +434,21 @@ impl<'a> LifecycleOperations<'a> {
                 MESSAGES.service.docker_container_exists_stopped
             };
 
-            info!("Container already exists. Choose how to proceed.");
+            info!(
+                "{}",
+                msg!(
+                    MESSAGES.service.docker_container_exists_prompt,
+                    option1 = option1
+                )
+            );
+            print!("{}", MESSAGES.service.docker_container_choice_prompt);
+            io::stdout().flush()?;
 
-            let options = [
-                option1,
-                "Recreate the container (remove and rebuild)",
-                "Cancel operation",
-            ];
-            let selection = prompts::select_index("Choose an option", &options, 0)
-                .map_err(|e| VmError::Internal(format!("Failed to read selection: {e}")))?;
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
 
-            match selection {
-                0 => {
+            match input.trim() {
+                "1" => {
                     if is_running {
                         info!("Using existing running container.");
                         Ok(())
@@ -448,7 +457,7 @@ impl<'a> LifecycleOperations<'a> {
                         self.start_container(Some(&container_name), context)
                     }
                 }
-                1 => {
+                "2" => {
                     info!("{}", MESSAGES.service.docker_container_recreating);
                     self.destroy_container(Some(&container_name), context)?;
                     // Continue with creation below
@@ -463,8 +472,8 @@ impl<'a> LifecycleOperations<'a> {
             // Non-interactive mode: fail with informative error
             Err(VmError::Internal(format!(
                 "Container '{container_name}' already exists. In non-interactive mode, please use:\n\
-                 - 'vm run linux as {instance_name}' to start the existing container\n\
-                 - 'vm remove {container_name} --force' followed by 'vm run linux as {instance_name}' to recreate it"
+                 - 'vm start {container_name}' to start the existing container\n\
+                 - 'vm destroy {container_name}' followed by 'vm create --instance {instance_name}' to recreate it"
             )))
         }
     }
@@ -565,22 +574,29 @@ impl<'a> LifecycleOperations<'a> {
             return Ok(());
         }
 
-        let temp_config_path = self.temp_dir.join("vm-config.json");
-        let local_config_matches = fs::read_to_string(&temp_config_path)
+        let generated_config_path = self.generated_dir.join("vm-config.json");
+        let local_config_matches = fs::read_to_string(&generated_config_path)
             .ok()
             .is_some_and(|existing| existing == config_json);
 
         if !local_config_matches {
-            fs::write(&temp_config_path, &config_json).map_err(|e| {
+            // Atomic write: a crash mid-write would otherwise leave a partial
+            // vm-config.json that the next `docker cp` would copy into the
+            // container, surfacing later as confusing parse errors.
+            crate::docker::artifacts::secure_write_if_changed(
+                &generated_config_path,
+                config_json.as_bytes(),
+            )
+            .map_err(|e| {
                 VmError::Internal(format!(
                     "Failed to write configuration to {}: {}",
-                    temp_config_path.display(),
+                    generated_config_path.display(),
                     e
                 ))
             })?;
         }
 
-        let source = BuildOperations::path_to_string(&temp_config_path)?;
+        let source = BuildOperations::path_to_string(&generated_config_path)?;
         let destination = format!("{}:{}", container_name, super::TEMP_CONFIG_PATH);
         let copy_result = DockerOps::copy(Some(self.executable), source, &destination);
         if copy_result.is_err() {
@@ -629,7 +645,7 @@ impl<'a> LifecycleOperations<'a> {
     /// - MongoDB: {project}-mongodb-1 (Compose default, if added to template)
     fn check_for_orphaned_containers(
         &self,
-        _instance_name: Option<&str>,
+        instance_name: Option<&str>,
         context: &ProviderContext,
     ) -> Result<bool> {
         // Query Docker for all containers to find orphaned services
@@ -642,11 +658,11 @@ impl<'a> LifecycleOperations<'a> {
         // For now, we check the services enabled in the current config.
         let compose_ops = ComposeOperations::new(
             self.config,
-            self.temp_dir,
+            self.generated_dir,
             self.project_dir,
             self.executable,
         );
-        let service_patterns = compose_ops.get_expected_service_containers();
+        let service_patterns = compose_ops.get_expected_service_containers(instance_name);
 
         let mut orphaned = Vec::new();
 
@@ -677,7 +693,7 @@ impl<'a> LifecycleOperations<'a> {
                 for container in &orphaned {
                     eprintln!("      docker rm -f {}", container);
                 }
-                eprintln!("   Or run: vm remove --force\n");
+                eprintln!("   Or run: vm destroy --force\n");
                 // Return true to indicate we found orphans and need --no-recreate
                 return Ok(true);
             } else {
@@ -685,7 +701,7 @@ impl<'a> LifecycleOperations<'a> {
                 let container_list = orphaned.join(", ");
                 return Err(VmError::Provider(format!(
                     "Found existing service containers that would conflict: {}. \
-                    Use 'vm remove --force' to remove the environment, or preserve service containers to reuse them.",
+                    Use 'vm destroy --force --remove-services' to remove them, or use '--preserve-services' to reuse them.",
                     container_list
                 )));
             }

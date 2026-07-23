@@ -1,0 +1,279 @@
+use std::borrow::Cow;
+use std::fs;
+use std::path::Path;
+use std::process::Command;
+
+use tera::Context as TeraContext;
+use vm_config::{config::VmConfig, detect_worktrees};
+use vm_core::error::{Result, VmError};
+
+use super::host_packages::{
+    detect_packages, get_package_env_vars, get_volume_mounts, HostPackageInfo, PackageManager,
+};
+use crate::user_home::resolve_home_dir;
+use crate::ProviderContext;
+
+pub(super) struct HostPackageContext {
+    pub host_mounts: Vec<(String, String)>,
+    pub host_env_vars: Vec<(String, String)>,
+}
+
+pub(super) fn ensure_ai_sync_dirs(config: &VmConfig) -> Result<()> {
+    let Some(ai_sync) = config
+        .host_sync
+        .as_ref()
+        .and_then(|host_sync| host_sync.ai_tools.as_ref())
+    else {
+        return Ok(());
+    };
+    let home = resolve_home_dir()
+        .ok_or_else(|| VmError::Internal("HOME environment variable not set".to_string()))?;
+    let project = config
+        .project
+        .as_ref()
+        .and_then(|project| project.name.as_deref())
+        .unwrap_or("vm-project");
+
+    for (enabled, tool) in [
+        (ai_sync.is_claude_enabled(), "claude"),
+        (ai_sync.is_gemini_enabled(), "gemini"),
+        (ai_sync.is_codex_enabled(), "codex"),
+    ] {
+        if !enabled {
+            continue;
+        }
+        let directory = home.join(".vm").join("ai-sync").join(tool).join(project);
+        fs::create_dir_all(&directory).map_err(|error| {
+            VmError::Internal(format!(
+                "Failed to create {tool} sync directory '{}': {error}",
+                directory.display()
+            ))
+        })?;
+        maybe_chown_path_to_sudo_user(&directory);
+    }
+
+    Ok(())
+}
+
+pub(super) fn build_host_package_context(
+    config: &VmConfig,
+    context: &ProviderContext,
+) -> HostPackageContext {
+    let mut host_info = HostPackageInfo::new();
+    let package_links = config
+        .host_sync
+        .as_ref()
+        .and_then(|host_sync| host_sync.package_links.as_ref());
+
+    if package_links.is_some_and(|links| links.pip) && !config.pip_packages.is_empty() {
+        let detected = detect_packages(&config.pip_packages, PackageManager::Pip);
+        host_info.pip_site_packages = detected.pip_site_packages;
+        host_info.pipx_base_dir = detected.pipx_base_dir;
+        host_info
+            .detected_packages
+            .extend(detected.detected_packages);
+    }
+    if package_links.is_some_and(|links| links.npm) && !config.npm_packages.is_empty() {
+        let detected = detect_packages(&config.npm_packages, PackageManager::Npm);
+        host_info.npm_global_dir = detected.npm_global_dir;
+        host_info.npm_local_dir = detected.npm_local_dir;
+        host_info
+            .detected_packages
+            .extend(detected.detected_packages);
+    }
+    if package_links.is_some_and(|links| links.cargo) && !config.cargo_packages.is_empty() {
+        let detected = detect_packages(&config.cargo_packages, PackageManager::Cargo);
+        host_info.cargo_registry = detected.cargo_registry;
+        host_info.cargo_bin = detected.cargo_bin;
+        host_info
+            .detected_packages
+            .extend(detected.detected_packages);
+    }
+
+    let host_mounts = get_volume_mounts(&host_info)
+        .into_iter()
+        .map(|(path, target)| (path.to_string_lossy().to_string(), target))
+        .collect();
+    let mut host_env_vars = get_package_env_vars(&host_info);
+    if let Some(global) = context.global_config.as_ref() {
+        append_service_environment(config, global, &mut host_env_vars);
+    }
+
+    HostPackageContext {
+        host_mounts,
+        host_env_vars,
+    }
+}
+
+fn append_service_environment(
+    config: &VmConfig,
+    global: &vm_config::GlobalConfig,
+    environment: &mut Vec<(String, String)>,
+) {
+    let host = vm_platform::platform::get_host_gateway();
+    if global.services.package_registry.enabled {
+        let port = global.services.package_registry.port;
+        environment.extend([
+            (
+                "NPM_CONFIG_REGISTRY".to_string(),
+                format!("http://{host}:{port}/npm/"),
+            ),
+            (
+                "PIP_INDEX_URL".to_string(),
+                format!("http://{host}:{port}/pypi/simple/"),
+            ),
+            (
+                "PIP_EXTRA_INDEX_URL".to_string(),
+                "https://pypi.org/simple/".to_string(),
+            ),
+            ("PIP_TRUSTED_HOST".to_string(), host.to_string()),
+            ("VM_CARGO_REGISTRY_HOST".to_string(), host.to_string()),
+            ("VM_CARGO_REGISTRY_PORT".to_string(), port.to_string()),
+        ]);
+    }
+    if global.services.postgresql.enabled {
+        let port = global.services.postgresql.port;
+        let database = config
+            .project
+            .as_ref()
+            .and_then(|project| project.name.as_deref())
+            .unwrap_or("vm_project");
+        environment.push((
+            "DATABASE_URL".to_string(),
+            format!("postgresql://postgres:postgres@{host}:{port}/{database}"),
+        ));
+    }
+    if global.services.redis.enabled {
+        environment.push((
+            "REDIS_URL".to_string(),
+            format!("redis://{host}:{}", global.services.redis.port),
+        ));
+    }
+    if global.services.mongodb.enabled {
+        environment.push((
+            "MONGODB_URL".to_string(),
+            format!("mongodb://{host}:{}", global.services.mongodb.port),
+        ));
+    }
+}
+
+pub(super) fn configure_ssh_agent(config: &VmConfig, context: &mut TeraContext) {
+    let enabled = config
+        .host_sync
+        .as_ref()
+        .is_some_and(|host_sync| host_sync.ssh_agent);
+    if !enabled {
+        return;
+    }
+    let Ok(socket) = std::env::var("SSH_AUTH_SOCK") else {
+        return;
+    };
+    context.insert("ssh_auth_sock", &socket);
+
+    let mount_config = config
+        .host_sync
+        .as_ref()
+        .map(|host_sync| host_sync.ssh_config)
+        .unwrap_or(enabled);
+    if mount_config {
+        let path = resolve_home_dir().map(|home| home.join(".ssh/config"));
+        if let Some(path) = path.filter(|path| path.exists()) {
+            context.insert("ssh_config_path", &path.to_string_lossy().to_string());
+        }
+    }
+}
+
+pub(super) fn process_dotfiles(config: &VmConfig, username: &str) -> Vec<(String, String)> {
+    let Some(host_sync) = config.host_sync.as_ref() else {
+        return Vec::new();
+    };
+    host_sync
+        .dotfiles
+        .iter()
+        .filter_map(|configured_path| {
+            let expanded = expand_tilde(configured_path)?;
+            if !Path::new(expanded.as_ref()).exists() {
+                eprintln!("Warning: Dotfile not found, skipping: {expanded}");
+                return None;
+            }
+            let target = if let Some(relative) = configured_path.strip_prefix("~/") {
+                format!("/home/{username}/{relative}")
+            } else if configured_path == "~" {
+                format!("/home/{username}")
+            } else if configured_path.starts_with('/') {
+                configured_path.clone()
+            } else {
+                format!("/home/{username}/{configured_path}")
+            };
+            Some((expanded.into_owned(), target))
+        })
+        .collect()
+}
+
+pub(super) fn configure_worktrees(
+    config: &VmConfig,
+    context: &mut TeraContext,
+    home_dir: &str,
+    project: &str,
+    create_directory: bool,
+) {
+    let enabled = config
+        .host_sync
+        .as_ref()
+        .and_then(|host_sync| host_sync.worktrees.as_ref())
+        .map(|worktrees| worktrees.enabled)
+        .unwrap_or_else(|| {
+            vm_config::GlobalConfig::load()
+                .ok()
+                .map(|global| global.worktrees.enabled)
+                .unwrap_or(true)
+        });
+    if !enabled {
+        return;
+    }
+
+    let base = format!("{home_dir}/.vm/worktrees/{project}");
+    if !create_directory || fs::create_dir_all(&base).is_ok() {
+        context.insert("worktrees_base_dir", &base);
+    } else {
+        eprintln!("Warning: Failed to create worktrees directory {base}");
+    }
+
+    if let Ok(worktrees) = detect_worktrees() {
+        let mounts = worktrees
+            .iter()
+            .filter_map(|worktree| {
+                let path = Path::new(worktree);
+                path.to_str()
+                    .zip(path.file_name().and_then(|name| name.to_str()))
+            })
+            .collect::<Vec<_>>();
+        if !mounts.is_empty() {
+            context.insert("worktrees", &mounts);
+        }
+    }
+}
+
+fn expand_tilde(path: &str) -> Option<Cow<'_, str>> {
+    match path {
+        "~" => resolve_home_dir().map(|home| Cow::Owned(home.to_string_lossy().to_string())),
+        path if path.starts_with("~/") => {
+            let home = resolve_home_dir()?.to_string_lossy().to_string();
+            Some(Cow::Owned(path.replacen('~', &home, 1)))
+        }
+        path => Some(Cow::Borrowed(path)),
+    }
+}
+
+fn maybe_chown_path_to_sudo_user(path: &Path) {
+    #[cfg(unix)]
+    {
+        let (Ok(uid), Ok(gid)) = (std::env::var("SUDO_UID"), std::env::var("SUDO_GID")) else {
+            return;
+        };
+        let owner = format!("{uid}:{gid}");
+        let _ = Command::new("chown")
+            .args(["-R", &owner, path.to_string_lossy().as_ref()])
+            .status();
+    }
+}

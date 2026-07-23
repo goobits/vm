@@ -51,7 +51,9 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             }
             doctor::run_with_fix(fix).map_err(VmError::from)
         }
-        Command::Config { command } => config::handle_config_command(&command, false, args.profile),
+        Command::Config { command } => {
+            config::handle_config_command(&command, false, args.profile, args.config)
+        }
         Command::Plugin { command } => handle_plugin_command(&command),
         Command::Db { command } => db::handle_db(command).await,
         Command::Fleet { command } => vm_ops::handle_fleet_command(&command, false).await,

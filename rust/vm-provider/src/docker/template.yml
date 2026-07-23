@@ -23,8 +23,9 @@ services:
         - {{ project_name }}:buildcache
     image: {{ image_tag }}
     labels:
-      - "com.vm.managed=true"
-      - "com.vm.project={{ project_name }}"
+      com.vm.managed: "true"
+      com.vm.project: "{{ base_project_name }}"
+      com.vm.instance: "{{ project_name }}"
     {% if config.services.postgresql.enabled | default(value=false) -%}
     depends_on:
       - postgres
@@ -65,8 +66,8 @@ services:
       - type: volume
         source: {{ volume.alias }}
         target: {{ volume.target }}
-         volume:
-           nocopy: {{ volume.nocopy }}
+        volume:
+          nocopy: {{ volume.nocopy }}
       {% endfor %}
       {% if extra_mounts %}
       # Temporary VM custom mounts
@@ -257,6 +258,10 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: {{ project_name }}-postgres
+    labels:
+      com.vm.managed: "true"
+      com.vm.project: "{{ base_project_name }}"
+      com.vm.instance: "{{ project_name }}"
     environment:
       - POSTGRES_DB={{ config.services.postgresql.database | default(value=project_name ~ "_dev") }}
       - POSTGRES_USER={{ config.services.postgresql.user | default(value="postgres") }}
@@ -288,8 +293,8 @@ volumes:
     labels:
       com.vm.managed: "true"
       com.vm.project: "{{ base_project_name }}"
-     com.vm.instance: "{{ project_name }}"
-     com.vm.retention: "{{ volume.retention }}"
+      com.vm.instance: "{{ project_name }}"
+      com.vm.retention: "{{ volume.retention }}"
   {% endfor %}
 
 {% if config.networking and config.networking.networks and config.networking.networks | length > 0 -%}

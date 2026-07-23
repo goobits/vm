@@ -1,413 +1,51 @@
-// Standard library
-use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 // External crates
 use tera::Context as TeraContext;
 use vm_core::error::{Result, VmError};
 
 // Internal imports
+use super::artifacts::{compose_path, secure_write_if_changed};
 use super::build::BuildOperations;
-use super::compose_model::{RenderedResources, RenderedStorage};
-use super::host_packages::{
-    detect_packages, get_package_env_vars, get_volume_mounts, PackageManager,
+use super::compose_context::{
+    build_host_package_context, configure_ssh_agent, configure_worktrees, ensure_ai_sync_dirs,
+    process_dotfiles,
 };
+use super::compose_model::{RenderedResources, RenderedStorage};
+use super::preview::redact_compose;
 use super::{ComposeCommand, DockerOps, UserConfig};
-use crate::Mount;
-use crate::ProviderContext;
-use crate::TempVmState;
-use vm_config::{config::VmConfig, detect_worktrees};
+use crate::user_home::resolve_home_dir;
+use crate::{Mount, ProviderContext, TempVmState};
+use vm_config::config::VmConfig;
 use vm_core::command_stream::stream_command_visible;
 
 pub struct ComposeOperations<'a> {
     pub config: &'a VmConfig,
-    pub temp_dir: &'a PathBuf,
-    pub project_dir: &'a PathBuf,
+    pub generated_dir: &'a Path,
+    pub project_dir: &'a Path,
     pub executable: &'a str,
 }
 
-/// Context for building host package information
-struct HostPackageContext {
-    host_mounts: Vec<(String, String)>,
-    host_env_vars: Vec<(String, String)>,
-}
-
-/// Helper function to extract path and mount name from a worktree path
-fn extract_path_mount(path_string: &String) -> Option<(&str, &str)> {
-    let path = Path::new(path_string);
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .and_then(|name| path.to_str().map(|path_str| (path_str, name)))
-}
-
-/// Resolve the real user's home directory when running under sudo.
-fn resolve_home_dir() -> Option<PathBuf> {
-    if let Ok(sudo_user) = std::env::var("SUDO_USER") {
-        if !sudo_user.is_empty() && sudo_user != "root" {
-            if let Some(home) = home_dir_from_passwd(&sudo_user) {
-                return Some(home);
-            }
-        }
-    }
-
-    std::env::var("HOME").ok().map(PathBuf::from)
-}
-
-/// Look up a user's home directory from /etc/passwd.
-fn home_dir_from_passwd(user: &str) -> Option<PathBuf> {
-    let contents = fs::read_to_string("/etc/passwd").ok()?;
-
-    for line in contents.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-
-        let mut parts = line.split(':');
-        let name = parts.next()?;
-        if name != user {
-            continue;
-        }
-
-        let _passwd = parts.next()?;
-        let _uid = parts.next()?;
-        let _gid = parts.next()?;
-        let _gecos = parts.next()?;
-        let home = parts.next()?;
-
-        if !home.is_empty() {
-            return Some(PathBuf::from(home));
-        }
-    }
-
-    None
-}
-
-/// Ensure files created under sudo are owned by the real user.
-fn maybe_chown_path_to_sudo_user(path: &Path) {
-    #[cfg(unix)]
-    {
-        let (Ok(uid), Ok(gid)) = (std::env::var("SUDO_UID"), std::env::var("SUDO_GID")) else {
-            return;
-        };
-        let owner = format!("{uid}:{gid}");
-        let _ = Command::new("chown")
-            .args(["-R", &owner, path.to_string_lossy().as_ref()])
-            .status();
-    }
-}
-
-/// Helper function to get SSH config path if it exists
-fn get_ssh_config_path() -> Option<String> {
-    let home = resolve_home_dir()?;
-    let ssh_config_path = home.join(".ssh").join("config");
-    let ssh_config_path = ssh_config_path.to_string_lossy().to_string();
-    if std::path::Path::new(&ssh_config_path).exists() {
-        Some(ssh_config_path)
-    } else {
-        None
-    }
-}
-
-/// Configure SSH agent forwarding in tera context if enabled
-fn configure_ssh_agent(config: &VmConfig, tera_context: &mut TeraContext) {
-    let ssh_agent_enabled = config
-        .host_sync
-        .as_ref()
-        .map(|hs| hs.ssh_agent)
-        .unwrap_or(false);
-
-    if !ssh_agent_enabled {
-        return;
-    }
-
-    let Ok(ssh_auth_sock) = std::env::var("SSH_AUTH_SOCK") else {
-        return;
-    };
-
-    tera_context.insert("ssh_auth_sock", &ssh_auth_sock);
-
-    // Check if we should mount ~/.ssh/config (default to true if ssh_agent is enabled)
-    let ssh_config_enabled = config
-        .host_sync
-        .as_ref()
-        .map(|hs| hs.ssh_config)
-        .unwrap_or(ssh_agent_enabled);
-
-    if ssh_config_enabled {
-        if let Some(ssh_config_path) = get_ssh_config_path() {
-            tera_context.insert("ssh_config_path", &ssh_config_path);
-        }
-    }
-}
-
-/// Expand tilde (~) in path to home directory (zero-copy for paths without tilde)
-fn expand_tilde(path: &str) -> Option<Cow<'_, str>> {
-    if path.starts_with("~/") {
-        let home = resolve_home_dir()?;
-        let home = home.to_string_lossy();
-        Some(Cow::Owned(path.replacen("~", &home, 1)))
-    } else if path == "~" {
-        resolve_home_dir().map(|home| Cow::Owned(home.to_string_lossy().to_string()))
-    } else {
-        Some(Cow::Borrowed(path))
-    }
-}
-
-/// Process dotfiles configuration and return validated paths
-/// Returns Vec of (host_path, container_path) tuples
-fn process_dotfiles(config: &VmConfig, username: &str) -> Vec<(String, String)> {
-    let Some(host_sync) = config.host_sync.as_ref() else {
-        return Vec::new();
-    };
-
-    if host_sync.dotfiles.is_empty() {
-        return Vec::new();
-    }
-
-    host_sync
-        .dotfiles
-        .iter()
-        .filter_map(|dotfile_path| {
-            // Expand tilde to home directory
-            let expanded = expand_tilde(dotfile_path)?;
-
-            // Check if the path exists
-            let path = Path::new(expanded.as_ref());
-            if !path.exists() {
-                eprintln!("Warning: Dotfile not found, skipping: {}", expanded);
-                return None;
-            }
-
-            // Determine container path based on the original path
-            let container_path = if let Some(relative_path) = dotfile_path.strip_prefix("~/") {
-                // Map ~/.vimrc to /home/username/.vimrc
-                format!("/home/{}/{}", username, relative_path)
-            } else if dotfile_path == "~" {
-                format!("/home/{}", username)
-            } else if dotfile_path.starts_with('/') {
-                // Absolute paths stay the same
-                dotfile_path.clone()
-            } else {
-                // Relative paths go to container home
-                format!("/home/{}/{}", username, dotfile_path)
-            };
-
-            Some((expanded.into_owned(), container_path))
-        })
-        .collect()
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RenderMode {
+    Runtime,
+    Preview,
 }
 
 impl<'a> ComposeOperations<'a> {
     pub fn new(
         config: &'a VmConfig,
-        temp_dir: &'a PathBuf,
-        project_dir: &'a PathBuf,
+        generated_dir: &'a Path,
+        project_dir: &'a Path,
         executable: &'a str,
     ) -> Self {
         Self {
             config,
-            temp_dir,
+            generated_dir,
             project_dir,
             executable,
         }
-    }
-
-    /// Ensure AI sync directories exist on host before mounting
-    fn ensure_ai_sync_dirs(&self) -> Result<()> {
-        let Some(ai_sync) = &self
-            .config
-            .host_sync
-            .as_ref()
-            .and_then(|hs| hs.ai_tools.as_ref())
-        else {
-            return Ok(()); // No AI sync configured
-        };
-
-        let home = resolve_home_dir()
-            .ok_or_else(|| VmError::Internal("HOME environment variable not set".to_string()))?;
-        let home = home.to_string_lossy();
-
-        let project_name = self
-            .config
-            .project
-            .as_ref()
-            .and_then(|p| p.name.as_deref())
-            .unwrap_or("vm-project");
-
-        // AI tool sync directories stored in ~/.vm/ai-sync/ to avoid polluting
-        // each AI tool's host config directory (e.g., ~/.claude/ is Claude Code's config)
-        // Claude sync (default: true)
-        if ai_sync.is_claude_enabled() {
-            let claude_dir = format!("{}/.vm/ai-sync/claude/{}", home, project_name);
-            fs::create_dir_all(&claude_dir).map_err(|e| {
-                VmError::Internal(format!("Failed to create Claude sync directory: {}", e))
-            })?;
-            maybe_chown_path_to_sudo_user(Path::new(&claude_dir));
-        }
-
-        // Gemini sync (default: true)
-        if ai_sync.is_gemini_enabled() {
-            let gemini_dir = format!("{}/.vm/ai-sync/gemini/{}", home, project_name);
-            fs::create_dir_all(&gemini_dir).map_err(|e| {
-                VmError::Internal(format!("Failed to create Gemini sync directory: {}", e))
-            })?;
-            maybe_chown_path_to_sudo_user(Path::new(&gemini_dir));
-        }
-
-        // Codex sync (default: false, opt-in)
-        if ai_sync.is_codex_enabled() {
-            let codex_dir = format!("{}/.vm/ai-sync/codex/{}", home, project_name);
-            fs::create_dir_all(&codex_dir).map_err(|e| {
-                VmError::Internal(format!("Failed to create Codex sync directory: {}", e))
-            })?;
-            maybe_chown_path_to_sudo_user(Path::new(&codex_dir));
-        }
-
-        Ok(())
-    }
-
-    /// Build host package context from config and provider context
-    ///
-    /// This consolidates all package detection, volume mounting, and environment
-    /// variable setup logic that was duplicated across render functions.
-    fn build_host_package_context(&self, context: &ProviderContext) -> Result<HostPackageContext> {
-        // Detect host package locations for mounting (only if package linking is enabled)
-        let mut host_info = super::host_packages::HostPackageInfo::new();
-
-        // Check pip packages only if pip linking is enabled
-        if self
-            .config
-            .host_sync
-            .as_ref()
-            .and_then(|hs| hs.package_links.as_ref())
-            .is_some_and(|p| p.pip)
-            && !self.config.pip_packages.is_empty()
-        {
-            let pip_info = detect_packages(&self.config.pip_packages, PackageManager::Pip);
-            host_info.pip_site_packages = pip_info.pip_site_packages;
-            host_info.pipx_base_dir = pip_info.pipx_base_dir;
-
-            // Include all detected pip packages for host mounting
-            host_info
-                .detected_packages
-                .extend(pip_info.detected_packages);
-        }
-
-        // Check npm packages only if npm linking is enabled
-        if self
-            .config
-            .host_sync
-            .as_ref()
-            .and_then(|hs| hs.package_links.as_ref())
-            .is_some_and(|p| p.npm)
-            && !self.config.npm_packages.is_empty()
-        {
-            let npm_info = detect_packages(&self.config.npm_packages, PackageManager::Npm);
-            host_info.npm_global_dir = npm_info.npm_global_dir;
-            host_info.npm_local_dir = npm_info.npm_local_dir;
-            host_info
-                .detected_packages
-                .extend(npm_info.detected_packages);
-        }
-
-        // Check cargo packages only if cargo linking is enabled
-        if self
-            .config
-            .host_sync
-            .as_ref()
-            .and_then(|hs| hs.package_links.as_ref())
-            .is_some_and(|p| p.cargo)
-            && !self.config.cargo_packages.is_empty()
-        {
-            let cargo_info = detect_packages(&self.config.cargo_packages, PackageManager::Cargo);
-            host_info.cargo_registry = cargo_info.cargo_registry;
-            host_info.cargo_bin = cargo_info.cargo_bin;
-            host_info
-                .detected_packages
-                .extend(cargo_info.detected_packages);
-        }
-
-        // Get volume mounts and environment variables
-        let host_mounts = get_volume_mounts(&host_info)
-            .into_iter()
-            .map(|(path, container_path)| (path.to_string_lossy().to_string(), container_path))
-            .collect();
-        let mut host_env_vars = get_package_env_vars(&host_info);
-
-        // Add package registry environment variables from global config
-        if let Some(global_cfg) = context.global_config.as_ref() {
-            if global_cfg.services.package_registry.enabled {
-                let host = vm_platform::platform::get_host_gateway();
-                let port = global_cfg.services.package_registry.port;
-
-                host_env_vars.extend([
-                    // NPM
-                    (
-                        "NPM_CONFIG_REGISTRY".to_string(),
-                        format!("http://{host}:{port}/npm/"),
-                    ),
-                    // Pip with fallback
-                    (
-                        "PIP_INDEX_URL".to_string(),
-                        format!("http://{host}:{port}/pypi/simple/"),
-                    ),
-                    (
-                        "PIP_EXTRA_INDEX_URL".to_string(),
-                        "https://pypi.org/simple/".to_string(),
-                    ),
-                    ("PIP_TRUSTED_HOST".to_string(), host.to_string()),
-                    // Cargo (will be used by shell init script)
-                    ("VM_CARGO_REGISTRY_HOST".to_string(), host.to_string()),
-                    ("VM_CARGO_REGISTRY_PORT".to_string(), port.to_string()),
-                ]);
-            }
-
-            // Add PostgreSQL environment variables from global config
-            if global_cfg.services.postgresql.enabled {
-                let host = vm_platform::platform::get_host_gateway();
-                let port = global_cfg.services.postgresql.port;
-                let user = "postgres";
-                let password = "postgres"; // Matches the default password in service_manager.rs
-                let db_name = self
-                    .config
-                    .project
-                    .as_ref()
-                    .and_then(|p| p.name.as_deref())
-                    .unwrap_or("vm_project");
-
-                host_env_vars.push((
-                    "DATABASE_URL".to_string(),
-                    format!("postgresql://{user}:{password}@{host}:{port}/{db_name}"),
-                ));
-            }
-
-            // Add Redis environment variables from global config
-            if global_cfg.services.redis.enabled {
-                let host = vm_platform::platform::get_host_gateway();
-                let port = global_cfg.services.redis.port;
-
-                host_env_vars.push(("REDIS_URL".to_string(), format!("redis://{host}:{port}")));
-            }
-
-            // Add MongoDB environment variables from global config
-            if global_cfg.services.mongodb.enabled {
-                let host = vm_platform::platform::get_host_gateway();
-                let port = global_cfg.services.mongodb.port;
-
-                host_env_vars.push((
-                    "MONGODB_URL".to_string(),
-                    format!("mongodb://{host}:{port}"),
-                ));
-            }
-        }
-
-        Ok(HostPackageContext {
-            host_mounts,
-            host_env_vars,
-        })
     }
 
     /// Helper to create config with instance name suffix
@@ -434,54 +72,6 @@ impl<'a> ComposeOperations<'a> {
         (custom_config, final_name)
     }
 
-    /// Helper to configure worktrees in tera context
-    fn configure_worktrees(
-        &self,
-        tera_context: &mut TeraContext,
-        home_dir: &str,
-        final_project_name: &str,
-    ) {
-        let worktrees_enabled = self
-            .config
-            .host_sync
-            .as_ref()
-            .and_then(|hs| hs.worktrees.as_ref())
-            .map(|w| w.enabled)
-            .unwrap_or_else(|| {
-                vm_config::GlobalConfig::load()
-                    .ok()
-                    .map(|gc| gc.worktrees.enabled)
-                    .unwrap_or(true)
-            });
-
-        if !worktrees_enabled {
-            return;
-        }
-
-        // Setup worktrees base directory
-        let worktrees_base = format!("{}/.vm/worktrees/{}", home_dir, final_project_name);
-        if let Err(e) = fs::create_dir_all(&worktrees_base) {
-            eprintln!(
-                "Warning: Failed to create worktrees directory {}: {}",
-                worktrees_base, e
-            );
-            eprintln!("         Worktrees base directory will not be mounted.");
-        } else {
-            tera_context.insert("worktrees_base_dir", &worktrees_base);
-        }
-
-        // Detect and mount existing worktrees
-        if let Ok(worktrees) = detect_worktrees() {
-            if !worktrees.is_empty() {
-                let worktree_mounts: Vec<_> = worktrees
-                    .iter()
-                    .filter_map(|s| extract_path_mount(s))
-                    .collect();
-                tera_context.insert("worktrees", &worktree_mounts);
-            }
-        }
-    }
-
     /// Internal method that handles rendering with optional instance name
     fn render_docker_compose_internal(
         &self,
@@ -490,6 +80,7 @@ impl<'a> ComposeOperations<'a> {
         context: &ProviderContext,
         image_tag: Option<&str>,
         extra_mounts: Option<&[Mount]>,
+        mode: RenderMode,
     ) -> Result<String> {
         // Use shared template engine instead of creating new instance
         let tera = super::get_compose_tera();
@@ -500,7 +91,12 @@ impl<'a> ComposeOperations<'a> {
         let user_config = UserConfig::from_vm_config(self.config);
 
         // Build host package context (consolidated package detection and env setup)
-        let pkg_context = self.build_host_package_context(context)?;
+        let mut pkg_context = build_host_package_context(self.config, context);
+        if mode == RenderMode::Preview {
+            for (_, value) in &mut pkg_context.host_env_vars {
+                *value = "<redacted>".to_string();
+            }
+        }
 
         let base_project_name = self
             .config
@@ -510,10 +106,15 @@ impl<'a> ComposeOperations<'a> {
             .unwrap_or("vm-project");
 
         // Handle instance name modification if provided
-        let (final_config, final_project_name) = match instance_name {
+        let (mut final_config, final_project_name) = match instance_name {
             Some(instance) => self.create_instance_config(base_project_name, instance),
             None => (self.config.clone(), base_project_name.to_string()),
         };
+        if mode == RenderMode::Preview {
+            for value in final_config.environment.values_mut() {
+                *value = "<redacted>".to_string();
+            }
+        }
 
         let storage = RenderedStorage::new(&final_config, base_project_name, &final_project_name);
         let resources = RenderedResources::resolve(&final_config)?;
@@ -533,7 +134,7 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("project_user", &user_config.username);
         tera_context.insert(
             "build_user_args_enabled",
-            &(!BuildOperations::new(self.config, self.temp_dir, self.executable)
+            &(!BuildOperations::new(self.config, self.generated_dir, self.executable)
                 .uses_preprovisioned_snapshot()),
         );
         tera_context.insert(
@@ -581,7 +182,13 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("home_dir", &home_dir);
 
         // Git worktrees volume
-        self.configure_worktrees(&mut tera_context, &home_dir, &final_project_name);
+        configure_worktrees(
+            self.config,
+            &mut tera_context,
+            &home_dir,
+            &final_project_name,
+            mode == RenderMode::Runtime,
+        );
 
         // Get or generate passwords for database services
         // Note: Using sync version since we're in a non-async context
@@ -590,14 +197,18 @@ impl<'a> ComposeOperations<'a> {
             .get("postgresql")
             .is_some_and(|s| s.enabled)
         {
-            match vm_core::secrets::get_or_generate_password_sync("postgresql") {
-                Ok(password) => {
-                    tera_context.insert("postgresql_password", &password);
-                }
-                Err(e) => {
-                    eprintln!("⚠️  Warning: Failed to get PostgreSQL password: {}", e);
-                    // Fall back to default for backwards compatibility
-                    tera_context.insert("postgresql_password", "postgres");
+            if mode == RenderMode::Preview {
+                tera_context.insert("postgresql_password", "<redacted>");
+            } else {
+                match vm_core::secrets::get_or_generate_password_sync("postgresql") {
+                    Ok(password) => {
+                        tera_context.insert("postgresql_password", &password);
+                    }
+                    Err(e) => {
+                        return Err(VmError::Internal(format!(
+                            "Failed to load or create the PostgreSQL password: {e}"
+                        )));
+                    }
                 }
             }
         }
@@ -617,7 +228,14 @@ impl<'a> ComposeOperations<'a> {
         build_context_dir: &Path,
         context: &ProviderContext,
     ) -> Result<String> {
-        self.render_docker_compose_internal(build_context_dir, None, context, None, None)
+        self.render_docker_compose_internal(
+            build_context_dir,
+            None,
+            context,
+            None,
+            None,
+            RenderMode::Runtime,
+        )
     }
 
     pub fn write_docker_compose(
@@ -626,12 +244,12 @@ impl<'a> ComposeOperations<'a> {
         context: &ProviderContext,
     ) -> Result<PathBuf> {
         // Ensure AI sync directories exist before rendering compose file
-        self.ensure_ai_sync_dirs()?;
+        ensure_ai_sync_dirs(self.config)?;
 
         let content = self.render_docker_compose(build_context_dir, context)?;
 
-        let path = self.temp_dir.join("docker-compose.yml");
-        write_if_changed(&path, &content)?;
+        let path = compose_path(self.generated_dir, None);
+        secure_write_if_changed(&path, content.as_bytes())?;
 
         Ok(path)
     }
@@ -644,13 +262,13 @@ impl<'a> ComposeOperations<'a> {
         context: &ProviderContext,
     ) -> Result<PathBuf> {
         // Ensure AI sync directories exist before rendering compose file
-        self.ensure_ai_sync_dirs()?;
+        ensure_ai_sync_dirs(self.config)?;
 
         let content =
             self.render_docker_compose_with_instance(build_context_dir, instance_name, context)?;
 
-        let path = self.temp_dir.join("docker-compose.yml");
-        write_if_changed(&path, &content)?;
+        let path = compose_path(self.generated_dir, Some(instance_name));
+        secure_write_if_changed(&path, content.as_bytes())?;
 
         Ok(path)
     }
@@ -668,6 +286,7 @@ impl<'a> ComposeOperations<'a> {
             context,
             None,
             None,
+            RenderMode::Runtime,
         )
     }
 
@@ -677,7 +296,7 @@ impl<'a> ComposeOperations<'a> {
         context: &ProviderContext,
         image_tag: &str,
     ) -> Result<PathBuf> {
-        self.ensure_ai_sync_dirs()?;
+        ensure_ai_sync_dirs(self.config)?;
 
         let content = self.render_docker_compose_internal(
             build_context_dir,
@@ -685,10 +304,11 @@ impl<'a> ComposeOperations<'a> {
             context,
             Some(image_tag),
             None,
+            RenderMode::Runtime,
         )?;
 
-        let path = self.temp_dir.join("docker-compose.yml");
-        write_if_changed(&path, &content)?;
+        let path = compose_path(self.generated_dir, None);
+        secure_write_if_changed(&path, content.as_bytes())?;
 
         Ok(path)
     }
@@ -700,7 +320,7 @@ impl<'a> ComposeOperations<'a> {
         context: &ProviderContext,
         image_tag: &str,
     ) -> Result<PathBuf> {
-        self.ensure_ai_sync_dirs()?;
+        ensure_ai_sync_dirs(self.config)?;
 
         let content = self.render_docker_compose_internal(
             build_context_dir,
@@ -708,16 +328,34 @@ impl<'a> ComposeOperations<'a> {
             context,
             Some(image_tag),
             None,
+            RenderMode::Runtime,
         )?;
 
-        let path = self.temp_dir.join("docker-compose.yml");
-        write_if_changed(&path, &content)?;
+        let path = compose_path(self.generated_dir, Some(instance_name));
+        secure_write_if_changed(&path, content.as_bytes())?;
 
         Ok(path)
     }
 
+    pub fn render_docker_compose_preview(
+        &self,
+        build_context_dir: &Path,
+        instance_name: Option<&str>,
+        context: &ProviderContext,
+    ) -> Result<String> {
+        let content = self.render_docker_compose_internal(
+            build_context_dir,
+            instance_name,
+            context,
+            None,
+            None,
+            RenderMode::Preview,
+        )?;
+        redact_compose(&content)
+    }
+
     pub fn render_docker_compose_with_mounts(&self, state: &TempVmState) -> Result<String> {
-        let build_ops = BuildOperations::new(self.config, self.temp_dir, self.executable);
+        let build_ops = BuildOperations::new(self.config, self.generated_dir, self.executable);
         let build_context_dir = build_ops.prepare_compose_build_context()?;
         self.render_docker_compose_internal(
             &build_context_dir,
@@ -725,6 +363,7 @@ impl<'a> ComposeOperations<'a> {
             &ProviderContext::default(),
             None,
             Some(&state.mounts),
+            RenderMode::Runtime,
         )
     }
 
@@ -744,26 +383,26 @@ impl<'a> ComposeOperations<'a> {
         container_name: &str,
         context: &ProviderContext,
     ) -> Result<()> {
-        let compose_path = self.temp_dir.join("docker-compose.yml");
-        if !compose_path.exists() {
-            // Fallback: prepare build context and generate compose file
-            let build_ops = BuildOperations::new(self.config, self.temp_dir, self.executable);
+        let instance_name = self.instance_name_from_container(container_name);
+        let compose_path = compose_path(self.generated_dir, instance_name.as_deref());
+        let container_exists =
+            DockerOps::container_exists(Some(self.executable), container_name).unwrap_or(false);
+
+        if !container_exists || !compose_path.exists() {
+            let build_ops = BuildOperations::new(self.config, self.generated_dir, self.executable);
             let build_context = build_ops.prepare_compose_build_context()?;
-            if let Some(instance_name) = self.instance_name_from_container(container_name) {
-                self.write_docker_compose_with_instance(&build_context, &instance_name, context)?;
+            if let Some(instance_name) = &instance_name {
+                self.write_docker_compose_with_instance(&build_context, instance_name, context)?;
             } else {
                 self.write_docker_compose(&build_context, context)?;
             }
         }
 
-        let container_exists =
-            DockerOps::container_exists(Some(self.executable), container_name).unwrap_or(false);
-
         // If the dev container exists, start it directly to avoid compose name conflicts
         // with preserved service containers (e.g., postgres).
         if container_exists {
             // Start any existing service containers (if stopped).
-            let expected_services = self.get_expected_service_containers();
+            let expected_services = self.get_expected_service_containers(instance_name.as_deref());
             for service in expected_services {
                 if !DockerOps::container_exists(Some(self.executable), &service).unwrap_or(false) {
                     continue;
@@ -798,21 +437,17 @@ impl<'a> ComposeOperations<'a> {
         })
     }
 
-    fn instance_name_from_container(&self, container_name: &str) -> Option<String> {
+    pub(super) fn instance_name_from_container(&self, container_name: &str) -> Option<String> {
         let project_name = self
             .config
             .project
             .as_ref()
             .and_then(|p| p.name.as_deref())
             .unwrap_or("vm-project");
-        let default_name = format!("{project_name}-dev");
-        if container_name == default_name {
-            return None;
-        }
-
         container_name
             .strip_prefix(&format!("{project_name}-"))
-            .map(|name| name.strip_suffix("-dev").unwrap_or(name))
+            .and_then(|name| name.strip_suffix("-dev"))
+            .filter(|name| !name.is_empty())
             .map(str::to_string)
     }
 
@@ -820,8 +455,8 @@ impl<'a> ComposeOperations<'a> {
     ///
     /// Returns a list of container names that are expected to be created by docker-compose
     /// for the enabled services. Used for orphan detection.
-    pub fn get_expected_service_containers(&self) -> Vec<String> {
-        let compose_path = self.temp_dir.join("docker-compose.yml");
+    pub fn get_expected_service_containers(&self, instance_name: Option<&str>) -> Vec<String> {
+        let compose_path = compose_path(self.generated_dir, instance_name);
         if !compose_path.exists() {
             return Vec::new();
         }
@@ -870,13 +505,6 @@ impl<'a> ComposeOperations<'a> {
         }
 
         expected
-    }
-}
-
-fn write_if_changed(path: &Path, content: &str) -> Result<()> {
-    match fs::read(path) {
-        Ok(existing) if existing == content.as_bytes() => Ok(()),
-        _ => fs::write(path, content).map_err(Into::into),
     }
 }
 
@@ -1022,6 +650,22 @@ mod tests {
             dev.get("restart").and_then(|value| value.as_str()),
             Some("no")
         );
+        let labels = dev
+            .get("labels")
+            .and_then(serde_yaml_ng::Value::as_mapping)
+            .unwrap();
+        assert_eq!(
+            labels
+                .get("com.vm.project")
+                .and_then(serde_yaml_ng::Value::as_str),
+            Some("sketch-api")
+        );
+        assert_eq!(
+            labels
+                .get("com.vm.instance")
+                .and_then(serde_yaml_ng::Value::as_str),
+            Some("sketch-api")
+        );
 
         let logging = dev
             .get("logging")
@@ -1145,6 +789,46 @@ mod tests {
             Some("vm_sketch-api_scratch"),
             "project-scoped volumes remain shared across named instances"
         );
+        assert_eq!(
+            compose
+                .instance_name_from_container("sketch-api-feature-dev")
+                .as_deref(),
+            Some("feature")
+        );
+        assert_eq!(compose.instance_name_from_container("sketch-api-dev"), None);
+    }
+
+    #[test]
+    fn preview_redacts_environment_and_database_credentials() {
+        let (_temp_dir, project_dir, generated_dir) = setup_test_env();
+        let config: VmConfig = serde_yaml_ng::from_str(
+            r#"
+provider: docker
+project:
+  name: secret-project
+environment:
+  API_TOKEN: top-secret
+host_sync:
+  worktrees:
+    enabled: false
+services:
+  postgresql:
+    enabled: true
+    port: 5432
+"#,
+        )
+        .unwrap();
+        let compose = ComposeOperations::new(&config, &generated_dir, &project_dir, "docker");
+
+        let preview = compose
+            .render_docker_compose_preview(&project_dir, None, &ProviderContext::default())
+            .unwrap();
+
+        assert!(!preview.contains("top-secret"));
+        assert!(!preview.contains(project_dir.to_string_lossy().as_ref()));
+        assert!(preview.contains("API_TOKEN=<redacted>"));
+        assert!(preview.contains("DATABASE_URL=<redacted>"));
+        assert!(preview.contains("<host-path>:/workspace:rw"));
     }
 
     #[test]

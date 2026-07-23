@@ -1,65 +1,48 @@
 // Configuration-related command handlers
 
 use anyhow::Context;
+use std::path::PathBuf;
 use tracing::{debug, warn};
 
 use crate::cli::{ConfigProfileSubcommand, ConfigSubcommand};
 use crate::error::{VmError, VmResult};
-use crate::utils::confirm_select;
 use serde_yaml_ng as serde_yaml;
 use vm_cli::msg;
 use vm_config::ports::{PortRange, PortRegistry};
-use vm_config::{config::VmConfig, validator::ConfigValidator, ConfigOps};
+use vm_config::{config::VmConfig, AppConfig, ConfigOps};
 use vm_core::{vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 
+fn load_selected_config(
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+) -> VmResult<AppConfig> {
+    AppConfig::load(config_path, profile, None).map_err(VmError::from)
+}
+
 /// Handle the `vm config validate` command.
-fn handle_validate_command() -> VmResult<()> {
-    let config = VmConfig::load(None)?;
-    let validator = ConfigValidator::new();
-    let report = validator
-        .validate(&config)
-        .map_err(|e| VmError::validation(e.to_string(), None::<String>))?;
+fn handle_validate_command(config_path: Option<PathBuf>, profile: Option<String>) -> VmResult<()> {
+    let config = load_selected_config(config_path, profile)?.vm;
+    let errors = config.validate(true);
 
-    if report.has_errors() {
+    if !errors.is_empty() {
         vm_println!("❌ Configuration validation failed:");
-        vm_println!("{}", report);
-
-        // Offer to apply suggested fixes
-        if report.has_fixes() {
-            vm_println!("");
-            vm_println!("💡 Would you like to apply these fixes automatically?");
-
-            if confirm_select("Apply suggested fixes?", false)? {
-                vm_println!("");
-                for fix in &report.suggested_fixes {
-                    let values = vec![fix.value.clone()];
-                    match ConfigOps::set(&fix.field, &values, false, false) {
-                        Ok(_) => vm_success!("Applied: {} = {}", fix.field, fix.value),
-                        Err(e) => warn!("Failed to apply fix for {}: {}", fix.field, e),
-                    }
-                }
-                vm_println!("");
-                vm_success!("Fixes applied! Run 'vm config validate' again to verify.");
-                return Ok(());
-            }
+        for error in &errors {
+            vm_println!("  - {}", error);
         }
-
-        // Return a generic error to ensure non-zero exit code
         return Err(VmError::validation(
-            "Validation found errors.".to_string(),
+            format!("Validation found {} error(s).", errors.len()),
             None::<String>,
         ));
     }
 
-    vm_println!("{}", report); // Print warnings and info
     vm_success!("Configuration is valid.");
     Ok(())
 }
 
 /// Handle the `vm config show` command.
-fn handle_show_command(profile: Option<String>) -> VmResult<()> {
-    let app_config = vm_config::AppConfig::load(None, profile, None)?;
+fn handle_show_command(config_path: Option<PathBuf>, profile: Option<String>) -> VmResult<()> {
+    let app_config = load_selected_config(config_path, profile)?;
     let config = app_config.vm;
 
     if let Some(source) = &config.source_path {
@@ -72,6 +55,42 @@ fn handle_show_command(profile: Option<String>) -> VmResult<()> {
         .map_err(|e| VmError::config(e, "Failed to serialize configuration to YAML"))?;
 
     vm_println!("\n---\n{}", yaml_output);
+    Ok(())
+}
+
+fn handle_render_command(
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+    instance: Option<&str>,
+) -> VmResult<()> {
+    let app_config = load_selected_config(config_path, profile)?;
+    let config = app_config.vm;
+    let provider = config.provider.as_deref().unwrap_or("docker");
+    if !matches!(provider, "docker" | "podman") {
+        return Err(VmError::validation(
+            format!("Provider '{provider}' does not generate Docker Compose"),
+            None::<String>,
+        ));
+    }
+
+    let errors = config.validate(true);
+    if !errors.is_empty() {
+        return Err(VmError::validation(errors.join("; "), None::<String>));
+    }
+
+    let project_dir = match config
+        .source_path
+        .as_deref()
+        .and_then(std::path::Path::parent)
+    {
+        Some(project_dir) => project_dir.to_path_buf(),
+        None => std::env::current_dir()
+            .map_err(|error| VmError::filesystem(error, ".", "resolve project directory"))?,
+    };
+    let context = vm_provider::ProviderContext::default().with_config(app_config.global);
+    let rendered =
+        vm_provider::docker::render_compose_preview(&config, &project_dir, instance, &context)?;
+    print!("{rendered}");
     Ok(())
 }
 
@@ -129,10 +148,14 @@ pub fn handle_config_command(
     command: &ConfigSubcommand,
     dry_run: bool,
     profile: Option<String>,
+    config_path: Option<PathBuf>,
 ) -> VmResult<()> {
     match command {
-        ConfigSubcommand::Validate => handle_validate_command(),
-        ConfigSubcommand::Show => handle_show_command(profile),
+        ConfigSubcommand::Validate => handle_validate_command(config_path, profile),
+        ConfigSubcommand::Show => handle_show_command(config_path, profile),
+        ConfigSubcommand::Render { instance } => {
+            handle_render_command(config_path, profile, instance.as_deref())
+        }
         ConfigSubcommand::Set {
             field,
             values,
@@ -414,4 +437,50 @@ fn update_vm_config_ports(new_range: &str) -> VmResult<()> {
     fs::write(&config_path, updated_content).context("Failed to write updated vm.yaml")?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{handle_validate_command, load_selected_config};
+
+    #[test]
+    fn validation_honors_explicit_config_and_does_not_modify_it() {
+        let directory = tempfile::tempdir().unwrap();
+        let config_path = directory.path().join("selected.yaml");
+        let contents = b"project:\n  name: selected\nprovider: docker\n";
+        std::fs::write(&config_path, contents).unwrap();
+
+        handle_validate_command(Some(config_path.clone()), None).unwrap();
+
+        assert_eq!(std::fs::read(config_path).unwrap(), contents);
+    }
+
+    #[test]
+    fn selected_profile_is_loaded_from_explicit_config() {
+        let directory = tempfile::tempdir().unwrap();
+        let config_path = directory.path().join("selected.yaml");
+        std::fs::write(
+            &config_path,
+            r#"
+project:
+  name: base
+provider: docker
+profiles:
+  feature:
+    project:
+      name: feature
+"#,
+        )
+        .unwrap();
+
+        let loaded = load_selected_config(Some(config_path), Some("feature".to_string())).unwrap();
+        assert_eq!(
+            loaded
+                .vm
+                .project
+                .and_then(|project| project.name)
+                .as_deref(),
+            Some("feature")
+        );
+    }
 }
