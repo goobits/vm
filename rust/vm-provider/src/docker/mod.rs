@@ -1,7 +1,9 @@
 // Docker provider implementation split into logical modules
 
+mod artifacts;
 pub mod build;
 pub mod command;
+mod compose_context;
 mod compose_model;
 
 #[cfg(test)]
@@ -9,6 +11,7 @@ mod build_tests;
 pub mod compose;
 pub mod host_packages;
 pub mod lifecycle;
+mod preview;
 
 // Re-export the main types and functions for backwards compatibility
 pub use build::BuildOperations;
@@ -23,7 +26,6 @@ use std::sync::OnceLock;
 
 // External crates
 use tera::Tera;
-use uuid::Uuid;
 use vm_core::error::{Result, VmError};
 
 // Internal imports
@@ -121,7 +123,7 @@ impl ComposeCommand {
 pub struct DockerProvider {
     config: VmConfig,
     _project_dir: PathBuf, // The root of the user's project
-    temp_dir: PathBuf, // Persistent project-specific directory for generated files like docker-compose.yml
+    generated_dir: PathBuf,
     executable: String,
 }
 
@@ -138,23 +140,12 @@ impl DockerProvider {
 
         let project_dir = std::env::current_dir()?;
 
-        // Create a unique instance-specific directory for docker-compose files
-        // Using UUID prevents stale config reuse and concurrent instance collisions
-        let project_name = config
-            .project
-            .as_ref()
-            .and_then(|p| p.name.as_deref())
-            .unwrap_or("vm-project");
-
-        let instance_id = Uuid::new_v4();
-        let temp_dir = std::env::temp_dir().join(format!("vm-{}-{}", project_name, instance_id));
-        fs::create_dir_all(&temp_dir)
-            .map_err(|e| VmError::Internal(format!("Failed to create instance directory: {e}")))?;
+        let generated_dir = artifacts::project_artifacts_dir(&config, &project_dir)?;
 
         Ok(Self {
             config,
             _project_dir: project_dir,
-            temp_dir,
+            generated_dir,
             executable,
         })
     }
@@ -163,11 +154,25 @@ impl DockerProvider {
     fn lifecycle_ops(&self) -> LifecycleOperations<'_> {
         LifecycleOperations::new(
             &self.config,
-            &self.temp_dir,
+            &self.generated_dir,
             &self._project_dir,
             &self.executable,
         )
     }
+}
+
+/// Render the provider-native Compose configuration without contacting Docker,
+/// creating credentials, or mutating the project lifecycle.
+pub fn render_compose_preview(
+    config: &VmConfig,
+    project_dir: &Path,
+    instance_name: Option<&str>,
+    context: &ProviderContext,
+) -> Result<String> {
+    let generated_dir = artifacts::project_artifacts_location(config, project_dir)?;
+    let build_context = generated_dir.join("build_context");
+    compose::ComposeOperations::new(config, &generated_dir, project_dir, "docker")
+        .render_docker_compose_preview(&build_context, instance_name, context)
 }
 
 /// Shared template engine for Docker compose operations
@@ -245,15 +250,6 @@ volumes:
             .expect("Failed to add temporary docker-compose template");
         tera
     })
-}
-
-impl Drop for DockerProvider {
-    fn drop(&mut self) {
-        if self.temp_dir.exists() {
-            // Best-effort cleanup. Ignore errors if cleanup fails.
-            let _ = fs::remove_dir_all(&self.temp_dir);
-        }
-    }
 }
 
 impl Provider for DockerProvider {

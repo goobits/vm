@@ -62,7 +62,12 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         }
         Command::Config { command } => {
             debug!("Calling ConfigOps methods directly");
-            config::handle_config_command(command, args.dry_run, args.profile.clone())
+            config::handle_config_command(
+                command,
+                args.dry_run,
+                args.profile.clone(),
+                args.config.clone(),
+            )
         }
         Command::Temp { command } => {
             debug!("Calling temp VM operations directly");

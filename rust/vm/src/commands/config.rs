@@ -8,7 +8,7 @@ use crate::cli::{ConfigProfileSubcommand, ConfigSubcommand};
 use crate::error::{VmError, VmResult};
 use serde_yaml_ng as serde_yaml;
 use vm_config::ports::{PortRange, PortRegistry};
-use vm_config::{config::VmConfig, validator::ConfigValidator, ConfigOps};
+use vm_config::{config::VmConfig, validator::ConfigValidator, AppConfig, ConfigOps};
 use vm_core::msg;
 use vm_core::{vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
@@ -81,6 +81,42 @@ fn handle_show_command(profile: Option<String>) -> VmResult<()> {
     Ok(())
 }
 
+fn handle_render_command(
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+    instance: Option<&str>,
+) -> VmResult<()> {
+    let app_config = AppConfig::load(config_path, profile, None)?;
+    let config = app_config.vm;
+    let provider = config.provider.as_deref().unwrap_or("docker");
+    if !matches!(provider, "docker" | "podman") {
+        return Err(VmError::validation(
+            format!("Provider '{provider}' does not generate Docker Compose"),
+            None::<String>,
+        ));
+    }
+
+    let errors = config.validate(true);
+    if !errors.is_empty() {
+        return Err(VmError::validation(errors.join("; "), None::<String>));
+    }
+
+    let project_dir = match config
+        .source_path
+        .as_deref()
+        .and_then(std::path::Path::parent)
+    {
+        Some(project_dir) => project_dir.to_path_buf(),
+        None => std::env::current_dir()
+            .map_err(|error| VmError::filesystem(error, ".", "resolve project directory"))?,
+    };
+    let context = vm_provider::ProviderContext::default().with_config(app_config.global);
+    let rendered =
+        vm_provider::docker::render_compose_preview(&config, &project_dir, instance, &context)?;
+    print!("{rendered}");
+    Ok(())
+}
+
 fn handle_profile_list() -> VmResult<()> {
     let config = VmConfig::load(None)?;
     let profiles = match config.profiles {
@@ -135,10 +171,14 @@ pub fn handle_config_command(
     command: &ConfigSubcommand,
     dry_run: bool,
     profile: Option<String>,
+    config_path: Option<PathBuf>,
 ) -> VmResult<()> {
     match command {
         ConfigSubcommand::Validate => handle_validate_command(),
         ConfigSubcommand::Show => handle_show_command(profile),
+        ConfigSubcommand::Render { instance } => {
+            handle_render_command(config_path, profile, instance.as_deref())
+        }
         ConfigSubcommand::Set {
             field,
             values,

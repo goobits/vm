@@ -129,7 +129,7 @@ impl<'a> LifecycleOperations<'a> {
         let modified_config = self.prepare_config_for_build()?;
 
         // Step 2: Prepare build context with embedded resources
-        let build_ops = BuildOperations::new(&modified_config, self.temp_dir, self.executable);
+        let build_ops = BuildOperations::new(&modified_config, self.generated_dir, self.executable);
         let (build_context, base_image, is_snapshot) = build_ops.prepare_build_context()?;
 
         // Step 2.5: Ensure Docker networks exist (create them if needed)
@@ -143,7 +143,7 @@ impl<'a> LifecycleOperations<'a> {
         // Step 3: Generate docker-compose.yml with build context and modified config
         let compose_ops = ComposeOperations::new(
             &modified_config,
-            self.temp_dir,
+            self.generated_dir,
             self.project_dir,
             self.executable,
         );
@@ -254,7 +254,8 @@ impl<'a> LifecycleOperations<'a> {
         container_name: &str,
     ) -> Result<()> {
         // 1. Start existing service containers directly to avoid compose name conflicts
-        let expected_services = compose_ops.get_expected_service_containers();
+        let instance = compose_ops.instance_name_from_container(container_name);
+        let expected_services = compose_ops.get_expected_service_containers(instance.as_deref());
         for service in &expected_services {
             if !DockerOps::container_exists(Some(self.executable), service).unwrap_or(false) {
                 continue;
@@ -573,8 +574,8 @@ impl<'a> LifecycleOperations<'a> {
             return Ok(());
         }
 
-        let temp_config_path = self.temp_dir.join("vm-config.json");
-        let local_config_matches = fs::read_to_string(&temp_config_path)
+        let generated_config_path = self.generated_dir.join("vm-config.json");
+        let local_config_matches = fs::read_to_string(&generated_config_path)
             .ok()
             .is_some_and(|existing| existing == config_json);
 
@@ -582,18 +583,20 @@ impl<'a> LifecycleOperations<'a> {
             // Atomic write: a crash mid-write would otherwise leave a partial
             // vm-config.json that the next `docker cp` would copy into the
             // container, surfacing later as confusing parse errors.
-            vm_core::file_system::atomic_write(&temp_config_path, config_json.as_bytes()).map_err(
-                |e| {
-                    VmError::Internal(format!(
-                        "Failed to write configuration to {}: {}",
-                        temp_config_path.display(),
-                        e
-                    ))
-                },
-            )?;
+            crate::docker::artifacts::secure_write_if_changed(
+                &generated_config_path,
+                config_json.as_bytes(),
+            )
+            .map_err(|e| {
+                VmError::Internal(format!(
+                    "Failed to write configuration to {}: {}",
+                    generated_config_path.display(),
+                    e
+                ))
+            })?;
         }
 
-        let source = BuildOperations::path_to_string(&temp_config_path)?;
+        let source = BuildOperations::path_to_string(&generated_config_path)?;
         let destination = format!("{}:{}", container_name, super::TEMP_CONFIG_PATH);
         let copy_result = DockerOps::copy(Some(self.executable), source, &destination);
         if copy_result.is_err() {
@@ -642,7 +645,7 @@ impl<'a> LifecycleOperations<'a> {
     /// - MongoDB: {project}-mongodb-1 (Compose default, if added to template)
     fn check_for_orphaned_containers(
         &self,
-        _instance_name: Option<&str>,
+        instance_name: Option<&str>,
         context: &ProviderContext,
     ) -> Result<bool> {
         // Query Docker for all containers to find orphaned services
@@ -655,11 +658,11 @@ impl<'a> LifecycleOperations<'a> {
         // For now, we check the services enabled in the current config.
         let compose_ops = ComposeOperations::new(
             self.config,
-            self.temp_dir,
+            self.generated_dir,
             self.project_dir,
             self.executable,
         );
-        let service_patterns = compose_ops.get_expected_service_containers();
+        let service_patterns = compose_ops.get_expected_service_containers(instance_name);
 
         let mut orphaned = Vec::new();
 

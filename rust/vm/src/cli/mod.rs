@@ -62,6 +62,12 @@ pub enum ConfigSubcommand {
     Validate,
     /// Show the loaded configuration and its source
     Show,
+    /// Render the redacted provider configuration without applying it
+    Render {
+        /// Render a named instance instead of the default instance
+        #[arg(long)]
+        instance: Option<String>,
+    },
     /// Change a configuration value
     Set {
         /// Configuration field path (e.g., "vm.memory" or "services.docker.enabled")
@@ -783,8 +789,8 @@ pub enum Command {
 #[cfg(test)]
 mod tests {
     use super::{
-        Args, BaseSubcommand, Command, PluginSubcommand, RegistrySubcommand, SecretsSubcommand,
-        TempSubcommand,
+        Args, BaseSubcommand, Command, ConfigSubcommand, PluginSubcommand, RegistrySubcommand,
+        SecretsSubcommand, TempSubcommand,
     };
     use clap::Parser;
 
@@ -1019,6 +1025,17 @@ mod tests {
         match args.command {
             Command::Status { .. } => { /* Correct command */ }
             _ => panic!("Expected Command::Status"),
+        }
+    }
+
+    #[test]
+    fn test_config_render_instance_parsing() {
+        let args = Args::parse_from(["vm", "config", "render", "--instance", "feature"]);
+        match args.command {
+            Command::Config {
+                command: ConfigSubcommand::Render { instance },
+            } => assert_eq!(instance.as_deref(), Some("feature")),
+            _ => panic!("Expected ConfigSubcommand::Render"),
         }
     }
 

@@ -17,7 +17,7 @@ use vm_core::{
     error::{Result, VmError},
 };
 
-use super::{compose::ComposeOperations, ComposeCommand};
+use super::{artifacts::compose_path, compose::ComposeOperations, ComposeCommand};
 
 // Constants for container lifecycle operations
 const DEFAULT_SHELL: &str = "zsh";
@@ -29,7 +29,7 @@ const TEMP_CONFIG_PATH: &str = "/tmp/vm-config.json";
 /// Main lifecycle operations struct
 pub struct LifecycleOperations<'a> {
     pub config: &'a VmConfig,
-    pub temp_dir: &'a std::path::PathBuf,
+    pub generated_dir: &'a std::path::PathBuf,
     pub project_dir: &'a std::path::PathBuf,
     pub executable: &'a str,
 }
@@ -38,13 +38,13 @@ impl<'a> LifecycleOperations<'a> {
     /// Constructor - only public method in mod.rs
     pub fn new(
         config: &'a VmConfig,
-        temp_dir: &'a std::path::PathBuf,
+        generated_dir: &'a std::path::PathBuf,
         project_dir: &'a std::path::PathBuf,
         executable: &'a str,
     ) -> Self {
         Self {
             config,
-            temp_dir,
+            generated_dir,
             project_dir,
             executable,
         }
@@ -67,7 +67,7 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
         self.recreate_with_mounts(state)?;
 
         ProgressReporter::task(&main_phase, "Starting container...");
-        let compose_path = self.temp_dir.join("docker-compose.yml");
+        let compose_path = compose_path(self.generated_dir, None);
         let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         stream_command(self.executable, &args_refs)?;
@@ -96,15 +96,15 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
         let temp_config = self.prepare_temp_config()?;
         let compose_ops = ComposeOperations::new(
             &temp_config,
-            self.temp_dir,
+            self.generated_dir,
             self.project_dir,
             self.executable,
         );
         let content = compose_ops.render_docker_compose_with_mounts(state)?;
-        let compose_path = self.temp_dir.join("docker-compose.yml");
+        let compose_path = compose_path(self.generated_dir, None);
         // Atomic write so a crash mid-write can't leave a half-rendered compose
         // file that the next `docker-compose up` would fail to parse.
-        vm_core::file_system::atomic_write(&compose_path, content.as_bytes())?;
+        crate::docker::artifacts::secure_write_if_changed(&compose_path, content.as_bytes())?;
 
         ProgressReporter::task(&phase, "Removing old container...");
         if let Err(e) = stream_command(self.executable, &["rm", "-f", &state.container_name]) {

@@ -21,15 +21,15 @@ use vm_snapshot::{SnapshotManager, SnapshotScope};
 
 pub struct BuildOperations<'a> {
     pub config: &'a VmConfig,
-    pub temp_dir: &'a PathBuf,
+    pub generated_dir: &'a Path,
     pub executable: &'a str,
 }
 
 impl<'a> BuildOperations<'a> {
-    pub fn new(config: &'a VmConfig, temp_dir: &'a PathBuf, executable: &'a str) -> Self {
+    pub fn new(config: &'a VmConfig, generated_dir: &'a Path, executable: &'a str) -> Self {
         Self {
             config,
-            temp_dir,
+            generated_dir,
             executable,
         }
     }
@@ -342,7 +342,7 @@ impl<'a> BuildOperations<'a> {
     }
 
     pub fn build_context_dir(&self) -> PathBuf {
-        self.temp_dir.join("build_context")
+        self.generated_dir.join("build_context")
     }
 
     /// Prepare the reusable build context needed for compose/build.

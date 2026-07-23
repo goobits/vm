@@ -11,8 +11,6 @@ use vm_core::{
     error::{Result, VmError},
 };
 
-use vm_core::vm_warning;
-
 impl<'a> LifecycleOperations<'a> {
     #[must_use = "container start results should be handled"]
     pub fn start_container(
@@ -66,11 +64,13 @@ impl<'a> LifecycleOperations<'a> {
             info!("Removing service containers (--preserve-services=false)");
             let compose_ops = ComposeOperations::new(
                 self.config,
-                self.temp_dir,
+                self.generated_dir,
                 self.project_dir,
                 self.executable,
             );
-            let expected_services = compose_ops.get_expected_service_containers();
+            let instance = compose_ops.instance_name_from_container(&target_container);
+            let expected_services =
+                compose_ops.get_expected_service_containers(instance.as_deref());
 
             for service_name in expected_services {
                 let exists = DockerOps::container_exists(Some(self.executable), &service_name)
@@ -99,17 +99,6 @@ impl<'a> LifecycleOperations<'a> {
                 }
                 #[cfg(not(target_os = "macos"))]
                 MacOSAudioManager::cleanup();
-            }
-        }
-
-        // Clean up the temporary instance directory to prevent disk leaks
-        if self.temp_dir.exists() {
-            if let Err(e) = std::fs::remove_dir_all(self.temp_dir) {
-                vm_warning!(
-                    "Failed to remove temp directory {}: {}",
-                    self.temp_dir.display(),
-                    e
-                );
             }
         }
 

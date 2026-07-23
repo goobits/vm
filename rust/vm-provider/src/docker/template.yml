@@ -1,6 +1,8 @@
 # This is a Tera template for docker-compose.yml
 # It will be rendered by the vm-provider crate.
 
+name: {{ project_name }}
+
 services:
   {{ project_name }}-dev:
     container_name: {{ project_name }}-dev
@@ -21,8 +23,9 @@ services:
         - {{ project_name }}:buildcache
     image: {{ image_tag }}
     labels:
-      - "com.vm.managed=true"
-      - "com.vm.project={{ project_name }}"
+      com.vm.managed: "true"
+      com.vm.project: "{{ base_project_name }}"
+      com.vm.instance: "{{ project_name }}"
     {% if config.services.postgresql.enabled | default(value=false) -%}
     depends_on:
       - postgres
@@ -255,6 +258,10 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: {{ project_name }}-postgres
+    labels:
+      com.vm.managed: "true"
+      com.vm.project: "{{ base_project_name }}"
+      com.vm.instance: "{{ project_name }}"
     environment:
       - POSTGRES_DB={{ config.services.postgresql.database | default(value=project_name ~ "_dev") }}
       - POSTGRES_USER={{ config.services.postgresql.user | default(value="postgres") }}

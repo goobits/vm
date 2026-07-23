@@ -251,12 +251,12 @@ impl<'a> LifecycleOperations<'a> {
         container: Option<&str>,
         context: &ProviderContext,
     ) -> Result<ComposeOperations<'a>> {
-        let build_ops = BuildOperations::new(self.config, self.temp_dir, self.executable);
+        let build_ops = BuildOperations::new(self.config, self.generated_dir, self.executable);
         let build_context = build_ops.prepare_compose_build_context()?;
 
         let compose_ops = ComposeOperations::new(
             self.config,
-            self.temp_dir,
+            self.generated_dir,
             self.project_dir,
             self.executable,
         );
