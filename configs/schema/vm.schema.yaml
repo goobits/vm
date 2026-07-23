@@ -228,6 +228,9 @@ properties:
         type: string
         default: "22"
         description: Node.js version to install (e.g., '22', '20.11.0', 'lts/*')
+      npm:
+        type: string
+        description: Optional npm version override; otherwise use the version bundled with Node.js
       nvm:
         type: string
         default: v0.40.3
@@ -240,6 +243,26 @@ properties:
         type: string
         default: "3.11"
         description: Python version to install via pyenv (e.g., '3.11', '3.12.0')
+  bootstrap:
+    type: object
+    description: Idempotent project initialization performed during provisioning
+    properties:
+      dependencies:
+        type: boolean
+        default: true
+        description: Install locked Node dependencies when their fingerprint changes
+      playwright:
+        type: object
+        properties:
+          browsers:
+            type: array
+            description: Playwright browser families or channels to install for every resolved version
+            uniqueItems: true
+            items:
+              type: string
+              pattern: ^[A-Za-z0-9][A-Za-z0-9._-]*$
+        additionalProperties: false
+    additionalProperties: false
   ports:
     type: object
     description: Port configuration for services and port range allocation

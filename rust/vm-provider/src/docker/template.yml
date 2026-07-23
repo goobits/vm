@@ -183,6 +183,9 @@ services:
       {% for name, value in config.environment %}- {{ name }}={{ value }}
       {% endfor %}
       {%- endif %}
+      # Internal values come last so project environment cannot weaken bootstrap identity.
+      - VM_IMAGE_IDENTITY={{ image_tag }}
+      - PLAYWRIGHT_BROWSERS_PATH=/home/{{ project_user }}/.cache/ms-playwright
     {% if config.security.enable_debugging | default(value=false) %}
     cap_add:
       - SYS_PTRACE

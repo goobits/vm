@@ -7,6 +7,8 @@ use vm_core::error::Result;
 
 pub const ANSIBLE_PLAYBOOK: &str = include_str!("resources/ansible/playbook.yml");
 pub const MANAGE_SERVICE_TASK: &str = include_str!("resources/ansible/tasks/manage-service.yml");
+pub const BOOTSTRAP_NODE_TASK: &str = include_str!("resources/ansible/tasks/bootstrap-node.yml");
+pub const NODE_TOOLCHAIN_TASK: &str = include_str!("resources/ansible/tasks/node-toolchain.yml");
 pub const SERVICE_DEFINITIONS: &str = include_str!("resources/services/service_definitions.yml");
 pub const ZSHRC_TEMPLATE: &str = include_str!("resources/templates/zshrc.j2");
 pub const THEMES_JSON: &str = include_str!("resources/templates/themes.json");
@@ -39,6 +41,14 @@ pub fn copy_embedded_resources(shared_dir: &Path) -> Result<()> {
         (
             directories[1].join("manage-service.yml"),
             MANAGE_SERVICE_TASK,
+        ),
+        (
+            directories[1].join("bootstrap-node.yml"),
+            BOOTSTRAP_NODE_TASK,
+        ),
+        (
+            directories[1].join("node-toolchain.yml"),
+            NODE_TOOLCHAIN_TASK,
         ),
         (
             directories[2].join("service_definitions.yml"),

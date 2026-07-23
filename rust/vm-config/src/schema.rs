@@ -136,10 +136,13 @@ fn add_vm_schema_fields(cache: &mut HashMap<String, SchemaType>) {
     add_strings!(
         cache,
         "versions.node",
+        "versions.npm",
         "versions.nvm",
         "versions.pnpm",
         "versions.python"
     );
+    add_booleans!(cache, "bootstrap.dependencies");
+    add_string_arrays!(cache, "bootstrap.playwright.browsers");
 
     // Port fields
     cache.insert(
@@ -443,6 +446,12 @@ mod tests {
         );
         assert_eq!(
             lookup_field_type("apt_packages", false),
+            SchemaType::Array {
+                item_type: Box::new(SchemaType::String)
+            }
+        );
+        assert_eq!(
+            lookup_field_type("bootstrap.playwright.browsers", false),
             SchemaType::Array {
                 item_type: Box::new(SchemaType::String)
             }

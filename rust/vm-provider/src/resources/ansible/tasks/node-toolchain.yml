@@ -1,0 +1,87 @@
+---
+- name: Check if NVM is installed
+  stat:
+    path: '{{ home_dir }}/.nvm/nvm.sh'
+  register: nvm_present
+
+- name: Repair NVM ownership when inherited from another user
+  file:
+    path: '{{ home_dir }}/.nvm'
+    state: directory
+    owner: '{{ project_user }}'
+    group: '{{ project_user_group }}'
+    mode: '0755'
+    recurse: yes
+  become: yes
+  when:
+    - nvm_present.stat.exists
+    - nvm_present.stat.pw_name | default('') != project_user
+
+- name: Download NVM installer
+  get_url:
+    url: "https://raw.githubusercontent.com/nvm-sh/nvm/{{ project_config.versions.nvm | default('v0.40.3') }}/install.sh"
+    dest: /tmp/install_nvm.sh
+    mode: '0755'
+  become_user: '{{ project_user }}'
+  environment:
+    HOME: '{{ home_dir }}'
+  when: not nvm_present.stat.exists
+
+- name: Install NVM
+  shell: /tmp/install_nvm.sh
+  args:
+    creates: '{{ home_dir }}/.nvm/nvm.sh'
+  become_user: '{{ project_user }}'
+  environment:
+    HOME: '{{ home_dir }}'
+  when: not nvm_present.stat.exists
+
+- name: Reconcile Node.js toolchain
+  shell: |
+    set -euo pipefail
+    source "$HOME/.nvm/nvm.sh"
+    changed=false
+
+    if [ "$(nvm version "$VM_NODE_VERSION")" = "N/A" ]; then
+      nvm install "$VM_NODE_VERSION"
+      changed=true
+    fi
+    nvm use --silent "$VM_NODE_VERSION"
+    nvm alias default "$VM_NODE_VERSION" >/dev/null
+
+    if [ -n "$VM_NPM_VERSION" ]; then
+      npm_target="$VM_NPM_VERSION"
+      if [ "$npm_target" = "latest" ]; then
+        npm_target="$(npm view npm@latest version)"
+      fi
+      if [ "$(npm --version)" != "$npm_target" ]; then
+        npm install -g "npm@$npm_target"
+        changed=true
+      fi
+    fi
+
+    pnpm_target="$VM_PNPM_VERSION"
+    if [ "$pnpm_target" = "latest" ]; then
+      pnpm_target="$(npm view pnpm@latest version)"
+    fi
+    if ! command -v pnpm >/dev/null 2>&1 || [ "$(pnpm --version)" != "$pnpm_target" ]; then
+      corepack enable
+      corepack prepare "pnpm@$pnpm_target" --activate || npm install -g "pnpm@$pnpm_target"
+      changed=true
+    fi
+
+    if $changed; then
+      echo 'VM_NODE_TOOLCHAIN_CHANGED=1'
+    else
+      echo 'VM_NODE_TOOLCHAIN_CURRENT=1'
+    fi
+  args:
+    executable: /bin/bash
+  environment:
+    HOME: '{{ home_dir }}'
+    VM_NODE_VERSION: "{{ project_config.versions.node | default('22') }}"
+    VM_NPM_VERSION: "{{ project_config.versions.npm | default('') }}"
+    VM_PNPM_VERSION: "{{ project_config.versions.pnpm | default('10.12.3') }}"
+  become_user: '{{ project_user }}'
+  register: node_toolchain
+  changed_when: "'VM_NODE_TOOLCHAIN_CHANGED=1' in node_toolchain.stdout"

@@ -89,6 +89,7 @@ impl ConfigValidator {
         self.validate_versions()?;
         self.validate_networking()?;
         self.validate_runtime()?;
+        self.validate_bootstrap()?;
         self.validate_storage()?;
         Ok(())
     }
@@ -492,6 +493,30 @@ impl ConfigValidator {
 
         Ok(())
     }
+
+    fn validate_bootstrap(&self) -> Result<()> {
+        let Some(bootstrap) = &self.config.bootstrap else {
+            return Ok(());
+        };
+        let mut browsers = HashSet::new();
+        for browser in &bootstrap.playwright.browsers {
+            let valid = !browser.is_empty()
+                && browser.chars().all(|character| {
+                    character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-')
+                });
+            if !valid {
+                return Err(VmError::Config(format!(
+                    "Invalid Playwright browser '{browser}': use letters, numbers, dots, dashes, or underscores"
+                )));
+            }
+            if !browsers.insert(browser) {
+                return Err(VmError::Config(format!(
+                    "Duplicate Playwright browser: {browser}"
+                )));
+            }
+        }
+        Ok(())
+    }
 }
 
 fn valid_storage_name(name: &str) -> bool {
@@ -533,8 +558,8 @@ fn valid_size_string(value: &str) -> bool {
 mod tests {
     use super::*;
     use crate::config::{
-        MemoryLimit, StorageConfig, TmpfsMountConfig, VolumeMountConfig, VolumeRetention,
-        VolumeScope,
+        BootstrapConfig, MemoryLimit, PlaywrightBootstrapConfig, StorageConfig, TmpfsMountConfig,
+        VolumeMountConfig, VolumeRetention, VolumeScope,
     };
 
     #[test]
@@ -680,5 +705,40 @@ mod tests {
             .validate()
             .unwrap_err();
         assert!(error.to_string().contains("normalized absolute path"));
+    }
+
+    #[test]
+    fn test_bootstrap_rejects_unsafe_or_duplicate_browser_names() {
+        let base = || VmConfig {
+            provider: Some("docker".to_string()),
+            project: Some(crate::config::ProjectConfig {
+                name: Some("test".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let with_browsers = |browsers: &[&str]| {
+            let mut config = base();
+            config.bootstrap = Some(BootstrapConfig {
+                dependencies: true,
+                playwright: PlaywrightBootstrapConfig {
+                    browsers: browsers
+                        .iter()
+                        .map(|browser| (*browser).to_string())
+                        .collect(),
+                },
+            });
+            config
+        };
+
+        for browsers in [&["chromium; false"] as &[_], &["webkit", "webkit"]] {
+            assert!(ConfigValidator::new(
+                with_browsers(browsers),
+                PathBuf::from("test.yaml"),
+                true
+            )
+            .validate()
+            .is_err());
+        }
     }
 }
