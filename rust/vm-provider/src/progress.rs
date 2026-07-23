@@ -430,69 +430,6 @@ impl ProgressReporter {
     }
 }
 
-// --- Other Utilities --- //
-
-/// Simple status formatter for VM status output
-pub struct StatusFormatter;
-
-impl Default for StatusFormatter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl StatusFormatter {
-    pub fn new() -> Self {
-        Self
-    }
-
-    pub fn format_status(
-        vm_name: &str,
-        state: &str,
-        provider: &str,
-        memory: Option<u32>,
-        cpus: Option<u32>,
-    ) {
-        vm_println!("{}", MESSAGES.service.status_report_header);
-        vm_println!("{}", MESSAGES.service.status_report_separator);
-        vm_println!(
-            "{}",
-            msg!(MESSAGES.service.status_report_name, name = vm_name)
-        );
-
-        let status_icon = match state.to_lowercase().as_str() {
-            "running" => "🟢 Running",
-            "stopped" | "exited" => "🔴 Stopped",
-            _ => "⚫ Not Found",
-        };
-        vm_println!(
-            "{}",
-            msg!(MESSAGES.service.status_report_status, status = status_icon)
-        );
-        vm_println!(
-            "{}",
-            msg!(MESSAGES.service.status_report_provider, provider = provider)
-        );
-
-        if let Some(mem) = memory {
-            vm_println!(
-                "{}",
-                msg!(
-                    MESSAGES.service.status_report_memory,
-                    memory = mem.to_string()
-                )
-            );
-        }
-
-        if let Some(cpu) = cpus {
-            vm_println!(
-                "{}",
-                msg!(MESSAGES.service.status_report_cpus, cpus = cpu.to_string())
-            );
-        }
-    }
-}
-
 /// Prompt user for confirmation with a yes/no question
 pub fn confirm_prompt(message: &str) -> bool {
     print!("{message}");

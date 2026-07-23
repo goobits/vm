@@ -96,10 +96,11 @@ ports:
 
 ```bash
 # Daily workflow
-vm start          # Create/configure/start and open a shell
-vm start tart     # Use Tart for this run
-vm start docker   # Use Docker for this run
-vm ssh            # Reconnect later
+vm create         # Create/configure the environment
+vm start          # Start an existing environment
+vm start tart     # Start this project's Tart environment
+vm start docker   # Start this project's Docker environment
+vm ssh            # Connect or reconnect
 vm stop           # Stop VM (keeps data)
 vm destroy        # Delete completely
 

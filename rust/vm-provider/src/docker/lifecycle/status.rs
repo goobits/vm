@@ -36,7 +36,7 @@ impl<'a> LifecycleOperations<'a> {
             None
         };
         let resources = if is_running {
-            self.get_container_resources(&container_name)?
+            self.get_container_resources(&container_name, &container_info["HostConfig"])?
         } else {
             ResourceUsage::default()
         };
@@ -45,6 +45,8 @@ impl<'a> LifecycleOperations<'a> {
         } else {
             Vec::new()
         };
+        let runtime =
+            Some(self.collect_runtime_diagnostics(&container_name, container_info, is_running));
 
         Ok(VmStatusReport {
             name: container_name,
@@ -54,6 +56,7 @@ impl<'a> LifecycleOperations<'a> {
             uptime,
             resources,
             services,
+            runtime,
         })
     }
 
@@ -81,7 +84,11 @@ impl<'a> LifecycleOperations<'a> {
         })
     }
 
-    fn get_container_resources(&self, container_name: &str) -> Result<ResourceUsage> {
+    fn get_container_resources(
+        &self,
+        container_name: &str,
+        host_config: &serde_json::Value,
+    ) -> Result<ResourceUsage> {
         let stats_output = std::process::Command::new(self.executable)
             .args([
                 "stats",
@@ -105,7 +112,10 @@ impl<'a> LifecycleOperations<'a> {
         };
         let mut memory_values = memory.split('/').map(str::trim);
         let memory_used_mb = memory_values.next().and_then(Self::parse_memory_value);
-        let memory_limit_mb = memory_values.next().and_then(Self::parse_memory_value);
+        let memory_limit_mb = host_config["Memory"]
+            .as_u64()
+            .filter(|bytes| *bytes > 0)
+            .map(|bytes| bytes / (1024 * 1024));
         let (disk_used_gb, disk_total_gb) = self.get_disk_usage(container_name);
 
         Ok(ResourceUsage {

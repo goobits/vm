@@ -8,9 +8,9 @@ All `vm` commands with usage examples and expected output. Use this as a referen
 |------|---------|
 | Create VM | `vm create` |
 | Create Docker or Tart VM | `vm create <docker|tart>` |
-| Create/start VM | `vm start` |
-| Create/start Tart VM | `vm start tart` |
-| Create/start Docker VM | `vm start docker` |
+| Start existing VM | `vm start` |
+| Start existing Tart VM | `vm start tart` |
+| Start existing Docker VM | `vm start docker` |
 | Set project default provider | `vm use <docker|tart>` |
 | Stop VM | `vm stop` |
 | Stop Docker or Tart VM | `vm stop <docker|tart>` |
@@ -20,14 +20,13 @@ All `vm` commands with usage examples and expected output. Use this as a referen
 | Check Docker or Tart status | `vm status <docker|tart>` |
 | View logs | `vm logs [-f]` |
 | View Docker or Tart logs | `vm logs <docker|tart>` |
-| Wait for services | `vm start --wait` |
 | Destroy VM | `vm destroy` |
 | Destroy Docker VM | `vm destroy docker` |
 | Destroy Tart VM | `vm destroy tart` |
 | Run command | `vm exec <command>` |
 | Run command on provider | `vm exec --provider <docker|tart> <command>` |
 | Copy with provider | `vm copy --provider <docker|tart> <src> <dest>` |
-| Fleet list | `vm fleet list` |
+| Operate on multiple VMs | `vm fleet <exec|copy|start|stop|restart>` |
 | **Snapshots** | |
 | Create snapshot | `vm snapshot create <name>` |
 | Restore snapshot | `vm snapshot restore <name>` |
@@ -35,6 +34,7 @@ All `vm` commands with usage examples and expected output. Use this as a referen
 | Import snapshot | `vm snapshot import <file>` |
 | **Configuration** | |
 | Validate config | `vm config validate` |
+| Preview generated config | `vm config render` |
 | Apply preset | `vm config preset <name>` |
 | **Port Management** | |
 | Forward port | `vm tunnel create <host>:<container>` |
@@ -74,7 +74,6 @@ These flags can be used with any command.
 ```bash
 -c, --config <file>    # Path to a custom VM configuration file
     --dry-run          # Show what would be executed without running
--v, --verbose          # Enable verbose output
 -h, --help             # Print help
 -V, --version          # Print version
 ```
@@ -86,18 +85,14 @@ These flags can be used with any command.
 ### `vm create`
 Create/configure an environment without opening a shell.
 ```bash
-vm create [docker|tart] [--force] [--verbose]
+vm create [docker|tart] [--force] [--instance <name>] [--verbose] [--refresh-packages]
 ```
 
 ### `vm start`
-Create/configure/start an environment and open a shell.
+Start an existing environment. Use `vm ssh` separately to open a shell.
 ```bash
-vm start [docker|tart] [-c <command>] [--wait]
+vm start [docker|tart|<container>] [--no-wait]
 ```
-
-**Options:**
-- `-c, --command <command>`: Run a command instead of opening a shell
-- `--wait`: Wait for services to be ready before continuing
 
 ### `vm stop`
 Stop a running VM.
@@ -111,10 +106,16 @@ List all VMs, or show details for a single VM.
 vm status [docker|tart|<container>]
 ```
 
+Targeted Docker status also reports the generated Compose path, writable-layer
+size, named-volume usage, `/tmp`, memory/PID peaks and limits, mounts, logging,
+and lifecycle settings. Named-volume usage is reported separately because it is
+not part of the writable-layer size.
+
 ### `vm destroy`
-Destroy a VM and all its associated resources.
+Destroy an environment. Kept named volumes are preserved unless explicitly
+removed through a separate owner-approved operation.
 ```bash
-vm destroy [docker|tart] [--all] [--pattern <glob>] [--no-backup] [--force] [--remove-services]
+vm destroy [docker|tart|<container>] [--no-backup] [--force] [--remove-services]
 ```
 
 ### `vm ssh`
@@ -150,19 +151,8 @@ vm logs --follow
 
 ## Fleet (`vm fleet`)
 
-Bulk operations across multiple VMs and providers.
-
-### `vm fleet list`
-List instances across providers (defaults to running only).
-```bash
-vm fleet list [--provider <name>] [--pattern <glob>] [--running] [--stopped]
-```
-
-### `vm fleet status`
-Show status for instances across providers (defaults to running only).
-```bash
-vm fleet status [--provider <name>] [--pattern <glob>] [--running] [--stopped]
-```
+Bulk operations across multiple VMs and providers. Use `vm status` with no
+target to list environments; Fleet owns only multi-environment actions.
 
 ### `vm fleet exec`
 Run a command across instances (defaults to running only).
@@ -234,6 +224,13 @@ vm config validate
 Show the loaded configuration and its source.
 ```bash
 vm config show
+```
+
+### `vm config render`
+Render the redacted provider configuration without contacting Docker or applying
+changes. Environment values and host paths are redacted.
+```bash
+vm config render [--instance <name>]
 ```
 
 ### `vm config set`
@@ -707,7 +704,11 @@ vm registry remove <name>
 Run comprehensive health checks.
 ```bash
 vm doctor [--fix] [--clean]
+vm doctor --prune-pnpm-store [--container <provider|container>]
 ```
+
+pnpm pruning is explicit and never runs during create, start, or bootstrap.
+Stop installs in every environment sharing that store before pruning it.
 
 ### `vm update`
 Update `vm` to the latest or a specific version.

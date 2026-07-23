@@ -2,6 +2,7 @@
 
 // Module declarations in dependency order
 pub mod creation;
+mod diagnostics;
 pub mod execution;
 pub mod health;
 pub mod helpers;

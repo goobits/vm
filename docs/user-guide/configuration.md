@@ -33,6 +33,7 @@ npm_packages:
 **Key sections:**
 - [Services](#services) - PostgreSQL, Redis, MongoDB, MySQL, Docker
 - [Language Runtimes](#language-runtimes) - Node, Python, Rust versions
+- [Container Storage](#container-storage-and-bootstrap) - Named volumes, tmpfs, and deterministic bootstrap
 - [Host Sync](#host-system-integration) - SSH keys, dotfiles, AI tools
 - [Advanced Features](#advanced-features) - Worktrees, snapshots
 
@@ -46,6 +47,7 @@ npm_packages:
 - [Full Reference](#-full-reference)
 - [Services](#-services)
 - [Language Runtimes](#-language-runtimes)
+- [Container Storage and Bootstrap](#container-storage-and-bootstrap)
 - [Terminal Customization](#-terminal-customization)
 - [Advanced Features](#-advanced-features)
 
@@ -224,6 +226,9 @@ Complete field reference organized by category.
 | `vm.box` | string | ubuntu:24.04 | Base image (Docker/Podman/OCI) |
 | `vm.memory` | int/string | 4096 | RAM in MB, or "2gb", "50%", "unlimited" |
 | `vm.cpus` | int/string | 2 | CPU cores, or "50%", "unlimited" |
+| `vm.pids_limit` | int | unlimited | Maximum container processes and threads |
+| `vm.stop_grace_period` | int | provider default | Graceful shutdown time in seconds |
+| `vm.logging` | object | provider default | Log driver, maximum file size, and file count |
 | `vm.swap` | int/string | 2048 | Swap in MB, or "1gb", "50%", "unlimited" |
 | `vm.swappiness` | int | 60 | Kernel swappiness (0-100) |
 | `vm.user` | string | developer | Username inside container |
@@ -236,6 +241,15 @@ Complete field reference organized by category.
 | `versions.npm` | string | auto | npm version (usually auto-installed with Node) |
 | `versions.nvm` | string | latest | NVM version |
 | `versions.pnpm` | string | latest | pnpm version |
+| **Container Storage** ||||
+| `storage.volumes.<name>.target` | string | required | Absolute named-volume mount target |
+| `storage.volumes.<name>.scope` | string | project | project, instance, or platform |
+| `storage.volumes.<name>.nocopy` | bool | true | Prevent initial image/bind content copying |
+| `storage.volumes.<name>.retention` | string | keep | keep or disposable |
+| `storage.tmpfs` | array | [] | Bounded disposable memory filesystems |
+| **Bootstrap** ||||
+| `bootstrap.dependencies` | bool | true | Install locked Node dependencies when their fingerprint changes |
+| `bootstrap.playwright.browsers` | array | [] | Browser families installed for every resolved Playwright version |
 | **Services** ||||
 | `services.<name>.enabled` | bool | false | Enable service |
 | `services.<name>.version` | string | latest | Service version |
@@ -280,6 +294,74 @@ vm:
   user: developer           # Username inside container
   port_binding: 127.0.0.1   # "0.0.0.0" for network access
 ```
+
+### Container Storage and Bootstrap
+
+Use named volumes for large, high-churn container data and tmpfs for bounded,
+disposable scratch data. Keep source code on the host workspace bind.
+
+```yaml
+vm:
+  memory: 20480
+  cpus: unlimited
+  pids_limit: 4096
+  stop_grace_period: 60
+  logging:
+    driver: local
+    max_size: 20m
+    max_files: 5
+
+storage:
+  volumes:
+    node_modules:
+      target: /workspace/node_modules
+      scope: instance
+      nocopy: true
+      retention: keep
+    pnpm_store:
+      target: /home/developer/.local/share/pnpm/store
+      scope: platform
+      nocopy: true
+      retention: keep
+    playwright_browsers:
+      target: /home/developer/.cache/ms-playwright
+      scope: platform
+      nocopy: true
+      retention: keep
+  tmpfs:
+    - target: /tmp
+      size: 4g
+      mode: "1777"
+
+bootstrap:
+  dependencies: true
+  playwright:
+    browsers: [chromium, firefox, webkit]
+```
+
+`instance` prevents mutable `node_modules` from being shared across simultaneous
+instances. `platform` shares immutable package/browser downloads within one
+project and Linux architecture. `nocopy: true` prevents Docker from seeding a
+new volume with old image or bind contents. `retention: keep` excludes the
+volume from `vm doctor --clean`; only explicitly disposable, dangling VM
+volumes are eligible there.
+
+Bootstrap fingerprints lockfiles, package metadata, non-secret package-manager
+settings, tool versions, platform, and image identity. It runs frozen dependency
+installation and installs each configured browser for every resolved Playwright
+version only when that fingerprint changes. It never starts tests, browsers,
+watchers, agents, PM2, or terminal sessions.
+
+Preview the provider result without contacting Docker:
+
+```bash
+vm config validate
+vm config render
+```
+
+Treat memory, PID, and tmpfs values as workload-tested canaries, not universal
+defaults. Use targeted `vm status <provider|container>` after representative
+work to confirm at least 30% memory/PID headroom and less than 70% tmpfs use.
 
 ### Swap Configuration (vm.swap, vm.swappiness)
 

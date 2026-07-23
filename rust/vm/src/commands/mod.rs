@@ -24,6 +24,7 @@ pub mod clean;
 pub mod config;
 pub mod db;
 pub mod doctor;
+pub mod maintenance;
 pub mod plugin;
 pub mod plugin_new;
 pub mod registry;
@@ -45,10 +46,31 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
 
     // Handle commands that don't need a provider first
     match &args.command {
-        Command::Doctor { fix, clean } => {
-            debug!("Handling doctor command with fix={}, clean={}", fix, clean);
+        Command::Doctor {
+            fix,
+            clean,
+            prune_pnpm_store,
+            container,
+        } => {
+            debug!(
+                "Handling doctor command with fix={}, clean={}, prune_pnpm_store={}",
+                fix, clean, prune_pnpm_store
+            );
             if *clean {
                 clean::handle_clean(false, false).await?;
+            }
+            if *prune_pnpm_store {
+                let provider_override = container
+                    .as_deref()
+                    .filter(|value| is_provider_selector(value))
+                    .map(ToString::to_string);
+                let app_config =
+                    AppConfig::load(args.config.clone(), args.profile.clone(), provider_override)?;
+                let provider = get_provider(app_config.vm).map_err(VmError::from)?;
+                let target = container
+                    .as_deref()
+                    .filter(|value| !is_provider_selector(value));
+                maintenance::prune_pnpm_store(provider, target)?;
             }
             doctor::run_with_fix(*fix).map_err(VmError::from)
         }
@@ -214,6 +236,20 @@ async fn handle_dry_run(args: &Args) -> VmResult<()> {
             Ok(())
         }
         Command::Fleet { command } => vm_ops::handle_fleet_command(command, true).await,
+        Command::Doctor {
+            clean,
+            prune_pnpm_store,
+            container,
+            ..
+        } => {
+            if *clean {
+                clean::handle_clean(true, false).await?;
+            }
+            if *prune_pnpm_store {
+                maintenance::show_pnpm_store_prune(container.as_deref());
+            }
+            doctor::run_with_fix(false).map_err(VmError::from)
+        }
         _ => {
             // Non-provider commands proceed normally
             let mut args_copy = args.clone();

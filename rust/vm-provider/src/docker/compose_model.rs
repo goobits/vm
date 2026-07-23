@@ -162,6 +162,17 @@ pub(super) fn stable_name_component(value: &str) -> String {
         .collect()
 }
 
+pub(super) fn instance_name_from_container(
+    project_name: &str,
+    container_name: &str,
+) -> Option<String> {
+    container_name
+        .strip_prefix(&format!("{project_name}-"))?
+        .strip_suffix("-dev")
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+}
+
 pub(super) fn container_architecture() -> &'static str {
     match std::env::consts::ARCH {
         "aarch64" => "arm64",
@@ -189,5 +200,17 @@ mod tests {
         let resources = RenderedResources::resolve(&config).unwrap();
         assert_eq!(resources.memory.as_deref(), Some("8192m"));
         assert_eq!(resources.cpus, Some(6));
+    }
+
+    #[test]
+    fn resolves_only_named_dev_container_suffixes() {
+        assert_eq!(
+            instance_name_from_container("sketch-api", "sketch-api-feature-dev").as_deref(),
+            Some("feature")
+        );
+        assert_eq!(
+            instance_name_from_container("sketch-api", "sketch-api-dev"),
+            None
+        );
     }
 }

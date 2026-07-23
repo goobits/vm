@@ -109,11 +109,7 @@ pub async fn handle_create(
         .as_ref()
         .and_then(|project| project.name.as_deref())
         .unwrap_or("vm-project");
-    let target_name = match (provider.name(), instance.as_deref()) {
-        (_, Some(instance_name)) => format!("{vm_name}-{instance_name}"),
-        ("tart", None) => vm_name.to_string(),
-        (_, None) => format!("{vm_name}-dev"),
-    };
+    let target_name = target_name(provider.name(), vm_name, instance.as_deref());
     let existing_instance = provider
         .list_instances()?
         .into_iter()
@@ -189,7 +185,7 @@ pub async fn handle_create(
 
         vm_println!(
             "{}",
-            msg!(MESSAGES.vm.create_force_recreating, name = target_name)
+            msg!(MESSAGES.vm.create_force_recreating, name = &target_name)
         );
         provider.destroy(
             instance.as_deref(),
@@ -271,17 +267,12 @@ pub async fn handle_create(
         Ok(()) => {
             vm_println!("{}", MESSAGES.vm.create_success);
 
-            let container_name = if let Some(instance_name) = &instance {
-                format!("{vm_name}-{instance_name}")
-            } else {
-                format!("{vm_name}-dev")
-            };
             vm_println!(
                 "{}",
                 msg!(
                     MESSAGES.vm.create_info_block,
                     status = MESSAGES.common.status_running,
-                    container = &container_name
+                    container = &target_name
                 )
             );
 
@@ -292,7 +283,7 @@ pub async fn handle_create(
                 vm_println!("\n🎉 Success! Your VM is ready");
                 vm_println!("📝 Next steps:");
                 vm_println!("  • ssh into VM:  vm ssh");
-                vm_println!("  • Run commands: vm exec 'npm install'");
+                vm_println!("  • Run commands: vm exec -- npm install");
                 vm_println!("  • View status:  vm status");
             } else {
                 vm_println!("{}", MESSAGES.common.connect_hint);
@@ -329,4 +320,30 @@ pub async fn handle_create(
     }
 
     Ok(())
+}
+
+fn target_name(provider: &str, project: &str, instance: Option<&str>) -> String {
+    match (provider, instance) {
+        ("tart", Some(instance)) => format!("{project}-{instance}"),
+        ("tart", None) => project.to_string(),
+        (_, Some(instance)) => format!("{project}-{instance}-dev"),
+        (_, None) => format!("{project}-dev"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::target_name;
+
+    #[test]
+    fn resolves_provider_specific_instance_container_names() {
+        assert_eq!(
+            target_name("docker", "sketch-api", Some("feature")),
+            "sketch-api-feature-dev"
+        );
+        assert_eq!(
+            target_name("tart", "sketch-api", Some("feature")),
+            "sketch-api-feature"
+        );
+    }
 }

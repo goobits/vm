@@ -8,7 +8,7 @@ use tracing::debug;
 use crate::error::VmResult;
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::vm_println;
-use vm_provider::{Provider, VmStatusReport};
+use vm_provider::{Provider, ResourceUsage, RuntimeDiagnostics, VmStatusReport};
 
 /// Handle VM status check with enhanced dashboard
 pub fn handle_status(
@@ -71,6 +71,10 @@ fn display_status_dashboard(report: &VmStatusReport) {
         display_service_health(&report.services);
     }
 
+    if let Some(runtime) = &report.runtime {
+        display_runtime_diagnostics(runtime, &report.resources);
+    }
+
     if report.is_running {
         if let Some(ports_summary) = format_ports_summary(&report.services) {
             vm_println!("\n🔌 Ports: {}", ports_summary);
@@ -82,6 +86,122 @@ fn display_status_dashboard(report: &VmStatusReport) {
         vm_println!("\n💡 Connect: vm ssh");
     } else {
         vm_println!("\n💡 Start: vm start");
+    }
+}
+
+fn display_runtime_diagnostics(runtime: &RuntimeDiagnostics, resources: &ResourceUsage) {
+    vm_println!("\nRuntime evidence");
+
+    if let Some(path) = &runtime.generated_config {
+        let state = if runtime.generated_config_exists {
+            "present"
+        } else {
+            "missing"
+        };
+        vm_println!("   Generated config: {} ({})", path.display(), state);
+    }
+
+    if let Some(bytes) = runtime.writable_layer_bytes {
+        vm_println!("   Writable layer: {}", format_bytes(bytes));
+    }
+    if let Some(bytes) = runtime.root_filesystem_bytes {
+        vm_println!("   Root filesystem: {}", format_bytes(bytes));
+    }
+
+    if let Some(peak) = runtime.memory_peak_bytes {
+        let limit = resources
+            .memory_limit_mb
+            .map(|megabytes| megabytes * 1024 * 1024);
+        vm_println!(
+            "   Memory peak: {}",
+            format_usage_with_headroom(peak, limit)
+        );
+    }
+
+    if runtime.pids_current.is_some() || runtime.pids_peak.is_some() {
+        let current = runtime
+            .pids_current
+            .map_or_else(|| "unknown".to_string(), |value| value.to_string());
+        let peak = runtime
+            .pids_peak
+            .map_or_else(|| "unknown".to_string(), |value| value.to_string());
+        let limit = runtime
+            .pids_limit
+            .map_or_else(|| "unlimited".to_string(), |value| value.to_string());
+        let headroom = runtime.pids_limit.and_then(|limit| {
+            runtime
+                .pids_peak
+                .filter(|peak| *peak <= limit)
+                .map(|peak| format!(", {:.0}% peak headroom", percent_remaining(peak, limit)))
+        });
+        vm_println!(
+            "   PIDs: current {}, peak {}, limit {}{}",
+            current,
+            peak,
+            limit,
+            headroom.unwrap_or_default()
+        );
+    }
+
+    if !runtime.mounts.is_empty() {
+        vm_println!("   Storage (volume usage is separate from writable layer):");
+        for mount in &runtime.mounts {
+            let name = mount
+                .name
+                .as_deref()
+                .map(|name| format!(", {name}"))
+                .unwrap_or_default();
+            let usage = match (mount.used_bytes, mount.capacity_bytes) {
+                (Some(used), Some(capacity)) => format!(
+                    ", {} / {} ({:.0}%)",
+                    format_bytes(used),
+                    format_bytes(capacity),
+                    percent_used(used, capacity)
+                ),
+                (Some(used), None) => format!(", {} used", format_bytes(used)),
+                _ => String::new(),
+            };
+            let options = mount
+                .options
+                .as_deref()
+                .map(|options| format!(", {options}"))
+                .unwrap_or_default();
+            vm_println!(
+                "      {}: {}{}{}{}",
+                mount.target,
+                mount.storage_type,
+                name,
+                usage,
+                options
+            );
+        }
+    }
+
+    if let Some(driver) = &runtime.logging_driver {
+        let options = runtime
+            .logging_options
+            .iter()
+            .map(|(key, value)| format!("{key}={value}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let suffix = if options.is_empty() {
+            String::new()
+        } else {
+            format!(" ({options})")
+        };
+        vm_println!("   Logs: {}{}", driver, suffix);
+    }
+
+    if runtime.restart_policy.is_some() || runtime.stop_timeout_seconds.is_some() {
+        let restart = runtime.restart_policy.as_deref().unwrap_or("unknown");
+        let timeout = runtime
+            .stop_timeout_seconds
+            .map_or_else(|| "unknown".to_string(), |seconds| format!("{seconds}s"));
+        vm_println!(
+            "   Lifecycle: restart {}, stop timeout {}",
+            restart,
+            timeout
+        );
     }
 }
 
@@ -210,5 +330,70 @@ fn format_memory_mb(mb: u64) -> String {
         format!("{:.1}GB", mb as f64 / 1024.0)
     } else {
         format!("{mb}MB")
+    }
+}
+
+fn format_usage_with_headroom(used: u64, limit: Option<u64>) -> String {
+    match limit {
+        Some(limit) if used <= limit => format!(
+            "{} / {} ({:.0}% headroom)",
+            format_bytes(used),
+            format_bytes(limit),
+            percent_remaining(used, limit)
+        ),
+        Some(limit) => format!("{} / {}", format_bytes(used), format_bytes(limit)),
+        None => format!("{} / unlimited", format_bytes(used)),
+    }
+}
+
+fn percent_used(used: u64, capacity: u64) -> f64 {
+    if capacity == 0 {
+        0.0
+    } else {
+        used as f64 / capacity as f64 * 100.0
+    }
+}
+
+fn percent_remaining(used: u64, limit: u64) -> f64 {
+    100.0 - percent_used(used, limit)
+}
+
+fn format_bytes(bytes: u64) -> String {
+    const KIB: f64 = 1024.0;
+    const MIB: f64 = KIB * 1024.0;
+    const GIB: f64 = MIB * 1024.0;
+
+    let bytes = bytes as f64;
+    if bytes >= GIB {
+        format!("{:.2} GiB", bytes / GIB)
+    } else if bytes >= MIB {
+        format!("{:.1} MiB", bytes / MIB)
+    } else if bytes >= KIB {
+        format!("{:.1} KiB", bytes / KIB)
+    } else {
+        format!("{bytes:.0} B")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{format_bytes, format_usage_with_headroom};
+
+    #[test]
+    fn formats_binary_storage_units() {
+        assert_eq!(format_bytes(56_245_325_824), "52.38 GiB");
+        assert_eq!(format_bytes(1_048_576), "1.0 MiB");
+    }
+
+    #[test]
+    fn reports_limit_headroom_from_peak_usage() {
+        assert_eq!(
+            format_usage_with_headroom(7 * 1024, Some(10 * 1024)),
+            "7.0 KiB / 10.0 KiB (30% headroom)"
+        );
+        assert_eq!(
+            format_usage_with_headroom(1024, None),
+            "1.0 KiB / unlimited"
+        );
     }
 }

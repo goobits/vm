@@ -440,11 +440,7 @@ impl<'a> ComposeOperations<'a> {
             .as_ref()
             .and_then(|p| p.name.as_deref())
             .unwrap_or("vm-project");
-        container_name
-            .strip_prefix(&format!("{project_name}-"))
-            .and_then(|name| name.strip_suffix("-dev"))
-            .filter(|name| !name.is_empty())
-            .map(str::to_string)
+        super::compose_model::instance_name_from_container(project_name, container_name)
     }
 
     /// Get list of expected service container names by parsing the generated docker-compose.yml.

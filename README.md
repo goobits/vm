@@ -155,21 +155,22 @@ vm start docker             # Use Docker for this run
 ### Core Workflow
 The essential commands you'll use daily:
 ```bash
-vm start                  # Create/configure/start and open a shell
-vm start tart             # Native macOS Tart session for this run
-vm start docker           # Docker session for this run
+vm create                 # Create/configure this project's environment
 vm create tart            # Create/configure this project's Tart environment
 vm create docker          # Create/configure this project's Docker environment
+vm start                  # Start an existing environment
+vm start tart             # Start this project's Tart environment
+vm start docker           # Start this project's Docker environment
 vm use tart               # Make Tart this project's default
 vm stop                   # Stop an environment (preserves all data)
 vm stop docker            # Stop this project's Docker environment
 vm destroy                # Delete an environment completely
 vm destroy docker         # Delete this project's Docker environment
 vm destroy tart           # Delete this project's Tart environment
-vm ssh                    # Reconnect later
+vm ssh                    # Connect or reconnect
 vm ssh tart               # Connect to this project's Tart environment
-vm exec "npm install"     # Execute a command inside your environment
-vm exec --provider tart pwd # Run a command in this project's Tart environment
+vm exec -- npm install    # Execute a command inside your environment
+vm exec --provider tart -- pwd # Run a command in this project's Tart environment
 ```
 
 ### Environment Management
@@ -182,7 +183,6 @@ vm logs                # View the logs for an environment
 ### Fleet (`vm fleet`)
 Bulk operations across multiple VMs:
 ```bash
-vm fleet list                                # List instances across providers
 vm fleet exec -- npm install -g @tool/name   # Run a command everywhere
 vm fleet start --provider tart               # Start all Tart VMs
 vm fleet stop --pattern "*-dev"              # Stop matching VMs
@@ -194,6 +194,7 @@ Manage your `vm.yaml` configuration from the command line:
 ```bash
 vm config validate     # Validate the current configuration
 vm config show         # Show the loaded configuration
+vm config render       # Preview redacted provider configuration
 vm config set <k> <v>  # Set a configuration value
 vm config preset vibe  # Apply the standard development preset
 ```
@@ -229,7 +230,7 @@ vm registry remove my-pkg   # Remove a package from the registry
 ### Core Commands
 ```bash
 vm create [docker|tart]     # Create/configure an environment
-vm start [docker|tart]      # Create/configure/start and open a shell
+vm start [docker|tart]      # Start an existing environment
 vm use <docker|tart>        # Save the project default provider
 vm stop [docker|tart]       # Stop an environment
 vm destroy [docker|tart]    # Destroy an environment
@@ -244,6 +245,7 @@ vm logs [docker|tart]       # View environment logs
 ```bash
 vm config validate       # Validate the VM configuration
 vm config show           # Show the loaded configuration
+vm config render         # Preview redacted provider configuration
 vm config get [field]    # Get a configuration value
 vm config set <f> <v>    # Set a configuration value
 vm config unset <field>  # Remove a configuration field
