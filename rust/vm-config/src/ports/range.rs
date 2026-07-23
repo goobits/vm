@@ -10,7 +10,7 @@ use vm_core::vm_error;
 /// Represents a range of network ports.
 ///
 /// A port range defines a continuous range of ports from `start` to `end` (inclusive).
-/// The start port must always be less than the end port.
+/// The start port must not exceed the end port.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PortRange {
     pub start: u16,
@@ -52,9 +52,9 @@ impl PortRange {
             .parse()
             .map_err(|_| VmError::Config(format!("Invalid end port: {}", parts[1])))?;
 
-        if start >= end {
+        if start > end {
             vm_error!(
-                "Invalid range: start ({}) must be less than end ({})",
+                "Invalid range: start ({}) must not exceed end ({})",
                 start,
                 end
             );
@@ -71,12 +71,12 @@ impl PortRange {
     /// * `end` - The ending port number
     ///
     /// # Returns
-    /// A `Result` containing the new `PortRange` or an error if start >= end.
+    /// A `Result` containing the new `PortRange` or an error if start > end.
     #[must_use = "created port range should be used for port allocation"]
     pub fn new(start: u16, end: u16) -> Result<Self> {
-        if start >= end {
+        if start > end {
             vm_error!(
-                "Invalid range: start ({}) must be less than end ({})",
+                "Invalid range: start ({}) must not exceed end ({})",
                 start,
                 end
             );
@@ -132,8 +132,15 @@ mod tests {
 
     #[test]
     fn test_parse_invalid_range() {
-        assert!(PortRange::parse("3009-3000").is_err()); // start >= end
-        assert!(PortRange::parse("3000-3000").is_err()); // start == end
+        assert!(PortRange::parse("3009-3000").is_err());
+    }
+
+    #[test]
+    fn test_parse_single_port_range() {
+        let range = PortRange::parse("3000-3000").expect("Single-port ranges are valid");
+        assert_eq!(range.start, 3000);
+        assert_eq!(range.end, 3000);
+        assert_eq!(range.size(), 1);
     }
 
     #[test]
@@ -202,17 +209,12 @@ mod tests {
         let touching = PortRange::new(3009, 3019).expect("Valid touching range for boundary test");
         assert!(range1.overlaps_with(&touching));
 
-        // Single port ranges are invalid (start must be < end)
-        assert!(
-            PortRange::new(3009, 3009).is_err(),
-            "Single port ranges should be invalid"
-        );
-        assert!(
-            PortRange::new(3000, 3000).is_err(),
-            "Single port ranges should be invalid"
-        );
+        // A one-port range overlaps another range containing that port.
+        let single = PortRange::new(3009, 3009).expect("Valid single-port range");
+        assert_eq!(single.size(), 1);
+        assert!(range1.overlaps_with(&single));
 
-        // Minimal valid ranges (2 ports)
+        // Two-port ranges remain inclusive.
         let inside_last = PortRange::new(3009, 3010).expect("Valid minimal range at end boundary");
         assert!(range1.overlaps_with(&inside_last));
 

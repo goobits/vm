@@ -31,6 +31,19 @@ fn test_scenario_new_project_auto_assigns_ports() {
 }
 
 #[test]
+fn test_single_port_range_assigns_its_only_port() {
+    let mut config = VmConfig::default();
+    config.ports.range = Some(vec![3320, 3320]);
+    config
+        .services
+        .insert("app".to_string(), create_service(true));
+
+    config.ensure_service_ports();
+
+    assert_eq!(config.services.get("app").unwrap().port, Some(3320));
+}
+
+#[test]
 fn test_scenario_add_service_later() {
     let mut config = create_base_config();
     config

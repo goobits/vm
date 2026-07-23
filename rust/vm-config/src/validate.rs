@@ -230,22 +230,13 @@ impl ConfigValidator {
                 ));
             }
             let (start, end) = (range[0], range[1]);
-            if start >= end {
-                vm_error!(
-                    "Invalid port range: start ({}) must be less than end ({})",
-                    start,
-                    end
-                );
-                return Err(vm_core::error::VmError::Config(
-                    "Invalid port range".to_string(),
-                ));
-            }
             if start == 0 {
                 vm_error!("Invalid port range: port 0 is reserved");
                 return Err(vm_core::error::VmError::Config(
                     "Port 0 is reserved".to_string(),
                 ));
             }
+            crate::ports::PortRange::new(start, end)?;
 
             for mapping in &self.config.ports.mappings {
                 if mapping.guest >= start && mapping.guest <= end {
@@ -606,6 +597,34 @@ mod tests {
         config.ports.range = Some(vec![0, 10]); // Port 0 is invalid
 
         let validator = ConfigValidator::new(config, std::path::PathBuf::from("test.yaml"), false);
+        assert!(validator.validate().is_err());
+    }
+
+    #[test]
+    fn test_single_port_range_is_valid() {
+        let mut config = VmConfig::default();
+        config.provider = Some("docker".to_string());
+        config.project = Some(crate::config::ProjectConfig {
+            name: Some("test".to_string()),
+            ..Default::default()
+        });
+        config.ports.range = Some(vec![3320, 3320]);
+
+        let validator = ConfigValidator::new(config, PathBuf::from("test.yaml"), true);
+        assert!(validator.validate().is_ok());
+    }
+
+    #[test]
+    fn test_reversed_port_range_is_invalid() {
+        let mut config = VmConfig::default();
+        config.provider = Some("docker".to_string());
+        config.project = Some(crate::config::ProjectConfig {
+            name: Some("test".to_string()),
+            ..Default::default()
+        });
+        config.ports.range = Some(vec![3321, 3320]);
+
+        let validator = ConfigValidator::new(config, PathBuf::from("test.yaml"), true);
         assert!(validator.validate().is_err());
     }
 
