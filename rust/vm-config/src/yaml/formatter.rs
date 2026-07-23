@@ -21,24 +21,27 @@ const FIELD_ORDER: &[&str] = &[
     "project",
     // 4. VM Resources
     "vm",
+    "storage",
     // 5. Runtime Versions
     "versions",
-    // 6. Networking
+    // 6. Project Bootstrap
+    "bootstrap",
+    // 7. Networking
     "ports",
-    // 7. Services & Infrastructure
+    // 8. Services & Infrastructure
     "services",
-    // 8. Package Management
+    // 9. Package Management
     "apt_packages",
     "npm_packages",
     "pip_packages",
     "cargo_packages",
-    // 9. Development Environment
+    // 10. Development Environment
     "terminal",
     "aliases",
     "environment",
-    // 10. Host Synchronization
+    // 11. Host Synchronization
     "host_sync",
-    // 11. Security
+    // 12. Security
     "security",
 ];
 

@@ -126,6 +126,27 @@
         when:
             - item.key is match('^[A-Za-z_][A-Za-z0-9_-]*$')
 
+      - name: Inspect project package files
+        stat:
+            path: '{{ project_path }}/{{ item }}'
+        loop:
+            - package.json
+            - pnpm-lock.yaml
+            - package-lock.json
+        register: project_package_files
+
+      - name: Set project bootstrap metadata
+        set_fact:
+            package_json_exists: '{{ project_package_files.results[0].stat.exists }}'
+            pnpm_lock_exists: '{{ project_package_files.results[1].stat.exists }}'
+            npm_lock_exists: '{{ project_package_files.results[2].stat.exists }}'
+            bootstrap_dependencies_enabled: "{{ project_config.get('bootstrap', {}).get('dependencies', true) | bool }}"
+            playwright_browsers: "{{ project_config.get('bootstrap', {}).get('playwright', {}).get('browsers', []) }}"
+
+      - name: Include detected Node project in toolchain requirements
+        set_fact:
+            nodejs_required: "{{ nodejs_required or (package_json_exists and (pnpm_lock_exists or npm_lock_exists)) }}"
+
       # User creation pre-task
       - name: Ensure project user exists with correct UID/GID
         user:
@@ -391,26 +412,9 @@
             - service_item.value.port is defined
             - service_item.value.port is not none
 
-      # Install Node.js/npm if npm_packages is defined OR claude_sync/gemini_sync enabled
-      - name: Check if NVM is already installed
-        stat:
-            path: '/home/{{ project_user }}/.nvm/nvm.sh'
-        register: nvm_present
-
-      - name: Download NVM installer
-        get_url:
-            url: "https://raw.githubusercontent.com/nvm-sh/nvm/{{ project_config.versions.nvm | default('v0.40.3') }}/install.sh"
-            dest: /tmp/install_nvm.sh
-            mode: '0755'
-        become_user: '{{ project_user }}'
-        when: nodejs_required and not nvm_present.stat.exists | bool
-
-      - name: Install NVM
-        shell: /tmp/install_nvm.sh
-        args:
-            creates: '/home/{{ project_user }}/.nvm/nvm.sh'
-        become_user: '{{ project_user }}'
-        when: nodejs_required and not nvm_present.stat.exists | bool
+      - name: Reconcile configured Node.js toolchain
+        include_tasks: tasks/node-toolchain.yml
+        when: nodejs_required
 
       # Change default shell to zsh (skip if pre-provisioned in snapshot)
       - name: Change user shell to zsh
@@ -428,26 +432,6 @@
             group: '{{ project_gid }}'
             mode: '0644'
         become_user: root
-
-      - name: Configure Node.js toolchain
-        shell: |
-            source /home/{{ project_user }}/.nvm/nvm.sh
-            nvm install {{ project_config.versions.node | default('22') }}
-            nvm use {{ project_config.versions.node | default('22') }}
-            nvm alias default {{ project_config.versions.node | default('22') }}
-            npm install -g npm@{{ project_config.versions.npm | default('latest') }}
-            corepack enable
-            if corepack prepare pnpm@{{ project_config.versions.pnpm | default('10.12.3') }} --activate; then
-                echo "corepack_ok"
-            else
-                npm install -g pnpm@{{ project_config.versions.pnpm | default('10.12.3') }}
-                echo "corepack_fallback"
-            fi
-        args:
-            executable: /bin/bash
-        become_user: '{{ project_user }}'
-        when: nodejs_required and not base_preprovisioned
-        ignore_errors: yes
 
       # Install additional APT packages - using shell for Python 3.14 compatibility
       # Layered provisioning: works for both fresh builds and snapshots
@@ -611,23 +595,6 @@
         become_user: '{{ project_user }}'
         ignore_errors: yes
         when: not base_preprovisioned
-
-      # pnpm fallback - ensure pnpm is available (layered provisioning)
-      - name: Install pnpm via npm as fallback
-        shell: |
-            source /home/{{ project_user }}/.nvm/nvm.sh
-            if ! which pnpm > /dev/null 2>&1; then
-                npm install -g pnpm@{{ project_config.versions.pnpm | default('10.12.3') }}
-                echo "pnpm installed"
-            else
-                echo "pnpm already available"
-            fi
-        args:
-            executable: /bin/bash
-        become_user: '{{ project_user }}'
-        when: project_config.versions.pnpm is defined
-        register: pnpm_fallback
-        changed_when: "'pnpm installed' in pnpm_fallback.stdout"
 
       # ================================================================================
       # CONDITIONAL PACKAGE MANAGER INSTALLATIONS
@@ -930,83 +897,11 @@
             - project_config.services.redis.enabled | default(false)
 
 
-      # Check for lock files
-      - name: Check for pnpm-lock.yaml
-        stat:
-            path: '{{ project_path }}/pnpm-lock.yaml'
-        register: pnpm_lock
-
-      - name: Check for package-lock.json
-        stat:
-            path: '{{ project_path }}/package-lock.json'
-        register: npm_lock
-
-      - name: Check for yarn.lock (legacy)
-        stat:
-            path: '{{ project_path }}/yarn.lock'
-        register: yarn_lock
-
-      # Install project dependencies
-      - name: Install pnpm dependencies
-        shell: |
-            export NVM_DIR="/home/{{ project_user }}/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            cd {{ project_path }}
-            pnpm install
-        args:
-            executable: /bin/bash
-        become_user: '{{ project_user }}'
-        async: 1800 # 30 minutes timeout
-        poll: 30 # Check every 30 seconds
+      - name: Bootstrap project dependencies and browsers
+        include_tasks: tasks/bootstrap-node.yml
         when:
             - config_file_stat.stat.exists
-            - pnpm_lock.stat.exists
-
-      - name: Check if build script exists
-        shell: |
-            export NVM_DIR="/home/{{ project_user }}/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            cd {{ project_path }}
-            if pnpm run --silent list | grep -q "build"; then
-              echo "build_exists"
-            else
-              echo "no_build"
-            fi
-        args:
-            executable: /bin/bash
-        become_user: '{{ project_user }}'
-        register: build_check
-        when:
-            - config_file_stat.stat.exists
-            - pnpm_lock.stat.exists
-
-      - name: Run build script if it exists
-        shell: |
-            export NVM_DIR="/home/{{ project_user }}/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            cd {{ project_path }}
-            pnpm build
-        args:
-            executable: /bin/bash
-        become_user: '{{ project_user }}'
-        when:
-            - config_file_stat.stat.exists
-            - pnpm_lock.stat.exists
-            - build_check.stdout == "build_exists"
-
-      - name: Install NPM dependencies
-        shell: |
-            export NVM_DIR="/home/{{ project_user }}/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            cd {{ project_path }}
-            npm install
-        args:
-            executable: /bin/bash
-        become_user: '{{ project_user }}'
-        when:
-            - config_file_stat.stat.exists
-            - npm_lock.stat.exists
-            - not pnpm_lock.stat.exists
+            - package_json_exists
 
       # Git configuration
       - name: Configure Git user name for snapshot-based boxes

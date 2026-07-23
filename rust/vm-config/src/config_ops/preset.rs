@@ -330,6 +330,16 @@ fn preserve_user_customizations(
         has_customizations = true;
     }
 
+    if !original.storage.is_empty() {
+        minimal.storage = merged.storage.clone();
+        has_customizations = true;
+    }
+
+    if original.bootstrap.is_some() {
+        minimal.bootstrap = merged.bootstrap.clone();
+        has_customizations = true;
+    }
+
     if !original.apt_packages.is_empty() {
         minimal.apt_packages = merged.apt_packages.clone();
         has_customizations = true;
@@ -403,6 +413,12 @@ fn print_customization_warning(original: &VmConfig) {
     if original.versions.is_some() {
         vm_println!("   - versions (node, python, etc.)");
     }
+    if !original.storage.is_empty() {
+        vm_println!("   - storage policy");
+    }
+    if original.bootstrap.is_some() {
+        vm_println!("   - project bootstrap policy");
+    }
     if !original.apt_packages.is_empty()
         || !original.npm_packages.is_empty()
         || !original.pip_packages.is_empty()
@@ -435,4 +451,35 @@ fn print_customization_warning(original: &VmConfig) {
     vm_println!("   • Creating a custom preset for reusable configurations");
     vm_println!("   • See: https://github.com/goobits/vm#presets");
     vm_println!("");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn preset_rewrite_preserves_storage_and_bootstrap_policy() {
+        let original: VmConfig = serde_yaml_ng::from_str(
+            r#"
+storage:
+  volumes:
+    node_modules:
+      target: /workspace/node_modules
+bootstrap:
+  playwright:
+    browsers: [chromium]
+"#,
+        )
+        .unwrap();
+        let merged = original.clone();
+        let mut minimal = VmConfig::default();
+
+        assert!(preserve_user_customizations(
+            &mut minimal,
+            &merged,
+            &original
+        ));
+        assert!(minimal.storage.volumes.contains_key("node_modules"));
+        assert_eq!(minimal.bootstrap.unwrap().playwright.browsers, ["chromium"]);
+    }
 }

@@ -135,7 +135,11 @@ pub struct VmConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub versions: Option<VersionsConfig>,
 
-    // 6. Networking
+    // 6. Project Bootstrap
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bootstrap: Option<BootstrapConfig>,
+
+    // 7. Networking
     #[serde(default)]
     pub ports: PortsConfig,
 
@@ -808,6 +812,30 @@ pub struct VersionsConfig {
     pub nvm: Option<String>,
 }
 
+/// Idempotent project initialization performed by the existing provisioner.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BootstrapConfig {
+    #[serde(default = "default_true")]
+    pub dependencies: bool,
+    #[serde(default)]
+    pub playwright: PlaywrightBootstrapConfig,
+}
+
+impl Default for BootstrapConfig {
+    fn default() -> Self {
+        Self {
+            dependencies: true,
+            playwright: PlaywrightBootstrapConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct PlaywrightBootstrapConfig {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub browsers: Vec<String>,
+}
+
 /// Configuration for individual services and databases.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ServiceConfig {
@@ -1230,7 +1258,7 @@ impl VmConfig {
 }
 
 #[cfg(test)]
-mod storage_config_tests {
+mod container_policy_tests {
     use super::{MemoryLimit, VmConfig, VolumeRetention, VolumeScope};
 
     #[test]
@@ -1252,6 +1280,9 @@ storage:
   tmpfs:
     - target: /tmp
       size: 4g
+bootstrap:
+  playwright:
+    browsers: [chromium, firefox, webkit]
 "#,
         )
         .unwrap();
@@ -1270,5 +1301,12 @@ storage:
         assert_eq!(volume.retention, VolumeRetention::Keep);
         assert_eq!(config.storage.tmpfs[0].size, MemoryLimit::Limited(4096));
         assert_eq!(config.storage.tmpfs[0].mode, "1777");
+
+        let bootstrap = config.bootstrap.unwrap();
+        assert!(bootstrap.dependencies);
+        assert_eq!(
+            bootstrap.playwright.browsers,
+            ["chromium", "firefox", "webkit"]
+        );
     }
 }

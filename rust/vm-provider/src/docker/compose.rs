@@ -688,6 +688,17 @@ mod tests {
             Some("5")
         );
 
+        let environment = dev
+            .get("environment")
+            .and_then(serde_yaml_ng::Value::as_sequence)
+            .unwrap();
+        assert!(environment
+            .iter()
+            .any(|value| { value.as_str() == Some("VM_IMAGE_IDENTITY=sketch-api:latest") }));
+        assert!(environment.iter().any(|value| {
+            value.as_str() == Some("PLAYWRIGHT_BROWSERS_PATH=/home/developer/.cache/ms-playwright")
+        }));
+
         assert_eq!(
             dev.get("tmpfs")
                 .and_then(serde_yaml_ng::Value::as_sequence)
