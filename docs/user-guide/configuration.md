@@ -29,12 +29,17 @@ ports:
 ```bash
 vm config validate
 vm config show
+vm config render
 vm config get vm.memory
 vm config set vm.memory 8192
 vm config unset vm.swappiness
 vm config ports --fix
 vm config clear
 ```
+
+`vm config validate` never edits configuration. `vm config render` renders the
+selected config and profile without contacting the provider; environment values
+and host paths are redacted.
 
 Profiles remain available for project variants:
 
@@ -53,6 +58,62 @@ vm run linux as backend
 vm run linux as isolated --provider tart
 vm run container as db --provider podman
 ```
+
+## Container Storage And Bootstrap
+
+Container projects can move high-churn data off host binds and the writable
+layer while keeping source mounted at `/workspace`:
+
+```yaml
+vm:
+  memory: 20gb
+  pids_limit: 4096
+  stop_grace_period: 60
+  logging:
+    driver: local
+    max_size: 20m
+    max_files: 5
+
+storage:
+  volumes:
+    node_modules:
+      target: /workspace/node_modules
+      scope: instance
+      nocopy: true
+    pnpm_store:
+      target: /home/developer/.local/share/pnpm/store
+      scope: platform
+      nocopy: true
+    playwright_browsers:
+      target: /home/developer/.cache/ms-playwright
+      scope: platform
+      nocopy: true
+  tmpfs:
+    - target: /tmp
+      size: 4g
+      mode: "1777"
+
+bootstrap:
+  dependencies: true
+  playwright:
+    browsers: [chromium, firefox, webkit]
+```
+
+Scopes control stable volume sharing:
+
+- `instance` isolates mutable branch or instance state such as `node_modules`.
+- `project` shares data across one project's instances.
+- `platform` shares data within the project and container OS/architecture.
+
+Bootstrap installs locked dependencies only when `node_modules` is empty or its
+lockfile/toolchain fingerprint changes. Configured Playwright families are
+installed for every resolved Playwright version only when their fingerprint
+changes. Bootstrap does not start tests, browsers, watchers, agents, or terminal
+sessions.
+
+The root `node_modules` volume contains pnpm's primary virtual store and common
+tool caches. Package-level symlink directories in a workspace may remain on the
+source bind.
 
 ## macOS Tart Guests With Docker
 

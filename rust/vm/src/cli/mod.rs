@@ -530,6 +530,12 @@ pub enum Command {
         fix: bool,
         #[arg(long)]
         clean: bool,
+        /// Prune unreferenced packages from an environment's pnpm store
+        #[arg(long)]
+        prune_pnpm_store: bool,
+        /// Environment to maintain
+        #[arg(long, requires = "prune_pnpm_store")]
+        container: Option<String>,
     },
     /// Extend with plugins
     Plugin {
@@ -796,6 +802,28 @@ mod tests {
                 command: ConfigSubcommand::Render { instance },
             } => assert_eq!(instance.as_deref(), Some("feature")),
             _ => panic!("Expected ConfigSubcommand::Render"),
+        }
+    }
+
+    #[test]
+    fn doctor_parses_pnpm_store_maintenance_target() {
+        let args = Args::parse_from([
+            "vm",
+            "doctor",
+            "--prune-pnpm-store",
+            "--container",
+            "feature",
+        ]);
+        match args.command {
+            Command::Doctor {
+                prune_pnpm_store,
+                container,
+                ..
+            } => {
+                assert!(prune_pnpm_store);
+                assert_eq!(container.as_deref(), Some("feature"));
+            }
+            _ => panic!("Expected Command::Doctor"),
         }
     }
 

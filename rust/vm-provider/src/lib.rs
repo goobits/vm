@@ -29,6 +29,33 @@ pub struct ResourceUsage {
     pub disk_total_gb: Option<f64>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct MountUsage {
+    pub target: String,
+    pub storage_type: String,
+    pub name: Option<String>,
+    pub used_bytes: Option<u64>,
+    pub capacity_bytes: Option<u64>,
+    pub options: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RuntimeDiagnostics {
+    pub generated_config: Option<PathBuf>,
+    pub generated_config_exists: bool,
+    pub writable_layer_bytes: Option<u64>,
+    pub root_filesystem_bytes: Option<u64>,
+    pub memory_peak_bytes: Option<u64>,
+    pub pids_current: Option<u64>,
+    pub pids_peak: Option<u64>,
+    pub pids_limit: Option<u64>,
+    pub mounts: Vec<MountUsage>,
+    pub logging_driver: Option<String>,
+    pub logging_options: Vec<(String, String)>,
+    pub restart_policy: Option<String>,
+    pub stop_timeout_seconds: Option<u64>,
+}
+
 #[derive(Debug, Clone)]
 pub struct ServiceStatus {
     pub name: String,
@@ -48,6 +75,7 @@ pub struct VmStatusReport {
     pub uptime: Option<String>,
     pub resources: ResourceUsage,
     pub services: Vec<ServiceStatus>,
+    pub runtime: Option<RuntimeDiagnostics>,
 }
 
 /// Request to create a VM snapshot

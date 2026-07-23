@@ -182,15 +182,6 @@ pub struct ServiceMessages {
     pub progress_error: &'static str,
     pub progress_error_detail: &'static str,
     pub progress_error_hint: &'static str,
-
-    // Status Formatter
-    pub status_report_header: &'static str,
-    pub status_report_separator: &'static str,
-    pub status_report_name: &'static str,
-    pub status_report_status: &'static str,
-    pub status_report_provider: &'static str,
-    pub status_report_memory: &'static str,
-    pub status_report_cpus: &'static str,
 }
 
 pub const SERVICE_MESSAGES: ServiceMessages = ServiceMessages {
@@ -361,12 +352,4 @@ pub const SERVICE_MESSAGES: ServiceMessages = ServiceMessages {
     progress_error_detail: "     └─ {detail}",
     progress_error_hint: "     💡 {hint}",
 
-    // Status Formatter
-    status_report_header: "📊 VM Status Report",
-    status_report_separator: "================",
-    status_report_name: "Name: {name}",
-    status_report_status: "Status: {status}",
-    status_report_provider: "Provider: {provider}",
-    status_report_memory: "Memory: {memory} MB",
-    status_report_cpus: "CPUs: {cpus}",
 };

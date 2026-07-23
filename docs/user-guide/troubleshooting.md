@@ -19,11 +19,29 @@ vm run linux as dev
 For a clean active environment rebuild:
 
 ```bash
+vm config render
 vm remove dev --force
 vm run linux as dev
 ```
 
-Saved snapshots are preserved by `vm remove`.
+Review the rendered mounts before removal. Saved snapshots and stable
+keep-retention volumes are preserved, but files that exist only in a
+container's writable layer are disposable.
+
+## Missing package.json
+
+Bootstrap installs dependencies only when the configured workspace contains
+both `package.json` and a supported lockfile. An `ENOENT` for
+`/workspace/package.json` means an older bootstrap path ran a package manager
+without first detecting the project files, or `/workspace` points at the wrong
+host directory.
+
+```bash
+vm config render
+vm config validate
+```
+
+Confirm the rendered `/workspace` bind before applying lifecycle changes.
 
 ## Cannot Open A Shell
 
@@ -57,6 +75,42 @@ vm tunnel ls
 vm tunnel stop 8080
 vm tunnel add 8080:3000 dev
 ```
+
+Named instances can coexist, but complete stacks cannot share the same host
+ports. Assign distinct ports before starting simultaneous stacks.
+
+## Runtime And Storage
+
+Target one container environment to collect read-only runtime evidence:
+
+```bash
+vm status container
+vm status dev
+```
+
+The report separates writable-layer bytes from named-volume usage and includes
+`/tmp`, memory/PID peaks and limits, log rotation, and stop policy. A bare
+`vm status` lists environments without scanning their storage.
+
+Use pnpm store pruning only when measured growth warrants it and no install is
+using a shared store:
+
+```bash
+vm doctor --prune-pnpm-store --container dev
+```
+
+Pruning is never part of startup.
+
+## Safe Recreation
+
+Before recreating an older environment, inventory credentials, documents,
+database data, shell history, and other state outside declared mounts. Render
+the candidate config first and verify stable physical volume names.
+
+Do not use `down -v`, volume/system prune, or copy old writable-layer caches
+into new volumes. Do not persist process sockets or replay terminal panes.
+Rollback should restore the previous config and recreate against the preserved
+source binds.
 
 ## Package Registry
 

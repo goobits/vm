@@ -28,10 +28,12 @@ pub mod config;
 pub mod db;
 pub mod doctor;
 mod environment;
+mod maintenance;
 pub mod plugin;
 pub mod plugin_new;
 pub mod registry;
 pub mod secrets;
+mod status;
 pub mod tunnel;
 pub mod uninstall;
 pub mod update;
@@ -45,9 +47,21 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
     }
 
     match args.command {
-        Command::Doctor { fix, clean } => {
+        Command::Doctor {
+            fix,
+            clean,
+            prune_pnpm_store,
+            container,
+        } => {
             if clean {
                 clean::handle_clean(false, false).await?;
+            }
+            if prune_pnpm_store {
+                let subject =
+                    resolve_environment(args.config.clone(), args.profile.clone(), container)?;
+                let (provider, _, _) =
+                    load_provider_context(args.config, subject.profile, subject.provider_override)?;
+                maintenance::prune_pnpm_store(provider, subject.target.as_deref())?;
             }
             doctor::run_with_fix(fix).map_err(VmError::from)
         }
@@ -192,8 +206,9 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             vm_ops::handle_stop(provider, subject.target.as_deref(), config, global_config).await
         }
         Command::Status { environment } => {
+            let targeted = environment.is_some() || args.profile.is_some();
             let subject = resolve_environment(args.config.clone(), args.profile, environment)?;
-            if subject.target.is_none() {
+            if !targeted {
                 let project = load_project_name(args.config, subject.profile)?;
                 return vm_ops::handle_list_enhanced(None, Some(project).as_deref(), false);
             }
@@ -203,16 +218,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             let report = provider
                 .status(subject.target.as_deref())
                 .map_err(VmError::from)?;
-            vm_println!(
-                "{}\t{}\t{}",
-                report.name,
-                report.provider,
-                if report.is_running {
-                    "running"
-                } else {
-                    "stopped"
-                }
-            );
+            status::display(&report);
             Ok(())
         }
         Command::Restart { environment } => {

@@ -18,6 +18,7 @@ USAGE:
 | List every environment | `vm list --all` |
 | Open a shell | `vm shell backend` |
 | Open an unnamed macOS environment | `vm shell mac` |
+| Inspect one environment | `vm status container` |
 | Stop an environment | `vm stop backend` |
 | Restart an environment | `vm restart backend` |
 | Remove an environment | `vm remove backend` |
@@ -70,6 +71,11 @@ vm logs backend --follow
 vm copy ./config.json backend:/workspace/config.json
 ```
 
+Targeted container status reports the generated Compose path, writable-layer
+size, named-volume usage, `/tmp` usage, memory and PID peaks, mounts, logging,
+and lifecycle settings. Named-volume usage is separate from writable-layer
+size.
+
 ## State
 
 ```bash
@@ -93,6 +99,7 @@ vm package backend --output backend.tar.gz
 ```bash
 vm config validate
 vm config show
+vm config render [--instance <name>]
 vm config get [field]
 vm config set <field> <value...>
 vm config unset <field>
@@ -136,7 +143,12 @@ vm system base validate <preset> [--provider <docker|tart|all>]
 
 ```bash
 vm doctor [--fix] [--clean]
+vm doctor --prune-pnpm-store [--container <environment>]
 ```
+
+`vm config validate` is read-only. `vm config render` also performs validation,
+redacts environment values and host paths, and does not contact the provider.
+pnpm pruning is explicit and never runs during create, start, or bootstrap.
 
 ## Plugins
 

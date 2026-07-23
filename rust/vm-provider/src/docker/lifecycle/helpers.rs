@@ -52,20 +52,27 @@ impl<'a> LifecycleOperations<'a> {
         &self,
         container: Option<&str>,
     ) -> Result<Option<String>> {
-        let default = self.container_name();
-        let prefix = format!("{}-", self.project_name());
-        let target = match container {
-            None => return Ok(None),
-            Some(name) if name == default => return Ok(None),
-            Some(name) if name.starts_with(&prefix) => name.to_string(),
-            Some(name) => self.resolve_target_container(Some(name))?,
+        let Some(name) = container else {
+            return Ok(None);
+        };
+        if name == self.container_name() {
+            return Ok(None);
+        }
+        let target = if crate::docker::compose_model::instance_name_from_container(
+            self.project_name(),
+            name,
+        )
+        .is_some()
+        {
+            name.to_string()
+        } else {
+            self.resolve_target_container(Some(name))?
         };
 
-        Ok(target
-            .strip_prefix(&prefix)
-            .map(|name| name.strip_suffix(CONTAINER_SUFFIX).unwrap_or(name))
-            .map(str::to_string)
-            .filter(|name| !name.is_empty() && name != "dev"))
+        Ok(crate::docker::compose_model::instance_name_from_container(
+            self.project_name(),
+            &target,
+        ))
     }
 
     /// Get sync directory path
@@ -170,8 +177,8 @@ impl<'a> LifecycleOperations<'a> {
         space_str.trim().parse::<f32>().ok()
     }
 
-    /// No-op implementation for non-Unix, non-Windows systems
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    /// No-op implementation for non-Unix systems (e.g. Windows)
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     fn check_disk_space_unix(&self) {}
 
     /// No-op implementation for non-Windows systems
@@ -193,7 +200,7 @@ impl<'a> LifecycleOperations<'a> {
         {
             vm_error_with_details!(
                 "Docker daemon may not be responding properly",
-                &["Try: docker system prune -f", "Or: restart Docker Desktop"]
+                &["Run: vm doctor", "Or: restart Docker Desktop"]
             );
         }
     }
