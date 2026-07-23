@@ -105,6 +105,11 @@ Scopes control stable volume sharing:
 - `project` shares data across one project's instances.
 - `platform` shares data within the project and container OS/architecture.
 
+Instance names do not rewrite configured host ports. Running complete instances
+concurrently requires a profile or config with distinct application and service
+host ports for each instance. Worktrees can coexist without separate ports when
+only one stack runs at a time.
+
 Bootstrap installs locked dependencies only when `node_modules` is empty or its
 lockfile/toolchain fingerprint changes. Configured Playwright families are
 installed for every resolved Playwright version only when their fingerprint
