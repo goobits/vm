@@ -95,7 +95,7 @@ impl ConfigValidator {
     /// Creates a new `ConfigValidator`.
     pub fn new() -> Self {
         let mut system = System::new();
-        system.refresh_cpu_all();
+        system.refresh_cpu();
         system.refresh_memory();
         Self { system }
     }

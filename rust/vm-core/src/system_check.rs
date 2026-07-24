@@ -111,7 +111,9 @@ pub fn get_total_memory_gb() -> Result<u64> {
 
 #[cfg(target_os = "windows")]
 pub fn get_cpu_core_count() -> Result<u32> {
-    Ok(sysinfo::System::physical_core_count().unwrap_or(1) as u32)
+    let mut sys = sysinfo::System::new_all();
+    sys.refresh_cpu();
+    Ok(sys.physical_core_count().unwrap_or(1) as u32)
 }
 
 #[cfg(test)]
