@@ -85,27 +85,33 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
-    fn resolve_profile_name(
+    /// Resolve the effective profile without prompting or mutating configuration.
+    pub fn resolve_profile_name(
         vm: &config::VmConfig,
-        explicit_profile: Option<String>,
-        provider_override: Option<String>,
+        explicit_profile: Option<&str>,
+        provider_override: Option<&str>,
     ) -> Option<String> {
-        if explicit_profile.is_some() {
-            return explicit_profile;
+        if let Some(profile) = explicit_profile {
+            return Some(profile.to_string());
         }
 
-        let effective_provider = provider_override.or_else(|| vm.provider.clone());
+        let effective_provider = provider_override.or(vm.provider.as_deref());
         if let Some(provider_name) = effective_provider {
             if vm
                 .profiles
                 .as_ref()
-                .is_some_and(|profiles| profiles.contains_key(&provider_name))
+                .is_some_and(|profiles| profiles.contains_key(provider_name))
             {
-                return Some(provider_name);
+                return Some(provider_name.to_string());
             }
         }
 
-        vm.default_profile.clone()
+        vm.default_profile.clone().or_else(|| {
+            vm.profiles
+                .as_ref()
+                .filter(|profiles| profiles.len() == 1)
+                .and_then(|profiles| profiles.keys().next().cloned())
+        })
     }
 
     /// Load complete configuration from standard locations
@@ -130,7 +136,7 @@ impl AppConfig {
 
         // Apply profile if specified
         let profile_name =
-            Self::resolve_profile_name(&vm, profile.clone(), provider_override.clone());
+            Self::resolve_profile_name(&vm, profile.as_deref(), provider_override.as_deref());
         if let Some(profile_name) = profile_name {
             vm = merge::apply_profile(vm, &profile_name)?;
             vm.source_path = source_path;
@@ -285,6 +291,25 @@ profiles:
                     .map(|b| serde_yaml_ng::to_string(b).unwrap().trim().to_string()),
                 Some("'@vibe-box'".to_string())
             );
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn sole_profile_is_selected_without_an_explicit_default() -> Result<()> {
+        with_temp_home(|temp_dir| {
+            let config_path = temp_dir.path().join("vm.yaml");
+            std::fs::write(
+                &config_path,
+                r#"
+profiles:
+  container:
+    provider: docker
+"#,
+            )?;
+
+            let app = AppConfig::load(Some(config_path), None, None)?;
+            assert_eq!(app.vm.provider.as_deref(), Some("docker"));
             Ok(())
         })
     }

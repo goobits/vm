@@ -14,7 +14,8 @@ mod helpers;
 mod interaction;
 mod lifecycle;
 mod list;
-mod targets;
+pub(super) mod target;
+pub(super) mod targets;
 
 // Re-export all public handlers for external use
 pub use create::handle_create;

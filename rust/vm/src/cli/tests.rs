@@ -107,9 +107,20 @@ fn exec_parses_command() {
     assert!(matches!(
         Args::parse_from(["vm", "exec", "backend", "--", "npm", "test"]).command,
         Command::Exec {
-            environment,
+            environment: Some(environment),
             command
         } if environment == "backend" && command == ["npm", "test"]
+    ));
+}
+
+#[test]
+fn exec_uses_default_environment_when_omitted() {
+    assert!(matches!(
+        Args::parse_from(["vm", "exec", "--", "npm", "test"]).command,
+        Command::Exec {
+            environment: None,
+            command
+        } if command == ["npm", "test"]
     ));
 }
 

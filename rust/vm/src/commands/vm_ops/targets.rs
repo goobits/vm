@@ -1,9 +1,9 @@
-//! Shared target resolution helpers for cross-provider operations
+//! Multi-target queries used by fleet operations.
 
 use tracing::debug;
 
 use crate::error::VmResult;
-use vm_core::error::VmError;
+use vm_core::error::VmError as CoreVmError;
 use vm_provider::InstanceInfo;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -53,13 +53,6 @@ pub fn is_running_status(status: &str) -> bool {
     lower.contains("running") || lower.contains("up")
 }
 
-pub fn project_instance_matches(instance: &InstanceInfo, project_name: &str) -> bool {
-    instance.project.as_deref() == Some(project_name)
-        || instance.name == project_name
-        || instance.name == format!("{project_name}-dev")
-        || instance.name.starts_with(&format!("{project_name}-"))
-}
-
 /// Helper function to get instances from all available providers
 pub fn get_all_instances() -> VmResult<Vec<InstanceInfo>> {
     use vm_config::config::VmConfig;
@@ -100,7 +93,7 @@ pub fn get_all_instances() -> VmResult<Vec<InstanceInfo>> {
     }
 
     if all_instances.is_empty() && !provider_errors.is_empty() {
-        return Err(VmError::Internal(format!(
+        return Err(CoreVmError::Internal(format!(
             "Failed to list VM instances from any provider:\n{}",
             provider_errors.join("\n")
         ))
@@ -135,7 +128,7 @@ pub fn get_instances_from_provider(provider_name: &str) -> VmResult<Vec<Instance
                     "Failed to list instances from {} provider: {}",
                     provider_name, e
                 );
-                Err(VmError::Internal(format!(
+                Err(CoreVmError::Internal(format!(
                     "Failed to list instances from provider '{}': {}",
                     provider_name, e
                 ))
@@ -144,7 +137,7 @@ pub fn get_instances_from_provider(provider_name: &str) -> VmResult<Vec<Instance
         },
         Err(e) => {
             debug!("Provider {} not available: {}", provider_name, e);
-            Err(VmError::Internal(format!(
+            Err(CoreVmError::Internal(format!(
                 "Provider '{}' is not available: {}",
                 provider_name, e
             ))

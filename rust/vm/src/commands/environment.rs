@@ -3,8 +3,9 @@ use crate::error::{VmError, VmResult};
 use dialoguer::{theme::ColorfulTheme, Select};
 use std::io::IsTerminal;
 use std::path::PathBuf;
-use vm_config::config::VmConfig;
+use vm_config::{config::VmConfig, AppConfig};
 
+#[derive(Debug)]
 pub(super) struct ResolvedEnvironment {
     pub(super) provider_override: Option<String>,
     pub(super) profile: Option<String>,
@@ -25,40 +26,52 @@ impl ResolvedEnvironment {
     }
 }
 
+fn selected_profile(
+    config_path: Option<PathBuf>,
+    explicit_profile: Option<String>,
+    provider_override: Option<&str>,
+) -> Option<String> {
+    if explicit_profile.is_some() {
+        return explicit_profile;
+    }
+    let config = VmConfig::load(config_path).ok()?;
+    AppConfig::resolve_profile_name(&config, None, provider_override)
+}
+
 fn resolve_noninteractive(
     config_path: Option<PathBuf>,
     profile: Option<String>,
     environment: Option<String>,
 ) -> ResolvedEnvironment {
     match environment.as_deref() {
-        Some("mac") => ResolvedEnvironment::new(
-            Some(EnvironmentKind::Mac.default_provider().to_string()),
-            profile.or_else(|| mac_profile(config_path)),
-            Some("mac".to_string()),
-        ),
-        Some("linux") => ResolvedEnvironment::new(
-            Some(EnvironmentKind::Linux.default_provider().to_string()),
-            None,
-            None,
-        ),
-        Some("container") => ResolvedEnvironment::new(
-            Some(EnvironmentKind::Container.default_provider().to_string()),
-            None,
-            None,
-        ),
+        Some("mac") => {
+            let provider = EnvironmentKind::Mac.default_provider();
+            let profile = selected_profile(config_path.clone(), profile, Some(provider))
+                .or_else(|| mac_profile(config_path));
+            ResolvedEnvironment::new(Some(provider.to_string()), profile, Some("mac".to_string()))
+        }
+        Some("linux") | Some("container") => {
+            let provider = EnvironmentKind::Linux.default_provider();
+            ResolvedEnvironment::new(
+                Some(provider.to_string()),
+                selected_profile(config_path, profile, Some(provider)),
+                None,
+            )
+        }
         Some(environment) => {
             if profile.is_none() && profile_exists(config_path.clone(), environment) {
-                let selected_profile = environment.to_string();
                 return ResolvedEnvironment::new(
                     None,
-                    Some(selected_profile.clone()),
-                    target_for_profile(config_path, &selected_profile),
+                    Some(environment.to_string()),
+                    target_for_profile(config_path, environment),
                 );
             }
 
+            let profile = selected_profile(config_path, profile, None);
             ResolvedEnvironment::new(None, profile, Some(environment.to_string()))
         }
         None => {
+            let profile = selected_profile(config_path.clone(), profile, None);
             let target = profile
                 .as_deref()
                 .and_then(|profile| target_for_profile(config_path, profile));
@@ -77,11 +90,7 @@ fn profile_exists(config_path: Option<PathBuf>, profile: &str) -> bool {
 fn target_for_profile(config_path: Option<PathBuf>, profile: &str) -> Option<String> {
     let config = VmConfig::load(config_path).ok()?;
     let profile_config = config.profiles.as_ref()?.get(profile)?;
-    if profile_is_macos(Some(profile_config)) {
-        Some("mac".to_string())
-    } else {
-        None
-    }
+    profile_is_macos(Some(profile_config)).then(|| "mac".to_string())
 }
 
 pub(super) fn resolve_environment(
@@ -89,11 +98,15 @@ pub(super) fn resolve_environment(
     profile: Option<String>,
     environment: Option<String>,
 ) -> VmResult<ResolvedEnvironment> {
-    if environment.is_some() || profile.is_some() || !std::io::stdin().is_terminal() {
+    if environment.is_some() || profile.is_some() {
         return Ok(resolve_noninteractive(config_path, profile, environment));
     }
 
     let config = VmConfig::load(config_path.clone()).map_err(VmError::from)?;
+    if AppConfig::resolve_profile_name(&config, None, None).is_some() {
+        return Ok(resolve_noninteractive(config_path, None, None));
+    }
+
     let Some(profiles) = config
         .profiles
         .as_ref()
@@ -105,35 +118,33 @@ pub(super) fn resolve_environment(
     let choices: Vec<(String, String, Option<String>)> = profiles
         .iter()
         .map(|(name, profile_config)| {
-            let kind = profile_label(profile_config);
-            let default_marker = if config.default_profile.as_deref() == Some(name.as_str()) {
-                " default"
-            } else {
-                ""
-            };
             (
                 name.clone(),
-                format!("{kind} ({name} profile{default_marker})"),
-                if profile_is_macos(Some(profile_config)) {
-                    Some("mac".to_string())
-                } else {
-                    None
-                },
+                format!("{} ({name} profile)", profile_label(profile_config)),
+                profile_is_macos(Some(profile_config)).then(|| "mac".to_string()),
             )
         })
         .collect();
 
+    if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
+        let names = choices
+            .iter()
+            .map(|(name, _, _)| name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(VmError::validation(
+            "Multiple configuration profiles are available",
+            Some(format!("Use --profile with one of: {names}")),
+        ));
+    }
+
     let labels: Vec<&str> = choices.iter().map(|(_, label, _)| label.as_str()).collect();
-    let default_index = choices
-        .iter()
-        .position(|(name, _, _)| config.default_profile.as_deref() == Some(name.as_str()))
-        .unwrap_or(0);
     let selected = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Which environment?")
         .items(&labels)
-        .default(default_index)
+        .default(0)
         .interact()
-        .map_err(|e| VmError::general(e, "Failed to read environment selection"))?;
+        .map_err(|error| VmError::general(error, "Failed to read environment selection"))?;
 
     Ok(ResolvedEnvironment {
         provider_override: None,
@@ -145,13 +156,8 @@ pub(super) fn resolve_environment(
 fn profile_label(profile: &VmConfig) -> &'static str {
     match profile.provider.as_deref() {
         Some("docker") | Some("podman") => "Container",
-        Some("tart") => {
-            if profile_is_macos(Some(profile)) {
-                "macOS"
-            } else {
-                "Linux"
-            }
-        }
+        Some("tart") if profile_is_macos(Some(profile)) => "macOS",
+        Some("tart") => "Linux",
         _ => "Environment",
     }
 }
@@ -180,7 +186,9 @@ fn profile_is_macos(profile: Option<&VmConfig>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_noninteractive, ResolvedEnvironment};
+    use super::{resolve_environment, resolve_noninteractive, ResolvedEnvironment};
+    use std::io::IsTerminal;
+    use std::path::PathBuf;
 
     fn assert_resolved(
         resolved: ResolvedEnvironment,
@@ -191,6 +199,13 @@ mod tests {
         assert_eq!(resolved.provider_override.as_deref(), provider_override);
         assert_eq!(resolved.profile.as_deref(), profile);
         assert_eq!(resolved.target.as_deref(), target);
+    }
+
+    fn write_config(name: &str, contents: &str) -> PathBuf {
+        let path =
+            std::env::temp_dir().join(format!("vm-environment-{name}-{}.yaml", std::process::id()));
+        std::fs::write(&path, contents).unwrap();
+        path
     }
 
     #[test]
@@ -212,97 +227,99 @@ mod tests {
     }
 
     #[test]
-    fn resolver_uses_macos_tart_profile() {
-        let config_path =
-            std::env::temp_dir().join(format!("vm-macos-tart-profile-{}.yaml", std::process::id()));
-        std::fs::write(
-            &config_path,
+    fn configured_default_profile_does_not_prompt() {
+        let path = write_config(
+            "default",
             r#"
-version: '2.0'
+default_profile: docker
 profiles:
+  docker:
+    provider: docker
   tart:
     provider: tart
-    tart:
-      guest_os: macos
 "#,
-        )
-        .expect("write test config");
-
-        assert_resolved(
-            resolve_noninteractive(Some(config_path.clone()), None, Some("mac".into())),
-            Some("tart"),
-            Some("tart"),
-            Some("mac"),
         );
 
-        let _ = std::fs::remove_file(config_path);
+        let resolved = resolve_environment(Some(path.clone()), None, None).unwrap();
+        assert_resolved(resolved, None, Some("docker"), None);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn noninteractive_ambiguity_lists_profiles() {
+        if std::io::stdin().is_terminal() && std::io::stderr().is_terminal() {
+            return;
+        }
+        let path = write_config(
+            "ambiguous",
+            r#"
+profiles:
+  docker:
+    provider: docker
+  tart:
+    provider: tart
+"#,
+        );
+
+        let error = resolve_environment(Some(path.clone()), None, None).unwrap_err();
+        assert_eq!(
+            error.hint(),
+            Some("Use --profile with one of: docker, tart")
+        );
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]
     fn resolver_targets_mac_instance_for_macos_profile() {
-        let config_path = std::env::temp_dir().join(format!(
-            "vm-shell-macos-profile-target-{}.yaml",
-            std::process::id()
-        ));
-        std::fs::write(
-            &config_path,
+        let path = write_config(
+            "macos",
             r#"
-version: '2.0'
 profiles:
   tart:
     provider: tart
     tart:
       guest_os: macos
 "#,
-        )
-        .expect("write test config");
+        );
 
         assert_resolved(
-            resolve_noninteractive(Some(config_path.clone()), Some("tart".into()), None),
+            resolve_noninteractive(Some(path.clone()), Some("tart".into()), None),
             None,
             Some("tart"),
             Some("mac"),
         );
         assert_resolved(
-            resolve_noninteractive(Some(config_path.clone()), None, Some("tart".into())),
+            resolve_noninteractive(Some(path.clone()), None, Some("tart".into())),
             None,
             Some("tart"),
             Some("mac"),
         );
-
-        let _ = std::fs::remove_file(config_path);
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]
     fn resolver_does_not_target_instance_for_container_profile() {
-        let config_path = std::env::temp_dir().join(format!(
-            "vm-shell-container-profile-target-{}.yaml",
-            std::process::id()
-        ));
-        std::fs::write(
-            &config_path,
+        let path = write_config(
+            "container",
             r#"
-version: '2.0'
 profiles:
   docker:
     provider: docker
 "#,
-        )
-        .expect("write test config");
+        );
 
         assert_resolved(
-            resolve_noninteractive(Some(config_path.clone()), Some("docker".into()), None),
+            resolve_noninteractive(Some(path.clone()), Some("docker".into()), None),
             None,
             Some("docker"),
             None,
         );
         assert_resolved(
-            resolve_noninteractive(Some(config_path.clone()), None, Some("docker".into())),
+            resolve_noninteractive(Some(path.clone()), None, Some("docker".into())),
             None,
             Some("docker"),
             None,
         );
-
-        let _ = std::fs::remove_file(config_path);
+        std::fs::remove_file(path).unwrap();
     }
 }

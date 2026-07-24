@@ -2,14 +2,17 @@
 
 use crate::cli::{Args, Command, PluginSubcommand, SecretSubcommand, TunnelSubcommand};
 use crate::error::{VmError, VmResult};
+use command_context::{
+    load_provider_context, load_runtime_context, load_runtime_subject, project_name,
+};
 use environment::resolve_environment;
-use vm_config::{config::VmConfig, AppConfig};
+use vm_config::AppConfig;
 use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
-use vm_provider::get_provider;
 
 pub mod base;
 pub mod clean;
+mod command_context;
 mod completion;
 pub mod config;
 pub mod db;
@@ -48,10 +51,8 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             }
             if prune_pnpm_store {
                 let subject =
-                    resolve_environment(args.config.clone(), args.profile.clone(), container)?;
-                let (provider, _, _) =
-                    load_provider_context(args.config, subject.profile, subject.provider_override)?;
-                maintenance::prune_pnpm_store(provider, subject.target.as_deref())?;
+                    load_runtime_context(args.config, args.profile, None, container.as_deref())?;
+                maintenance::prune_pnpm_store(subject.provider, Some(subject.target.as_str()))?;
             }
             doctor::run_with_fix(fix).map_err(VmError::from)
         }
@@ -67,15 +68,14 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         Command::System { command } => system::handle(&command, args.config, args.profile).await,
         Command::InternalCompletion { shell } => completion::handle(&shell),
         Command::List { all, raw } => {
-            let project = if all {
-                None
+            if all {
+                vm_ops::handle_list_enhanced(None, None, raw, None)
             } else {
-                Some(load_project_name(
-                    args.config.clone(),
-                    args.profile.clone(),
-                )?)
-            };
-            vm_ops::handle_list_enhanced(None, project.as_deref(), raw)
+                let (provider, config, _) = load_provider_context(args.config, args.profile, None)?;
+                let project = project_name(&config);
+                let default_name = provider.resolve_instance_name(None).ok();
+                vm_ops::handle_list_enhanced(None, Some(project), raw, default_name.as_deref())
+            }
         }
         Command::Create { environment, force } => {
             let subject = resolve_environment(args.config.clone(), args.profile, environment)?;
@@ -87,14 +87,12 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             environment,
             no_wait,
         } => {
-            let subject = resolve_environment(args.config.clone(), args.profile, environment)?;
-            let (provider, config, global_config) =
-                load_provider_context(args.config, subject.profile, subject.provider_override)?;
+            let subject = load_runtime_subject(args.config, args.profile, environment)?;
             vm_ops::handle_start(
-                provider,
-                subject.target.as_deref(),
-                config,
-                global_config,
+                subject.provider,
+                Some(subject.target.as_str()),
+                subject.config,
+                subject.global_config,
                 no_wait,
             )
             .await
@@ -133,25 +131,39 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             path,
             command,
         } => {
-            let subject = resolve_environment(args.config.clone(), args.profile, environment)?;
-            let (provider, config, _) =
-                load_provider_context(args.config, subject.profile, subject.provider_override)?;
+            let subject = load_runtime_subject(args.config, args.profile, environment)?;
             match command {
                 Some(command) => vm_ops::handle_exec(
-                    provider,
-                    subject.target.as_deref(),
+                    subject.provider,
+                    Some(subject.target.as_str()),
                     vec!["/bin/sh".to_string(), "-c".to_string(), command],
-                    config,
+                    subject.config,
                 ),
-                None => vm_ops::handle_ssh(provider, subject.target.as_deref(), path, config),
+                None => vm_ops::handle_ssh(
+                    subject.provider,
+                    Some(subject.target.as_str()),
+                    path,
+                    subject.config,
+                ),
             }
         }
         Command::Exec {
             environment,
             command,
         } => {
-            let (provider, config, _) = load_provider_context(args.config, args.profile, None)?;
-            vm_ops::handle_exec(provider, Some(environment.as_str()), command, config)
+            if command.is_empty() {
+                return Err(VmError::validation(
+                    "No command was provided",
+                    Some("Use: vm exec [environment] -- <command>"),
+                ));
+            }
+            let subject = load_runtime_subject(args.config, args.profile, environment)?;
+            vm_ops::handle_exec(
+                subject.provider,
+                Some(subject.target.as_str()),
+                command,
+                subject.config,
+            )
         }
         Command::Logs {
             environment,
@@ -159,13 +171,11 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             tail,
             service,
         } => {
-            let subject = resolve_environment(args.config.clone(), args.profile, environment)?;
-            let (provider, config, _) =
-                load_provider_context(args.config, subject.profile, subject.provider_override)?;
+            let subject = load_runtime_subject(args.config, args.profile, environment)?;
             vm_ops::handle_logs(
-                provider,
-                subject.target.as_deref(),
-                config,
+                subject.provider,
+                Some(subject.target.as_str()),
+                subject.config,
                 follow,
                 tail,
                 service.as_deref(),
@@ -175,46 +185,53 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             source,
             destination,
         } => {
-            let (provider, config, _) = load_provider_context(args.config, args.profile, None)?;
-            vm_ops::handle_copy(provider, &source, &destination, config)
+            let requested = vm_ops::target::copy_target(&source, &destination)?;
+            let subject =
+                load_runtime_context(args.config, args.profile, None, requested.as_deref())?;
+            vm_ops::handle_copy(
+                subject.provider,
+                &source,
+                &destination,
+                Some(subject.target.as_str()),
+                subject.config,
+            )
         }
         Command::Stop { environment } => {
-            let subject = resolve_environment(args.config.clone(), args.profile, environment)?;
-            let (provider, config, global_config) =
-                load_provider_context(args.config, subject.profile, subject.provider_override)?;
-            vm_ops::handle_stop(provider, subject.target.as_deref(), config, global_config).await
+            let subject = load_runtime_subject(args.config, args.profile, environment)?;
+            vm_ops::handle_stop(
+                subject.provider,
+                Some(subject.target.as_str()),
+                subject.config,
+                subject.global_config,
+            )
+            .await
         }
         Command::Status { environment } => {
-            let targeted = environment.is_some() || args.profile.is_some();
-            let subject = resolve_environment(args.config.clone(), args.profile, environment)?;
-            if !targeted {
-                let project = load_project_name(args.config, subject.profile)?;
-                return vm_ops::handle_list_enhanced(None, Some(project).as_deref(), false);
-            }
-
-            let (provider, _config, _) =
-                load_provider_context(args.config, subject.profile, subject.provider_override)?;
-            let report = provider
-                .status(subject.target.as_deref())
+            let subject = load_runtime_subject(args.config, args.profile, environment)?;
+            let report = subject
+                .provider
+                .status(Some(subject.target.as_str()))
                 .map_err(VmError::from)?;
             status::display(&report);
             Ok(())
         }
         Command::Restart { environment } => {
-            let subject = resolve_environment(args.config.clone(), args.profile, environment)?;
-            let (provider, config, global_config) =
-                load_provider_context(args.config, subject.profile, subject.provider_override)?;
-            vm_ops::handle_restart(provider, subject.target.as_deref(), config, global_config).await
+            let subject = load_runtime_subject(args.config, args.profile, environment)?;
+            vm_ops::handle_restart(
+                subject.provider,
+                Some(subject.target.as_str()),
+                subject.config,
+                subject.global_config,
+            )
+            .await
         }
         Command::Remove { environment, force } => {
-            let subject = resolve_environment(args.config.clone(), args.profile, environment)?;
-            let (provider, config, global_config) =
-                load_provider_context(args.config, subject.profile, subject.provider_override)?;
+            let subject = load_runtime_subject(args.config, args.profile, environment)?;
             vm_ops::handle_destroy(
-                provider,
-                subject.target.as_deref(),
-                config,
-                global_config,
+                subject.provider,
+                Some(subject.target.as_str()),
+                subject.config,
+                subject.global_config,
                 force,
             )
             .await
@@ -264,35 +281,6 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             Ok(())
         }
     }
-}
-
-fn load_project_name(
-    config_path: Option<std::path::PathBuf>,
-    profile: Option<String>,
-) -> VmResult<String> {
-    let app_config = AppConfig::load(config_path, profile, None)?;
-    Ok(app_config
-        .vm
-        .project
-        .as_ref()
-        .and_then(|project| project.name.clone())
-        .unwrap_or_else(|| "vm-project".to_string()))
-}
-
-fn load_provider_context(
-    config_path: Option<std::path::PathBuf>,
-    profile: Option<String>,
-    provider_override: Option<String>,
-) -> VmResult<(
-    Box<dyn vm_provider::Provider>,
-    VmConfig,
-    vm_config::GlobalConfig,
-)> {
-    let app_config = AppConfig::load(config_path, profile, provider_override)?;
-    let config = app_config.vm;
-    let global_config = app_config.global;
-    let provider = get_provider(config.clone()).map_err(VmError::from)?;
-    Ok((provider, config, global_config))
 }
 
 fn handle_tunnel_command(

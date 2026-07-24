@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use super::command_context::load_runtime_subject;
 use crate::error::{VmError, VmResult};
 use vm_config::AppConfig;
 
@@ -12,14 +13,20 @@ pub(super) async fn save(
     quiesce: bool,
     force: bool,
 ) -> VmResult<()> {
-    let target = StateTarget::load(config_path, profile, environment)?;
+    let subject = load_runtime_subject(config_path, profile, environment)?;
+    let provider = subject.provider.name().to_string();
+    let target = subject.target;
+    let config = AppConfig {
+        global: subject.global_config,
+        vm: subject.config,
+    };
     vm_snapshot::create::handle_create(
-        &target.config,
-        &target.provider,
+        &config,
+        &provider,
         &snapshot,
         description.as_deref(),
         quiesce,
-        target.environment.as_deref(),
+        Some(&target),
         None,
         None,
         &[],
@@ -36,16 +43,16 @@ pub(super) async fn revert(
     snapshot: String,
     force: bool,
 ) -> VmResult<()> {
-    let target = StateTarget::load(config_path, profile, environment)?;
-    vm_snapshot::restore::handle_restore(
-        &target.config,
-        &target.provider,
-        &snapshot,
-        target.environment.as_deref(),
-        force,
-    )
-    .await
-    .map_err(VmError::from)
+    let subject = load_runtime_subject(config_path, profile, environment)?;
+    let provider = subject.provider.name().to_string();
+    let target = subject.target;
+    let config = AppConfig {
+        global: subject.global_config,
+        vm: subject.config,
+    };
+    vm_snapshot::restore::handle_restore(&config, &provider, &snapshot, Some(&target), force)
+        .await
+        .map_err(VmError::from)
 }
 
 pub(super) async fn package(
@@ -56,17 +63,23 @@ pub(super) async fn package(
     compress: u8,
     build: Option<PathBuf>,
 ) -> VmResult<()> {
-    let target = StateTarget::load(config_path, profile, environment)?;
-    let snapshot = target.environment.as_deref().unwrap_or("environment");
+    let subject = load_runtime_subject(config_path, profile, environment)?;
+    let provider = subject.provider.name().to_string();
+    let target = subject.target;
+    let config = AppConfig {
+        global: subject.global_config,
+        vm: subject.config,
+    };
+    let snapshot = target.as_str();
 
     if let Some(dockerfile) = build {
         vm_snapshot::create::handle_create(
-            &target.config,
-            &target.provider,
+            &config,
+            &provider,
             snapshot,
             Some("Portable base image"),
             false,
-            target.environment.as_deref(),
+            Some(&target),
             Some(&dockerfile),
             Some(Path::new(".")),
             &[],
@@ -76,11 +89,11 @@ pub(super) async fn package(
     }
 
     vm_snapshot::export::handle_export(
-        &target.provider,
+        &provider,
         snapshot,
         output.as_deref(),
         compress,
-        target.environment.as_deref(),
+        Some(&target),
     )
     .await
     .map_err(VmError::from)
@@ -107,39 +120,6 @@ pub(super) fn parse_revert(words: &[String]) -> VmResult<(Option<String>, String
             "Invalid revert syntax".to_string(),
             Some("Use: vm revert stable or vm revert backend stable".to_string()),
         )),
-    }
-}
-
-struct StateTarget {
-    config: AppConfig,
-    provider: String,
-    environment: Option<String>,
-}
-
-impl StateTarget {
-    fn load(
-        config_path: Option<PathBuf>,
-        profile: Option<String>,
-        environment: Option<String>,
-    ) -> VmResult<Self> {
-        let config = AppConfig::load(config_path, profile, None)?;
-        let provider = config
-            .vm
-            .provider
-            .clone()
-            .unwrap_or_else(|| "docker".to_string());
-        let environment = environment.or_else(|| {
-            config
-                .vm
-                .project
-                .as_ref()
-                .and_then(|project| project.name.clone())
-        });
-        Ok(Self {
-            config,
-            provider,
-            environment,
-        })
     }
 }
 

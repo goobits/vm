@@ -2,12 +2,7 @@ use vm_core::vm_println;
 use vm_provider::{MountUsage, ResourceUsage, RuntimeDiagnostics, VmStatusReport};
 
 pub(super) fn display(report: &VmStatusReport) {
-    let state = if report.is_running {
-        "running"
-    } else {
-        "stopped"
-    };
-    vm_println!("{}\t{}\t{}", report.name, report.provider, state);
+    vm_println!("{}\t{}\t{}", report.name, report.provider, report.state);
 
     if let Some(uptime) = &report.uptime {
         vm_println!("Uptime: {uptime}");

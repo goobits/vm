@@ -5,9 +5,8 @@
 
 use tracing::{debug, info_span};
 
-use crate::commands::vm_ops::targets::{
-    get_all_instances, get_instances_from_provider, project_instance_matches,
-};
+use crate::commands::vm_ops::target::project_instance_matches;
+use crate::commands::vm_ops::targets::{get_all_instances, get_instances_from_provider};
 use crate::error::VmResult;
 use vm_core::msg;
 use vm_core::vm_println;
@@ -19,6 +18,7 @@ pub fn handle_list_enhanced(
     provider_filter: Option<&str>,
     project_filter: Option<&str>,
     raw: bool,
+    default_name: Option<&str>,
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "list");
     let _enter = span.enter();
@@ -51,31 +51,37 @@ pub fn handle_list_enhanced(
     }
 
     if raw {
-        render_raw_instance_table(all_instances);
+        render_raw_instance_table(all_instances, default_name);
     } else {
-        render_instance_table(all_instances);
+        render_instance_table(all_instances, default_name);
     }
 
     Ok(())
 }
 
-pub fn render_instance_table(instances: Vec<InstanceInfo>) {
+pub fn render_instance_table(instances: Vec<InstanceInfo>, default_name: Option<&str>) {
     vm_println!(
-        "{:<20} {:<12} {:<12} {:<10}",
+        "{:<20} {:<9} {:<12} {:<12} {:<10}",
         "ENVIRONMENT",
+        "DEFAULT",
         "KIND",
         "STATUS",
         "UPTIME"
     );
-    vm_println!("{}", "─".repeat(58));
+    vm_println!("{}", "─".repeat(69));
 
     let mut sorted_instances = instances;
     sorted_instances.sort_by(|a, b| a.name.cmp(&b.name));
 
     for instance in sorted_instances {
         vm_println!(
-            "{:<20} {:<12} {:<12} {:<10}",
+            "{:<20} {:<9} {:<12} {:<12} {:<10}",
             truncate_string(&instance.name, 20),
+            if default_name == Some(instance.name.as_str()) {
+                "yes"
+            } else {
+                ""
+            },
             format_kind(&instance),
             format_status(&instance.status),
             format_uptime(&instance.uptime)
@@ -83,17 +89,31 @@ pub fn render_instance_table(instances: Vec<InstanceInfo>) {
     }
 }
 
-fn render_raw_instance_table(instances: Vec<InstanceInfo>) {
-    vm_println!("{}", MESSAGES.vm.list_table_header);
-    vm_println!("{}", MESSAGES.vm.list_table_separator);
+fn render_raw_instance_table(instances: Vec<InstanceInfo>, default_name: Option<&str>) {
+    vm_println!(
+        "{:<20} {:<8} {:<10} {:<12} {:<20} {:<10} {:<15}",
+        "ENVIRONMENT",
+        "DEFAULT",
+        "PROVIDER",
+        "STATUS",
+        "ID",
+        "UPTIME",
+        "PROJECT"
+    );
+    vm_println!("{}", "─".repeat(105));
 
     let mut sorted_instances = instances;
     sorted_instances.sort_by(|a, b| a.provider.cmp(&b.provider).then(a.name.cmp(&b.name)));
 
     for instance in sorted_instances {
         vm_println!(
-            "{:<20} {:<10} {:<12} {:<20} {:<10} {:<15}",
+            "{:<20} {:<8} {:<10} {:<12} {:<20} {:<10} {:<15}",
             truncate_string(&instance.name, 20),
+            if default_name == Some(instance.name.as_str()) {
+                "yes"
+            } else {
+                ""
+            },
             instance.provider,
             format_status(&instance.status),
             truncate_string(&instance.id, 20),

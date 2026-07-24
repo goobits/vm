@@ -162,6 +162,7 @@ pub fn handle_copy(
     provider: Box<dyn Provider>,
     source: &str,
     destination: &str,
+    container: Option<&str>,
     config: VmConfig,
 ) -> VmResult<()> {
     debug!(
@@ -179,7 +180,7 @@ pub fn handle_copy(
     let direction = if source.contains(':') { "from" } else { "to" };
     vm_println!("Copying file {} VM '{}'...", direction, vm_name);
 
-    let result = provider.copy(source, destination, None);
+    let result = provider.copy(source, destination, container);
     match &result {
         Ok(()) => vm_println!("File copied successfully"),
         Err(error) => vm_println!("Copy failed: {}", error),

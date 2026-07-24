@@ -60,8 +60,8 @@ pub enum Command {
         force: bool,
     },
     /// Start an existing environment
-    #[command(hide = true)]
     Start {
+        /// Environment name; defaults to this project's canonical environment
         environment: Option<String>,
         #[arg(long)]
         no_wait: bool,
@@ -120,10 +120,10 @@ pub enum Command {
         command: Option<String>,
     },
     /// Run a single command inside an environment
-    #[command(trailing_var_arg = true)]
     Exec {
-        environment: String,
-        #[arg(required = true, num_args = 1..)]
+        /// Environment name; omit it before `--` to use the project default
+        environment: Option<String>,
+        #[arg(last = true, num_args = 1..)]
         command: Vec<String>,
     },
     /// Stream output logs from an environment
@@ -142,8 +142,10 @@ pub enum Command {
     #[command(alias = "down", alias = "halt")]
     Stop { environment: Option<String> },
     /// Check environment status
-    #[command(hide = true)]
-    Status { environment: Option<String> },
+    Status {
+        /// Environment name; defaults to this project's canonical environment
+        environment: Option<String>,
+    },
     /// Stop and start an environment
     Restart { environment: Option<String> },
     /// Remove an environment while preserving saved snapshots
