@@ -1,8 +1,8 @@
 //! vm-messages
 //!
-//! Centralized message templates for the vm CLI.
-//! This crate contains only message constants and templates,
-//! with no dependencies on other workspace crates.
+//! Reusable message templates for configuration, plugin, and service workflows.
+//! General lifecycle copy stays with its command, while shared output behavior
+//! lives in `vm-core`.
 
 pub mod messages;
 

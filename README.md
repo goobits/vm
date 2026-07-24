@@ -141,9 +141,6 @@ That gives advanced workflows one interface for macOS tooling, Linux containers,
 
 ## Development
 
-```bash
-cd rust
-cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-```
+The repository Makefile owns supported checks. See the
+[Testing Guide](docs/development/testing.md) for commands, test isolation, and
+the full local gate.

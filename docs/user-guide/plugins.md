@@ -2,15 +2,6 @@
 
 Plugins extend `vm` without expanding the built-in core.
 
-```bash
-vm plugin ls
-vm plugin info <name>
-vm plugin install <path>
-vm plugin rm <name>
-vm plugin new <name> --type <preset|service>
-vm plugin validate <name>
-```
-
 Plugin-backed commands stay flat when available:
 
 ```bash
@@ -19,4 +10,8 @@ vm fleet exec -- npm test
 vm secret interactive
 ```
 
-A plugin can provide presets, services, or command integrations while keeping the core CLI focused on everyday environment lifecycle.
+A plugin can provide presets, services, or command integrations while keeping
+the core CLI focused on everyday environment lifecycle. Use `vm plugin --help`,
+`vm db --help`, `vm fleet --help`, or `vm secret --help` for the exact command
+inventory. The [CLI Reference](cli-reference.md#plugins) owns the documented
+workflow.

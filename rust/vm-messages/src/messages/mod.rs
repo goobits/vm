@@ -1,4 +1,4 @@
-//! Central registry for all user-facing message templates.
+//! Registry for reusable domain message templates.
 //!
 //! This module is organized by domain for better maintainability:
 //! - `config` - Configuration messages (init, set, validate, presets, etc.)

@@ -10,11 +10,8 @@ cargo build --workspace
 
 ## Test
 
-```bash
-cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-```
+The root [Testing Guide](../docs/development/testing.md) owns supported checks,
+test layers, and provider-isolation rules.
 
 ## CLI Smoke
 
@@ -25,6 +22,6 @@ cargo run -p goobits-vm -- list --dry-run
 cargo run -p goobits-vm -- system update --dry-run
 ```
 
-The public v5 command surface is intent-first: `run`, `list`, `shell`, `exec`,
-`logs`, `copy`, `stop`, `restart`, `remove`, `save`, `revert`, `package`,
-`config`, `tunnel`, `doctor`, `plugin`, and `system`.
+The public v5 command surface is intent-first. The
+generated `vm --help` output owns its exact inventory; the
+[CLI Reference](../docs/user-guide/cli-reference.md) owns durable workflows.

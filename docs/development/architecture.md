@@ -57,14 +57,8 @@ that can provide it without creating a cycle.
 Plugin-backed workflows remain top-level user commands while their discovery
 and metadata live in `vm-plugin`.
 
-## Development
-
-```bash
-cd rust
-cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-```
+## Further Reading
 
 See the [Development Guide](guide.md), [Testing Guide](testing.md), and
-[Rust Architecture](../../rust/ARCHITECTURE.md).
+[Rust Architecture](../../rust/ARCHITECTURE.md). The testing guide owns the
+supported quality commands.

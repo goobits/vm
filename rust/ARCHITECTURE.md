@@ -16,15 +16,15 @@ Goobits VM is built using a **layered architecture** designed around the princip
 
 | Layer | Crate | Primary Responsibility | Quick Checks |
 | --- | --- | --- | --- |
-| Foundation | `vm-core` | Shared error types, FS utilities, platform helpers | `cargo test -p vm-core` |
-| Foundation | `vm-messages` | Localized CLI copy and help text | `cargo test -p vm-messages` |
+| Foundation | `vm-core` | Shared errors, output primitives, FS utilities, platform helpers | `cargo test -p vm-core` |
+| Foundation | `vm-messages` | Reusable config, plugin, and service message templates | `cargo test -p vm-messages` |
 | Foundation | `vm-logging` | Tracing subscriber + log routing setup used by every binary | `cargo test -p vm-logging` |
 | Configuration | `vm-config` | Configuration schema, detectors, CLI helpers | `cargo test -p vm-config` |
 | Configuration | `vm-plugin` | Plugin discovery, validation, and preset/service loading | `cargo test -p vm-plugin` |
 | Provider | `vm-provider` | Provider traits plus Docker/Podman/Tart implementations | `cargo test -p vm-provider` |
 | Provider | `vm-temp` | Temporary VM lifecycle, mount management, CLI glue | `cargo test -p vm-temp` |
 | Provider | `vm-snapshot` | Snapshot lifecycle: create, restore, export, and import | `cargo test -p vm-snapshot` |
-| Application | `vm` | Main CLI orchestration and commands | `cargo test -p vm` / `cargo run -p vm -- --help` |
+| Application | `vm` | Main CLI orchestration and commands | `cargo test -p goobits-vm` / `cargo run -p goobits-vm -- --help` |
 | Application | `vm-installer` | Self-installation flow for distributing the CLI | `cargo run -p vm-installer -- --help` |
 | Service | `vm-package-server` | Local multi-registry artifact service | `cargo test -p vm-package-server` / `cargo run -p vm-package-server -- --help` |
 | Service | `vm-auth-proxy` | Authentication proxy that fronts API/services | `cargo run -p vm-auth-proxy -- --help` |
@@ -45,20 +45,25 @@ Goobits VM is built using a **layered architecture** designed around the princip
 - Cross-cutting utilities (file system operations, command execution, platform detection)
 - Core traits and interfaces shared across crates
 - System validation and health checks
-- Message substitution and output formatting (`msg!`, `vm_println!`, `vm_error!`, etc.)
+- Message substitution and shared stdout/stderr primitives (`msg!`, `vm_println!`,
+  `vm_progress!`, `vm_error!`, etc.)
 
-**Key Exports**: `VmError`, `Result`, `msg!`, file system utilities, command streaming, platform detection
+**Key Exports**: `VmError`, `Result`, output macros, file system utilities,
+command streaming, platform detection
 
 #### vm-messages
-**Role**: Pure data crate containing centralized message templates and user-facing text.
+**Role**: Pure data crate containing reusable domain message templates.
 
 **Responsibilities**:
-- Localized message templates for CLI output
-- User-facing error messages and help text
-- Documentation and instructional content
+- Configuration workflow messages
+- Plugin workflow messages
+- Service and installer messages
 - Zero dependencies on other workspace crates
 
 **Key Exports**: `MESSAGES` constant with categorized message templates
+
+General lifecycle copy stays with its command. Shared output behavior belongs
+to `vm-core`; the executable renders each fatal error once.
 
 ### Configuration Layer
 
@@ -71,7 +76,7 @@ Goobits VM is built using a **layered architecture** designed around the princip
 - Project type detection (Node.js, Python, Docker, etc.)
 - Port management and allocation
 - Global settings and user preferences
-- CLI argument parsing and command routing
+- Configuration-specific CLI helpers
 
 **Key Exports**: `VmConfig`, `AppConfig`, `GlobalConfig`, project detectors, CLI commands
 
@@ -236,43 +241,33 @@ graph TD
 
 ## Error Handling Philosophy
 
-Goobits VM employs a **unified error handling strategy** centered around the `VmError` enum defined in `vm-core`. This approach ensures consistent error reporting and handling across all components.
+Goobits VM uses the shared `VmError` type from `vm-core` at cross-crate
+boundaries. Libraries return errors without printing them. The `vm` executable
+adds final context and renders each fatal error once.
 
 ### Core Principles
 
-1. **Single Error Type**: All errors throughout the system are represented as `VmError` variants
-2. **Contextual Information**: Errors include rich context about what operation failed and why
-3. **User-Friendly Messages**: Error messages are crafted for end-user consumption
-4. **Structured Handling**: Different error types enable appropriate handling strategies
+1. **Structured errors**: Preserve the operation and failure category.
+2. **Single rendering point**: Do not print a failure before returning it.
+3. **Stable streams**: Requested data uses stdout; diagnostics use stderr.
+4. **Safe context**: Never include credentials or raw secret-bearing arguments.
 
-### Error Categories
-
-- **`Config`**: Configuration validation and parsing errors
-- **`Provider`**: VM provider-specific operational failures
-- **`Io`**: File system and I/O operations (auto-converted from `std::io::Error`)
-- **`Command`**: External command execution failures
-- **`Dependency`**: Missing system dependencies or tools
-- **`Network`**: Network connectivity and remote operation failures
-- **`Internal`**: Unexpected internal errors and programming bugs
-- **`Filesystem`**: File system operation failures
-- **`Serialization`**: YAML/JSON parsing and generation errors
+The enum in `vm-core/src/error.rs` is the canonical error-category inventory.
 
 ### Error Flow
 
-All errors originate from lower-level crates and flow upward through the dependency chain:
-
-1. **Origin**: Errors occur in foundation or provider layers
-2. **Propagation**: Errors bubble up through the call stack as `VmError` variants
-3. **Context**: Each layer can add contextual information without changing the error type
-4. **Handling**: The application layer (`vm`) provides final error formatting and user feedback
+1. **Origin**: A crate captures the local operation and source failure.
+2. **Ownership**: Public cross-crate boundaries convert failures to `VmError`.
+3. **Propagation**: Higher layers add context without printing the failure.
+4. **Handling**: The application layer (`vm`) provides final formatting and feedback.
 
 ### Implementation Guidelines
 
-- **Use `Result<T>` consistently**: All fallible operations return `Result<T, VmError>`
-- **Convert early**: Convert external errors to `VmError` as close to the source as possible
-- **Add context**: Use `.map_err()` to add contextual information when propagating errors
+- **Use the owning result type**: Keep local error details inside their crate.
+- **Convert at boundaries**: Map external errors to `VmError` before crossing crates.
+- **Add context once**: Describe the failed operation without printing it.
 - **Fail fast**: Validate inputs early and fail with clear error messages
-- **Log appropriately**: Use tracing for debugging while showing user-friendly messages
+- **Log safely**: Use tracing for debugging without recording secret-bearing arguments.
 
 ## Testing Strategy
 
@@ -282,3 +277,6 @@ The layered architecture enables comprehensive testing at multiple levels:
 - **Integration Tests**: Cross-crate functionality is tested through integration test suites
 - **End-to-End Tests**: Complete workflows are tested through the main CLI interface
 - **Mock Providers**: Test providers enable testing without external dependencies
+
+The root [Testing Guide](../docs/development/testing.md) owns supported commands
+and provider-isolation rules.

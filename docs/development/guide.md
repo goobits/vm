@@ -4,12 +4,8 @@ This repository is a Rust workspace for the v5 humane CLI.
 
 ## Checks
 
-```bash
-cd rust
-cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-```
+The [Testing Guide](testing.md) owns supported checks, test layers, and
+provider-isolation rules.
 
 ## CLI Architecture
 
@@ -22,18 +18,9 @@ Shared terminal output lives in `vm-core/src/output_macros.rs`:
 - Commands return errors with context and an optional hint; `main.rs` renders them once.
 - Provider and command modules must not print the same failure before returning it.
 
-Core public commands:
-
-```text
-run, list, shell, exec, logs, copy, stop, restart, remove, save,
-revert, package, config, tunnel, doctor, plugin, system
-```
-
-Plugin-backed top-level commands:
-
-```text
-db, fleet, secret
-```
+`vm --help` owns the public command inventory. The
+[CLI Reference](../user-guide/cli-reference.md) owns durable workflows. Do not
+maintain a second command list in contributor docs.
 
 ## Lifecycle Hooks
 

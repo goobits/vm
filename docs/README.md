@@ -5,6 +5,19 @@ Documentation for the VM development environment tool.
 User and contributor guides live under `docs/`. Package-level API and
 architecture notes stay beside the package they describe.
 
+## Canonical Owners
+
+- [Quick Start](getting-started/quick-start.md) owns the first-use workflow.
+- `vm --help` owns the exact command and option inventory. The
+  [CLI Reference](user-guide/cli-reference.md) owns durable workflows and
+  target-selection behavior.
+- [Configuration Guide](user-guide/configuration.md) owns `vm.yaml` semantics.
+- [Troubleshooting](user-guide/troubleshooting.md) owns recovery guidance.
+- [Testing Guide](development/testing.md) owns supported quality commands.
+- [Architecture](development/architecture.md) owns code boundaries.
+
+Other guides should link to these owners instead of copying their inventories.
+
 ---
 
 ## New User? Start Here

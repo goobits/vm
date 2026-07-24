@@ -43,7 +43,7 @@ Apply this preset to your project:
 
 ```bash
 vm config preset {preset-name}
-vm create
+vm run linux as dev
 ```
 
 Or add to `vm.yaml`:
@@ -70,11 +70,10 @@ services:
 
 ```yaml
 preset: {preset-name}
-packages:
-  npm:
-    - custom-package
-  pip:
-    - custom-python-package
+npm_packages:
+  - custom-package
+pip_packages:
+  - custom-python-package
 ```
 
 ## Common Use Cases
