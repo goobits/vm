@@ -95,7 +95,7 @@ impl<'a> LifecycleOperations<'a> {
             if audio_service.enabled {
                 #[cfg(target_os = "macos")]
                 if let Err(e) = MacOSAudioManager::cleanup() {
-                    vm_warning!("Audio cleanup warning: {}", e);
+                    vm_core::vm_warning!("Audio cleanup warning: {}", e);
                 }
                 #[cfg(not(target_os = "macos"))]
                 MacOSAudioManager::cleanup();
