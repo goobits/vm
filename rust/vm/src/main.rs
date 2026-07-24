@@ -14,7 +14,7 @@ use tracing::info_span;
 use tracing::Instrument;
 
 // Internal imports
-use vm_core::vm_error;
+use vm_core::{vm_error, vm_hint};
 use vm_logging::init_subscriber;
 
 // Local modules
@@ -39,8 +39,11 @@ fn get_request_id() -> &'static str {
 
 /// Executes the given command and handles top-level errors.
 async fn run_command(args: Args) {
-    if let Err(e) = execute_command(args).await {
-        vm_error!("{}", e);
+    if let Err(error) = execute_command(args).await {
+        vm_error!("Error: {}", error);
+        if let Some(hint) = error.hint() {
+            vm_hint!("{}", hint);
+        }
         std::process::exit(1);
     }
 }

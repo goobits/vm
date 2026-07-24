@@ -7,7 +7,7 @@ use crate::{
     docker::{build::BuildOperations, compose::ComposeOperations},
 };
 use vm_core::error::{Result, VmError};
-use vm_core::vm_error_with_details;
+use vm_core::vm_error_details;
 
 // Constants (moved from top of lifecycle.rs)
 pub(super) const DEFAULT_PROJECT_NAME: &str = "vm-project";
@@ -90,10 +90,10 @@ impl<'a> LifecycleOperations<'a> {
         if let Some(memory) = &vm_config.memory {
             match memory.to_mb() {
                 Some(mb) if mb > HIGH_MEMORY_THRESHOLD => {
-                    vm_core::vm_error_hint!("High memory allocation detected ({}MB). Ensure your system has sufficient RAM.", mb);
+                    vm_core::vm_hint!("High memory allocation detected ({}MB). Ensure your system has sufficient RAM.", mb);
                 }
                 None => {
-                    vm_core::vm_error_hint!(
+                    vm_core::vm_hint!(
                         "Unlimited memory detected. Monitor system resources during development."
                     );
                 }
@@ -198,7 +198,7 @@ impl<'a> LifecycleOperations<'a> {
             .execute_with_output()
             .is_err()
         {
-            vm_error_with_details!(
+            vm_error_details!(
                 "Docker daemon may not be responding properly",
                 &["Run: vm doctor", "Or: restart Docker Desktop"]
             );

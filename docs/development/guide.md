@@ -15,6 +15,13 @@ cargo test --workspace
 
 Parsing lives in `rust/vm/src/cli`. Command dispatch lives in `rust/vm/src/commands`. Provider-specific behavior stays in `vm-provider`.
 
+Shared terminal output lives in `vm-core/src/output_macros.rs`:
+
+- Requested data and remote command output go to stdout.
+- Progress, warnings, hints, and errors go to stderr.
+- Commands return errors with context and an optional hint; `main.rs` renders them once.
+- Provider and command modules must not print the same failure before returning it.
+
 Core public commands:
 
 ```text

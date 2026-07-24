@@ -29,10 +29,8 @@ fn handle_build(preset: &str, provider: &str, guest_os: &str) -> VmResult<()> {
 
     match provider {
         "docker" => {
-            let current_exe = std::env::current_exe().map_err(|e| VmError::General {
-                source: Box::new(e),
-                context: "Failed to locate current vm executable".to_string(),
-            })?;
+            let current_exe = std::env::current_exe()
+                .map_err(|e| VmError::general(e, "Failed to locate current vm executable"))?;
             let dockerfile = resolve_tool_path("Dockerfile.vibe");
             let mut command = Command::new(current_exe);
             command.args([
@@ -67,10 +65,10 @@ fn resolve_tart_guest_os(requested: &str) -> VmResult<&'static str> {
         "linux" => Ok("linux"),
         "macos" => Ok("macos"),
         "auto" => Ok(active_tart_guest_os()),
-        _ => Err(VmError::Validation {
-            message: "Invalid Tart guest OS".to_string(),
-            field: Some("guest-os".to_string()),
-        }),
+        _ => Err(VmError::validation(
+            "Invalid Tart guest OS",
+            Some("Use linux, macos, or auto"),
+        )),
     }
 }
 
@@ -172,26 +170,25 @@ fn ensure_supported_preset(preset: &str) -> VmResult<()> {
     if preset == "vibe" {
         Ok(())
     } else {
-        Err(VmError::Validation {
-            message: "Only the 'vibe' base workflow is currently supported".to_string(),
-            field: Some("preset".to_string()),
-        })
+        Err(VmError::validation(
+            "Only the 'vibe' base workflow is currently supported",
+            None::<String>,
+        ))
     }
 }
 
 fn run_command(mut command: Command, context: &str) -> VmResult<()> {
-    let status = command.status().map_err(|e| VmError::General {
-        source: Box::new(e),
-        context: format!("Failed to {context}"),
-    })?;
+    let status = command
+        .status()
+        .map_err(|e| VmError::general(e, format!("Failed to {context}")))?;
 
     if status.success() {
         Ok(())
     } else {
-        Err(VmError::Validation {
-            message: format!("{context} failed"),
-            field: None,
-        })
+        Err(VmError::validation(
+            format!("{context} failed"),
+            None::<String>,
+        ))
     }
 }
 

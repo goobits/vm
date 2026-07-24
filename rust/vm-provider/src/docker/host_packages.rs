@@ -2,7 +2,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use vm_core::{vm_error_hint, vm_warning};
+use vm_core::{vm_hint, vm_warning};
 
 #[derive(Debug, Clone)]
 pub enum PackageLocation {
@@ -428,7 +428,7 @@ pub fn get_volume_mounts(info: &HostPackageInfo) -> Vec<(PathBuf, String)> {
                 path.display()
             );
         }
-        vm_error_hint!("To enable: Docker Desktop → Settings → Resources → File Sharing");
+        vm_hint!("To enable: Docker Desktop → Settings → Resources → File Sharing");
     }
 
     mounts
