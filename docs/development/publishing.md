@@ -1,77 +1,50 @@
-# Publishing to crates.io
+# Publishing
 
-## Current Status
+The supported end-user installation path is `install.sh`. Crates.io
+publication is a maintainer workflow for the `goobits-vm` package, which
+installs the `vm` binary.
 
-The `vm` CLI is configured for publishing to crates.io with:
-- ✅ `publish = true` in `rust/vm/Cargo.toml`
-- ✅ Metadata (description, repository, keywords, categories)
-- ✅ MIT license
-- ❌ Not yet published (awaiting maintainer action)
+## Version Ownership
 
-## Why `cargo install vm` Doesn't Work Yet
+- Root `package.json` is the release version input.
+- `rust/Cargo.toml` owns the Rust workspace version.
+- `version-sync` verifies that they match.
+- Root `CHANGELOG.md` is the only project changelog.
 
-The workspace has `publish = false` at the top level (`rust/Cargo.toml:27`), which prevents accidental publishing of internal crates. The `vm` CLI overrides this with `publish = true`.
+Check synchronization:
 
-However, the package has not been published to crates.io yet, so users currently cannot run:
 ```bash
-cargo install vm  # ❌ Error: could not find `vm`
+cd rust
+cargo run -p version-sync -- check
 ```
 
-## To Publish
+## Preflight
 
-### Prerequisites
+From a clean release commit:
 
-1. **crates.io account**: Create at https://crates.io
-2. **API token**: Get from https://crates.io/me
-3. **Login**:
-   ```bash
-   cargo login <your-token>
-   ```
-
-### Publishing Steps
-
-1. **Verify package name availability**:
-   ```bash
-   # Check if 'vm' is available on crates.io
-   cargo search vm --limit 1
-   ```
-
-2. **Dry run** (recommended first):
-   ```bash
-   cd rust
-   cargo publish --package vm --dry-run
-   ```
-
-3. **Publish**:
-   ```bash
-   cd rust
-   cargo publish --package vm
-   ```
-
-### After Publishing
-
-Update the README.md to reflect that `cargo install vm` now works:
 ```bash
-# Install from Cargo (recommended)
-cargo install vm  # ✅ Now works!
+make quality-gates
+cd rust
+cargo publish --package goobits-vm --dry-run
 ```
 
-## Alternative: Use Different Package Name
+The dry run must pass before tagging or publishing. Keep crates.io credentials
+outside the repository and never place tokens in command history, scripts, or
+documentation.
 
-If `vm` is taken on crates.io, consider alternatives:
-- `vm-tool`
-- `vm-dev`
-- `devvm`
-- `project-vm`
+## Publish
 
-Update in `rust/vm/Cargo.toml`:
-```toml
-name = "vm-tool"  # or chosen alternative
+After the changelog, version, and tag are approved:
+
+```bash
+make publish
 ```
 
-## Notes
+The Make target publishes `goobits-vm`. Do not publish the internal workspace
+crates.
 
-- Publishing is a one-way operation (you can yank versions but can't delete them)
-- Version numbers must increment (can't republish the same version)
-- The workspace configuration means only the `vm` binary will be published, not the internal library crates
-- Users will still get the full functionality via `cargo install`, they just won't see the internal crates
+## Release Verification
+
+Verify the tag points to the approved commit, the published package reports the
+expected version, and the installer still installs a `vm` binary with that same
+version.

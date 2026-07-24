@@ -18,8 +18,8 @@ Parsing lives in `rust/vm/src/cli`. Command dispatch lives in `rust/vm/src/comma
 Core public commands:
 
 ```text
-run, ls, shell, exec, logs, copy, stop, rm, save, revert, package,
-config, tunnel, doctor, plugin, system
+run, list, shell, exec, logs, copy, stop, restart, remove, save,
+revert, package, config, tunnel, doctor, plugin, system
 ```
 
 Plugin-backed top-level commands:

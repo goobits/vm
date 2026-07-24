@@ -62,7 +62,9 @@ vm run container as db --provider podman
 ## Container Storage And Bootstrap
 
 Container projects can move high-churn data off host binds and the writable
-layer while keeping source mounted at `/workspace`:
+layer while keeping source mounted at `/workspace`. This policy is opt-in and
+belongs in `vm.yaml`, not in agent prompts or ad hoc bootstrap scripts. Named
+volumes, tmpfs, container limits, and container logging do not apply to Tart.
 
 ```yaml
 vm:

@@ -1,117 +1,63 @@
-# VM Tool Architecture Overview
+# VM Architecture
 
-For detailed Rust crate architecture, see [rust/ARCHITECTURE.md](../../rust/ARCHITECTURE.md).
+This document describes repository-level ownership. The canonical Rust crate
+map and dependency details live in
+[rust/ARCHITECTURE.md](../../rust/ARCHITECTURE.md).
 
-This document provides a high-level overview of the entire project structure.
+## Repository Map
 
-## Project Structure
-
-```
+```text
 vm/
-├── configs/           # Embedded configuration templates
-├── docs/             # User and developer documentation
-├── examples/         # User-facing configuration examples
-└── rust/             # Rust workspace with all crates
+|-- configs/     Embedded schemas, defaults, services, and presets
+|-- docs/        User and contributor documentation
+|-- examples/    Small user-facing examples
+|-- plugins/     Optional VM extensions
+`-- rust/        Rust workspace and the `vm` binary
 ```
 
-## Component Overview
+## Ownership Boundaries
 
-### Configuration Management
+- `rust/vm/src/cli/` owns command parsing and the public command shape.
+- `rust/vm/src/commands/` owns application orchestration.
+- `rust/vm-config/` owns configuration loading, validation, profiles, and
+  schema behavior.
+- `rust/vm-provider/` owns Docker, Podman, and Tart lifecycle implementation.
+- `rust/vm-snapshot/` owns snapshot creation, restoration, import, and export.
+- `rust/vm-core/` owns shared filesystem, command, prompt, and message-format
+  utilities.
+- `configs/` owns embedded configuration; `examples/` must not be treated as
+  runtime defaults.
 
-**Embedded Configs** (`configs/`)
-- Compiled into binaries at build time
-- Production-grade templates with all options
-- Used by `vm config preset` command
+Command modules should not duplicate provider behavior. Providers should not
+own user interaction or top-level command routing.
 
-**User Examples** (`examples/`)
-- Simplified examples for documentation
-- Not embedded, purely illustrative
-- Starting points for user projects
+## Provider Boundaries
 
-### Rust Workspace Packages
+Docker and Podman implement container mounts, named volumes, tmpfs, resource
+limits, and logging. Tart owns macOS/Linux guest provisioning and does not
+accept container-only storage settings.
 
-See [rust/ARCHITECTURE.md](../../rust/ARCHITECTURE.md) for comprehensive crate documentation.
+Provider-independent config validation runs before lifecycle operations.
+`vm config render` is a redacted, provider-free preview and must remain safe to
+run without Docker, Podman, or Tart.
 
-**Quick Reference**:
+## Dependency Direction
 
-| Package | Layer | Purpose |
-|---------|-------|---------|
-| `vm` | Application | Main CLI binary |
-| `vm-core` | Foundation | Shared utilities, error handling |
-| `vm-messages` | Foundation | User-facing message templates |
-| `vm-cli` | Application | Message template variable substitution via `msg!` macro and `MessageBuilder` |
-| `vm-config` | Configuration | Config parsing, validation, detection |
-| `vm-provider` | Provider | VM provider abstraction (Docker/Podman/Tart) |
-| `vm-temp` | Provider | Temporary VM management |
-| `vm-platform` | Utility | Cross-platform system abstractions |
-| `vm-package-manager` | Utility | Package manager integration |
-| `vm-package-server` | Service | Private package registry |
-| `vm-auth-proxy` | Service | Authentication proxy |
-| `vm-docker-registry` | Service | Local Docker registry |
-| `vm-installer` | Utility | Installation logic |
-| `version-sync` | Meta | Cross-workspace version sync tool |
+Dependencies flow from foundation crates through configuration and providers
+to the `vm` application. Shared behavior belongs in the lowest existing owner
+that can provide it without creating a cycle.
 
-### Cross-Platform Build System
+Plugin-backed workflows remain top-level user commands while their discovery
+and metadata live in `vm-plugin`.
 
-The project supports multiple target platforms:
-
-**Supported Targets**:
-- `x86_64-unknown-linux-gnu` (Linux x86_64)
-- `aarch64-unknown-linux-gnu` (Linux ARM64)
-- `x86_64-apple-darwin` (macOS Intel)
-- `aarch64-apple-darwin` (macOS Apple Silicon)
-- `x86_64-pc-windows-msvc` (Windows x86_64)
-
-**Build Directories**:
-- `rust/target/` - Default cargo build output
-- `rust/target-linux-aarch64/` - Cross-compilation for Linux ARM64
-- `rust/target-macos-aarch64/` - Cross-compilation for macOS ARM64
-
-These target directories are managed by CI/CD workflows and are excluded from version control.
-
-## Development Workflow
-
-### Building from Source
+## Development
 
 ```bash
-cd vm/rust
-cargo build --release
-```
-
-### Cross-Compilation
-
-See `.github/workflows/release.yml` for cross-compilation setup:
-
-```bash
-# Example: Build for Linux ARM64
-cargo build --workspace --release --target aarch64-unknown-linux-gnu
-```
-
-### Testing
-
-```bash
-# Run all tests
+cd rust
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-
-# Run specific package tests
-cargo test --package vm-config
 ```
 
-See [Development Guide](guide.md) and [Testing Guide](testing.md) for detailed testing instructions.
-
-## Documentation Structure
-
-```
-docs/
-├── getting-started/    # Installation and quick start
-├── user-guide/         # Configuration, CLI reference, presets
-└── development/        # Contributing, testing, architecture
-```
-
-## Related Documentation
-
-- [Development Guide](guide.md) - Development environment setup and workflows
-- [Testing Quick Reference](testing-quick-reference.md) - Quick testing commands
-- [Comprehensive Testing Guide](testing.md) - Complete testing documentation
-- [Rust Architecture](../../rust/ARCHITECTURE.md) - Detailed Rust crate architecture
-- [Contributing Guidelines](../../CONTRIBUTING.md) - How to contribute
+See the [Development Guide](guide.md), [Testing Guide](testing.md), and
+[Rust Architecture](../../rust/ARCHITECTURE.md).

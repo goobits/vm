@@ -92,7 +92,7 @@ For the complete command surface, see [docs/user-guide/cli-reference.md](docs/us
 
 ```bash
 vm db backup app_db
-vm secret add OPENAI_API_KEY sk-...
+vm secret interactive
 vm plugin install ./plugins/vibe-dev
 ```
 
@@ -113,6 +113,10 @@ vm:
   memory: 8192
   cpus: 4
 ```
+
+Container dependency volumes, bounded `/tmp`, resource limits, and log rotation
+are opt-in project settings. See the
+[configuration guide](docs/user-guide/configuration.md#container-storage-and-bootstrap).
 
 ## Advanced Capability: Docker Inside macOS VMs
 

@@ -89,5 +89,5 @@ Plugin-backed workflows stay top-level:
 ```bash
 vm db ls
 vm fleet exec -- npm test
-vm secret add API_KEY value
+vm secret interactive
 ```

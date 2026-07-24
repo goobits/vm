@@ -21,8 +21,10 @@ cargo test --workspace
 ```bash
 cargo run -p goobits-vm -- --help
 cargo run -p goobits-vm -- run linux as dev --dry-run
-cargo run -p goobits-vm -- ls --dry-run
+cargo run -p goobits-vm -- list --dry-run
 cargo run -p goobits-vm -- system update --dry-run
 ```
 
-The public v5 command surface is intent-first: `run`, `ls`, `shell`, `exec`, `logs`, `copy`, `stop`, `rm`, `save`, `revert`, `package`, `config`, `tunnel`, `doctor`, `plugin`, and `system`.
+The public v5 command surface is intent-first: `run`, `list`, `shell`, `exec`,
+`logs`, `copy`, `stop`, `restart`, `remove`, `save`, `revert`, `package`,
+`config`, `tunnel`, `doctor`, `plugin`, and `system`.

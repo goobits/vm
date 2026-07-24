@@ -129,11 +129,10 @@ vm/
 │   ├── vm/            # Main CLI binary
 │   ├── vm-config/     # Configuration management
 │   ├── vm-provider/   # Provider abstraction (Docker, Podman, Tart)
-│   ├── vm-core/       # Shared core utilities
-│   ├── vm-cli/        # CLI helpers and formatting
+│   ├── vm-core/       # Shared utilities and CLI message formatting
 │   ├── vm-messages/   # Centralized user-facing messages
 │   ├── vm-logging/    # Logging setup and configuration
-│   └── ...            # Other workspace crates (15 total)
+│   └── ...            # Other focused workspace crates
 ├── Makefile           # Build and quality gate commands
 └── CONTRIBUTING.md    # This file
 ```
@@ -255,7 +254,7 @@ environment:
 # 4. Test the plugin
 vm plugin validate your-framework
 vm config preset your-framework
-vm create
+vm run linux as app
 
 # 5. Share your plugin
 # Package and share via git repository or tarball

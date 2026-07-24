@@ -170,4 +170,7 @@ vm fleet exec [--provider <provider>] -- <command>
 vm secret add <name> <value>
 vm secret ls
 vm secret rm <name>
+vm secret interactive
 ```
+
+Prefer `vm secret interactive` when a value should not appear in shell history.

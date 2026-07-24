@@ -2,7 +2,8 @@
 
 Documentation for the VM development environment tool.
 
-Source of truth: all documentation is authored under `docs/`.
+User and contributor guides live under `docs/`. Package-level API and
+architecture notes stay beside the package they describe.
 
 ---
 
@@ -60,13 +61,9 @@ Global services shared across all VMs.
 [development/guide.md](development/guide.md)
 Set up your development environment and run tests.
 
-**Testing Quick Reference**
-[development/testing-quick-reference.md](development/testing-quick-reference.md)
-Quick test commands.
-
-**Comprehensive Testing Guide**
+**Testing Guide**
 [development/testing.md](development/testing.md)
-Testing workflow and guidance.
+Supported test commands, isolation rules, and troubleshooting.
 
 **Architecture**
 [development/architecture.md](development/architecture.md)

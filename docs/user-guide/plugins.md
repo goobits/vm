@@ -16,7 +16,7 @@ Plugin-backed commands stay flat when available:
 ```bash
 vm db ls
 vm fleet exec -- npm test
-vm secret add API_KEY value
+vm secret interactive
 ```
 
 A plugin can provide presets, services, or command integrations while keeping the core CLI focused on everyday environment lifecycle.

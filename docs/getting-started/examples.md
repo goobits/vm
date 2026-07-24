@@ -106,21 +106,11 @@ aliases:
 
 ## Advanced Patterns
 
-### Custom Base Images
+### Reusable Base Images
 
-Speed up VM creation by pre-installing heavy dependencies (like Playwright, Chromium) in reusable Docker base images. See [examples/base-images/](../../examples/base-images/) for ready-to-use Dockerfiles and detailed guides.
-
-**Quick example:**
-```bash
-# Build a base image with Playwright pre-installed
-docker build -f examples/base-images/playwright-chromium.dockerfile -t my-base:latest .
-
-# Use in your project
-vm:
-  image: my-base:latest  # Instead of ubuntu:24.04
-```
-
-VM creation is significantly faster (seconds instead of the usual 5+ minutes to install Playwright/Chromium).
+Provider-native base workflows live under `vm system base`. See
+[examples/base-images/](../../examples/base-images/) for the canonical commands
+and guidance.
 
 ### Multiple Databases
 ```yaml
@@ -176,8 +166,8 @@ Organize team projects with port ranges: project-1 uses 3000-3009, project-2 use
 
 ### Multiple Configurations
 ```bash
-vm --config dev.yaml create     # Development environment
-vm --config testing.yaml create # Testing environment
+vm --config dev.yaml run linux as dev
+vm --config testing.yaml run linux as test
 ```
 
 ### Auto-Detection

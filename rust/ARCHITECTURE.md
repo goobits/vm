@@ -45,9 +45,9 @@ Goobits VM is built using a **layered architecture** designed around the princip
 - Cross-cutting utilities (file system operations, command execution, platform detection)
 - Core traits and interfaces shared across crates
 - System validation and health checks
-- Output formatting macros (`vm_println!`, `vm_error!`, etc.)
+- Message substitution and output formatting (`msg!`, `vm_println!`, `vm_error!`, etc.)
 
-**Key Exports**: `VmError`, `Result`, file system utilities, command streaming, platform detection
+**Key Exports**: `VmError`, `Result`, `msg!`, file system utilities, command streaming, platform detection
 
 #### vm-messages
 **Role**: Pure data crate containing centralized message templates and user-facing text.
@@ -282,14 +282,3 @@ The layered architecture enables comprehensive testing at multiple levels:
 - **Integration Tests**: Cross-crate functionality is tested through integration test suites
 - **End-to-End Tests**: Complete workflows are tested through the main CLI interface
 - **Mock Providers**: Test providers enable testing without external dependencies
-
-## Future Architecture Considerations
-
-The current architecture provides a solid foundation for future enhancements:
-
-- **Plugin System**: The provider abstraction can be extended to support external plugins
-- **API Layer**: A REST API layer could be added above the current application layer
-- **Event System**: Event-driven architecture could be introduced for better service coordination
-- **Metrics Collection**: Centralized metrics and telemetry could be added to the core layer
-
-This architecture balances simplicity with extensibility, providing a maintainable foundation that can evolve with the project's needs.
