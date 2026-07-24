@@ -215,8 +215,7 @@ impl<'a> ComposeOperations<'a> {
         let content = tera
             .render("docker-compose.yml", &tera_context)
             .map_err(|e| {
-                eprintln!("Tera render error: {:?}", e);
-                VmError::Internal(format!("Failed to render docker-compose template: {:?}", e))
+                VmError::Internal(format!("Failed to render docker-compose template: {e:?}"))
             })?;
         Ok(content)
     }

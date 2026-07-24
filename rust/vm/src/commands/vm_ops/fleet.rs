@@ -6,24 +6,22 @@ use tracing::{debug, info_span};
 
 use crate::cli::{FleetSubcommand, FleetTargetArgs};
 use crate::error::{VmError, VmResult};
-use vm_core::vm_println;
+use vm_core::{vm_println, vm_success, vm_warning};
 use vm_provider::{get_provider, InstanceInfo, Provider, ProviderContext};
 
 use super::targets::{resolve_targets, InstanceStateFilter, TargetQuery};
 
-pub async fn handle_fleet_command(command: &FleetSubcommand, dry_run: bool) -> VmResult<()> {
+pub async fn handle_fleet_command(command: &FleetSubcommand) -> VmResult<()> {
     match command {
-        FleetSubcommand::Exec { targets, command } => handle_exec(targets, command, dry_run),
+        FleetSubcommand::Exec { targets, command } => handle_exec(targets, command),
         FleetSubcommand::Copy {
             targets,
             source,
             destination,
-        } => handle_copy(targets, source, destination, dry_run),
-        FleetSubcommand::Start { targets } => handle_start_stop(targets, Action::Start, dry_run),
-        FleetSubcommand::Stop { targets } => handle_start_stop(targets, Action::Stop, dry_run),
-        FleetSubcommand::Restart { targets } => {
-            handle_start_stop(targets, Action::Restart, dry_run)
-        }
+        } => handle_copy(targets, source, destination),
+        FleetSubcommand::Start { targets } => handle_start_stop(targets, Action::Start),
+        FleetSubcommand::Stop { targets } => handle_start_stop(targets, Action::Stop),
+        FleetSubcommand::Restart { targets } => handle_start_stop(targets, Action::Restart),
     }
 }
 
@@ -43,7 +41,7 @@ fn query_for(targets: &FleetTargetArgs, default_state: InstanceStateFilter) -> T
     }
 }
 
-fn handle_exec(targets: &FleetTargetArgs, command: &[String], dry_run: bool) -> VmResult<()> {
+fn handle_exec(targets: &FleetTargetArgs, command: &[String]) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "fleet_exec");
     let _enter = span.enter();
 
@@ -51,19 +49,6 @@ fn handle_exec(targets: &FleetTargetArgs, command: &[String], dry_run: bool) -> 
 
     if instances.is_empty() {
         vm_println!("No instances found");
-        return Ok(());
-    }
-
-    let cmd_display = command.join(" ");
-    if dry_run {
-        vm_println!(
-            "Dry run: Would execute `{}` on {} instances",
-            cmd_display,
-            instances.len()
-        );
-        for instance in &instances {
-            vm_println!("  - {} ({})", instance.name, instance.provider);
-        }
         return Ok(());
     }
 
@@ -79,11 +64,11 @@ fn handle_exec(targets: &FleetTargetArgs, command: &[String], dry_run: bool) -> 
             );
             match provider.exec(Some(&instance.name), command) {
                 Ok(()) => {
-                    vm_println!("  ✓ {}", instance.name);
+                    vm_success!("{}", instance.name);
                     success += 1;
                 }
                 Err(e) => {
-                    vm_println!("  ✗ {}: {}", instance.name, e);
+                    vm_warning!("{}: {}", instance.name, e);
                     failed += 1;
                 }
             }
@@ -93,12 +78,7 @@ fn handle_exec(targets: &FleetTargetArgs, command: &[String], dry_run: bool) -> 
     summary(success, failed)
 }
 
-fn handle_copy(
-    targets: &FleetTargetArgs,
-    source: &str,
-    destination: &str,
-    dry_run: bool,
-) -> VmResult<()> {
+fn handle_copy(targets: &FleetTargetArgs, source: &str, destination: &str) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "fleet_copy");
     let _enter = span.enter();
 
@@ -106,19 +86,6 @@ fn handle_copy(
 
     if instances.is_empty() {
         vm_println!("No instances found");
-        return Ok(());
-    }
-
-    if dry_run {
-        vm_println!(
-            "Dry run: Would copy {} -> {} on {} instances",
-            source,
-            destination,
-            instances.len()
-        );
-        for instance in &instances {
-            vm_println!("  - {} ({})", instance.name, instance.provider);
-        }
         return Ok(());
     }
 
@@ -134,11 +101,11 @@ fn handle_copy(
             );
             match provider.copy(source, destination, Some(&instance.name)) {
                 Ok(()) => {
-                    vm_println!("  ✓ {}", instance.name);
+                    vm_success!("{}", instance.name);
                     success += 1;
                 }
                 Err(e) => {
-                    vm_println!("  ✗ {}: {}", instance.name, e);
+                    vm_warning!("{}: {}", instance.name, e);
                     failed += 1;
                 }
             }
@@ -154,7 +121,7 @@ enum Action {
     Restart,
 }
 
-fn handle_start_stop(targets: &FleetTargetArgs, action: Action, dry_run: bool) -> VmResult<()> {
+fn handle_start_stop(targets: &FleetTargetArgs, action: Action) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "fleet_lifecycle");
     let _enter = span.enter();
 
@@ -166,24 +133,6 @@ fn handle_start_stop(targets: &FleetTargetArgs, action: Action, dry_run: bool) -
 
     if instances.is_empty() {
         vm_println!("No instances found");
-        return Ok(());
-    }
-
-    let action_label = match action {
-        Action::Start => "start",
-        Action::Stop => "stop",
-        Action::Restart => "restart",
-    };
-
-    if dry_run {
-        vm_println!(
-            "Dry run: Would {} {} instances",
-            action_label,
-            instances.len()
-        );
-        for instance in &instances {
-            vm_println!("  - {} ({})", instance.name, instance.provider);
-        }
         return Ok(());
     }
 
@@ -202,11 +151,11 @@ fn handle_start_stop(targets: &FleetTargetArgs, action: Action, dry_run: bool) -
 
             match result {
                 Ok(()) => {
-                    vm_println!("  ✓ {}", instance.name);
+                    vm_success!("{}", instance.name);
                     success += 1;
                 }
                 Err(e) => {
-                    vm_println!("  ✗ {}: {}", instance.name, e);
+                    vm_warning!("{}: {}", instance.name, e);
                     failed += 1;
                 }
             }
@@ -240,9 +189,9 @@ fn group_by_provider(instances: Vec<InstanceInfo>) -> BTreeMap<String, Vec<Insta
 fn summary(success: usize, failed: usize) -> VmResult<()> {
     let total = success + failed;
     if failed == 0 {
-        vm_println!("\n✓ {} of {} succeeded", success, total);
+        vm_success!("{} of {} succeeded", success, total);
     } else {
-        vm_println!("\n✓ {} of {} succeeded, {} failed", success, total, failed);
+        vm_println!("{} of {} succeeded; {} failed", success, total, failed);
         return Err(VmError::general(
             std::io::Error::new(
                 std::io::ErrorKind::Other,

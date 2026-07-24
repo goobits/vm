@@ -8,7 +8,7 @@
 use crate::error::{Result, VmError};
 use crate::vm_warning;
 use std::borrow::Cow;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Get the user's configuration directory for the VM tool.
 ///
@@ -86,10 +86,7 @@ pub fn global_config_path() -> Result<PathBuf> {
     // Check old location for backward compatibility
     let old_path = user_config_dir()?.join("global.yaml");
     if old_path.exists() {
-        vm_warning!(
-            "Deprecated config location detected at '{}'. Run 'vm config migrate' to update.",
-            old_path.display()
-        );
+        warn_deprecated_path(&old_path, &new_path);
         return Ok(old_path);
     }
 
@@ -113,10 +110,7 @@ pub fn port_registry_path() -> Result<PathBuf> {
     // Check old location for backward compatibility
     let old_path = vm_state_dir()?.join("port-registry.json");
     if old_path.exists() {
-        vm_warning!(
-            "Deprecated config location detected at '{}'. Run 'vm config migrate' to update.",
-            old_path.display()
-        );
+        warn_deprecated_path(&old_path, &new_path);
         return Ok(old_path);
     }
 
@@ -140,10 +134,7 @@ pub fn services_state_path() -> Result<PathBuf> {
     // Check old location for backward compatibility
     let old_path = vm_state_dir()?.join("service_state.json");
     if old_path.exists() {
-        vm_warning!(
-            "Deprecated config location detected at '{}'. Run 'vm config migrate' to update.",
-            old_path.display()
-        );
+        warn_deprecated_path(&old_path, &new_path);
         return Ok(old_path);
     }
 
@@ -167,15 +158,20 @@ pub fn temp_vms_state_path() -> Result<PathBuf> {
     // Check old location for backward compatibility
     let old_path = vm_state_dir()?.join("temp-vm.state");
     if old_path.exists() {
-        vm_warning!(
-            "Deprecated config location detected at '{}'. Run 'vm config migrate' to update.",
-            old_path.display()
-        );
+        warn_deprecated_path(&old_path, &new_path);
         return Ok(old_path);
     }
 
     // Return new path as default (even if doesn't exist yet)
     Ok(new_path)
+}
+
+fn warn_deprecated_path(old_path: &Path, new_path: &Path) {
+    vm_warning!(
+        "Deprecated state path '{}'; move it to '{}'",
+        old_path.display(),
+        new_path.display()
+    );
 }
 
 /// Get the user's home directory.

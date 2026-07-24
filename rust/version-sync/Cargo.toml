@@ -15,9 +15,5 @@ serde_json = { workspace = true }
 clap = { workspace = true }
 vm-core = { path = "../vm-core" }
 
-[features]
-default = ["structured-output"]
-structured-output = []
-
 [package.metadata.cargo-machete]
 ignored = ["log"]

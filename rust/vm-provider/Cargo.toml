@@ -35,5 +35,4 @@ indexmap = { workspace = true }
 default = ["docker"]
 docker = []
 tart = []
-structured-output = []
 test-helpers = ["vm-config/test-helpers"]

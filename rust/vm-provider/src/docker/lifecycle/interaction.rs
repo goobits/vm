@@ -8,7 +8,7 @@ use vm_core::msg;
 use vm_core::{
     command_stream::stream_command_visible,
     error::{Result, VmError},
-    vm_println,
+    vm_println, vm_progress,
 };
 use vm_messages::messages::MESSAGES;
 
@@ -277,14 +277,9 @@ impl<'a> LifecycleOperations<'a> {
 
         // Show helpful header
         if follow {
-            vm_println!(
-                "📜 Following logs for '{}' (press Ctrl+C to stop)",
-                target_container
-            );
-            vm_println!("──────────────────────────────────────────\n");
+            vm_progress!("Following logs for '{target_container}' (press Ctrl+C to stop)");
         } else {
-            vm_println!("📜 Logs for '{}' (last {} lines)", target_container, tail);
-            vm_println!("──────────────────────────────────────────\n");
+            vm_progress!("Showing the last {tail} log lines for '{target_container}'");
         }
 
         stream_command_visible(self.executable, &args)

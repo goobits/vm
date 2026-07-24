@@ -28,7 +28,6 @@ mod utils;
 
 use cli::Args;
 use commands::execute_command;
-use service_manager::init_service_manager;
 
 /// Request ID for this execution - used for tracing logs across the entire request
 static REQUEST_ID: OnceLock<String> = OnceLock::new();
@@ -61,18 +60,8 @@ async fn main() {
     // to ensure that all buffered logs are flushed to the file.
     let _guard = init_subscriber();
 
-    // Initialize the global service manager
-    if let Err(e) = init_service_manager() {
-        vm_error!("Failed to initialize service manager: {}", e);
-        // We continue execution because some commands (like 'vm doctor') might still work
-        // or we want to report this properly. However, commands depending on services will fail.
-    }
-
     if std::env::var("VM_TEST_MODE").is_err() {
-        let span = info_span!("request",
-            request_id = %get_request_id(),
-            command = ?args.command
-        );
+        let span = info_span!("request", request_id = %get_request_id());
         run_command(args).instrument(span).await;
     } else {
         run_command(args).await;

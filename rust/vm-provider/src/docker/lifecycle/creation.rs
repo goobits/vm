@@ -28,7 +28,9 @@ impl<'a> LifecycleOperations<'a> {
         context: &ProviderContext,
     ) -> Result<()> {
         self.check_daemon_is_running()?;
-        self.handle_potential_issues();
+        if let Some(vm_config) = &self.config.vm {
+            self.check_memory_allocation(vm_config);
+        }
         self.check_docker_build_requirements();
 
         #[cfg(target_os = "windows")]
@@ -140,7 +142,11 @@ impl<'a> LifecycleOperations<'a> {
             args.extend(base_args.iter().map(String::as_str));
             args.extend(build_args.iter().map(String::as_str));
 
-            vm_dbg!("Docker build command: docker {}", args.join(" "));
+            vm_dbg!(
+                "Building derived image '{}' with {} extra arguments",
+                image_tag,
+                build_args.len()
+            );
             vm_dbg!("Build context directory: {}", build_context.display());
             if let Ok(entries) = fs::read_dir(&build_context) {
                 vm_dbg!(

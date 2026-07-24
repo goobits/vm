@@ -18,7 +18,7 @@ pub async fn execute_psql_command(command: &str) -> VmResult<String> {
                 std::io::ErrorKind::Other,
                 "PostgreSQL service is not running.",
             ),
-            "Please start a VM that uses the PostgreSQL service to use this command.",
+            "Start an environment that uses the PostgreSQL service before running this command.",
         ));
     }
 

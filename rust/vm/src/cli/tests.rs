@@ -30,6 +30,24 @@ fn shell_and_ssh_parse_the_same_environment() {
 }
 
 #[test]
+fn start_and_ssh_accept_the_project_default() {
+    assert!(matches!(
+        Args::parse_from(["vm", "start"]).command,
+        Command::Start {
+            environment: None,
+            no_wait: false
+        }
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "ssh"]).command,
+        Command::Shell {
+            environment: None,
+            ..
+        }
+    ));
+}
+
+#[test]
 fn ssh_alias_parses_command_execution() {
     assert!(matches!(
         Args::parse_from(["vm", "ssh", "-e", "echo hello"]).command,
@@ -70,7 +88,7 @@ fn destroy_alias_parses_as_remove() {
 }
 
 #[test]
-fn legacy_lifecycle_commands_parse() {
+fn lifecycle_commands_parse() {
     assert!(matches!(
         Args::parse_from(["vm", "create", "--force"]).command,
         Command::Create { force: true, .. }

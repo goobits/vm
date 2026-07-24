@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
+use vm_core::vm_warning;
 
 /// Definition of a managed service
 #[derive(Debug, Clone)]
@@ -95,7 +96,7 @@ impl ServiceRegistry {
 
         // Load plugin services (non-fatal if plugins unavailable)
         if let Err(e) = registry.load_plugin_services() {
-            eprintln!("Warning: Failed to load plugin services: {e}");
+            vm_warning!("Failed to load plugin services: {e}");
         }
 
         registry
@@ -111,9 +112,10 @@ impl ServiceRegistry {
             let content = match vm_plugin::load_service_content(plugin) {
                 Ok(c) => c,
                 Err(e) => {
-                    eprintln!(
-                        "Warning: Failed to load service content from plugin {}: {}",
-                        plugin.info.name, e
+                    vm_warning!(
+                        "Failed to load service content from plugin {}: {}",
+                        plugin.info.name,
+                        e
                     );
                     continue;
                 }

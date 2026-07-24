@@ -13,11 +13,14 @@ This creates the environment if needed, starts it, and names it `dev`.
 ## Work Inside It
 
 ```bash
-vm shell dev
-vm exec dev -- npm test
-vm logs dev --follow
+vm ssh
+vm exec -- npm test
+vm logs --follow
 vm copy ./config.json dev:/workspace/config.json
 ```
+
+With no name, these commands use the project's default environment. `vm ssh`
+and `vm exec` start it first when it already exists but is stopped.
 
 ## See What Is Running
 
@@ -30,9 +33,9 @@ This lists environments for the current project. Use `vm list --all` to see ever
 ## Stop Or Remove It
 
 ```bash
-vm stop dev
-vm restart dev
-vm remove dev
+vm stop
+vm restart
+vm remove
 ```
 
 Removing an environment frees active resources. Saved snapshots are preserved.

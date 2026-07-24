@@ -21,8 +21,7 @@ use vm_core::command_stream::{
 };
 use vm_core::error::Result;
 use vm_core::msg;
-use vm_core::vm_println;
-use vm_core::{get_cpu_core_count, get_total_memory_gb};
+use vm_core::{get_cpu_core_count, get_total_memory_gb, vm_warning};
 use vm_messages::messages::MESSAGES;
 
 // Constants for Tart provider
@@ -536,12 +535,10 @@ impl TartProvider {
         ProgressReporter::task(&main_phase, "Checking if VM exists...");
         if self.get_instance_state(vm_name)?.is_some() {
             ProgressReporter::task(&main_phase, "Existing VM found.");
-            vm_println!("⚠️  Tart VM '{}' already exists.", vm_name);
-            vm_println!(
-                "   Use 'vm shell <name>' to connect, 'vm run mac as <name>' to start, or 'vm remove <name>' to recreate."
-            );
             ProgressReporter::finish_phase(&main_phase, "VM already exists.");
-            return Ok(());
+            return Err(VmError::Provider(format!(
+                "Tart VM '{vm_name}' already exists"
+            )));
         }
         ProgressReporter::task(&main_phase, "VM not found, proceeding with creation.");
 
@@ -560,16 +557,10 @@ impl TartProvider {
 
         if !orphans.is_empty() {
             warn!("Found potential orphaned VMs from previous runs/instances");
-            eprintln!("\n⚠️  Warning: Other VMs for this project detected");
-            eprintln!("   These VMs might be from other instances or previous runs:\n");
-            for orphan in &orphans {
-                eprintln!("   • {}", orphan);
-            }
-            eprintln!("\n💡 If these are leftovers, you can clean them up with:");
-            for orphan in &orphans {
-                eprintln!("      tart delete {}", orphan);
-            }
-            eprintln!();
+            vm_warning!(
+                "Other Tart environments exist for this project: {}",
+                orphans.join(", ")
+            );
         }
 
         // Get image from config using new BoxConfig system
@@ -959,7 +950,7 @@ impl Provider for TartProvider {
 
         provisioner.provision(&self.config)?;
 
-        info!("{}", MESSAGES.vm.apply_success);
+        info!("Configuration applied");
         Ok(())
     }
 

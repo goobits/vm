@@ -55,7 +55,6 @@ tar = "0.4"
 
 [features]
 default = []
-structured-output = []
 integration = []
 tart = ["vm-provider/tart"]
 

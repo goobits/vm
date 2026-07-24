@@ -9,7 +9,7 @@ use serde_yaml_ng::Value;
 use crate::config_ops::io::{find_local_config, get_global_config_path};
 use crate::yaml::core::CoreOperations;
 use vm_core::error::Result;
-use vm_core::{vm_error, vm_hint, vm_println};
+use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
 
 /// Get a configuration value or display entire configuration.
@@ -22,17 +22,13 @@ pub fn get(field: Option<&str>, global: bool) -> Result<()> {
 
     if !config_path.exists() {
         if global {
-            vm_error!("No global configuration found at {}", config_path.display());
-            vm_hint!("Global configs are created automatically when needed");
             return Err(vm_core::error::VmError::Config(format!(
                 "No global configuration found at '{}'. Global configuration is created automatically when needed",
                 config_path.display()
             )));
         } else {
-            vm_error!("No vm.yaml found in current directory or parent directories");
-            vm_hint!("Create one with: vm init");
             return Err(vm_core::error::VmError::Config(
-                "No vm.yaml found in current directory or parent directories. Create one with: vm init".to_string()
+                "No vm.yaml found in the current directory or its parents. Create an environment with `vm run linux` first".to_string()
             ));
         }
     }
@@ -72,10 +68,9 @@ fn get_nested_field<'a>(value: &'a Value, field: &str) -> Result<&'a Value> {
                 })?;
             }
             _ => {
-                vm_error!("Cannot navigate field '{}' on non-object", part);
-                return Err(vm_core::error::VmError::Config(
-                    "Cannot navigate field on non-object".to_string(),
-                ));
+                return Err(vm_core::error::VmError::Config(format!(
+                    "Cannot navigate field '{part}' on non-object value"
+                )));
             }
         }
     }

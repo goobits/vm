@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 // Internal imports
 use crate::config::VmConfig;
 use vm_core::error::{Result, VmError};
-use vm_core::{prompts, user_paths, vm_error, vm_println};
+use vm_core::{prompts, user_paths, vm_println};
 
 /// Read config file, or prompt to initialize if missing (for write operations).
 pub fn read_config_or_init(path: &Path, allow_init: bool) -> Result<VmConfig> {
@@ -32,7 +32,8 @@ pub fn read_config_or_init(path: &Path, allow_init: bool) -> Result<VmConfig> {
             .map_err(|e| VmError::Config(format!("Failed to read selection: {e}")))?
         {
             return Err(VmError::Config(
-                "Configuration required. Run 'vm init' to create one.".to_string(),
+                "Configuration required. Create an environment with `vm run linux` first."
+                    .to_string(),
             ));
         }
 
@@ -72,10 +73,10 @@ pub fn get_or_create_global_config_path() -> Result<PathBuf> {
 }
 
 pub fn find_local_config() -> Result<PathBuf> {
-    find_local_config_impl(true)
+    find_local_config_impl()
 }
 
-fn find_local_config_impl(print_error: bool) -> Result<PathBuf> {
+fn find_local_config_impl() -> Result<PathBuf> {
     let current_dir = std::env::current_dir()?;
     let mut dir = current_dir.as_path();
 
@@ -91,17 +92,13 @@ fn find_local_config_impl(print_error: bool) -> Result<PathBuf> {
         }
     }
 
-    if print_error {
-        vm_error!("No vm.yaml found in current directory or parent directories");
-    }
     Err(vm_core::error::VmError::Config(
-        "No vm.yaml configuration found in current directory or parent directories. Create one with: vm init".to_string()
+        "No vm.yaml configuration found in the current directory or its parents. Create an environment with `vm run linux` first".to_string()
     ))
 }
 
 pub fn find_or_create_local_config() -> Result<PathBuf> {
-    // Don't print error messages - we expect the config might not exist
-    if let Ok(path) = find_local_config_impl(false) {
+    if let Ok(path) = find_local_config_impl() {
         return Ok(path);
     }
     let current_dir = std::env::current_dir()?;

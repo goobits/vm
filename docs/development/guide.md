@@ -37,4 +37,6 @@ db, fleet, secret
 
 ## Lifecycle Hooks
 
-Environment lifecycle commands register and unregister services through the service registry. Shell access uses `vm shell <name>`, and one-off commands use `vm exec <name> -- <command>`.
+Environment lifecycle commands register and unregister services through the
+service registry. `vm shell`/`vm ssh` and `vm exec -- <command>` select the
+project default when no name is supplied and start it if needed.

@@ -47,9 +47,13 @@ Confirm the rendered `/workspace` bind before applying lifecycle changes.
 
 ```bash
 vm list
-vm shell dev
-vm exec dev -- pwd
+vm ssh
+vm exec -- pwd
 ```
+
+Both commands automatically start the selected environment when it exists but
+is stopped. If no environment exists, create it explicitly with
+`vm run linux`.
 
 ## Docker In A macOS Tart Guest
 

@@ -9,7 +9,7 @@ use crate::config_ops::io::{find_local_config, get_global_config_path, read_conf
 use crate::yaml::core::CoreOperations;
 use vm_core::error::Result;
 use vm_core::msg;
-use vm_core::{vm_error, vm_println, vm_success};
+use vm_core::{vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 
 /// Unset (remove) a configuration field
@@ -23,9 +23,8 @@ pub fn unset(field: &str, global: bool) -> Result<()> {
     if !global {
         let _ = read_config_or_init(&config_path, true)?;
     } else if !config_path.exists() {
-        vm_error!("Configuration file not found: {}", config_path.display());
         return Err(vm_core::error::VmError::Config(format!(
-            "Configuration file not found at '{}'. Use 'vm init' to create a configuration",
+            "Configuration file not found at '{}'",
             config_path.display()
         )));
     }

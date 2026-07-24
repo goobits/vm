@@ -5,7 +5,10 @@ use std::process::Command;
 
 use tera::Context as TeraContext;
 use vm_config::{config::VmConfig, detect_worktrees};
-use vm_core::error::{Result, VmError};
+use vm_core::{
+    error::{Result, VmError},
+    vm_warning,
+};
 
 use super::host_packages::{
     detect_packages, get_package_env_vars, get_volume_mounts, HostPackageInfo, PackageManager,
@@ -193,7 +196,7 @@ pub(super) fn process_dotfiles(config: &VmConfig, username: &str) -> Vec<(String
         .filter_map(|configured_path| {
             let expanded = expand_tilde(configured_path)?;
             if !Path::new(expanded.as_ref()).exists() {
-                eprintln!("Warning: Dotfile not found, skipping: {expanded}");
+                vm_warning!("Dotfile not found, skipping: {expanded}");
                 return None;
             }
             let target = if let Some(relative) = configured_path.strip_prefix("~/") {
@@ -236,7 +239,7 @@ pub(super) fn configure_worktrees(
     if !create_directory || fs::create_dir_all(&base).is_ok() {
         context.insert("worktrees_base_dir", &base);
     } else {
-        eprintln!("Warning: Failed to create worktrees directory {base}");
+        vm_warning!("Failed to create worktrees directory {base}");
     }
 
     if let Ok(worktrees) = detect_worktrees() {

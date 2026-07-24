@@ -15,7 +15,7 @@
 //!
 //! ### Box Presets
 //!
-//! Pre-built Docker images with all tooling pre-installed. Used via `vm init <preset>`.
+//! Pre-built Docker images with all tooling pre-installed.
 //! Creates minimal `vm.yaml` with just the box reference.
 //!
 //! ### Provision Presets

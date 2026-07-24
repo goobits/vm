@@ -6,7 +6,7 @@ pub mod utils;
 use crate::cli::DbSubcommand;
 use crate::error::VmResult;
 use vm_config::GlobalConfig;
-use vm_core::vm_println;
+use vm_core::{vm_println, vm_progress, vm_success, vm_warning};
 
 async fn show_credentials(service_name: &str) -> VmResult<()> {
     let secrets_dir = vm_core::user_paths::secrets_dir()?;
@@ -47,7 +47,7 @@ pub async fn handle_db(command: DbSubcommand) -> VmResult<()> {
                     return Ok(());
                 }
 
-                vm_println!("📦 Backing up {} databases...", databases.len());
+                vm_progress!("Backing up {} databases...", databases.len());
                 let mut success_count = 0;
                 let mut failed_count = 0;
 
@@ -57,17 +57,21 @@ pub async fn handle_db(command: DbSubcommand) -> VmResult<()> {
                             success_count += 1;
                         }
                         Err(e) => {
-                            vm_println!("⚠️  Failed to backup '{}': {}", db, e);
+                            vm_warning!("Failed to back up '{db}': {e}");
                             failed_count += 1;
                         }
                     }
                 }
 
-                vm_println!(
-                    "\n✅ Backup complete: {} succeeded, {} failed",
-                    success_count,
-                    failed_count
-                );
+                if failed_count > 0 {
+                    return Err(crate::error::VmError::validation(
+                        format!(
+                            "Database backup completed with {success_count} succeeded and {failed_count} failed"
+                        ),
+                        None::<String>,
+                    ));
+                }
+                vm_success!("Backed up {success_count} database(s)");
             } else if let Some(db) = db_name {
                 backup::backup_db(&db, name.as_deref(), global_config.backups.keep_count).await?;
             } else {
@@ -88,7 +92,7 @@ pub async fn handle_db(command: DbSubcommand) -> VmResult<()> {
             )
             .await?;
 
-            vm_println!("📊 Databases:");
+            vm_println!("Databases:");
             for line in result.lines() {
                 let parts: Vec<&str> = line.split('|').map(|s| s.trim()).collect();
                 if parts.len() == 2 && !parts[0].is_empty() {

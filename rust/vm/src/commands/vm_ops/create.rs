@@ -3,17 +3,18 @@
 //! This module handles VM creation with support for force recreation,
 //! multi-instance providers, and service registration.
 
-use std::path::Path;
 use tracing::{debug, info_span};
 
 use crate::error::{VmError, VmResult};
 use vm_config::{config::MemoryLimit, config::VmConfig, validator::ConfigValidator, GlobalConfig};
-use vm_core::msg;
-use vm_core::{get_cpu_core_count, get_total_memory_gb, vm_error, vm_println};
-use vm_messages::messages::MESSAGES;
+use vm_core::{
+    get_cpu_core_count, get_total_memory_gb, vm_hint, vm_println, vm_progress, vm_success,
+    vm_warning,
+};
 use vm_provider::{Provider, ProviderContext};
 
-use super::helpers::{print_vm_runtime_details, register_vm_services_helper};
+use super::helpers::{has_enabled_services, print_vm_runtime_details, register_vm_services_helper};
+use super::target::canonical_instance_name;
 
 /// Auto-adjust resource allocation based on system availability
 fn auto_adjust_resources(config: &mut VmConfig) -> VmResult<()> {
@@ -35,12 +36,9 @@ fn auto_adjust_resources(config: &mut VmConfig) -> VmResult<()> {
                 // Use 50% of available CPUs, minimum 1, maximum available
                 let safe_cpus = (system_cpus / 2).max(1).min(system_cpus);
 
-                vm_println!(
-                    "⚠️  Requested {} CPUs but system only has {}.",
-                    requested_cpus,
-                    system_cpus
+                vm_warning!(
+                    "Requested {requested_cpus} CPUs; using {safe_cpus} of {system_cpus} available"
                 );
-                vm_println!("   Auto-adjusting to {} CPUs for this system.", safe_cpus);
 
                 vm_settings.cpus = Some(vm_config::config::CpuLimit::Limited(safe_cpus));
                 adjusted = true;
@@ -61,14 +59,8 @@ fn auto_adjust_resources(config: &mut VmConfig) -> VmResult<()> {
             if requested_gb > max_safe_memory {
                 let safe_memory_mb = (max_safe_memory * 1024) as u32;
 
-                vm_println!(
-                    "⚠️  Requested {}GB RAM but only {}GB total available.",
-                    requested_gb,
-                    system_memory_gb
-                );
-                vm_println!(
-                    "   Auto-adjusting to {}GB RAM for this system (leaving 2GB for host).",
-                    max_safe_memory
+                vm_warning!(
+                    "Requested {requested_gb}GB RAM; using {max_safe_memory}GB of {system_memory_gb}GB available"
                 );
 
                 vm_settings.memory = Some(MemoryLimit::Limited(safe_memory_mb));
@@ -78,10 +70,7 @@ fn auto_adjust_resources(config: &mut VmConfig) -> VmResult<()> {
     }
 
     if adjusted {
-        vm_println!("");
-        vm_println!("💡 Tip: These auto-adjusted values are temporary for this VM creation.");
-        vm_println!("   Your vm.yaml remains unchanged and will work on more powerful machines.");
-        vm_println!("");
+        vm_hint!("Resource adjustments apply to this creation only; vm.yaml was not changed");
     }
 
     Ok(())
@@ -100,14 +89,14 @@ pub async fn handle_create(
     debug!("Starting VM creation");
 
     auto_adjust_resources(&mut config)?;
-    vm_println!("Validating configuration...");
+    vm_progress!("Validating configuration...");
 
     let vm_name = config
         .project
         .as_ref()
         .and_then(|project| project.name.as_deref())
         .unwrap_or("vm-project");
-    let target_name = target_name(provider.name(), vm_name, instance.as_deref());
+    let target_name = canonical_instance_name(provider.name(), vm_name, instance.as_deref());
     let existing_instance = provider
         .list_instances()?
         .into_iter()
@@ -143,17 +132,15 @@ pub async fn handle_create(
     match validation {
         Ok(report) => {
             if report.has_errors() {
-                vm_error!("Configuration validation failed:");
-                vm_println!("{}", report);
                 return Err(VmError::validation(
-                    "Configuration is invalid, aborting creation.",
+                    format!("Configuration is invalid:\n{report}"),
                     None::<String>,
                 ));
             }
             if !report.warnings.is_empty() || !report.info.is_empty() {
                 vm_println!("{}", report);
             }
-            vm_println!("✓ Configuration is valid.");
+            vm_success!("Configuration is valid");
         }
         Err(error) => {
             return Err(VmError::validation(
@@ -164,8 +151,8 @@ pub async fn handle_create(
     }
     if let Some(existing) = existing_instance {
         if !force {
-            vm_println!(
-                "⚠️  Container '{}' already exists{}.",
+            vm_warning!(
+                "Environment '{}' already exists{}",
                 target_name,
                 if existing.status.to_lowercase().contains("running")
                     || existing.status.to_lowercase().contains("up")
@@ -175,72 +162,39 @@ pub async fn handle_create(
                     ""
                 }
             );
-            vm_println!(
-                "   Use 'vm ssh' to connect, 'vm start' to start, or 'vm create --force' to recreate."
-            );
+            vm_hint!("Use `vm shell`, `vm start`, or remove it before `vm run`");
             return Ok(());
         }
 
-        vm_println!(
-            "{}",
-            msg!(MESSAGES.vm.create_force_recreating, name = &target_name)
-        );
+        vm_progress!("Recreating '{target_name}'...");
         provider.destroy(
             instance.as_deref(),
             &ProviderContext::default().preserve_services(true),
         )?;
     }
 
-    let is_first_vm = !Path::new(".vm").exists();
-    if is_first_vm {
-        vm_println!("👋 Creating your first VM for this project\n");
-        vm_println!("💡 Tip: Edit vm.yaml to customize resources");
-        vm_println!("⏱️  This may take 2-3 minutes...\n");
-    }
-
     // Check if this is a multi-instance provider and handle accordingly
     if provider.supports_multi_instance() && instance.is_some() {
-        let instance_name = match instance.as_deref() {
-            Some(name) => name,
-            None => {
-                return Err(VmError::general(
-                    std::io::Error::new(std::io::ErrorKind::NotFound, "Instance name not found"),
-                    "Instance option was None, but was expected to be Some",
-                ))
-            }
-        };
-        vm_println!(
-            "{}",
-            msg!(
-                MESSAGES.vm.create_header_instance,
-                instance = instance_name,
-                name = vm_name
-            )
-        );
+        debug!(instance = ?instance, project = vm_name, "Creating named instance");
     } else {
         // Standard single-instance creation
         if let Some(instance_name) = &instance {
-            vm_println!(
-                "{}",
-                msg!(
-                    MESSAGES.vm.create_multiinstance_warning,
-                    instance = instance_name,
-                    provider = provider.name()
-                )
+            vm_warning!(
+                "Provider '{}' does not support named instance '{}'; using its default",
+                provider.name(),
+                instance_name
             );
         }
     }
 
-    vm_println!("{}", msg!(MESSAGES.vm.create_header, name = vm_name));
-    if matches!(provider.name(), "docker" | "podman") {
-        vm_println!("{}", MESSAGES.vm.create_progress);
-    }
+    vm_progress!("Creating '{target_name}'...");
 
     // Compose needs service settings before creation; VM providers register
     // services only after the guest exists.
     let register_services_before_create = matches!(provider.name(), "docker" | "podman");
-    if register_services_before_create {
-        vm_println!("{}", MESSAGES.common.configuring_services);
+    let has_services = has_enabled_services(&config, &global_config);
+    if register_services_before_create && has_services {
+        vm_progress!("Configuring services...");
         register_vm_services_helper(&target_name, &config, &global_config).await?;
     }
 
@@ -259,50 +213,16 @@ pub async fn handle_create(
         provider.create(&context)
     };
 
-    match create_result {
-        Ok(()) => {
-            vm_println!("{}", MESSAGES.vm.create_success);
+    create_result.map_err(VmError::from)?;
+    vm_success!("Created '{target_name}'");
+    print_vm_runtime_details(&config, true);
 
-            vm_println!(
-                "{}",
-                msg!(
-                    MESSAGES.vm.create_info_block,
-                    status = MESSAGES.common.status_running,
-                    container = &target_name
-                )
-            );
+    if !register_services_before_create && has_services {
+        vm_progress!("Configuring services...");
+        register_vm_services_helper(&target_name, &config, &global_config).await?;
+    }
 
-            print_vm_runtime_details(&config, true);
-
-            if !register_services_before_create {
-                vm_println!("{}", MESSAGES.common.configuring_services);
-                register_vm_services_helper(&target_name, &config, &global_config).await?;
-            }
-
-            if is_first_vm {
-                vm_println!("\n🎉 Success! Your VM is ready");
-                vm_println!("📝 Next steps:");
-                vm_println!("  • ssh into VM:  vm ssh");
-                vm_println!("  • Run commands: vm exec -- npm install");
-                vm_println!("  • View status:  vm status");
-            } else {
-                vm_println!("{}", MESSAGES.common.connect_hint);
-            }
-
-            Ok(())
-        }
-        Err(e) => {
-            vm_println!(
-                "{}",
-                msg!(
-                    MESSAGES.vm.create_troubleshooting,
-                    name = vm_name,
-                    error = e.to_string()
-                )
-            );
-            Err(VmError::from(e))
-        }
-    }?;
+    vm_hint!("Connect with: vm shell {target_name}");
 
     // Seed database if configured
     if let Some(service_config) = config.services.get("postgresql") {
@@ -312,38 +232,15 @@ pub async fn handle_create(
                 .database
                 .as_deref()
                 .unwrap_or(&default_db_name);
-            vm_println!("🌱 Seeding database '{}' from {:?}...", db_name, seed_file);
+            vm_progress!(
+                "Seeding database '{db_name}' from {}...",
+                seed_file.display()
+            );
             if let Err(e) = crate::commands::db::backup::import_db(db_name, seed_file).await {
-                vm_println!("Database seeding failed: {}", e);
+                vm_warning!("Database seeding failed: {e}");
             }
         }
     }
 
     Ok(())
-}
-
-fn target_name(provider: &str, project: &str, instance: Option<&str>) -> String {
-    match (provider, instance) {
-        ("tart", Some(instance)) => format!("{project}-{instance}"),
-        ("tart", None) => project.to_string(),
-        (_, Some(instance)) => format!("{project}-{instance}-dev"),
-        (_, None) => format!("{project}-dev"),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::target_name;
-
-    #[test]
-    fn resolves_provider_specific_instance_container_names() {
-        assert_eq!(
-            target_name("docker", "sketch-api", Some("feature")),
-            "sketch-api-feature-dev"
-        );
-        assert_eq!(
-            target_name("tart", "sketch-api", Some("feature")),
-            "sketch-api-feature"
-        );
-    }
 }

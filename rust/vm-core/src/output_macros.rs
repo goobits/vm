@@ -6,62 +6,52 @@
 #[macro_export]
 macro_rules! vm_println {
     () => {
-        println!("");
+        println!();
     };
     ($($arg:tt)*) => {
-        println!("{}", format!($($arg)*));
+        println!($($arg)*);
     }
 }
 
 #[macro_export]
 macro_rules! vm_error {
     ($($arg:tt)*) => {
-        eprintln!("{}", format!($($arg)*));
+        eprintln!($($arg)*);
     }
-}
-
-#[macro_export]
-macro_rules! vm_error_details {
-    ($main:expr, $details:expr) => {
-        eprintln!("Error: {}", $main);
-        for detail in $details {
-            eprintln!("  {}", detail);
-        }
-    };
 }
 
 #[macro_export]
 macro_rules! vm_hint {
     ($($arg:tt)*) => {
-        eprintln!("Hint: {}", format!($($arg)*));
+        eprintln!("Hint: {}", format_args!($($arg)*));
     };
 }
 
 #[macro_export]
 macro_rules! vm_success {
     ($($arg:tt)*) => {
-        println!("✓ {}", format!($($arg)*));
+        println!("✓ {}", format_args!($($arg)*));
     };
 }
 
 #[macro_export]
 macro_rules! vm_info {
     ($($arg:tt)*) => {
-        println!("{}", format!($($arg)*));
+        println!($($arg)*);
     };
 }
 
 #[macro_export]
 macro_rules! vm_warning {
     ($($arg:tt)*) => {
-        eprintln!("Warning: {}", format!($($arg)*));
+        eprintln!("Warning: {}", format_args!($($arg)*));
     };
 }
 
 #[macro_export]
 macro_rules! vm_progress {
     ($($arg:tt)*) => {
-        eprintln!("{}", format!($($arg)*));
+        eprintln!($($arg)*);
     };
 }
 

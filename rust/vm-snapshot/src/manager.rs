@@ -162,22 +162,19 @@ pub async fn handle_list(
     }
 
     if snapshots.is_empty() {
-        vm_core::vm_println!("{}", vm_messages::messages::MESSAGES.vm.snapshot_list_empty);
+        vm_core::vm_println!("No snapshots found.");
         return Ok(());
     }
 
     vm_core::vm_println!(
-        "\n{}\n",
-        vm_messages::messages::MESSAGES
-            .vm
-            .snapshot_list_table_header
+        "{:<9} {:<20} {:<21} {:>10} {:<20}",
+        "TYPE",
+        "NAME",
+        "CREATED",
+        "SIZE",
+        "DESCRIPTION"
     );
-    vm_core::vm_println!(
-        "{}",
-        vm_messages::messages::MESSAGES
-            .vm
-            .snapshot_list_table_separator
-    );
+    vm_core::vm_println!("{}", "─".repeat(84));
 
     for snapshot in snapshots {
         // Determine snapshot type (base or project)
@@ -206,10 +203,15 @@ pub async fn handle_list(
 }
 
 fn truncate_string(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
+    if s.chars().count() <= max_len {
         s.to_string()
     } else {
-        format!("{}...", &s[..max_len - 3])
+        format!(
+            "{}...",
+            s.chars()
+                .take(max_len.saturating_sub(3))
+                .collect::<String>()
+        )
     }
 }
 

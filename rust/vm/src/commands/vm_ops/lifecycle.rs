@@ -9,8 +9,12 @@ use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::{vm_hint, vm_progress, vm_success};
 use vm_provider::{InstanceState, Provider, ProviderContext};
 
-use super::helpers::{
-    print_vm_runtime_details, register_vm_services_helper, unregister_vm_services_helper,
+use super::{
+    helpers::{
+        has_enabled_services, print_vm_runtime_details, register_vm_services_helper,
+        unregister_vm_services_helper,
+    },
+    target::canonical_instance_name,
 };
 
 const READY_ATTEMPTS: usize = 120;
@@ -20,13 +24,6 @@ const READY_INTERVAL: Duration = Duration::from_millis(500);
 pub(super) enum StartOutcome {
     AlreadyRunning,
     Started,
-}
-
-fn default_resource_name(provider: &dyn Provider, vm_name: &str) -> String {
-    match provider.name() {
-        "tart" => vm_name.to_string(),
-        _ => format!("{vm_name}-dev"),
-    }
 }
 
 fn project_name(config: &VmConfig) -> &str {
@@ -40,7 +37,7 @@ fn project_name(config: &VmConfig) -> &str {
 fn target_name(provider: &dyn Provider, container: Option<&str>, config: &VmConfig) -> String {
     container
         .map(ToOwned::to_owned)
-        .unwrap_or_else(|| default_resource_name(provider, project_name(config)))
+        .unwrap_or_else(|| canonical_instance_name(provider.name(), project_name(config), None))
 }
 
 async fn wait_until_ready(
@@ -126,7 +123,7 @@ pub(super) async fn ensure_running(
     }
 
     vm_success!("Started '{display_name}'");
-    if config.services.values().any(|service| service.enabled) {
+    if has_enabled_services(config, global_config) {
         vm_progress!("Configuring services...");
         register_vm_services_helper(&display_name, config, global_config).await?;
     }
@@ -176,7 +173,7 @@ pub async fn handle_stop(
 
     vm_progress!("Stopping '{display_name}'...");
     provider.stop(container).map_err(VmError::from)?;
-    if config.services.values().any(|service| service.enabled) {
+    if has_enabled_services(&config, &global_config) {
         unregister_vm_services_helper(&display_name, &global_config).await?;
     }
     vm_success!("Stopped '{display_name}'");
@@ -213,7 +210,7 @@ pub async fn handle_restart(
     }
 
     wait_until_ready(provider.as_ref(), container, &display_name).await?;
-    if config.services.values().any(|service| service.enabled) {
+    if has_enabled_services(&config, &global_config) {
         register_vm_services_helper(&display_name, &config, &global_config).await?;
     }
     vm_success!("Restarted '{display_name}'");

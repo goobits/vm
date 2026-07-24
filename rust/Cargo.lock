@@ -4004,7 +4004,6 @@ dependencies = [
  "tracing",
  "vm-config",
  "vm-core",
- "vm-messages",
  "walkdir",
 ]
 

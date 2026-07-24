@@ -2,10 +2,7 @@
 use {
     std::process::{Command, Stdio},
     tracing::info,
-    vm_core::{
-        error::{Result, VmError},
-        vm_error,
-    },
+    vm_core::error::{Result, VmError},
 };
 
 #[cfg(target_os = "macos")]
@@ -56,7 +53,6 @@ fn install_pulseaudio() -> Result<()> {
             ))
         })?;
     if !status.success() {
-        vm_error!("'brew install pulseaudio' failed.");
         return Err(VmError::Internal(
             "brew install pulseaudio failed".to_string(),
         ));
@@ -76,7 +72,6 @@ fn start_pulseaudio_daemon() -> Result<()> {
         .status()
         .map_err(|e| VmError::Internal(format!("Failed to start PulseAudio daemon: {}", e)))?;
     if !status.success() {
-        vm_error!("Failed to start PulseAudio daemon.");
         return Err(VmError::Internal(
             "Failed to start PulseAudio daemon".to_string(),
         ));

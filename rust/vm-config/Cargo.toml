@@ -41,7 +41,6 @@ nix = { workspace = true }
 
 [features]
 default = []
-structured-output = []
 test-helpers = []
 
 [dev-dependencies]

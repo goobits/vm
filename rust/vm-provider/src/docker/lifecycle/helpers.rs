@@ -1,13 +1,11 @@
 //! Helper utilities for lifecycle operations
 use super::LifecycleOperations;
 use crate::common::instance::{fuzzy_match_instances, InstanceInfo};
-use crate::docker::command::DockerCommand;
 use crate::{
     context::ProviderContext,
     docker::{build::BuildOperations, compose::ComposeOperations},
 };
 use vm_core::error::{Result, VmError};
-use vm_core::vm_error_details;
 
 // Constants (moved from top of lifecycle.rs)
 pub(super) const DEFAULT_PROJECT_NAME: &str = "vm-project";
@@ -202,26 +200,6 @@ impl<'a> LifecycleOperations<'a> {
     /// No-op implementation for non-Windows systems
     #[cfg(not(target_os = "windows"))]
     fn check_disk_space_windows(&self) {}
-
-    /// Handle potential Docker issues proactively
-    pub(super) fn handle_potential_issues(&self) {
-        // Check for port conflicts and provide helpful guidance
-        if let Some(vm_config) = &self.config.vm {
-            self.check_memory_allocation(vm_config);
-        }
-
-        // Check Docker daemon status more thoroughly
-        if DockerCommand::new(Some(self.executable))
-            .subcommand("ps")
-            .execute_with_output()
-            .is_err()
-        {
-            vm_error_details!(
-                "Docker daemon may not be responding properly",
-                &["Run: vm doctor", "Or: restart Docker Desktop"]
-            );
-        }
-    }
 
     /// Resolve a partial container name to a full container name
     /// Supports matching by:

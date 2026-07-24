@@ -9,9 +9,20 @@ use crate::error::VmResult;
 use crate::service_manager::get_service_manager;
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::msg;
-use vm_core::vm_println;
+use vm_core::{vm_println, vm_success, vm_warning};
 use vm_messages::messages::MESSAGES;
 use vm_provider::Provider;
+
+pub(super) fn has_enabled_services(config: &VmConfig, global: &GlobalConfig) -> bool {
+    config.services.values().any(|service| service.enabled)
+        || global.services.auth_proxy.enabled
+        || global.services.docker_registry.enabled
+        || global.services.package_registry.enabled
+        || global.services.postgresql.enabled
+        || global.services.redis.enabled
+        || global.services.mongodb.enabled
+        || global.services.mysql.enabled
+}
 
 /// Handle get sync directory
 pub fn handle_get_sync_directory(provider: Box<dyn Provider>) {
@@ -31,6 +42,7 @@ pub(super) async fn register_vm_services_helper(
         Ok(sm) => sm,
         Err(e) => {
             warn!("Failed to get service manager: {}", e);
+            vm_warning!("Service manager unavailable: {e}");
             return Ok(());
         }
     };
@@ -40,16 +52,10 @@ pub(super) async fn register_vm_services_helper(
         .await
     {
         warn!("Failed to register VM services: {}", e);
-        vm_println!(
-            "{}",
-            msg!(
-                MESSAGES.common.services_config_failed,
-                error = e.to_string()
-            )
-        );
+        vm_warning!("Service configuration failed: {e}");
         // Don't fail the operation if service registration fails
     } else {
-        vm_println!("{}", MESSAGES.common.services_config_success);
+        vm_success!("Services configured");
     }
     Ok(())
 }
@@ -63,6 +69,7 @@ pub(super) async fn unregister_vm_services_helper(
         Ok(sm) => sm,
         Err(e) => {
             warn!("Failed to get service manager: {}", e);
+            vm_warning!("Service manager unavailable: {e}");
             return Ok(());
         }
     };
@@ -72,16 +79,10 @@ pub(super) async fn unregister_vm_services_helper(
         .await
     {
         warn!("Failed to unregister VM services: {}", e);
-        vm_println!(
-            "{}",
-            msg!(
-                MESSAGES.common.services_cleanup_failed,
-                error = e.to_string()
-            )
-        );
+        vm_warning!("Service cleanup failed: {e}");
         // Don't fail the operation if service cleanup fails
     } else {
-        vm_println!("{}", MESSAGES.common.services_cleaned);
+        vm_success!("Services cleaned up");
     }
     Ok(())
 }
@@ -142,5 +143,21 @@ pub(super) fn print_vm_runtime_details(config: &VmConfig, include_ports: bool) {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::has_enabled_services;
+    use vm_config::{config::VmConfig, GlobalConfig};
+
+    #[test]
+    fn enabled_service_guard_includes_global_configuration() {
+        let config = VmConfig::default();
+        let mut global = GlobalConfig::default();
+
+        assert!(!has_enabled_services(&config, &global));
+        global.services.postgresql.enabled = true;
+        assert!(has_enabled_services(&config, &global));
     }
 }

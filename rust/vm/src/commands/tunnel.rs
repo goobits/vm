@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::process::Command as StdCommand;
 use tracing::{debug, warn};
 use vm_config::{config::VmConfig, GlobalConfig};
-use vm_core::vm_println;
+use vm_core::{vm_hint, vm_println, vm_success, vm_warning};
 use vm_platform::platform;
 use vm_provider::Provider;
 
@@ -126,13 +126,13 @@ impl TunnelManager {
         tunnels.insert(host_port, tunnel_info);
         self.save_tunnels(&tunnels)?;
 
-        vm_println!(
-            "✓ Tunnel active: localhost:{} → {}:{}",
+        vm_success!(
+            "Tunnel active: localhost:{} -> {}:{}",
             host_port,
             container_name,
             container_port
         );
-        vm_println!("  Stop with: vm tunnel stop {}", host_port);
+        vm_hint!("Stop with: vm tunnel stop {host_port}");
 
         Ok(())
     }
@@ -162,8 +162,8 @@ impl TunnelManager {
         if let Some(tunnel) = tunnels.remove(&host_port) {
             stop_relay_container(&self.executable, &tunnel.relay_container_id)?;
             self.save_tunnels(&tunnels)?;
-            vm_println!(
-                "✓ Stopped tunnel: localhost:{} → {}:{}",
+            vm_success!(
+                "Stopped tunnel: localhost:{} -> {}:{}",
                 tunnel.host_port,
                 tunnel.container_name,
                 tunnel.container_port
@@ -201,10 +201,11 @@ impl TunnelManager {
                         "Failed to stop relay container {}: {}",
                         tunnel.relay_container_id, e
                     );
+                    vm_warning!("Failed to stop tunnel on port {}: {}", tunnel.host_port, e);
                 } else {
                     stopped_count += 1;
-                    vm_println!(
-                        "✓ Stopped: localhost:{} → {}:{}",
+                    vm_success!(
+                        "Stopped: localhost:{} -> {}:{}",
                         tunnel.host_port,
                         tunnel.container_name,
                         tunnel.container_port
@@ -418,14 +419,14 @@ pub fn handle_tunnel_list(
         } else {
             vm_println!("No active tunnels");
         }
-        vm_println!("\n💡 Create a tunnel with: vm tunnel add <host>:<container>");
+        vm_hint!("Create one with: vm tunnel add <host>:<container>");
         return Ok(());
     }
 
-    vm_println!("🔀 Active Tunnels\n");
+    vm_println!("Active tunnels");
     for tunnel in tunnels {
         vm_println!(
-            "  localhost:{} → {}:{}",
+            "  localhost:{} -> {}:{}",
             tunnel.host_port,
             tunnel.container_name,
             tunnel.container_port
@@ -461,7 +462,7 @@ pub fn handle_tunnel_stop(
         if count == 0 {
             vm_println!("No tunnels to stop");
         } else {
-            vm_println!("\n✓ Stopped {} tunnel(s)", count);
+            vm_success!("Stopped {count} tunnel(s)");
         }
     } else if let Some(host_port) = port {
         // Stop specific tunnel

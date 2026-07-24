@@ -4,7 +4,6 @@ use std::net::TcpListener;
 use std::path::PathBuf;
 use tracing::warn;
 use vm_core::error::{Result, VmError};
-use vm_core::vm_error;
 
 /// Validate box spec configurations are compatible with the provider
 pub fn validate_box_spec(config: &VmConfig, provider: &str) -> Vec<String> {
@@ -133,9 +132,6 @@ impl ConfigValidator {
         if let Some(provider) = &self.config.provider {
             let errors = validate_box_spec(&self.config, provider);
             if !errors.is_empty() {
-                for error in &errors {
-                    vm_error!("{}", error);
-                }
                 return Err(vm_core::error::VmError::Config(errors.join("; ")));
             }
         }
@@ -150,13 +146,9 @@ impl ConfigValidator {
                         .chars()
                         .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
                 if !is_valid {
-                    vm_error!(
-                        "Invalid project name: {}. Must contain only alphanumeric characters, dashes, and underscores",
-                        name
-                    );
-                    return Err(vm_core::error::VmError::Config(
-                        "Invalid project name".to_string(),
-                    ));
+                    return Err(vm_core::error::VmError::Config(format!(
+                        "Invalid project name '{name}': use only alphanumeric characters, dashes, and underscores"
+                    )));
                 }
             }
 
@@ -166,19 +158,17 @@ impl ConfigValidator {
                         .chars()
                         .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.');
                 if !is_valid {
-                    vm_error!("Invalid hostname: {}. Must be a valid hostname", hostname);
-                    return Err(vm_core::error::VmError::Config(
-                        "Invalid hostname".to_string(),
-                    ));
+                    return Err(vm_core::error::VmError::Config(format!(
+                        "Invalid hostname '{hostname}'"
+                    )));
                 }
             }
 
             if let Some(path) = &project.workspace_path {
                 if !path.starts_with('/') {
-                    vm_error!("Workspace path must be absolute: {}", path);
-                    return Err(vm_core::error::VmError::Config(
-                        "Workspace path must be absolute".to_string(),
-                    ));
+                    return Err(vm_core::error::VmError::Config(format!(
+                        "Workspace path must be absolute: {path}"
+                    )));
                 }
             }
         }
@@ -224,16 +214,14 @@ impl ConfigValidator {
 
         if let Some(range) = &self.config.ports.range {
             if range.len() != 2 {
-                vm_error!("Invalid port range: must have exactly 2 elements [start, end]");
                 return Err(vm_core::error::VmError::Config(
                     "Invalid port range: must have exactly 2 elements".to_string(),
                 ));
             }
             let (start, end) = (range[0], range[1]);
             if start == 0 {
-                vm_error!("Invalid port range: port 0 is reserved");
                 return Err(vm_core::error::VmError::Config(
-                    "Port 0 is reserved".to_string(),
+                    "Invalid port range: port 0 is reserved".to_string(),
                 ));
             }
             crate::ports::PortRange::new(start, end)?;
@@ -255,14 +243,9 @@ impl ConfigValidator {
         for (name, service) in &self.config.services {
             if let Some(port) = service.port {
                 if port == 0 {
-                    vm_error!(
-                        "Invalid port {} for service {}: port 0 is reserved",
-                        port,
-                        name
-                    );
-                    return Err(vm_core::error::VmError::Config(
-                        "Invalid port: port 0 is reserved".to_string(),
-                    ));
+                    return Err(vm_core::error::VmError::Config(format!(
+                        "Invalid port {port} for service {name}: port 0 is reserved"
+                    )));
                 }
             }
         }
@@ -274,19 +257,17 @@ impl ConfigValidator {
         if let Some(versions) = &self.config.versions {
             if let Some(node) = &versions.node {
                 if !Self::is_valid_version(node) {
-                    vm_error!("Invalid Node.js version: {}", node);
-                    return Err(vm_core::error::VmError::Config(
-                        "Invalid Node.js version".to_string(),
-                    ));
+                    return Err(vm_core::error::VmError::Config(format!(
+                        "Invalid Node.js version: {node}"
+                    )));
                 }
             }
 
             if let Some(python) = &versions.python {
                 if !Self::is_valid_version(python) {
-                    vm_error!("Invalid Python version: {}", python);
-                    return Err(vm_core::error::VmError::Config(
-                        "Invalid Python version".to_string(),
-                    ));
+                    return Err(vm_core::error::VmError::Config(format!(
+                        "Invalid Python version: {python}"
+                    )));
                 }
             }
         }
@@ -319,10 +300,6 @@ impl ConfigValidator {
             for network_name in &networking.networks {
                 // Docker network names must be 1-64 characters
                 if network_name.is_empty() || network_name.len() > 64 {
-                    vm_error!(
-                        "Invalid network name '{}': must be 1-64 characters long",
-                        network_name
-                    );
                     return Err(VmError::Config(format!(
                         "Invalid network name '{}': must be 1-64 characters long",
                         network_name
@@ -345,10 +322,6 @@ impl ConfigValidator {
                     .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.');
 
                 if !first_char_valid || !rest_valid {
-                    vm_error!(
-                        "Invalid network name '{}': must start with alphanumeric or underscore, and contain only alphanumeric, hyphens, underscores, and periods",
-                        network_name
-                    );
                     return Err(VmError::Config(format!(
                         "Invalid network name '{}': must start with alphanumeric or underscore, and contain only alphanumeric, hyphens, underscores, and periods",
                         network_name

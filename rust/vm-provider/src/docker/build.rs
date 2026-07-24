@@ -74,7 +74,7 @@ impl<'a> BuildOperations<'a> {
 
         // Retry transient network failures with exponential backoff. We keep
         // the attempt count small so a genuinely unreachable registry doesn't
-        // stall `vm create` for minutes; permanent errors (rate limits, auth,
+        // stall environment creation for minutes; permanent errors (rate limits, auth,
         // missing manifests) short-circuit immediately.
         const MAX_ATTEMPTS: u32 = 3;
         let mut last_stderr = String::new();

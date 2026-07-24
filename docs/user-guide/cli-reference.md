@@ -16,7 +16,8 @@ USAGE:
 | Run a container | `vm run container as redis` |
 | List this project's environments | `vm list` |
 | List every environment | `vm list --all` |
-| Open a shell | `vm shell backend` |
+| Open the default environment | `vm ssh` or `vm shell` |
+| Start the default environment | `vm start` |
 | Open an unnamed macOS environment | `vm shell mac` |
 | Inspect one environment | `vm status container` |
 | Stop an environment | `vm stop backend` |
@@ -52,11 +53,30 @@ vm run container as redis-cache --image redis:7
 vm run linux as secure-node --provider tart
 ```
 
+## Target Selection
+
+Lifecycle and interaction commands accept an environment name but do not
+require one. With no name, `vm` chooses in this order:
+
+1. The project's configured default profile, when profiles are present.
+2. The canonical project environment for that configuration.
+3. The only matching project environment when the canonical one is absent.
+4. An interactive choice when multiple matches remain.
+
+Non-interactive commands fail with the candidate names instead of guessing.
+Installed providers do not cause a prompt by themselves.
+
+`vm start docker` targets an environment or configured profile named `docker`;
+it does not select Docker merely because that provider is installed. Use
+`--profile docker` explicitly for a profile or `vm run ... --provider docker`
+for an advanced provider override.
+
 ## Interaction
 
 ```bash
 vm shell [name]
-vm exec <name> -- <command>
+vm ssh [name]
+vm exec [name] -- <command>
 vm logs [name] [--follow] [--tail <n>]
 vm copy <source> <destination>
 ```
@@ -70,6 +90,10 @@ vm exec backend -- npm test
 vm logs backend --follow
 vm copy ./config.json backend:/workspace/config.json
 ```
+
+`vm shell`, `vm ssh`, and `vm exec` start an existing stopped environment and
+wait until it is ready. They never create or rebuild one. `vm logs` and
+`vm copy` do not change lifecycle state.
 
 Targeted container status reports the generated Compose path, writable-layer
 size, named-volume usage, `/tmp` usage, memory and PID peaks, mounts, logging,

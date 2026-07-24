@@ -23,4 +23,3 @@ walkdir = { workspace = true }
 
 vm-config = { path = "../vm-config" }
 vm-core = { path = "../vm-core" }
-vm-messages = { path = "../vm-messages" }

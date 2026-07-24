@@ -14,7 +14,7 @@ use crate::schema;
 use crate::yaml::core::CoreOperations;
 use vm_core::error::Result;
 use vm_core::msg;
-use vm_core::{vm_error, vm_println, vm_success};
+use vm_core::{vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 
 /// Set a configuration value using dot notation with schema-aware type detection.
@@ -114,7 +114,6 @@ fn validate_default_profile(value: &Value, profile_name: Option<&str>) -> Result
 
 fn set_nested_field(value: &mut Value, field: &str, new_value: Value) -> Result<()> {
     if field.is_empty() {
-        vm_error!("Empty field path");
         return Err(vm_core::error::VmError::Config(
             "Empty field path provided. Specify a field name like 'provider' or 'project.name'"
                 .to_string(),
@@ -134,7 +133,6 @@ fn set_nested_field_recursive(value: &mut Value, parts: &[&str], new_value: Valu
                 return Ok(());
             }
             _ => {
-                vm_error!("Cannot set field on non-object");
                 return Err(vm_core::error::VmError::Config(format!(
                     "Cannot set field '{}' on non-object value. Field path may be invalid",
                     parts[0]
@@ -156,10 +154,10 @@ fn set_nested_field_recursive(value: &mut Value, parts: &[&str], new_value: Valu
             }
         }
         _ => {
-            vm_error!("Cannot navigate field '{}' on non-object", parts[0]);
-            return Err(vm_core::error::VmError::Config(
-                "Cannot navigate field on non-object".to_string(),
-            ));
+            return Err(vm_core::error::VmError::Config(format!(
+                "Cannot navigate field '{}' on non-object value",
+                parts[0]
+            )));
         }
     }
 

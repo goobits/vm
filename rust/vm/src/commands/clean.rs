@@ -11,7 +11,7 @@ use crate::error::{VmError, VmResult};
 use std::process::Command as StdCommand;
 use std::time::{Duration, SystemTime};
 use tracing::debug;
-use vm_core::{vm_println, vm_success};
+use vm_core::{vm_println, vm_progress, vm_success};
 
 /// Results from cleanup operations
 #[derive(Default)]
@@ -24,26 +24,19 @@ pub struct CleanupResults {
 }
 
 /// Handle cleanup for `vm doctor --clean`
-pub async fn handle_clean(dry_run: bool, verbose: bool) -> VmResult<()> {
+pub async fn handle_clean() -> VmResult<()> {
     let executable = detect_container_runtime();
-
-    if dry_run {
-        vm_println!("🔍 Dry run mode - showing what would be cleaned\n");
-    } else {
-        vm_println!("🧹 Cleaning up unused resources...\n");
-    }
+    vm_progress!("Cleaning unused resources...");
 
     let results = CleanupResults {
-        volumes: clean_dangling_volumes(&executable, dry_run, verbose)?,
-        temp_containers: clean_stopped_temp_containers(&executable, dry_run, verbose)?,
-        log_files: clean_old_logs(dry_run, verbose, 30)?,
-        dangling_images: clean_dangling_images(&executable, dry_run, verbose)?,
-        build_cache_mb: clean_build_cache(&executable, dry_run, verbose)?,
+        volumes: clean_dangling_volumes(&executable)?,
+        temp_containers: clean_stopped_temp_containers(&executable)?,
+        log_files: clean_old_logs(30)?,
+        dangling_images: clean_dangling_images(&executable)?,
+        build_cache_mb: clean_build_cache(&executable)?,
     };
 
-    // Print summary
-    print_cleanup_summary(&results, dry_run);
-
+    print_cleanup_summary(&results);
     Ok(())
 }
 
@@ -54,7 +47,7 @@ const MANAGED_DISPOSABLE_VOLUME_FILTERS: [&str; 3] = [
 ];
 
 /// Clean dangling volumes that VM explicitly marked as disposable.
-fn clean_dangling_volumes(executable: &str, dry_run: bool, verbose: bool) -> VmResult<u32> {
+fn clean_dangling_volumes(executable: &str) -> VmResult<u32> {
     debug!("Cleaning VM-managed disposable volumes");
 
     let mut command = StdCommand::new(executable);
@@ -77,55 +70,33 @@ fn clean_dangling_volumes(executable: &str, dry_run: bool, verbose: bool) -> VmR
         .filter(|s| !s.is_empty())
         .collect();
 
-    let count = volumes.len() as u32;
-
-    if count == 0 {
-        if verbose {
-            vm_println!("  Volumes: No managed disposable volumes found");
-        }
+    if volumes.is_empty() {
         return Ok(0);
     }
 
-    if dry_run {
-        vm_println!(
-            "  Volumes: Would remove {} managed disposable volume(s)",
-            count
-        );
-        if verbose {
-            for vol in &volumes {
-                vm_println!("    - {}", vol);
-            }
-        }
-    } else {
-        let mut removed = 0;
-        for vol in &volumes {
-            let Ok(output) = StdCommand::new(executable)
-                .args(["volume", "rm", vol])
-                .output()
-            else {
-                continue;
-            };
-            if !output.status.success() {
-                continue;
-            }
-
+    let mut removed = 0;
+    for volume in volumes {
+        let Ok(output) = StdCommand::new(executable)
+            .args(["volume", "rm", volume])
+            .output()
+        else {
+            continue;
+        };
+        if output.status.success() {
             removed += 1;
-            if verbose {
-                vm_println!("    Removed volume: {}", vol);
-            }
         }
+    }
+    if removed > 0 {
         vm_println!(
             "  Volumes: Removed {} managed disposable volume(s)",
             removed
         );
-        return Ok(removed);
     }
-
-    Ok(count)
+    Ok(removed)
 }
 
 /// Clean stopped temp containers
-fn clean_stopped_temp_containers(executable: &str, dry_run: bool, verbose: bool) -> VmResult<u32> {
+fn clean_stopped_temp_containers(executable: &str) -> VmResult<u32> {
     debug!("Cleaning stopped temp containers");
 
     // Look for containers with vm-temp label that are stopped
@@ -161,43 +132,28 @@ fn clean_stopped_temp_containers(executable: &str, dry_run: bool, verbose: bool)
         })
         .collect();
 
-    let count = containers.len() as u32;
-
-    if count == 0 {
-        if verbose {
-            vm_println!("  Temp containers: No stopped temp containers found");
-        }
+    if containers.is_empty() {
         return Ok(0);
     }
 
-    if dry_run {
-        vm_println!(
-            "  Temp containers: Would remove {} stopped container(s)",
-            count
-        );
-        if verbose {
-            for (id, name) in &containers {
-                vm_println!("    - {} ({})", name, id);
-            }
+    let mut removed = 0;
+    for (id, _) in containers {
+        if StdCommand::new(executable)
+            .args(["rm", id])
+            .output()
+            .is_ok_and(|output| output.status.success())
+        {
+            removed += 1;
         }
-    } else {
-        for (id, name) in &containers {
-            let result = StdCommand::new(executable).args(["rm", id]).output();
-
-            if let Ok(out) = result {
-                if out.status.success() && verbose {
-                    vm_println!("    Removed container: {}", name);
-                }
-            }
-        }
-        vm_println!("  Temp containers: Removed {} container(s)", count);
     }
-
-    Ok(count)
+    if removed > 0 {
+        vm_println!("  Temp containers: Removed {removed} container(s)");
+    }
+    Ok(removed)
 }
 
 /// Clean old log files
-fn clean_old_logs(dry_run: bool, verbose: bool, days: u32) -> VmResult<u32> {
+fn clean_old_logs(days: u32) -> VmResult<u32> {
     debug!("Cleaning old log files (older than {} days)", days);
 
     let logs_dir = match vm_core::user_paths::user_data_dir() {
@@ -206,9 +162,6 @@ fn clean_old_logs(dry_run: bool, verbose: bool, days: u32) -> VmResult<u32> {
     };
 
     if !logs_dir.exists() {
-        if verbose {
-            vm_println!("  Logs: No logs directory found");
-        }
         return Ok(0);
     }
 
@@ -236,36 +189,20 @@ fn clean_old_logs(dry_run: bool, verbose: bool, days: u32) -> VmResult<u32> {
             Err(_) => continue,
         };
 
-        if modified < cutoff {
-            if dry_run {
-                count += 1;
-                if verbose {
-                    vm_println!("    Would remove: {}", path.display());
-                }
-            } else if std::fs::remove_file(&path).is_ok() {
-                count += 1;
-                if verbose {
-                    vm_println!("    Removed: {}", path.display());
-                }
-            }
+        if modified < cutoff && std::fs::remove_file(&path).is_ok() {
+            count += 1;
         }
     }
 
     if count > 0 {
-        if dry_run {
-            vm_println!("  Logs: Would remove {} old log file(s)", count);
-        } else {
-            vm_println!("  Logs: Removed {} old log file(s)", count);
-        }
-    } else if verbose {
-        vm_println!("  Logs: No old log files found");
+        vm_println!("  Logs: Removed {count} old log file(s)");
     }
 
     Ok(count)
 }
 
 /// Clean dangling Docker images
-fn clean_dangling_images(executable: &str, dry_run: bool, verbose: bool) -> VmResult<u32> {
+fn clean_dangling_images(executable: &str) -> VmResult<u32> {
     debug!("Cleaning dangling images");
 
     // Get count of dangling images
@@ -285,44 +222,25 @@ fn clean_dangling_images(executable: &str, dry_run: bool, verbose: bool) -> VmRe
         .count() as u32;
 
     if count == 0 {
-        if verbose {
-            vm_println!("  Images: No dangling images found");
-        }
         return Ok(0);
     }
 
-    if dry_run {
-        vm_println!("  Images: Would remove {} dangling image(s)", count);
+    let removed = StdCommand::new(executable)
+        .args(["image", "prune", "-f"])
+        .output()
+        .is_ok_and(|output| output.status.success());
+    if removed {
+        vm_println!("  Images: Removed {count} dangling image(s)");
+        Ok(count)
     } else {
-        let prune_output = StdCommand::new(executable)
-            .args(["image", "prune", "-f"])
-            .output();
-
-        if let Ok(out) = prune_output {
-            if out.status.success() {
-                vm_println!("  Images: Removed {} dangling image(s)", count);
-            }
-        }
+        Ok(0)
     }
-
-    Ok(count)
 }
 
 /// Clean Docker build cache
-fn clean_build_cache(executable: &str, dry_run: bool, verbose: bool) -> VmResult<u64> {
+fn clean_build_cache(executable: &str) -> VmResult<u64> {
     debug!("Cleaning build cache");
 
-    // Get build cache size
-    let output = StdCommand::new(executable)
-        .args(["system", "df", "--format", "{{.Size}}"])
-        .output()
-        .map_err(|e| VmError::general(e, "Failed to get Docker system info"))?;
-
-    if !output.status.success() {
-        return Ok(0);
-    }
-
-    // Parse build cache size (rough estimate from system df)
     let df_output = StdCommand::new(executable)
         .args([
             "builder",
@@ -346,27 +264,19 @@ fn clean_build_cache(executable: &str, dry_run: bool, verbose: bool) -> VmResult
     };
 
     if cache_mb == 0 {
-        if verbose {
-            vm_println!("  Build cache: No reclaimable cache found");
-        }
         return Ok(0);
     }
 
-    if dry_run {
-        vm_println!("  Build cache: Would reclaim ~{} MB", cache_mb);
+    let reclaimed = StdCommand::new(executable)
+        .args(["builder", "prune", "-f"])
+        .output()
+        .is_ok_and(|output| output.status.success());
+    if reclaimed {
+        vm_println!("  Build cache: Reclaimed ~{cache_mb} MB");
+        Ok(cache_mb)
     } else {
-        let prune_output = StdCommand::new(executable)
-            .args(["builder", "prune", "-f"])
-            .output();
-
-        if let Ok(out) = prune_output {
-            if out.status.success() {
-                vm_println!("  Build cache: Reclaimed ~{} MB", cache_mb);
-            }
-        }
+        Ok(0)
     }
-
-    Ok(cache_mb)
 }
 
 /// Parse Docker size string to MB
@@ -400,26 +310,14 @@ fn detect_container_runtime() -> String {
 }
 
 /// Print cleanup summary
-fn print_cleanup_summary(results: &CleanupResults, dry_run: bool) {
+fn print_cleanup_summary(results: &CleanupResults) {
     let total =
         results.volumes + results.temp_containers + results.log_files + results.dangling_images;
 
-    vm_println!("");
-
-    if dry_run {
-        if total == 0 && results.build_cache_mb == 0 {
-            vm_println!("✓ Nothing to clean - system is already tidy!");
-        } else {
-            vm_println!("📋 Dry run complete: {} items would be removed", total);
-            if results.build_cache_mb > 0 {
-                vm_println!("   Plus ~{} MB of build cache", results.build_cache_mb);
-            }
-            vm_println!("\n💡 Run without --dry-run to actually clean");
-        }
-    } else if total == 0 && results.build_cache_mb == 0 {
-        vm_success!("✓ Nothing to clean - system is already tidy!");
+    if total == 0 && results.build_cache_mb == 0 {
+        vm_success!("Nothing to clean; system is already tidy");
     } else {
-        vm_success!("✓ Cleanup complete!");
+        vm_success!("Cleanup complete");
         vm_println!(
             "   Removed: {} volumes, {} containers, {} logs, {} images",
             results.volumes,

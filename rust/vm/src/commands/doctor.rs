@@ -4,163 +4,165 @@
 //! optionally attempts to fix common issues.
 
 use anyhow::Result;
-use std::process::Command;
-use vm_core::{vm_error, vm_println, vm_success};
+use std::process::{Command, Stdio};
+use vm_core::{vm_hint, vm_println, vm_progress, vm_success, vm_warning};
 use vm_provider::docker::validate_docker_environment;
 
-/// Run diagnostics without attempting fixes
-#[allow(dead_code)]
-pub fn run() -> Result<()> {
-    run_diagnostics(false)
-}
-
 /// Run diagnostics with optional auto-fix
-pub fn run_with_fix(fix: bool) -> Result<()> {
-    run_diagnostics(fix)
+pub fn run_with_fix(fix: bool, provider: &str) -> Result<()> {
+    run_diagnostics(fix, provider)
 }
 
 /// Internal diagnostic runner
-fn run_diagnostics(fix: bool) -> Result<()> {
-    vm_println!("🔍 Running diagnostics...\n");
+fn run_diagnostics(fix: bool, provider: &str) -> Result<()> {
+    vm_progress!("Running diagnostics...");
     let mut all_ok = true;
     let mut issues_fixed = 0;
 
-    // Check Rust installation
-    print!("  Rust installed... ");
-    if Command::new("rustc").arg("--version").status().is_ok() {
-        println!("✓");
+    if Command::new("rustc")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+    {
+        vm_println!("  Rust: ok");
     } else {
-        println!("⚠️  (not required, but needed for `cargo install goobits-vm`)");
+        vm_println!("  Rust: unavailable (optional)");
     }
 
-    // Check Docker (critical)
-    print!("  Docker environment... ");
-    match validate_docker_environment("docker") {
-        Ok(_) => {
-            println!("✓");
-        }
+    match validate_provider_environment(provider) {
+        Ok(_) => vm_println!("  {}: ok", provider_label(provider)),
         Err(e) => {
-            all_ok = false;
-            println!("❌");
-
             let error_str = e.to_string();
+            let mut resolved = false;
             if error_str.contains("not installed") {
-                vm_error!("\nDocker is not installed.");
-                vm_println!("  Please install Docker from https://docs.docker.com/get-docker/");
-            } else if error_str.contains("not running") {
-                vm_error!("\nDocker is not running.");
-                if fix {
-                    if try_start_docker() {
-                        vm_success!("  ✓ Docker started successfully");
-                        issues_fixed += 1;
-                        all_ok = true;
-                    } else {
-                        vm_println!(
-                            "  Please start Docker Desktop or run: sudo systemctl start docker"
-                        );
-                    }
-                } else {
-                    vm_println!(
-                        "  Please start Docker Desktop or run: sudo systemctl start docker"
-                    );
-                    vm_println!("  💡 Or run: vm doctor --fix");
+                vm_println!("  {}: not installed", provider_label(provider));
+                match provider {
+                    "tart" => vm_hint!("Install Tart from https://tart.run/"),
+                    "podman" => vm_hint!("Install Podman from https://podman.io/docs/installation"),
+                    _ => vm_hint!("Install Docker from https://docs.docker.com/get-docker/"),
                 }
-            } else if error_str.contains("permission") {
-                vm_error!("\nDocker permission denied.");
-                vm_println!("  Your user does not have permission to access the Docker socket.");
+            } else if error_str.contains("not running") {
+                vm_println!("  {}: not running", provider_label(provider));
+                if fix && provider == "docker" {
+                    if try_start_docker() {
+                        vm_println!("  Docker: started");
+                        issues_fixed += 1;
+                        resolved = true;
+                    } else {
+                        vm_hint!("Start Docker Desktop or run `sudo systemctl start docker`");
+                    }
+                } else if provider == "podman" {
+                    vm_hint!("Start Podman with `podman machine start`");
+                } else {
+                    vm_hint!("Start Docker Desktop, or run `vm doctor --fix`");
+                }
+            } else if error_str.contains("permission") && provider == "docker" {
+                vm_println!("  Docker: permission denied");
                 if fix {
                     if try_fix_docker_permissions() {
-                        vm_success!("  ✓ Added user to docker group");
-                        vm_println!("  ⚠️  You may need to log out and log back in for this change to take effect.");
+                        vm_println!("  Docker: added user to docker group");
+                        vm_warning!("Log out and back in before retrying Docker");
                         issues_fixed += 1;
+                        resolved = true;
                     } else {
-                        vm_println!(
-                            "  Run the following command to add your user to the 'docker' group:"
-                        );
-                        vm_println!("\n    sudo usermod -aG docker $USER && newgrp docker\n");
+                        vm_hint!("Run `sudo usermod -aG docker $USER && newgrp docker`");
                     }
                 } else {
-                    vm_println!(
-                        "  Run the following command to add your user to the 'docker' group:"
-                    );
-                    vm_println!("\n    sudo usermod -aG docker $USER && newgrp docker\n");
-                    vm_println!("  💡 Or run: vm doctor --fix");
+                    vm_hint!("Run `vm doctor --fix`");
                 }
             } else {
                 return Err(e.into());
             }
-        }
-    }
-
-    // Check SSH key permissions
-    print!("  SSH key permissions... ");
-    match check_ssh_permissions() {
-        Ok(_) => {
-            println!("✓");
-        }
-        Err(msg) => {
-            all_ok = false;
-            println!("⚠️");
-            vm_println!("  {}", msg);
-            if fix {
-                if try_fix_ssh_permissions() {
-                    vm_success!("  ✓ Fixed SSH key permissions");
-                    issues_fixed += 1;
-                    all_ok = true;
-                }
-            } else {
-                vm_println!("  💡 Run: vm doctor --fix");
+            if !resolved {
+                all_ok = false;
             }
         }
     }
 
-    // Check common port availability
-    print!("  Common ports available... ");
-    let port_conflicts = check_port_conflicts();
-    if port_conflicts.is_empty() {
-        println!("✓");
-    } else {
-        println!("⚠️");
-        vm_println!("  Ports in use: {:?}", port_conflicts);
-        vm_println!("  These ports may conflict with VM services");
-        // We don't auto-fix port conflicts as it could kill user processes
+    match check_ssh_permissions() {
+        Ok(_) => vm_println!("  SSH permissions: ok"),
+        Err(msg) => {
+            vm_println!("  SSH permissions: {msg}");
+            if fix && try_fix_ssh_permissions() {
+                vm_println!("  SSH permissions: fixed");
+                issues_fixed += 1;
+            } else if fix {
+                vm_warning!("SSH permissions were not changed");
+            }
+        }
     }
 
-    // Check VM binary (implicit - we're running it)
-    print!("  VM binary... ");
-    println!("✓");
+    let port_conflicts = check_port_conflicts();
+    if port_conflicts.is_empty() {
+        vm_println!("  Common ports: available");
+    } else {
+        vm_println!("  Common ports in use: {:?}", port_conflicts);
+    }
 
-    // Check vm config directory
-    print!("  Config directory... ");
+    vm_println!("  vm binary: ok");
+
     match check_config_directory() {
-        Ok(_) => {
-            println!("✓");
-        }
+        Ok(_) => vm_println!("  Config directory: ok"),
         Err(msg) => {
-            println!("⚠️");
-            vm_println!("  {}", msg);
+            vm_println!("  Config directory: {msg}");
             if fix && try_create_config_directory() {
-                vm_success!("  ✓ Created config directory");
+                vm_println!("  Config directory: created");
                 issues_fixed += 1;
             }
         }
     }
 
-    // Summary
-    println!();
     if all_ok {
-        vm_success!("✅ All checks passed! VM tool is ready.");
-    } else if fix && issues_fixed > 0 {
-        vm_success!("✅ Fixed {} issue(s)!", issues_fixed);
-        vm_println!("   Some issues may require logging out and back in.");
+        vm_success!("All checks passed; vm is ready");
     } else {
-        vm_error!("❌ Some checks failed. Please address the issues above.");
-        if !fix {
-            vm_println!("\n💡 Tip: Run 'vm doctor --fix' to attempt automatic fixes");
+        if issues_fixed > 0 {
+            vm_println!("  Fixed {issues_fixed} issue(s)");
+            vm_warning!("Some issues remain");
         }
+        if !fix {
+            vm_hint!("Run `vm doctor --fix` to attempt repairs");
+        }
+        anyhow::bail!("Diagnostics found unresolved issues");
     }
 
     Ok(())
+}
+
+fn provider_label(provider: &str) -> &str {
+    match provider {
+        "docker" => "Docker",
+        "podman" => "Podman",
+        "tart" => "Tart",
+        other => other,
+    }
+}
+
+fn validate_provider_environment(provider: &str) -> vm_provider::VmResult<()> {
+    match provider {
+        "docker" | "podman" => validate_docker_environment(provider),
+        "tart" => {
+            let status = Command::new("tart")
+                .arg("--version")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .map_err(|error| {
+                    vm_provider::VmError::Dependency(format!("tart is not installed: {error}"))
+                })?;
+            if status.success() {
+                Ok(())
+            } else {
+                Err(vm_provider::VmError::Provider(
+                    "tart is not available".to_string(),
+                ))
+            }
+        }
+        other => Err(vm_provider::VmError::Provider(format!(
+            "Unknown provider '{other}'"
+        ))),
+    }
 }
 
 /// Check SSH directory and key permissions

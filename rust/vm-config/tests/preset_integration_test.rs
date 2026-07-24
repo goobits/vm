@@ -1,7 +1,7 @@
 //! Integration tests for preset system
 //!
 //! This test suite validates the preset refactor, specifically:
-//! 1. Box preset initialization (vm init with preset)
+//! 1. Box preset initialization (vm-config init with preset)
 //! 2. Provision preset merging (vm config preset apply)
 //! 3. Preset filtering in different contexts
 //! 4. Project name derivation from directory
@@ -217,11 +217,11 @@ fn test_init_with_box_preset() -> Result<()> {
     // Arrange: Create vibe box preset plugin
     fixture.create_vibe_preset_plugin()?;
 
-    // Act: Simulate 'vm init vibe' - load the preset and apply box preset logic
+    // Act: Simulate 'vm-config init vibe' - load the preset and apply box preset logic
     let detector = fixture.create_detector();
     let vibe_config = detector.load_preset("vibe")?;
 
-    // Build minimal config as vm init would for a box preset
+    // Build minimal config as vm-config init would for a box preset
     // Set project name from directory
     let mut config = VmConfig {
         project: Some(ProjectConfig {
@@ -474,7 +474,7 @@ fn test_box_preset_not_in_config_list() -> Result<()> {
 
 #[test]
 fn test_box_preset_in_init_list() -> Result<()> {
-    // Validates that list_all_presets() (used by 'vm init')
+    // Validates that list_all_presets() (used by 'vm-config init')
     //includes BOTH box and provision presets
 
     let _guard = TEST_MUTEX

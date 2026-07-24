@@ -34,18 +34,19 @@ Provider names are escape hatches. Day to day, think in `mac`, `linux`, and `con
 
 ```bash
 vm run linux as api
-vm list
-vm shell api
-vm exec api -- cargo test
-vm logs api --follow
-vm copy ./config.json api:/workspace/config.json
-vm restart api
-vm stop api
-vm remove api
+vm ssh
+vm exec -- cargo test
+vm logs --follow
+vm restart
+vm stop
 ```
 
 `vm run` creates the environment if it does not exist and starts it if it is stopped.
+`vm shell` (or `vm ssh`) and `vm exec` start an existing stopped environment
+before connecting. Omitting a name uses the project default.
 `vm list` lists environments for the current project. Use `vm list --all` for the global inventory.
+See [target selection](docs/user-guide/cli-reference.md#target-selection) when a
+project has multiple environments.
 
 ## Naming
 

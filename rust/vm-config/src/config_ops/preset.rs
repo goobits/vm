@@ -118,7 +118,7 @@ fn apply_preset_to_config(
             VmConfig::default()
         }
     } else {
-        // Bug #1 fix: If no vm.yaml exists, run full init first (reuse vm init logic)
+        // If no vm.yaml exists, reuse the vm-config initialization path.
         if !config_existed {
             vm_println!("⚠️  No vm.yaml found. Initializing project first...");
             vm_println!("");

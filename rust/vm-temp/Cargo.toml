@@ -20,10 +20,6 @@ vm-config = { path = "../vm-config" }
 fs2 = { workspace = true }
 tempfile = { workspace = true }
 
-[features]
-default = []
-structured-output = []
-
 [package.metadata.cargo-machete]
 ignored = [
     "serde"        # Used transitively via serde_yaml_ng and state serialization

@@ -117,9 +117,9 @@ fn print_already_exists_message(target_path: &Path) {
     info!("   📁 {}", target_path.display());
     info!("");
     info!("{}", MESSAGES.service.init_options_hint);
-    info!("   rm vm.yaml && vm init           # Start fresh");
-    info!("   vm init --file other.yaml      # Create elsewhere");
-    info!("   vm create                       # Use existing config");
+    info!("   rm vm.yaml && vm-config init           # Start fresh");
+    info!("   vm-config init --file other.yaml        # Create elsewhere");
+    info!("   vm run linux                    # Use existing config");
 }
 
 /// Sanitize directory name for use as project name
@@ -566,7 +566,7 @@ fn print_success_message(
     info!("");
     info!("{}", MESSAGES.service.init_success);
     info!("{}", MESSAGES.service.init_next_steps);
-    info!("   vm create    # Launch your development environment");
+    info!("   vm run linux # Launch your development environment");
     info!("   vm --help    # View all available commands");
     info!("");
     info!("📁 {}", target_path.display());

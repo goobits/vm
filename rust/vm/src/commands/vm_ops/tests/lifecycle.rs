@@ -1,10 +1,12 @@
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc, Mutex,
 };
 
 use super::{ensure_running, StartOutcome};
+use crate::commands::vm_ops::interaction::{handle_exec, handle_ssh};
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_provider::{
     InstanceInfo, InstanceState, Provider, ProviderContext, VmError as ProviderError,
@@ -16,6 +18,8 @@ struct FakeProvider {
     state: Arc<Mutex<Option<InstanceState>>>,
     starts: Arc<AtomicUsize>,
     creates: Arc<AtomicUsize>,
+    shells: Arc<AtomicUsize>,
+    execs: Arc<AtomicUsize>,
     fail_start_after_transition: bool,
 }
 
@@ -25,6 +29,8 @@ impl FakeProvider {
             state: Arc::new(Mutex::new(state)),
             starts: Arc::new(AtomicUsize::new(0)),
             creates: Arc::new(AtomicUsize::new(0)),
+            shells: Arc::new(AtomicUsize::new(0)),
+            execs: Arc::new(AtomicUsize::new(0)),
             fail_start_after_transition: false,
         }
     }
@@ -65,10 +71,12 @@ impl Provider for FakeProvider {
     }
 
     fn ssh(&self, _container: Option<&str>, _relative_path: &Path) -> ProviderResult<()> {
+        self.shells.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
     fn exec(&self, _container: Option<&str>, _cmd: &[String]) -> ProviderResult<()> {
+        self.execs.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
@@ -190,5 +198,43 @@ async fn concurrent_start_is_idempotent() {
 
     assert_eq!(outcome, StartOutcome::Started);
     assert_eq!(provider.starts.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.creates.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn shell_starts_a_stopped_environment_before_connecting() {
+    let provider = FakeProvider::new(Some(InstanceState::Stopped));
+
+    handle_ssh(
+        Box::new(provider.clone()),
+        Some("demo-dev"),
+        Some(PathBuf::from(".")),
+        VmConfig::default(),
+        GlobalConfig::default(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(provider.starts.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.shells.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.creates.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn exec_starts_a_stopped_environment_before_running() {
+    let provider = FakeProvider::new(Some(InstanceState::Stopped));
+
+    handle_exec(
+        Box::new(provider.clone()),
+        Some("demo-dev"),
+        vec!["true".to_string()],
+        VmConfig::default(),
+        GlobalConfig::default(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(provider.starts.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.execs.load(Ordering::SeqCst), 1);
     assert_eq!(provider.creates.load(Ordering::SeqCst), 0);
 }

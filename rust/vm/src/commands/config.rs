@@ -10,7 +10,7 @@ use serde_yaml_ng as serde_yaml;
 use vm_config::ports::{PortRange, PortRegistry};
 use vm_config::{config::VmConfig, AppConfig, ConfigOps};
 use vm_core::msg;
-use vm_core::{vm_println, vm_success};
+use vm_core::{vm_println, vm_progress, vm_success, vm_warning};
 use vm_messages::messages::MESSAGES;
 
 fn load_selected_config(
@@ -26,12 +26,8 @@ fn handle_validate_command(config_path: Option<PathBuf>, profile: Option<String>
     let errors = config.validate(true);
 
     if !errors.is_empty() {
-        vm_println!("❌ Configuration validation failed:");
-        for error in &errors {
-            vm_println!("  - {}", error);
-        }
         return Err(VmError::validation(
-            format!("Validation found {} error(s).", errors.len()),
+            format!("Configuration is invalid:\n  - {}", errors.join("\n  - ")),
             None::<String>,
         ));
     }
@@ -146,7 +142,6 @@ fn handle_profile_set(name: &str) -> VmResult<()> {
 /// Handle configuration management commands
 pub fn handle_config_command(
     command: &ConfigSubcommand,
-    dry_run: bool,
     profile: Option<String>,
     config_path: Option<PathBuf>,
 ) -> VmResult<()> {
@@ -160,7 +155,7 @@ pub fn handle_config_command(
             field,
             values,
             global,
-        } => Ok(ConfigOps::set(field, values, *global, dry_run)?),
+        } => Ok(ConfigOps::set(field, values, *global, false)?),
         ConfigSubcommand::Get { field, global } => Ok(ConfigOps::get(field.as_deref(), *global)?),
         ConfigSubcommand::Unset { field, global } => Ok(ConfigOps::unset(field, *global)?),
         ConfigSubcommand::Preset {
@@ -232,30 +227,24 @@ pub fn handle_ports_command(fix: bool) -> VmResult<()> {
         PortRange::parse(&current_port_range).context("Failed to parse current port range")?;
 
     // Only check for conflicts when --fix is specified
-    vm_println!("");
-    vm_println!("{}", MESSAGES.config.ports_checking);
+    vm_progress!("{}", MESSAGES.config.ports_checking);
 
     // Check for conflicts with running Docker containers
     let executable = config.provider.as_deref().unwrap_or("docker");
     let conflicts = check_docker_port_conflicts(executable, &current_range)?;
 
     if conflicts.is_empty() {
-        vm_success!("✅ No port conflicts detected!");
+        vm_success!("No port conflicts detected");
         return Ok(());
     }
 
     warn!("Port conflicts detected:");
     for conflict in &conflicts {
-        vm_println!(
-            "   ⚠️  Port {} is in use by: {}",
-            conflict.port,
-            conflict.container
-        );
+        vm_warning!("Port {} is in use by {}", conflict.port, conflict.container);
     }
 
     // Fix conflicts by finding a new port range
-    vm_println!("");
-    vm_println!("{}", MESSAGES.config.ports_fixing);
+    vm_progress!("{}", MESSAGES.config.ports_fixing);
 
     let registry = PortRegistry::load().context("Failed to load port registry")?;
 

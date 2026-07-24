@@ -201,10 +201,7 @@ pub async fn import_db(db_name: &str, file: &Path) -> VmResult<()> {
 /// Reset a database
 pub async fn reset_db(db_name: &str, force: bool) -> VmResult<()> {
     if !force {
-        vm_core::vm_println!(
-            "⚠️  This will permanently delete all data in the '{}' database.",
-            db_name
-        );
+        vm_core::vm_warning!("This will permanently delete all data in the '{db_name}' database");
         if !confirm_select("Continue?", false)? {
             vm_core::vm_println!("Database reset cancelled.");
             return Ok(());

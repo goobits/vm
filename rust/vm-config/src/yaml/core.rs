@@ -33,7 +33,7 @@ impl CoreOperations {
     {
         serde_yaml::from_str(content).map_err(|e| {
             let mut message = format!("Failed to parse YAML from {}\n", source_description);
-            message.push_str(&format!("Error: {}\n", e));
+            message.push_str(&format!("Cause: {}\n", e));
 
             // Check for common issues and provide hints
             if let Some(hint) = Self::detect_common_yaml_issues(content, &e) {

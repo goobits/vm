@@ -144,7 +144,7 @@ impl ConfigLoader {
             return self.load_file(&global_config);
         }
 
-        bail!("No vm.yaml found in current directory or parent directories. Please run `vm init` or create a vm.yaml file.");
+        bail!("No vm.yaml found in the current directory or its parents. Create an environment with `vm run linux` or add a vm.yaml file.");
     }
 
     /// Loads a `VmConfig` from an explicit path.

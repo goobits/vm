@@ -61,8 +61,9 @@ pub enum Command {
     },
     /// Start an existing environment
     Start {
-        /// Environment name; defaults to this project's canonical environment
+        /// Environment name, not provider; omit to use the project default
         environment: Option<String>,
+        /// Return after requesting startup instead of waiting for readiness
         #[arg(long)]
         no_wait: bool,
     },
@@ -99,7 +100,7 @@ pub enum Command {
         memory: Option<String>,
     },
     /// List environments for this project
-    #[command(alias = "ls")]
+    #[command(visible_alias = "ls")]
     List {
         /// Show environments across all projects
         #[arg(long)]
@@ -108,9 +109,10 @@ pub enum Command {
         #[arg(long)]
         raw: bool,
     },
-    /// Drop into a shell inside an environment
-    #[command(alias = "ssh")]
+    /// Open a shell, starting an existing stopped environment first
+    #[command(visible_alias = "ssh")]
     Shell {
+        /// Environment name; omit to use the project default
         environment: Option<String>,
         /// Directory path to start shell in
         #[arg(long)]
@@ -121,7 +123,7 @@ pub enum Command {
     },
     /// Run a single command inside an environment
     Exec {
-        /// Environment name; omit it before `--` to use the project default
+        /// Environment name; omit it before `--` to use and start the project default
         environment: Option<String>,
         #[arg(last = true, num_args = 1..)]
         command: Vec<String>,

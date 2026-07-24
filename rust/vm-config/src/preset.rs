@@ -6,7 +6,7 @@ use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
 use tracing::instrument;
 use vm_core::error::{Result, VmError};
-use vm_core::vm_error;
+use vm_core::vm_warning;
 
 /// Metadata about a preset
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,12 +99,10 @@ impl PresetDetector {
         // Fallback to file system (for custom presets)
         let preset_path = self.presets_dir.join(format!("{name}.yaml"));
         if !preset_path.exists() {
-            vm_error!(
-                "Preset '{}' not found (not embedded and no file at {:?})",
-                name,
-                preset_path
-            );
-            return Err(VmError::Config(format!("Preset not found: {}", name)));
+            return Err(VmError::Config(format!(
+                "Preset '{name}' not found (no embedded preset or file at {})",
+                preset_path.display()
+            )));
         }
 
         let content = std::fs::read_to_string(&preset_path)?;
@@ -133,7 +131,7 @@ impl PresetDetector {
             let mut content = match vm_plugin::load_preset_content(plugin) {
                 Ok(c) => c,
                 Err(e) => {
-                    eprintln!("Warning: Failed to load preset content from plugin {name}: {e}");
+                    vm_warning!("Failed to load preset content from plugin {name}: {e}");
                     return Ok(None);
                 }
             };
@@ -212,7 +210,7 @@ impl PresetDetector {
     ///
     /// This is used by `vm config preset` to show presets that can be merged
     /// into existing configurations. Box presets are excluded because they
-    /// are only used during `vm init`.
+    /// are only used during `vm-config init`.
     ///
     /// # Returns
     ///
@@ -291,7 +289,7 @@ impl PresetDetector {
 
     /// Lists all available presets including both box and provision types.
     ///
-    /// This is used by `vm init` to validate preset names.
+    /// This is used by `vm-config init` to validate preset names.
     /// For filtering to provision-only presets, use [`list_presets`](Self::list_presets).
     ///
     /// # Returns

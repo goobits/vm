@@ -256,7 +256,7 @@ pub async fn handle_import(
         vm_println!("  1. Add to your vm.yaml:");
         vm_println!("     vm:");
         vm_println!("       box: @{}", snapshot_name);
-        vm_println!("  2. Run: vm create");
+        vm_println!("  2. Run: vm run linux");
         vm_println!("\nThe VM will start instantly using the imported base image!");
     } else {
         vm_println!("\nTo restore this project snapshot:");

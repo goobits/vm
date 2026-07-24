@@ -33,7 +33,7 @@ use crate::services::{
     redis::RedisService, ManagedService,
 };
 use vm_config::{config::VmConfig, GlobalConfig};
-use vm_core::{vm_println, vm_success, vm_warning};
+use vm_core::{vm_progress, vm_success, vm_warning};
 
 /// Represents the current state of a managed service
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -321,7 +321,7 @@ impl ServiceManager {
         };
 
         let port = self.get_service_port(service_name, global_config);
-        vm_println!("🚀 Starting {} on port {}...", service_impl.name(), port);
+        vm_progress!("Starting {} on port {}...", service_impl.name(), port);
 
         // Use trait dispatch to start the service (lock is dropped)
         service_impl.start(global_config).await?;
@@ -375,7 +375,7 @@ impl ServiceManager {
                 .clone()
         };
 
-        vm_println!("🛑 Stopping {}...", service_impl.name());
+        vm_progress!("Stopping {}...", service_impl.name());
 
         // Use trait dispatch to stop the service (lock is dropped)
         service_impl.stop().await?;
@@ -480,27 +480,16 @@ impl Default for ServiceManager {
     }
 }
 
-/// Global service manager instance
-static GLOBAL_SERVICE_MANAGER: std::sync::OnceLock<ServiceManager> = std::sync::OnceLock::new();
-
-/// Initialize the global service manager
-///
-/// This should be called once at application startup.
-pub fn init_service_manager() -> Result<()> {
-    if GLOBAL_SERVICE_MANAGER.get().is_some() {
-        return Ok(());
-    }
-
-    let manager = ServiceManager::new()?;
-    let _ = GLOBAL_SERVICE_MANAGER.set(manager);
-    Ok(())
-}
+/// Global service manager instance, initialized only by commands that use services.
+static GLOBAL_SERVICE_MANAGER: std::sync::OnceLock<Result<ServiceManager, String>> =
+    std::sync::OnceLock::new();
 
 /// Get the global service manager instance
-///
-/// Returns an error if the service manager has not been initialized.
 pub fn get_service_manager() -> Result<&'static ServiceManager> {
-    GLOBAL_SERVICE_MANAGER.get().ok_or_else(|| {
-        anyhow::anyhow!("Service manager not initialized. Call init_service_manager() first.")
-    })
+    match GLOBAL_SERVICE_MANAGER.get_or_init(|| ServiceManager::new().map_err(|e| e.to_string())) {
+        Ok(manager) => Ok(manager),
+        Err(error) => Err(anyhow::anyhow!(
+            "Failed to initialize service manager: {error}"
+        )),
+    }
 }

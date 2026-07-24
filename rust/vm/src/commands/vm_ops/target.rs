@@ -13,6 +13,19 @@ enum TargetChoice {
     Missing,
 }
 
+pub(super) fn canonical_instance_name(
+    provider: &str,
+    project: &str,
+    instance: Option<&str>,
+) -> String {
+    match (provider, instance) {
+        ("tart", Some(instance)) => format!("{project}-{instance}"),
+        ("tart", None) => project.to_string(),
+        (_, Some(instance)) => format!("{project}-{instance}-dev"),
+        (_, None) => format!("{project}-dev"),
+    }
+}
+
 pub fn resolve_runtime_target(
     provider: &dyn Provider,
     config: &VmConfig,
@@ -176,7 +189,7 @@ pub fn project_instance_matches(instance: &InstanceInfo, project_name: &str) -> 
 
 #[cfg(test)]
 mod tests {
-    use super::{choose_target, copy_target, TargetChoice};
+    use super::{canonical_instance_name, choose_target, copy_target, TargetChoice};
     use vm_provider::InstanceInfo;
 
     fn instance(name: &str) -> InstanceInfo {
@@ -234,5 +247,19 @@ mod tests {
             Some("feature".to_string())
         );
         assert!(copy_target("one:/tmp/a", "two:/tmp/b").is_err());
+    }
+
+    #[test]
+    fn canonical_names_follow_provider_conventions() {
+        assert_eq!(
+            canonical_instance_name("docker", "demo", Some("feature")),
+            "demo-feature-dev"
+        );
+        assert_eq!(
+            canonical_instance_name("tart", "demo", Some("feature")),
+            "demo-feature"
+        );
+        assert_eq!(canonical_instance_name("docker", "demo", None), "demo-dev");
+        assert_eq!(canonical_instance_name("tart", "demo", None), "demo");
     }
 }

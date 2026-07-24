@@ -49,7 +49,7 @@ impl DockerCommand {
     pub fn execute(self) -> Result<()> {
         let mut cmd = self.build_command()?;
 
-        vm_dbg!("Executing Docker command: {:?}", &cmd);
+        vm_dbg!("Executing Docker command");
 
         let status = cmd
             .status()
@@ -70,7 +70,7 @@ impl DockerCommand {
     pub fn execute_with_output(self) -> Result<String> {
         let mut cmd = self.build_command()?;
 
-        vm_dbg!("Executing Docker command with output: {:?}", &cmd);
+        vm_dbg!("Executing Docker command with captured output");
 
         let output = cmd
             .output()

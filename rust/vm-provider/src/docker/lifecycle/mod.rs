@@ -18,6 +18,7 @@ use vm_config::config::VmConfig;
 use vm_core::{
     command_stream::stream_command,
     error::{Result, VmError},
+    vm_warning,
 };
 
 use super::{artifacts::compose_path, compose::ComposeOperations, ComposeCommand};
@@ -111,9 +112,10 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
 
         ProgressReporter::task(&phase, "Removing old container...");
         if let Err(e) = stream_command(self.executable, &["rm", "-f", &state.container_name]) {
-            eprintln!(
-                "Warning: Failed to remove old container {}: {}",
-                &state.container_name, e
+            vm_warning!(
+                "Failed to remove old container {}: {}",
+                &state.container_name,
+                e
             );
         }
 

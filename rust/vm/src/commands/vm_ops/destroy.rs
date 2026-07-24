@@ -4,18 +4,18 @@
 //! and cross-provider bulk operations with pattern matching.
 
 use dialoguer::{theme::ColorfulTheme, Select};
+use std::io::IsTerminal;
 use tracing::debug;
 
 use crate::commands::db::utils::execute_psql_command;
 use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
 use vm_config::{config::VmConfig, GlobalConfig};
-use vm_core::msg;
-use vm_core::{vm_error, vm_println};
-use vm_messages::messages::MESSAGES;
-use vm_provider::{Provider, ProviderContext};
+use vm_core::{vm_hint, vm_println, vm_progress, vm_success, vm_warning};
+use vm_provider::{Provider, ProviderContext, VmError as ProviderError};
 
-use super::helpers::unregister_vm_services_helper;
+use super::helpers::{has_enabled_services, unregister_vm_services_helper};
+use super::target::canonical_instance_name;
 
 /// Back up database services configured with `backup_on_destroy`.
 ///
@@ -33,7 +33,7 @@ async fn backup_databases(
         }
 
         let db_name = format!("{}_{}", vm_name.replace('-', "_"), service_name);
-        vm_println!("📦 Creating backup for database: {}", db_name);
+        vm_progress!("Backing up database '{db_name}'...");
 
         backup_db(&db_name, None, global_config.backups.keep_count)
             .await
@@ -44,7 +44,7 @@ async fn backup_databases(
                     format!("back up database '{db_name}' before destroy"),
                 )
             })?;
-        vm_println!("✓ Backup created for {}", db_name);
+        vm_success!("Backed up database '{db_name}'");
     }
 
     Ok(())
@@ -66,15 +66,9 @@ pub async fn handle_destroy(
         .map(|s| s.as_str())
         .unwrap_or("VM");
 
-    let fallback_container_name = if provider.name() == "tart" {
-        vm_name.to_string()
-    } else {
-        format!("{vm_name}-dev")
-    };
-
-    let target_container = provider
-        .resolve_instance_name(container)
-        .unwrap_or_else(|_| container.unwrap_or(&fallback_container_name).to_string());
+    let target_container = container
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| canonical_instance_name(provider.name(), vm_name, None));
 
     debug!(
         "Destroying VM: target_container='{}', provider='{}', force={}",
@@ -82,35 +76,32 @@ pub async fn handle_destroy(
         provider.name(),
         force
     );
-    // Check if the provider owns the target before showing confirmation.
-    // This keeps Docker/Tart behavior aligned and avoids Docker-only probes.
-    let container_exists = provider
-        .list_instances()
-        .map(|instances| {
-            instances
-                .iter()
-                .any(|instance| instance.name == target_container)
-        })
-        .unwrap_or_else(|_| provider.status(container).is_ok());
-
-    if !container_exists {
-        vm_println!("{}", MESSAGES.vm.destroy_cleanup_already_removed);
-        unregister_vm_services_helper(&target_container, &global_config).await?;
-
-        vm_println!("{}", MESSAGES.common.cleanup_complete);
-        return Ok(());
-    }
+    let state = match provider.instance_state(container) {
+        Ok(state) => state,
+        Err(ProviderError::NotFound(_)) => {
+            if has_enabled_services(&config, &global_config) {
+                unregister_vm_services_helper(&target_container, &global_config).await?;
+            }
+            vm_success!("'{target_container}' is already removed");
+            return Ok(());
+        }
+        Err(error) => return Err(VmError::from(error)),
+    };
 
     let mut preserve_services = true;
     let should_destroy = if force {
         debug!("Force flag set - skipping confirmation prompt");
-        vm_println!("{}", msg!(MESSAGES.vm.destroy_force, name = vm_name));
+        vm_progress!("Removing '{target_container}'...");
         true
     } else {
-        // Check status to show current state
-        let is_running = provider
-            .status(container)
-            .is_ok_and(|report| report.is_running);
+        if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
+            return Err(VmError::validation(
+                "Removal requires confirmation in an interactive terminal",
+                Some(format!(
+                    "Review the target, then run `vm remove {target_container} --force`"
+                )),
+            ));
+        }
 
         let service_manager_result = get_service_manager();
         let pg_service_check = if let Ok(sm) = service_manager_result {
@@ -134,33 +125,19 @@ pub async fn handle_destroy(
                 Err(_) => "N/A".to_string(),
             };
 
-            vm_println!("⚠️  Destroying VM '{}'", vm_name);
-            vm_println!();
-            vm_println!("📊 Database: Managed PostgreSQL storage will persist");
-            vm_println!("   Database: {} ({})", db_name, db_size);
-            vm_println!();
-            vm_println!("💡 Tip: Create a backup first");
-            vm_println!("   vm db backup {}", db_name);
-            vm_println!();
+            vm_warning!("Managed PostgreSQL data will persist: {db_name} ({db_size})");
+            vm_hint!("Back it up first with: vm db backup {db_name}");
         }
 
         let provider_name = provider_display_name(provider.as_ref());
         let resource_label = provider_resource_label(provider.as_ref());
         let destroyed_items = provider_destroyed_items(provider.as_ref());
-        let status = if is_running {
-            MESSAGES.common.status_running
-        } else {
-            MESSAGES.common.status_stopped
-        };
-
-        vm_println!("🗑️ Destroy {} VM '{}'?\n", provider_name, vm_name);
+        vm_println!("Remove {} environment '{}'?", provider_name, vm_name);
         vm_println!("  Provider:   {}", provider_name);
-        vm_println!("  Status:     {}", status);
+        vm_println!("  Status:     {}", state);
         vm_println!("  {}:  {}", resource_label, target_container);
-        vm_println!();
-        vm_println!("⚠️  This will permanently delete:");
+        vm_warning!("This will permanently delete:");
         vm_println!("{}", destroyed_items);
-        vm_println!();
 
         let options = &[
             "Destroy and preserve services",
@@ -188,41 +165,28 @@ pub async fn handle_destroy(
         }
     };
 
-    if should_destroy {
-        debug!("Destroy confirmation: response='yes', proceeding with destruction");
-
-        backup_databases(&config, vm_name, &global_config).await?;
-
-        vm_println!("{}", MESSAGES.vm.destroy_progress);
-
-        // Build context with preserve_services flag
-        let context = ProviderContext::default().preserve_services(preserve_services);
-
-        match provider.destroy(container, &context) {
-            Ok(()) => {
-                vm_println!("{}", MESSAGES.common.configuring_services);
-                unregister_vm_services_helper(&target_container, &global_config).await?;
-
-                vm_println!("{}", MESSAGES.vm.destroy_success);
-                Ok(())
-            }
-            Err(e) => {
-                vm_println!("\n❌ Destruction failed: {}", e);
-                Err(VmError::from(e))
-            }
-        }
-    } else {
+    if !should_destroy {
         debug!("Destroy confirmation: response='no', cancelling destruction");
-        vm_println!("{}", MESSAGES.vm.destroy_cancelled);
-        vm_error!("VM destruction cancelled by user");
-        Err(VmError::general(
-            std::io::Error::new(
-                std::io::ErrorKind::Interrupted,
-                "VM destruction cancelled by user",
-            ),
-            "User cancelled VM destruction",
-        ))
+        vm_progress!("Removal cancelled");
+        return Ok(());
     }
+
+    debug!("Destroy confirmation: response='yes', proceeding with destruction");
+    backup_databases(&config, vm_name, &global_config).await?;
+
+    if !force {
+        vm_progress!("Removing '{target_container}'...");
+    }
+    let context = ProviderContext::default().preserve_services(preserve_services);
+    provider
+        .destroy(container, &context)
+        .map_err(VmError::from)?;
+
+    if has_enabled_services(&config, &global_config) {
+        unregister_vm_services_helper(&target_container, &global_config).await?;
+    }
+    vm_success!("Removed '{target_container}'");
+    Ok(())
 }
 
 fn provider_display_name(provider: &dyn Provider) -> &'static str {
@@ -245,9 +209,9 @@ fn provider_resource_label(provider: &dyn Provider) -> &'static str {
 fn provider_destroyed_items(provider: &dyn Provider) -> &'static str {
     match provider.name() {
         "docker" | "podman" => {
-            "  • Container and its writable layer\n\n  Managed named volumes are preserved."
+            "  - Container and its writable layer\n\n  Managed named volumes are preserved."
         }
-        "tart" => "  • Tart VM and all data",
-        _ => "  • Provider resource and all data",
+        "tart" => "  - Tart VM and all data",
+        _ => "  - Provider resource and all data",
     }
 }

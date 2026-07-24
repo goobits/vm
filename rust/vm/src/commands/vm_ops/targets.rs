@@ -94,7 +94,7 @@ pub fn get_all_instances() -> VmResult<Vec<InstanceInfo>> {
 
     if all_instances.is_empty() && !provider_errors.is_empty() {
         return Err(CoreVmError::Internal(format!(
-            "Failed to list VM instances from any provider:\n{}",
+            "Failed to list environments from any provider:\n{}",
             provider_errors.join("\n")
         ))
         .into());

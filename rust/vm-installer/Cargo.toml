@@ -21,7 +21,6 @@ anyhow = { workspace = true }
 
 [features]
 default = []
-structured-output = []
 integration = []
 
 [package.metadata.cargo-machete]

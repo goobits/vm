@@ -8,7 +8,6 @@ use command_context::{
 use environment::resolve_environment;
 use vm_config::AppConfig;
 use vm_core::vm_println;
-use vm_messages::messages::MESSAGES;
 
 pub mod base;
 pub mod clean;
@@ -47,21 +46,29 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             container,
         } => {
             if clean {
-                clean::handle_clean(false, false).await?;
+                clean::handle_clean().await?;
             }
             if prune_pnpm_store {
-                let subject =
-                    load_runtime_context(args.config, args.profile, None, container.as_deref())?;
+                let subject = load_runtime_context(
+                    args.config.clone(),
+                    args.profile.clone(),
+                    None,
+                    container.as_deref(),
+                )?;
                 maintenance::prune_pnpm_store(subject.provider, Some(subject.target.as_str()))?;
             }
-            doctor::run_with_fix(fix).map_err(VmError::from)
+            let provider = AppConfig::load(args.config, args.profile, None)
+                .ok()
+                .and_then(|config| config.vm.provider)
+                .unwrap_or_else(|| "docker".to_string());
+            doctor::run_with_fix(fix, &provider).map_err(VmError::from)
         }
         Command::Config { command } => {
-            config::handle_config_command(&command, false, args.profile, args.config)
+            config::handle_config_command(&command, args.profile, args.config)
         }
         Command::Plugin { command } => handle_plugin_command(&command),
         Command::Db { command } => db::handle_db(command).await,
-        Command::Fleet { command } => vm_ops::handle_fleet_command(&command, false).await,
+        Command::Fleet { command } => vm_ops::handle_fleet_command(&command).await,
         Command::Secret { command } => {
             handle_secret_command(&command, args.config, args.profile).await
         }
@@ -340,12 +347,74 @@ async fn handle_secret_command(
 }
 
 fn print_dry_run_summary(args: &Args) {
-    vm_println!("{}", MESSAGES.vm.dry_run_header);
-    vm_println!("  Command: {:?}", args.command);
+    vm_println!("Dry run: would {}", dry_run_description(&args.command));
     if let Some(config) = &args.config {
-        vm_println!("  Config: {}", config.display());
+        vm_println!("Config: {}", config.display());
     }
-    vm_println!("{}", MESSAGES.vm.dry_run_complete);
+    vm_println!("No changes made.");
+}
+
+fn dry_run_description(command: &Command) -> String {
+    let target = |environment: &Option<String>| {
+        environment
+            .as_deref()
+            .unwrap_or("the default environment")
+            .to_string()
+    };
+
+    match command {
+        Command::Create { environment, force } => format!(
+            "{} {}",
+            if *force { "recreate" } else { "create" },
+            target(environment)
+        ),
+        Command::Start { environment, .. } => format!("start {}", target(environment)),
+        Command::Run { kind, words, .. } => {
+            let name = words
+                .last()
+                .filter(|_| words.len() == 2)
+                .map_or(String::new(), |name| format!(" as {name}"));
+            format!("run {}{name}", format!("{kind:?}").to_ascii_lowercase())
+        }
+        Command::List { all, .. } => {
+            format!("list {} environments", if *all { "all" } else { "project" })
+        }
+        Command::Shell {
+            environment,
+            command,
+            ..
+        } => format!(
+            "{} {}",
+            if command.is_some() {
+                "run a shell command in"
+            } else {
+                "open a shell in"
+            },
+            target(environment)
+        ),
+        Command::Exec { environment, .. } => {
+            format!("execute a command in {}", target(environment))
+        }
+        Command::Logs { environment, .. } => format!("read logs from {}", target(environment)),
+        Command::Copy { .. } => "copy files without changing lifecycle state".to_string(),
+        Command::Stop { environment } => format!("stop {}", target(environment)),
+        Command::Status { environment } => format!("inspect {}", target(environment)),
+        Command::Restart { environment } => format!("restart {}", target(environment)),
+        Command::Remove { environment, .. } => format!("remove {}", target(environment)),
+        Command::Save { .. } => "save an environment snapshot".to_string(),
+        Command::Revert { .. } => "restore an environment snapshot".to_string(),
+        Command::Package { environment, .. } => format!("package {}", target(environment)),
+        Command::Config { .. } => "run a configuration operation".to_string(),
+        Command::Tunnel { .. } => "run a tunnel operation".to_string(),
+        Command::Doctor { .. } => "run diagnostics or requested maintenance".to_string(),
+        Command::Plugin { .. } => "run a plugin operation".to_string(),
+        Command::System { .. } => "run a system operation".to_string(),
+        Command::Db { .. } => "run a database operation".to_string(),
+        Command::Fleet { .. } => "run a fleet operation".to_string(),
+        Command::Secret { .. } => "run a secret operation (values redacted)".to_string(),
+        Command::InternalCompletion { .. } => "generate shell completions".to_string(),
+        Command::GetSyncDirectory => "print the workspace directory".to_string(),
+    }
 }
 
 fn handle_plugin_command(command: &PluginSubcommand) -> VmResult<()> {

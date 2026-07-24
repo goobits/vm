@@ -7,7 +7,6 @@ use vm_core::command_stream::{
     stream_command_with_progress_and_timeout, ProgressParser as CoreProgressParser,
 };
 use vm_core::error::{Result, VmError};
-use vm_core::vm_error;
 
 use super::{
     ANSIBLE_PLAYBOOK_PATH, CONTAINER_READINESS_MAX_ATTEMPTS, CONTAINER_READINESS_SLEEP_SECONDS,
@@ -250,7 +249,6 @@ impl<'a> LifecycleOperations<'a> {
             }
 
             if start.elapsed() >= max_duration {
-                vm_error!("Container failed to become ready");
                 return Err(VmError::Internal(format!(
                     "Container '{}' failed to become ready after {} seconds. Container may be unhealthy or not starting properly",
                     container_name,

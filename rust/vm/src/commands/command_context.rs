@@ -33,8 +33,9 @@ pub(super) fn load_runtime_subject(
     profile: Option<String>,
     environment: Option<String>,
 ) -> VmResult<RuntimeSubject> {
+    vm_progress!("Finding environment...");
     let resolved = resolve_environment(config_path.clone(), profile, environment)?;
-    load_runtime_context(
+    assemble_runtime_context(
         config_path,
         resolved.profile,
         resolved.provider_override,
@@ -49,6 +50,15 @@ pub(super) fn load_runtime_context(
     requested_target: Option<&str>,
 ) -> VmResult<RuntimeSubject> {
     vm_progress!("Finding environment...");
+    assemble_runtime_context(config_path, profile, provider_override, requested_target)
+}
+
+fn assemble_runtime_context(
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+    provider_override: Option<String>,
+    requested_target: Option<&str>,
+) -> VmResult<RuntimeSubject> {
     let (provider, config, global_config) =
         load_provider_context(config_path, profile, provider_override)?;
     let target =

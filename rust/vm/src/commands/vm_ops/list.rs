@@ -8,9 +8,7 @@ use tracing::{debug, info_span};
 use crate::commands::vm_ops::target::project_instance_matches;
 use crate::commands::vm_ops::targets::{get_all_instances, get_instances_from_provider};
 use crate::error::VmResult;
-use vm_core::msg;
 use vm_core::vm_println;
-use vm_messages::messages::MESSAGES;
 use vm_provider::InstanceInfo;
 
 /// Handle VM listing with enhanced filtering options
@@ -40,12 +38,9 @@ pub fn handle_list_enhanced(
 
     if all_instances.is_empty() {
         if let Some(provider_name) = provider_filter {
-            vm_println!(
-                "{}",
-                msg!(MESSAGES.vm.list_empty_provider, provider = provider_name)
-            );
+            vm_println!("No environments found for provider '{provider_name}'");
         } else {
-            vm_println!("{}", MESSAGES.vm.list_empty);
+            vm_println!("No environments found");
         }
         return Ok(());
     }
@@ -133,10 +128,15 @@ fn format_kind(instance: &InstanceInfo) -> &'static str {
 }
 
 fn truncate_string(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
+    if s.chars().count() <= max_len {
         s.to_string()
     } else {
-        format!("{}...", &s[..max_len - 3])
+        format!(
+            "{}...",
+            s.chars()
+                .take(max_len.saturating_sub(3))
+                .collect::<String>()
+        )
     }
 }
 

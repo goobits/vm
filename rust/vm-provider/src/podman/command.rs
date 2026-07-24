@@ -14,7 +14,7 @@ use vm_core::vm_dbg;
 pub fn execute_podman_command(docker_args: &[String]) -> Result<()> {
     let podman_args = translate_docker_to_podman(docker_args);
 
-    vm_dbg!("Executing Podman command: podman {:?}", &podman_args);
+    vm_dbg!("Executing Podman command");
 
     let status = Command::new("podman")
         .args(&podman_args)

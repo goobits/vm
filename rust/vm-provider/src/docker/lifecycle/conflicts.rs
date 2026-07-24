@@ -2,7 +2,7 @@
 
 use std::io::{self, IsTerminal, Write};
 
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 use super::LifecycleOperations;
 use crate::{
@@ -13,6 +13,7 @@ use vm_core::msg;
 use vm_core::{
     command_stream::stream_command_visible,
     error::{Result, VmError},
+    vm_hint, vm_progress, vm_warning,
 };
 use vm_messages::messages::MESSAGES;
 
@@ -64,23 +65,14 @@ impl<'a> LifecycleOperations<'a> {
             return error;
         }
 
-        eprintln!("\n⚠️  Container name conflict detected");
-        eprintln!("\n   Docker error:");
-        eprintln!("   {error_message}");
-        eprintln!("\n   This usually means a previous creation failed partway through.");
-        self.list_project_containers_for_user();
-        eprintln!("\n💡 Recommended fix:");
-        if let Some(name) = instance_name {
-            eprintln!("      vm remove {name} --force");
-            eprintln!("      vm create {name}");
+        let recovery = if let Some(name) = instance_name {
+            format!("vm remove {name} --force, then vm run linux as {name}")
         } else {
-            eprintln!("      vm remove --force");
-            eprintln!("      vm create");
-        }
-        eprintln!();
+            "vm remove --force, then vm run linux".to_string()
+        };
 
         VmError::Internal(format!(
-            "Container name conflict detected. See error details above.\n\nOriginal error: {error_message}"
+            "Container name conflict: {error_message}. A previous creation may have stopped partway through; recover with `{recovery}`"
         ))
     }
 
@@ -101,7 +93,7 @@ impl<'a> LifecycleOperations<'a> {
             return Err(VmError::Internal(format!(
                 "Container '{container_name}' already exists. In non-interactive mode, use:\n\
                  - 'vm start' to start the existing container\n\
-                 - 'vm remove --force' followed by 'vm create' to recreate it"
+                 - 'vm remove --force' followed by 'vm run linux' to recreate it"
             )));
         }
 
@@ -149,7 +141,7 @@ impl<'a> LifecycleOperations<'a> {
             return Err(VmError::Internal(format!(
                 "Container '{container_name}' already exists. In non-interactive mode, use:\n\
                  - 'vm start {instance_name}' to start the existing container\n\
-                 - 'vm remove {instance_name} --force' followed by 'vm create {instance_name}' to recreate it"
+                 - 'vm remove {instance_name} --force' followed by 'vm run linux as {instance_name}' to recreate it"
             )));
         }
 
@@ -182,7 +174,7 @@ impl<'a> LifecycleOperations<'a> {
         reuse: impl FnOnce() -> Result<()>,
         recreate: impl FnOnce() -> Result<()>,
     ) -> Result<()> {
-        info!(
+        vm_progress!(
             "{}",
             msg!(
                 MESSAGES.service.docker_container_exists_prompt,
@@ -198,28 +190,8 @@ impl<'a> LifecycleOperations<'a> {
             "1" => reuse(),
             "2" => recreate(),
             _ => {
-                error!("Operation cancelled.");
+                vm_progress!("Operation cancelled.");
                 Ok(())
-            }
-        }
-    }
-
-    fn list_project_containers_for_user(&self) {
-        let Ok(containers) = DockerOps::list_containers(Some(self.executable), true, "{{.Names}}")
-        else {
-            return;
-        };
-        let project_prefix = format!("{}-", self.project_name());
-        let project_containers: Vec<&str> = containers
-            .lines()
-            .map(str::trim)
-            .filter(|name| name.starts_with(&project_prefix))
-            .collect();
-
-        if !project_containers.is_empty() {
-            eprintln!("\n   Existing containers for {}:", self.project_name());
-            for container in project_containers {
-                eprintln!("   • {container}");
             }
         }
     }
@@ -257,12 +229,11 @@ impl<'a> LifecycleOperations<'a> {
             "Found existing service containers; continuing to reuse them: {}",
             orphaned.join(", ")
         );
-        eprintln!("\n⚠️  Existing service containers detected (will reuse data):\n");
-        for container in orphaned {
-            eprintln!("   • {container}");
-        }
-        eprintln!("\n💡 We'll reuse these to preserve your data.");
-        eprintln!("   Remove them only through the approved VM maintenance workflow.\n");
+        vm_warning!(
+            "Reusing existing service containers to preserve data: {}",
+            orphaned.join(", ")
+        );
+        vm_hint!("Remove them only through the approved VM maintenance workflow");
         Ok(true)
     }
 }

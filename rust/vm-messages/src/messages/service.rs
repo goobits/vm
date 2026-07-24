@@ -24,12 +24,6 @@ pub struct ServiceMessages {
     pub docker_container_recreating: &'static str,
     pub docker_ssh_info: &'static str,
 
-    // Docker
-    pub docker_is_running: &'static str,
-    pub docker_not_running: &'static str,
-    pub docker_build_failed: &'static str,
-    pub docker_build_success: &'static str,
-
     // ============================================================================
     // Installer & Dependencies
     // ============================================================================
@@ -39,7 +33,6 @@ pub struct ServiceMessages {
     pub installer_help_hint: &'static str,
     pub installer_path_already_configured: &'static str,
     pub installer_path_not_configured: &'static str,
-    pub installer_add_to_path_hint: &'static str,
     pub installer_manual_path_hint: &'static str,
     pub installer_build_time_hint: &'static str,
     pub installer_sccache_enabled: &'static str,
@@ -47,7 +40,6 @@ pub struct ServiceMessages {
     // ============================================================================
     // Package Management
     // ============================================================================
-    pub pkg_linking: &'static str,
     pub pkg_linked_package: &'static str,
     pub pkg_installing_local_cargo: &'static str,
     pub pkg_linking_npm: &'static str,
@@ -67,32 +59,15 @@ pub struct ServiceMessages {
     // ============================================================================
     // Provider Operations
     // ============================================================================
-    pub provider_tart_vm_exists: &'static str,
-    pub provider_tart_recreate_hint: &'static str,
     pub provider_tart_created_success: &'static str,
     pub provider_tart_connect_hint: &'static str,
-    pub provider_tart_vm_created: &'static str,
-    pub provider_tart_vm_recreate_hint: &'static str,
-    pub provider_tart_vm_connect_hint: &'static str,
     pub provider_logs_unavailable: &'static str,
     pub provider_logs_expected_location: &'static str,
     pub provider_logs_showing: &'static str,
-    pub provider_vm_not_found: &'static str,
-    pub provider_provisioning_unsupported: &'static str,
-    pub provider_provisioning_explanation: &'static str,
-
-    // ============================================================================
-    // Audio
-    // ============================================================================
-    pub audio_installing_pulseaudio: &'static str,
-    pub audio_stopping_services: &'static str,
-    pub audio_starting_services: &'static str,
-
     // ============================================================================
     // Temp VM
     // ============================================================================
     pub temp_vm_status: &'static str,
-    pub temp_vm_creating: &'static str,
     pub temp_vm_starting: &'static str,
     pub temp_vm_stopping: &'static str,
     pub temp_vm_destroying: &'static str,
@@ -122,7 +97,6 @@ pub struct ServiceMessages {
     pub temp_vm_restarted_success: &'static str,
     pub temp_vm_mounts_active: &'static str,
     pub temp_vm_failed_to_restart: &'static str,
-    pub temp_vm_mount_added: &'static str,
     pub temp_vm_updating_container: &'static str,
     pub temp_vm_mount_applied: &'static str,
     pub temp_vm_mount_source: &'static str,
@@ -204,12 +178,6 @@ pub const SERVICE_MESSAGES: ServiceMessages = ServiceMessages {
     docker_container_recreating: "\n🔄 Recreating container...",
     docker_ssh_info: "\n  User:  {user}\n  Path:  {path}\n  Shell: {shell}\n\n💡 Exit with: exit or Ctrl-D\n",
 
-    // Docker
-    docker_is_running: "✅ Docker is running.",
-    docker_not_running: "❌ Docker is not running. Please start it and try again.",
-    docker_build_failed: "❌ Docker build failed",
-    docker_build_success: "✅ Docker build successful",
-
     // Installer & Dependencies
     installer_checking_dependencies: "🔍 Checking dependencies...",
     installer_installing: "📦 Installing VM Infrastructure...",
@@ -217,13 +185,11 @@ pub const SERVICE_MESSAGES: ServiceMessages = ServiceMessages {
     installer_help_hint: "💡 For more information, run: vm --help",
     installer_path_already_configured: "✅ {path} is already in your PATH.",
     installer_path_not_configured: "⚠️ {path} is not in your PATH",
-    installer_add_to_path_hint: "💡 To add {path} to your PATH, add this line to your {profile}:",
     installer_manual_path_hint: "💡 Or run: vm-package-manager link",
     installer_build_time_hint: "   This may take a few minutes on first build...",
     installer_sccache_enabled: "   Using sccache for faster builds",
 
     // Package Management
-    pkg_linking: "🔗 Package '{name}' is linked for {package_type}",
     pkg_linked_package: "🔗 Found linked local package: {name}",
     pkg_installing_local_cargo: "  -> Installing local cargo package from: {path}",
     pkg_linking_npm: "  -> Linking local npm package from: {path}",
@@ -241,29 +207,13 @@ pub const SERVICE_MESSAGES: ServiceMessages = ServiceMessages {
     pkg_manager_not_linked: "📦 Package '{package}' is not linked (would install from registry)",
 
     // Provider Operations
-    provider_tart_vm_exists: "⚠️  Tart VM '{name}' already exists.",
-    provider_tart_recreate_hint: "💡 To recreate, first run: vm rm",
     provider_tart_created_success: "\n✅ Tart VM created successfully!",
     provider_tart_connect_hint: "💡 Use 'vm shell' to connect to the VM",
-    provider_tart_vm_created: "✅ Created Tart VM '{name}' from image '{image}'",
-    provider_tart_vm_recreate_hint: "💡 To recreate, first run: vm rm {name}",
-    provider_tart_vm_connect_hint: "💡 Use 'vm shell {name}' to connect to the VM instance",
     provider_logs_unavailable: "⚠️  The VM might not be running or logs may not be available yet.",
     provider_logs_expected_location: "💡 Expected location: ~/.tart/vms/{name}/app.log",
     provider_logs_showing: "📜 Showing Tart VM logs from: {path}",
-    provider_vm_not_found: "❌ VM '{name}' not found",
-    provider_provisioning_unsupported: "⚠️  Configuration application not supported for Tart VMs",
-    provider_provisioning_explanation:
-        "ℹ️  Tart VMs use pre-built images and don't support dynamic provisioning",
-
-    // Audio
-    audio_installing_pulseaudio: "🎧 Installing PulseAudio via Homebrew...",
-    audio_stopping_services: "⏹️ Stopping audio services...",
-    audio_starting_services: "🎧 Starting audio services...",
-
     // Temp VM
     temp_vm_status: "📊 Temp VM Status:",
-    temp_vm_creating: "🚀 Creating temporary VM...",
     temp_vm_starting: "🚀 Starting temporary VM...",
     temp_vm_stopping: "🛑 Stopping temporary VM...",
     temp_vm_destroying: "🗑️ Removing temporary VM...",
@@ -293,7 +243,6 @@ pub const SERVICE_MESSAGES: ServiceMessages = ServiceMessages {
     temp_vm_restarted_success: "✅ Temporary VM restarted",
     temp_vm_mounts_active: "  Mounts:     {count} active",
     temp_vm_failed_to_restart: "\n❌ Failed to restart temporary VM",
-    temp_vm_mount_added: "✅ Mount successfully applied",
     temp_vm_updating_container: "🔄 Updating container with new mount...",
     temp_vm_mount_applied: "\n✅ Mount successfully applied",
     temp_vm_mount_source: "  Source: {source}",

@@ -5,7 +5,6 @@
 
 use std::fmt;
 use vm_core::error::{Result, VmError};
-use vm_core::vm_error;
 
 /// Represents a range of network ports.
 ///
@@ -27,22 +26,11 @@ impl PortRange {
     /// A `Result` containing the parsed `PortRange` or an error if the format is invalid.
     #[must_use = "parsed port range should be used for port allocation"]
     pub fn parse(range_str: &str) -> Result<Self> {
-        // Validate format: START-END
-        if !range_str.contains('-') {
-            vm_error!(
-                "Invalid port range format: {}\n💡 Expected format: START-END (e.g., 3170-3179)",
-                range_str
-            );
-            return Err(VmError::Config("Invalid port range format".to_string()));
-        }
-
         let parts: Vec<&str> = range_str.split('-').collect();
         if parts.len() != 2 {
-            vm_error!(
-                "Invalid port range format: {}\n💡 Expected format: START-END (e.g., 3170-3179)",
-                range_str
-            );
-            return Err(VmError::Config("Invalid port range format".to_string()));
+            return Err(VmError::Config(format!(
+                "Invalid port range '{range_str}': expected START-END (for example, 3170-3179)"
+            )));
         }
 
         let start: u16 = parts[0]
@@ -53,12 +41,9 @@ impl PortRange {
             .map_err(|_| VmError::Config(format!("Invalid end port: {}", parts[1])))?;
 
         if start > end {
-            vm_error!(
-                "Invalid range: start ({}) must not exceed end ({})",
-                start,
-                end
-            );
-            return Err(VmError::Config("Invalid range values".to_string()));
+            return Err(VmError::Config(format!(
+                "Invalid range: start ({start}) must not exceed end ({end})"
+            )));
         }
 
         Ok(PortRange { start, end })
@@ -75,12 +60,9 @@ impl PortRange {
     #[must_use = "created port range should be used for port allocation"]
     pub fn new(start: u16, end: u16) -> Result<Self> {
         if start > end {
-            vm_error!(
-                "Invalid range: start ({}) must not exceed end ({})",
-                start,
-                end
-            );
-            return Err(VmError::Config("Invalid range values".to_string()));
+            return Err(VmError::Config(format!(
+                "Invalid range: start ({start}) must not exceed end ({end})"
+            )));
         }
         Ok(PortRange { start, end })
     }

@@ -30,7 +30,8 @@ impl RegistryTestFixture {
 
     fn run_registry_command(&self, args: &[&str]) -> Result<std::process::Output> {
         let mut cmd = Command::new(&self.binary_path);
-        cmd.arg("registry")
+        cmd.arg("system")
+            .arg("registry")
             .args(args)
             .current_dir(&self.test_dir)
             .env("VM_TOOL_DIR", self.test_dir.join(".vm"))
@@ -59,8 +60,8 @@ fn test_registry_help_command() -> Result<()> {
     assert!(stdout.contains("Manage package registries"));
     assert!(stdout.contains("status"));
     assert!(stdout.contains("add"));
-    assert!(stdout.contains("remove"));
-    assert!(stdout.contains("list"));
+    assert!(stdout.contains("rm"));
+    assert!(stdout.contains("ls"));
     assert!(stdout.contains("config"));
     assert!(stdout.contains("use"));
 
@@ -85,7 +86,7 @@ fn test_registry_config_show_command() -> Result<()> {
 
     assert!(output.status.success());
     let combined_output = fixture.get_output(&output);
-    assert!(combined_output.contains("Package Registry Configuration"));
+    assert!(combined_output.contains("Package registry configuration"));
 
     Ok(())
 }
@@ -152,9 +153,9 @@ fn test_registry_auto_managed_design() -> Result<()> {
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             assert!(
-                stdout.contains("automatically managed")
+                stdout.contains("managed automatically")
                     || stdout.contains("service manager")
-                    || stdout.contains("Package Registry Status")
+                    || stdout.contains("Package registry status")
             );
         }
     }
@@ -180,7 +181,7 @@ fn test_registry_add_command_help() -> Result<()> {
 fn test_registry_remove_command_help() -> Result<()> {
     let fixture = RegistryTestFixture::new()?;
 
-    let output = fixture.run_registry_command(&["remove", "--help"])?;
+    let output = fixture.run_registry_command(&["rm", "--help"])?;
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -194,7 +195,7 @@ fn test_registry_remove_command_help() -> Result<()> {
 fn test_registry_list_command() -> Result<()> {
     let fixture = RegistryTestFixture::new()?;
 
-    let output = fixture.run_registry_command(&["list"])?;
+    let output = fixture.run_registry_command(&["ls"])?;
     let combined_output = fixture.get_output(&output);
 
     if !output.status.success() {

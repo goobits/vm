@@ -1,9 +1,9 @@
 use crate::error::VmError;
 use crate::utils::confirm_select;
 use std::path::PathBuf;
-use vm_core::msg;
-use vm_core::{vm_println, vm_success, vm_warning};
-use vm_messages::messages::MESSAGES;
+use vm_core::{vm_hint, vm_println, vm_progress, vm_success, vm_warning};
+
+const INSTALLER_MARKER: &str = "# Added by VM installer";
 
 pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
     // Get current executable path
@@ -11,15 +11,8 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
         VmError::general(e, "Failed to determine current executable path".to_string())
     })?;
 
-    vm_println!("{}", MESSAGES.vm.uninstall_header);
-    vm_println!("{}", MESSAGES.vm.uninstall_will_remove);
-    vm_println!(
-        "{}",
-        msg!(
-            MESSAGES.vm.uninstall_binary,
-            path = current_exe.display().to_string()
-        )
-    );
+    vm_println!("Uninstall vm");
+    vm_println!("  Binary: {}", current_exe.display());
 
     // Find config files to remove. Use the platform-aware home lookup so
     // uninstall works on Windows and so we don't silently scan `/tmp` for
@@ -46,30 +39,18 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
     }
 
     if !keep_config && !config_files.is_empty() {
-        vm_println!("{}", MESSAGES.vm.uninstall_config_files);
+        vm_println!("  Configuration:");
         for file in &config_files {
-            vm_println!(
-                "{}",
-                msg!(
-                    MESSAGES.vm.uninstall_config_file_item,
-                    path = file.display().to_string()
-                )
-            );
+            vm_println!("    - {}", file.display());
         }
     }
 
     // Find shell config entries
     let shell_configs = find_shell_configs(&home);
     if !shell_configs.is_empty() {
-        vm_println!("{}", MESSAGES.vm.uninstall_path_entries);
+        vm_println!("  Installer-managed shell entries:");
         for config in &shell_configs {
-            vm_println!(
-                "{}",
-                msg!(
-                    MESSAGES.vm.uninstall_path_entry_item,
-                    path = config.display().to_string()
-                )
-            );
+            vm_println!("    - {}", config.display());
         }
     }
 
@@ -79,23 +60,17 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
     if !yes {
         vm_warning!("This action cannot be undone!");
         if !confirm_select("Uninstall vm?", false)? {
-            vm_println!("{}", MESSAGES.vm.uninstall_cancelled);
+            vm_progress!("Uninstall cancelled");
             return Ok(());
         }
     }
 
-    vm_println!("{}", MESSAGES.vm.uninstall_progress);
+    vm_progress!("Removing vm configuration...");
 
     // Remove configuration files if requested
     if !keep_config {
         for path in &config_files {
-            vm_println!(
-                "{}",
-                msg!(
-                    MESSAGES.vm.uninstall_removing_file,
-                    path = path.display().to_string()
-                )
-            );
+            vm_progress!("Removing {}...", path.display());
             if path.is_dir() {
                 if let Err(e) = std::fs::remove_dir_all(path) {
                     vm_warning!("Failed to remove {}: {}", path.display(), e);
@@ -111,55 +86,28 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
         if let Err(e) = clean_shell_config(config_file) {
             vm_warning!("Failed to clean {}: {}", config_file.display(), e);
         } else {
-            vm_println!(
-                "{}",
-                msg!(
-                    MESSAGES.vm.uninstall_cleaned_path,
-                    path = config_file.display().to_string()
-                )
-            );
+            vm_success!("Cleaned {}", config_file.display());
         }
     }
 
     // Instructions for final removal
     vm_println!();
-    vm_success!("VM has been uninstalled!");
-    vm_println!("{}", MESSAGES.vm.uninstall_complete_instructions);
+    vm_success!("Uninstall cleanup complete");
+    vm_hint!("Remove the executable with:");
 
     // Provide the correct removal command based on location
     if current_exe.to_string_lossy().contains("cargo") {
         // Installed via cargo
-        vm_println!("{}", MESSAGES.vm.uninstall_remove_cargo);
+        vm_println!("  cargo uninstall goobits-vm");
     } else if current_exe.parent().and_then(|p| p.file_name()) == Some(std::ffi::OsStr::new("bin"))
     {
         // Installed in a bin directory
-        vm_println!(
-            "{}",
-            msg!(
-                MESSAGES.vm.uninstall_remove_sudo,
-                path = current_exe.display().to_string()
-            )
-        );
-        vm_println!("{}", MESSAGES.vm.uninstall_remove_no_sudo_hint);
-        vm_println!(
-            "{}",
-            msg!(
-                MESSAGES.vm.uninstall_remove_no_sudo,
-                path = current_exe.display().to_string()
-            )
-        );
+        vm_println!("  sudo rm {}", current_exe.display());
+        vm_println!("  rm {}", current_exe.display());
     } else {
         // Generic removal
-        vm_println!(
-            "{}",
-            msg!(
-                MESSAGES.vm.uninstall_remove_generic,
-                path = current_exe.display().to_string()
-            )
-        );
+        vm_println!("  rm {}", current_exe.display());
     }
-
-    vm_println!("{}", MESSAGES.vm.uninstall_thank_you);
 
     Ok(())
 }
@@ -178,9 +126,8 @@ fn find_shell_configs(home: &std::path::Path) -> Vec<PathBuf> {
 
     for config in potential_configs {
         if config.exists() {
-            // Check if file contains vm-related PATH entries
             if let Ok(contents) = std::fs::read_to_string(&config) {
-                if contents.contains(".cargo/bin") || contents.contains("vm") {
+                if contents.lines().any(is_installer_marker) {
                     configs.push(config);
                 }
             }
@@ -190,7 +137,7 @@ fn find_shell_configs(home: &std::path::Path) -> Vec<PathBuf> {
     configs
 }
 
-fn clean_shell_config(config_file: &PathBuf) -> Result<(), std::io::Error> {
+fn clean_shell_config(config_file: &std::path::Path) -> Result<(), std::io::Error> {
     let contents = std::fs::read_to_string(config_file)?;
     let mut new_lines = Vec::new();
     let mut skip_next = false;
@@ -201,30 +148,57 @@ fn clean_shell_config(config_file: &PathBuf) -> Result<(), std::io::Error> {
             continue;
         }
 
-        // Skip lines added by VM installer
-        if line.contains("# Added by VM installer") {
+        if is_installer_marker(line) {
+            if new_lines.last().is_some_and(|line: &&str| line.is_empty()) {
+                new_lines.pop();
+            }
             skip_next = true;
             continue;
-        }
-
-        // Skip cargo/bin PATH additions that might be from VM
-        if line.contains("export PATH=") && line.contains(".cargo/bin") {
-            // Only skip if this looks like it was added for VM
-            if let Ok(original) = std::fs::read_to_string(config_file) {
-                if original.contains("# Added by VM installer") {
-                    continue;
-                }
-            }
         }
 
         new_lines.push(line);
     }
 
-    // Only write back if we actually removed something
-    let new_contents = new_lines.join("\n");
+    let mut new_contents = new_lines.join("\n");
+    if contents.ends_with('\n') && !new_contents.is_empty() {
+        new_contents.push('\n');
+    }
     if new_contents != contents {
         std::fs::write(config_file, new_contents)?;
     }
 
     Ok(())
+}
+
+fn is_installer_marker(line: &str) -> bool {
+    let line = line.trim();
+    line == INSTALLER_MARKER
+        || line
+            .strip_prefix(INSTALLER_MARKER)
+            .is_some_and(|suffix| suffix.starts_with(" v"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{clean_shell_config, find_shell_configs};
+
+    #[test]
+    fn shell_cleanup_removes_only_installer_owned_lines() {
+        let home = tempfile::tempdir().unwrap();
+        let shell_config = home.path().join(".zshrc");
+        std::fs::write(
+            &shell_config,
+            "export KEEP=1\n\n# Added by VM installer v5.0.1\nexport PATH=\"$PATH:/vm\"\necho '# Added by VM installer is documentation'\n",
+        )
+        .unwrap();
+
+        let configs = find_shell_configs(home.path());
+        assert_eq!(configs.len(), 1);
+        assert_eq!(configs[0], shell_config);
+        clean_shell_config(&shell_config).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(shell_config).unwrap(),
+            "export KEEP=1\necho '# Added by VM installer is documentation'\n"
+        );
+    }
 }

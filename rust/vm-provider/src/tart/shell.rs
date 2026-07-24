@@ -6,7 +6,7 @@ use std::time::Duration;
 use tracing::info;
 use vm_core::error::Result;
 use vm_core::msg;
-use vm_core::vm_println;
+use vm_core::{vm_println, vm_progress};
 use vm_messages::messages::MESSAGES;
 
 impl TartProvider {
@@ -29,7 +29,7 @@ impl TartProvider {
 
         if !self.is_guest_agent_ready(&instance_name) {
             if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
-                vm_println!("⏳ Waiting for Tart guest agent...");
+                vm_progress!("Waiting for Tart guest agent...");
             }
 
             if !self.wait_for_guest_agent_ready(&instance_name, Duration::from_secs(45)) {

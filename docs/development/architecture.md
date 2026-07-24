@@ -31,6 +31,13 @@ vm/
 Command modules should not duplicate provider behavior. Providers should not
 own user interaction or top-level command routing.
 
+## CLI Output
+
+`rust/vm-core/src/output_macros.rs` owns shared output primitives. Requested
+data and successful results use stdout; progress, warnings, hints, and errors
+use stderr. Libraries return errors without printing them, and the `vm`
+executable renders each fatal error once.
+
 ## Provider Boundaries
 
 Docker and Podman implement container mounts, named volumes, tmpfs, resource

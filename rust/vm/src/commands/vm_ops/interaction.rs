@@ -68,7 +68,7 @@ pub async fn handle_exec(
     global_config: GlobalConfig,
 ) -> VmResult<()> {
     debug!(
-        command = ?command,
+        argument_count = command.len(),
         provider = provider.name(),
         "Executing command in VM"
     );
@@ -117,7 +117,7 @@ pub fn handle_copy(
         .and_then(|project| project.name.as_deref())
         .unwrap_or("vm-project");
     let direction = if source.contains(':') { "from" } else { "to" };
-    vm_progress!("Copying file {direction} VM '{vm_name}'...");
+    vm_progress!("Copying file {direction} environment '{vm_name}'...");
 
     provider
         .copy(source, destination, container)
