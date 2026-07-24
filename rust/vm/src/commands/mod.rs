@@ -133,18 +133,26 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         } => {
             let subject = load_runtime_subject(args.config, args.profile, environment)?;
             match command {
-                Some(command) => vm_ops::handle_exec(
-                    subject.provider,
-                    Some(subject.target.as_str()),
-                    vec!["/bin/sh".to_string(), "-c".to_string(), command],
-                    subject.config,
-                ),
-                None => vm_ops::handle_ssh(
-                    subject.provider,
-                    Some(subject.target.as_str()),
-                    path,
-                    subject.config,
-                ),
+                Some(command) => {
+                    vm_ops::handle_exec(
+                        subject.provider,
+                        Some(subject.target.as_str()),
+                        vec!["/bin/sh".to_string(), "-c".to_string(), command],
+                        subject.config,
+                        subject.global_config,
+                    )
+                    .await
+                }
+                None => {
+                    vm_ops::handle_ssh(
+                        subject.provider,
+                        Some(subject.target.as_str()),
+                        path,
+                        subject.config,
+                        subject.global_config,
+                    )
+                    .await
+                }
             }
         }
         Command::Exec {
@@ -163,7 +171,9 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
                 Some(subject.target.as_str()),
                 command,
                 subject.config,
+                subject.global_config,
             )
+            .await
         }
         Command::Logs {
             environment,

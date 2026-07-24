@@ -404,6 +404,11 @@ pub trait Provider {
     /// Get lifecycle state without collecting metrics, services, or readiness.
     fn instance_state(&self, container: Option<&str>) -> Result<InstanceState>;
 
+    /// Check whether an instance is ready for shell and command execution.
+    fn is_ready(&self, container: Option<&str>) -> Result<bool> {
+        Ok(self.instance_state(container)?.is_running())
+    }
+
     /// Restart a VM (stop then start).
     fn restart(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
         self.stop(container)?;

@@ -6,8 +6,8 @@ use vm_config::{
     config::{BoxSpec, CpuLimit, MemoryLimit, TartConfig, VmConfig},
     AppConfig,
 };
-use vm_core::vm_println;
-use vm_provider::get_provider;
+use vm_core::{vm_hint, vm_success};
+use vm_provider::{get_provider, InstanceState, VmError as ProviderError};
 
 use super::{environment::mac_profile, vm_ops};
 
@@ -55,31 +55,27 @@ pub(super) async fn handle(intent: RunIntent) -> VmResult<()> {
     let provider = get_provider(config.clone()).map_err(VmError::from)?;
     let target = target(&intent);
     let connect_hint = shell_hint(&intent);
-    let status = provider.status(target.as_deref());
-
-    if status.as_ref().is_ok_and(|report| report.is_running) {
-        vm_println!("✓ Environment is already running");
-        vm_println!("  Connect with: {connect_hint}");
-        return Ok(());
+    match provider.instance_state(target.as_deref()) {
+        Ok(InstanceState::Running) => {
+            vm_success!("Environment is already running");
+            vm_hint!("Connect with: {connect_hint}");
+            Ok(())
+        }
+        Ok(_) => {
+            vm_ops::handle_start(
+                provider,
+                target.as_deref(),
+                config,
+                app_config.global,
+                false,
+            )
+            .await
+        }
+        Err(ProviderError::NotFound(_)) => {
+            vm_ops::handle_create(provider, config, app_config.global, false, target).await
+        }
+        Err(error) => Err(VmError::from(error)),
     }
-
-    let result = if status.is_ok() {
-        vm_ops::handle_start(
-            provider,
-            target.as_deref(),
-            config,
-            app_config.global,
-            false,
-        )
-        .await
-    } else {
-        vm_ops::handle_create(provider, config, app_config.global, false, target).await
-    };
-
-    if result.is_ok() {
-        vm_println!("  Connect with: {connect_hint}");
-    }
-    result
 }
 
 pub(super) fn parse_name(words: &[String]) -> VmResult<Option<String>> {

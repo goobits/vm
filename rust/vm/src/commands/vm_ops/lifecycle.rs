@@ -1,20 +1,26 @@
-//! VM lifecycle command handlers
-//!
-//! This module provides commands for managing VM lifecycle including
-//! start and stop operations.
+//! Lifecycle handlers for existing environments.
+
+use std::time::Duration;
 
 use tracing::{debug, info_span};
 
 use crate::error::{VmError, VmResult};
 use vm_config::{config::VmConfig, GlobalConfig};
-use vm_core::msg;
-use vm_core::vm_println;
-use vm_messages::messages::MESSAGES;
-use vm_provider::{Provider, ProviderContext};
+use vm_core::{vm_hint, vm_progress, vm_success};
+use vm_provider::{InstanceState, Provider, ProviderContext};
 
 use super::helpers::{
     print_vm_runtime_details, register_vm_services_helper, unregister_vm_services_helper,
 };
+
+const READY_ATTEMPTS: usize = 120;
+const READY_INTERVAL: Duration = Duration::from_millis(500);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum StartOutcome {
+    AlreadyRunning,
+    Started,
+}
 
 fn default_resource_name(provider: &dyn Provider, vm_name: &str) -> String {
     match provider.name() {
@@ -23,7 +29,111 @@ fn default_resource_name(provider: &dyn Provider, vm_name: &str) -> String {
     }
 }
 
-/// Handle VM start
+fn project_name(config: &VmConfig) -> &str {
+    config
+        .project
+        .as_ref()
+        .and_then(|project| project.name.as_deref())
+        .unwrap_or("vm-project")
+}
+
+fn target_name(provider: &dyn Provider, container: Option<&str>, config: &VmConfig) -> String {
+    container
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| default_resource_name(provider, project_name(config)))
+}
+
+async fn wait_until_ready(
+    provider: &dyn Provider,
+    container: Option<&str>,
+    display_name: &str,
+) -> VmResult<()> {
+    let mut announced = false;
+    let mut last_error = None;
+
+    for attempt in 0..READY_ATTEMPTS {
+        match provider.is_ready(container) {
+            Ok(true) => return Ok(()),
+            Ok(false) => {}
+            Err(error) => last_error = Some(error),
+        }
+
+        if !announced {
+            vm_progress!("Waiting for '{display_name}' to be ready...");
+            announced = true;
+        }
+        if attempt + 1 < READY_ATTEMPTS {
+            tokio::time::sleep(READY_INTERVAL).await;
+        }
+    }
+
+    let source = last_error.unwrap_or_else(|| {
+        vm_core::error::VmError::Timeout(format!(
+            "Environment '{display_name}' did not become ready within 60 seconds"
+        ))
+    });
+    Err(VmError::vm_operation(
+        source,
+        Some(display_name),
+        "wait until ready",
+    ))
+}
+
+/// Start an existing environment when needed, then wait until it accepts commands.
+///
+/// This function never creates, rebuilds, or removes an environment.
+pub(super) async fn ensure_running(
+    provider: &dyn Provider,
+    container: Option<&str>,
+    config: &VmConfig,
+    global_config: &GlobalConfig,
+    wait: bool,
+) -> VmResult<StartOutcome> {
+    let display_name = target_name(provider, container, config);
+    let state = provider.instance_state(container).map_err(VmError::from)?;
+
+    let should_start = match state {
+        InstanceState::Running => false,
+        InstanceState::Starting => {
+            vm_progress!("'{display_name}' is starting...");
+            true
+        }
+        InstanceState::Stopped | InstanceState::Paused | InstanceState::Suspended => {
+            vm_progress!("Starting '{display_name}'...");
+            let context = ProviderContext::default().with_config(global_config.clone());
+            if let Err(start_error) = provider.start(container, &context) {
+                match provider.instance_state(container) {
+                    Ok(InstanceState::Running | InstanceState::Starting) => {}
+                    _ => return Err(VmError::from(start_error)),
+                }
+            }
+            true
+        }
+        InstanceState::Unknown(state) => {
+            return Err(VmError::validation(
+                format!("Cannot start '{display_name}' from state '{state}'"),
+                Some("Run `vm status` for details"),
+            ));
+        }
+    };
+
+    if wait {
+        wait_until_ready(provider, container, &display_name).await?;
+    }
+
+    if !should_start {
+        return Ok(StartOutcome::AlreadyRunning);
+    }
+
+    vm_success!("Started '{display_name}'");
+    if config.services.values().any(|service| service.enabled) {
+        vm_progress!("Configuring services...");
+        register_vm_services_helper(&display_name, config, global_config).await?;
+    }
+    Ok(StartOutcome::Started)
+}
+
+/// Handle `vm start`.
 pub async fn handle_start(
     provider: Box<dyn Provider>,
     container: Option<&str>,
@@ -33,148 +143,26 @@ pub async fn handle_start(
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "start");
     let _enter = span.enter();
-    debug!("Starting VM");
+    let display_name = target_name(provider.as_ref(), container, &config);
+    debug!(target = %display_name, "Starting environment");
 
-    // Get VM name from config
-    let vm_name = config
-        .project
-        .as_ref()
-        .and_then(|p| p.name.as_ref())
-        .map(|s| s.as_str())
-        .unwrap_or("vm-project");
-
-    let initial_status = provider.status(container).ok();
-    if initial_status
-        .as_ref()
-        .is_some_and(|report| report.is_running)
+    match ensure_running(
+        provider.as_ref(),
+        container,
+        &config,
+        &global_config,
+        !no_wait,
+    )
+    .await?
     {
-        vm_println!(
-            "{}",
-            msg!(MESSAGES.vm.start_already_running, name = vm_name)
-        );
-        return Ok(());
+        StartOutcome::AlreadyRunning => vm_success!("'{display_name}' is already running"),
+        StartOutcome::Started => print_vm_runtime_details(&config, false),
     }
-
-    // Get display name for the VM/container
-    let container_name = initial_status
-        .map(|r| r.name)
-        .unwrap_or_else(|| default_resource_name(provider.as_ref(), vm_name));
-
-    vm_println!("{}", msg!(MESSAGES.vm.start_header, name = vm_name));
-
-    let context = ProviderContext::default().with_config(global_config.clone());
-    match provider.start(container, &context) {
-        Ok(()) => {
-            if provider.name() == "tart" && !no_wait {
-                vm_println!("⏳ Waiting for Tart guest agent...");
-            }
-
-            if provider.name() == "tart"
-                && !no_wait
-                && !wait_for_tart_running(&*provider, container)
-            {
-                let log_path = format!(
-                    "/tmp/vm-tart-{}.log",
-                    sanitize_log_name(container.unwrap_or(vm_name))
-                );
-                let log_tail = std::fs::read_to_string(&log_path)
-                    .ok()
-                    .map(|c| tail_lines(&c, 40))
-                    .filter(|t| !t.is_empty());
-
-                match log_tail {
-                    Some(tail) => {
-                        vm_println!("⚠️  Tart failed to start (from {}):\n{}", log_path, tail)
-                    }
-                    None => vm_println!("⚠️  Tart failed to start. See {}", log_path),
-                }
-
-                return Err(VmError::provider(
-                    std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "Tart VM did not reach running state",
-                    ),
-                    provider.name(),
-                    "Start failed",
-                ));
-            }
-
-            vm_println!("{}", MESSAGES.vm.start_success);
-
-            if provider.name() == "tart" {
-                vm_println!(
-                    "  Status:     {}\n  Provider:   Tart\n  VM:         {}",
-                    MESSAGES.common.status_running,
-                    container_name
-                );
-            } else {
-                vm_println!(
-                    "{}",
-                    msg!(
-                        MESSAGES.vm.start_info_block,
-                        status = MESSAGES.common.status_running,
-                        container = container_name
-                    )
-                );
-            }
-
-            print_vm_runtime_details(&config, false);
-
-            // Register VM services and auto-start them
-            let vm_instance_name = default_resource_name(provider.as_ref(), vm_name);
-
-            vm_println!("{}", MESSAGES.common.configuring_services);
-            register_vm_services_helper(&vm_instance_name, &config, &global_config).await?;
-
-            vm_println!("{}", MESSAGES.common.connect_hint);
-
-            Ok(())
-        }
-        Err(e) => {
-            vm_println!(
-                "{}",
-                msg!(
-                    MESSAGES.vm.start_troubleshooting,
-                    name = vm_name,
-                    error = e.to_string(),
-                    container = container_name
-                )
-            );
-            Err(VmError::from(e))
-        }
-    }
+    vm_hint!("Connect with: vm shell {display_name}");
+    Ok(())
 }
 
-fn wait_for_tart_running(provider: &dyn Provider, container: Option<&str>) -> bool {
-    use std::thread;
-    use std::time::Duration;
-
-    for _ in 0..60 {
-        thread::sleep(Duration::from_secs(1));
-        if let Ok(report) = provider.status(container) {
-            if report.is_running {
-                return true;
-            }
-        }
-    }
-
-    false
-}
-
-fn tail_lines(contents: &str, max_lines: usize) -> String {
-    let lines: Vec<&str> = contents.lines().collect();
-    let start = lines.len().saturating_sub(max_lines);
-    lines[start..].join("\n")
-}
-
-fn sanitize_log_name(input: &str) -> String {
-    input
-        .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
-        .collect()
-}
-
-/// Handle a graceful VM stop.
+/// Handle a graceful environment stop.
 pub async fn handle_stop(
     provider: Box<dyn Provider>,
     container: Option<&str>,
@@ -183,44 +171,19 @@ pub async fn handle_stop(
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "stop");
     let _enter = span.enter();
-    debug!(target = ?container, "Stopping VM");
+    let display_name = target_name(provider.as_ref(), container, &config);
+    debug!(target = %display_name, "Stopping environment");
 
-    let project_name = config
-        .project
-        .as_ref()
-        .and_then(|p| p.name.as_deref())
-        .unwrap_or("vm-project");
-    let display_name = container.unwrap_or(project_name);
-
-    vm_println!("{}", msg!(MESSAGES.vm.stop_header, name = display_name));
-
-    match provider.stop(container) {
-        Ok(()) => {
-            let instance_name = container
-                .map(ToOwned::to_owned)
-                .unwrap_or_else(|| default_resource_name(provider.as_ref(), project_name));
-
-            vm_println!("{}", MESSAGES.vm.stop_success);
-            unregister_vm_services_helper(&instance_name, &global_config).await?;
-            vm_println!("{}", MESSAGES.vm.stop_restart_hint);
-            Ok(())
-        }
-        Err(e) => {
-            vm_println!(
-                "{}",
-                msg!(
-                    MESSAGES.vm.stop_troubleshooting,
-                    name = display_name,
-                    error = e.to_string()
-                )
-            );
-            Err(VmError::from(e))
-        }
+    vm_progress!("Stopping '{display_name}'...");
+    provider.stop(container).map_err(VmError::from)?;
+    if config.services.values().any(|service| service.enabled) {
+        unregister_vm_services_helper(&display_name, &global_config).await?;
     }
+    vm_success!("Stopped '{display_name}'");
+    Ok(())
 }
 
-/// Handle VM restart. If the environment is stopped, this makes the intended
-/// final state true by starting it.
+/// Handle `vm restart`; stopped environments are started.
 pub async fn handle_restart(
     provider: Box<dyn Provider>,
     container: Option<&str>,
@@ -229,46 +192,35 @@ pub async fn handle_restart(
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "restart");
     let _enter = span.enter();
-    debug!("Restarting VM");
+    let display_name = target_name(provider.as_ref(), container, &config);
+    debug!(target = %display_name, "Restarting environment");
 
-    let vm_name = config
-        .project
-        .as_ref()
-        .and_then(|p| p.name.as_ref())
-        .map(|s| s.as_str())
-        .unwrap_or("vm-project");
-    let display_name = container.unwrap_or(vm_name);
-
-    vm_println!("{}", msg!(MESSAGES.vm.restart_header, name = display_name));
-
+    vm_progress!("Restarting '{display_name}'...");
     let context = ProviderContext::default().with_config(global_config.clone());
-    let status = provider.status(container).ok();
-    let result = if status.as_ref().is_some_and(|report| report.is_running) {
-        provider.restart(container, &context)
-    } else {
-        provider.start(container, &context)
-    };
-
-    match result {
-        Ok(()) => {
-            let vm_instance_name = container
-                .map(str::to_string)
-                .unwrap_or_else(|| default_resource_name(provider.as_ref(), vm_name));
-            register_vm_services_helper(&vm_instance_name, &config, &global_config).await?;
-            vm_println!("{}", MESSAGES.vm.restart_success);
-            vm_println!("{}", MESSAGES.common.connect_hint);
-            Ok(())
+    match provider.instance_state(container).map_err(VmError::from)? {
+        InstanceState::Running | InstanceState::Starting => provider
+            .restart(container, &context)
+            .map_err(VmError::from)?,
+        InstanceState::Stopped | InstanceState::Paused | InstanceState::Suspended => {
+            provider.start(container, &context).map_err(VmError::from)?;
         }
-        Err(e) => {
-            vm_println!(
-                "{}",
-                msg!(
-                    MESSAGES.vm.restart_troubleshooting,
-                    name = display_name,
-                    error = e.to_string()
-                )
-            );
-            Err(VmError::from(e))
+        InstanceState::Unknown(state) => {
+            return Err(VmError::validation(
+                format!("Cannot restart '{display_name}' from state '{state}'"),
+                Some("Run `vm status` for details"),
+            ));
         }
     }
+
+    wait_until_ready(provider.as_ref(), container, &display_name).await?;
+    if config.services.values().any(|service| service.enabled) {
+        register_vm_services_helper(&display_name, &config, &global_config).await?;
+    }
+    vm_success!("Restarted '{display_name}'");
+    vm_hint!("Connect with: vm shell {display_name}");
+    Ok(())
 }
+
+#[cfg(test)]
+#[path = "tests/lifecycle.rs"]
+mod tests;

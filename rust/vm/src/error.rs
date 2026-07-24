@@ -44,24 +44,6 @@ impl VmError {
         Self::with_source(format!("Configuration error: {}", context.into()), source)
     }
 
-    pub fn provider<E>(
-        source: E,
-        provider_type: impl Into<String>,
-        context: impl Into<String>,
-    ) -> Self
-    where
-        E: Error + Send + Sync + 'static,
-    {
-        Self::with_source(
-            format!(
-                "Provider error ({}): {}",
-                provider_type.into(),
-                context.into()
-            ),
-            source,
-        )
-    }
-
     pub fn vm_operation<E>(
         source: E,
         vm_name: Option<impl Into<String>>,

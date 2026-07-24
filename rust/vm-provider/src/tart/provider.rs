@@ -934,6 +934,15 @@ impl Provider for TartProvider {
         Ok(InstanceState::from_runtime_status(&state))
     }
 
+    fn is_ready(&self, container: Option<&str>) -> Result<bool> {
+        let instance_name = self.resolve_instance_name(container)?;
+        let state = self.get_instance_state(&instance_name)?.ok_or_else(|| {
+            VmError::NotFound(format!("Tart VM '{instance_name}' does not exist"))
+        })?;
+        Ok(InstanceState::from_runtime_status(&state).is_running()
+            && self.is_guest_agent_ready(&instance_name))
+    }
+
     fn restart(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
         self.stop(container)?;
         self.start(container, context)

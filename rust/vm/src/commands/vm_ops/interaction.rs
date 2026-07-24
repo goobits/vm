@@ -5,11 +5,11 @@ use std::path::PathBuf;
 use tracing::debug;
 
 use crate::error::{VmError, VmResult};
-use vm_config::{config::VmConfig, ConfigLoader};
-use vm_core::msg;
-use vm_core::vm_println;
-use vm_messages::messages::MESSAGES;
+use vm_config::{config::VmConfig, ConfigLoader, GlobalConfig};
+use vm_core::{vm_progress, vm_success};
 use vm_provider::Provider;
+
+use super::lifecycle::ensure_running;
 
 fn detected_relative_path(path: Option<PathBuf>) -> PathBuf {
     if let Some(path) = path {
@@ -29,34 +29,22 @@ fn detected_relative_path(path: Option<PathBuf>) -> PathBuf {
     }
 }
 
-fn create_command(provider: &dyn Provider) -> String {
-    match provider.name() {
-        "docker" | "podman" | "tart" => format!("vm create {}", provider.name()),
-        _ => "vm create".to_string(),
-    }
-}
-
-fn start_command(provider: &dyn Provider) -> String {
-    match provider.name() {
-        "docker" | "podman" | "tart" => format!("vm start {}", provider.name()),
-        _ => "vm start".to_string(),
-    }
-}
-
-/// Connect to a running environment. Creation, startup, and mount changes are
-/// intentionally owned by their lifecycle commands.
-pub fn handle_ssh(
+/// Start an existing environment when needed, then open an interactive shell.
+pub async fn handle_ssh(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     path: Option<PathBuf>,
     config: VmConfig,
+    global_config: GlobalConfig,
 ) -> VmResult<()> {
     let relative_path = detected_relative_path(path);
-    let vm_name = config
-        .project
-        .as_ref()
-        .and_then(|project| project.name.as_deref())
-        .unwrap_or("vm-project");
+    let vm_name = container.unwrap_or_else(|| {
+        config
+            .project
+            .as_ref()
+            .and_then(|project| project.name.as_deref())
+            .unwrap_or("vm-project")
+    });
 
     debug!(
         provider = provider.name(),
@@ -64,45 +52,20 @@ pub fn handle_ssh(
         relative_path = %relative_path.display(),
         "Connecting to VM"
     );
-    vm_println!("{}", msg!(MESSAGES.vm.ssh_connecting, name = vm_name));
-
-    let result = provider.ssh(container, &relative_path);
-    match &result {
-        Ok(()) => vm_println!("{}", msg!(MESSAGES.vm.ssh_disconnected, name = vm_name)),
-        Err(error) => {
-            let message = error.to_string();
-            if message.contains("No such container")
-                || message.contains("No such object")
-                || message.contains("No container found matching")
-            {
-                vm_println!("{}", msg!(MESSAGES.vm.ssh_vm_not_found, name = vm_name));
-                vm_println!(
-                    "Create it explicitly with: {}",
-                    create_command(provider.as_ref())
-                );
-            } else if message.contains("is not running")
-                || message.contains("Container is not running")
-            {
-                vm_println!("{}", msg!(MESSAGES.vm.ssh_not_running, name = vm_name));
-                vm_println!(
-                    "Start it explicitly with: {}",
-                    start_command(provider.as_ref())
-                );
-            } else {
-                vm_println!("{}", MESSAGES.vm.ssh_session_ended);
-            }
-        }
-    }
-
-    result.map_err(VmError::from)
+    ensure_running(provider.as_ref(), container, &config, &global_config, true).await?;
+    vm_progress!("Connecting to '{vm_name}'...");
+    provider
+        .ssh(container, &relative_path)
+        .map_err(VmError::from)
 }
 
-/// Execute a command in a running environment.
-pub fn handle_exec(
+/// Start an existing environment when needed, then execute a command.
+pub async fn handle_exec(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     command: Vec<String>,
     config: VmConfig,
+    global_config: GlobalConfig,
 ) -> VmResult<()> {
     debug!(
         command = ?command,
@@ -110,32 +73,8 @@ pub fn handle_exec(
         "Executing command in VM"
     );
 
-    let vm_name = config
-        .project
-        .as_ref()
-        .and_then(|project| project.name.as_deref())
-        .unwrap_or("vm-project");
-    let command_display = command.join(" ");
-    vm_println!(
-        "{}",
-        msg!(
-            MESSAGES.vm.exec_header,
-            name = vm_name,
-            command = &command_display
-        )
-    );
-
-    let result = provider.exec(container, &command);
-    vm_println!("{}", MESSAGES.vm.exec_separator);
-    match &result {
-        Ok(()) => vm_println!("{}", MESSAGES.vm.exec_success),
-        Err(error) => vm_println!(
-            "{}",
-            msg!(MESSAGES.vm.exec_troubleshooting, error = error.to_string())
-        ),
-    }
-
-    result.map_err(VmError::from)
+    ensure_running(provider.as_ref(), container, &config, &global_config, true).await?;
+    provider.exec(container, &command).map_err(VmError::from)
 }
 
 /// View environment logs.
@@ -178,13 +117,11 @@ pub fn handle_copy(
         .and_then(|project| project.name.as_deref())
         .unwrap_or("vm-project");
     let direction = if source.contains(':') { "from" } else { "to" };
-    vm_println!("Copying file {} VM '{}'...", direction, vm_name);
+    vm_progress!("Copying file {direction} VM '{vm_name}'...");
 
-    let result = provider.copy(source, destination, container);
-    match &result {
-        Ok(()) => vm_println!("File copied successfully"),
-        Err(error) => vm_println!("Copy failed: {}", error),
-    }
-
-    result.map_err(VmError::from)
+    provider
+        .copy(source, destination, container)
+        .map_err(VmError::from)?;
+    vm_success!("File copied");
+    Ok(())
 }

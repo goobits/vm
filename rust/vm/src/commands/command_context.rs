@@ -6,6 +6,7 @@ use super::environment::resolve_environment;
 use super::vm_ops;
 use crate::error::{VmError, VmResult};
 use vm_config::{config::VmConfig, AppConfig, GlobalConfig};
+use vm_core::vm_progress;
 use vm_provider::{get_provider, Provider};
 
 pub(super) struct RuntimeSubject {
@@ -47,6 +48,7 @@ pub(super) fn load_runtime_context(
     provider_override: Option<String>,
     requested_target: Option<&str>,
 ) -> VmResult<RuntimeSubject> {
+    vm_progress!("Finding environment...");
     let (provider, config, global_config) =
         load_provider_context(config_path, profile, provider_override)?;
     let target =
