@@ -201,20 +201,52 @@ pub async fn handle_export(
 
     vm_println!("  Compressing snapshot...");
 
-    // Create compressed tarball
-    let tar_gz = std::fs::File::create(&output_file)
-        .map_err(|e| VmError::filesystem(e, output_file.display().to_string(), "create"))?;
+    // Stream the tarball into a sibling `.tmp` file first and rename into
+    // place once the archive is fully written. A crash, full disk, or
+    // ctrl-c partway through would otherwise leave a truncated `.tar.gz`
+    // at the user's destination that looks valid but fails to extract.
+    let tmp_output = {
+        let mut name = output_file
+            .file_name()
+            .map(|n| n.to_os_string())
+            .ok_or_else(|| {
+                VmError::filesystem(
+                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing file name"),
+                    output_file.display().to_string(),
+                    "tempname",
+                )
+            })?;
+        name.push(".tmp");
+        output_file.with_file_name(name)
+    };
+
+    let tar_gz = std::fs::File::create(&tmp_output)
+        .map_err(|e| VmError::filesystem(e, tmp_output.display().to_string(), "create"))?;
 
     let enc =
         flate2::write::GzEncoder::new(tar_gz, flate2::Compression::new(compress_level as u32));
 
     let mut tar = tar::Builder::new(enc);
 
-    tar.append_dir_all(".", &export_build_dir)
-        .map_err(|e| VmError::general(e, "Failed to create tar archive"))?;
+    if let Err(e) = tar.append_dir_all(".", &export_build_dir) {
+        let _ = std::fs::remove_file(&tmp_output);
+        return Err(VmError::general(e, "Failed to create tar archive"));
+    }
 
-    tar.finish()
-        .map_err(|e| VmError::general(e, "Failed to finish tar archive"))?;
+    if let Err(e) = tar.finish() {
+        let _ = std::fs::remove_file(&tmp_output);
+        return Err(VmError::general(e, "Failed to finish tar archive"));
+    }
+    drop(tar);
+
+    if let Err(e) = std::fs::rename(&tmp_output, &output_file) {
+        let _ = std::fs::remove_file(&tmp_output);
+        return Err(VmError::filesystem(
+            e,
+            output_file.display().to_string(),
+            "rename",
+        ));
+    }
 
     // Get final file size
     let file_size = std::fs::metadata(&output_file)

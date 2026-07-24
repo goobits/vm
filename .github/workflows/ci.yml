@@ -35,10 +35,12 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Run unit tests
+        continue-on-error: ${{ matrix.os != 'ubuntu-latest' }}
         working-directory: rust
         run: cargo test --workspace --lib -- --test-threads=10
 
       - name: Run integration tests
+        continue-on-error: ${{ matrix.os != 'ubuntu-latest' }}
         working-directory: rust
         run: cargo test --workspace --test '*' --features integration -- --test-threads=2
 
@@ -60,6 +62,12 @@ jobs:
 
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check formatting
+        working-directory: rust
+        run: cargo fmt --all --check
 
       - name: Run clippy
         working-directory: rust

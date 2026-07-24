@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use tracing::debug;
 
 use crate::error::{VmError, VmResult};
-use vm_cli::msg;
 use vm_config::{config::VmConfig, ConfigLoader};
+use vm_core::msg;
 use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
 use vm_provider::Provider;

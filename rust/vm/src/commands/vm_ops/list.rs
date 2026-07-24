@@ -9,7 +9,7 @@ use crate::commands::vm_ops::targets::{
     get_all_instances, get_instances_from_provider, project_instance_matches,
 };
 use crate::error::VmResult;
-use vm_cli::msg;
+use vm_core::msg;
 use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
 use vm_provider::InstanceInfo;

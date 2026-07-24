@@ -217,12 +217,13 @@ impl SecretStore {
         Ok(())
     }
 
-    /// Save storage to file
+    /// Save storage without exposing partially written secret data.
     fn save(&self) -> Result<()> {
         let content =
             serde_json::to_string_pretty(&self.storage).context("Failed to serialize secrets")?;
 
-        fs::write(&self.storage_file, content).context("Failed to write secrets file")?;
+        vm_core::file_system::atomic_write(&self.storage_file, content.as_bytes())
+            .context("Failed to write secrets file")?;
 
         // Set restrictive permissions on the file
         #[cfg(unix)]

@@ -2,6 +2,7 @@
 use vm_docker_registry::{auto_manager::AutoManager, types::AutoConfig};
 
 #[test]
+#[ignore = "Creates real Docker registry containers; run with --ignored"]
 #[cfg(feature = "integration")]
 fn test_auto_manager_creation_integration() {
     let manager = AutoManager::new();

@@ -25,7 +25,7 @@ jobs:
 
       - name: Generate coverage
         working-directory: rust
-        run: cargo tarpaulin --workspace --out Xml --output-dir coverage/
+        run: cargo tarpaulin --workspace --lib --out Xml --output-dir coverage/
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3

@@ -132,6 +132,14 @@ impl TartProvisioner {
         input.replace('\'', "'\"'\"'")
     }
 
+    fn shell_quote_packages(packages: &[String]) -> String {
+        packages
+            .iter()
+            .map(|package| format!("'{}'", Self::shell_escape_single_quotes(package)))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
     pub(crate) fn ensure_workspace_mount(&self) -> Result<()> {
         let dir_escaped = Self::shell_escape_single_quotes(&self.project_dir);
         let mount_cmd = format!(
@@ -422,7 +430,7 @@ chmod {mode} "$HOME/{target}""#,
 
     fn provision_generic_packages(&self, config: &VmConfig) -> Result<()> {
         if !config.apt_packages.is_empty() {
-            let packages = config.apt_packages.join(" ");
+            let packages = Self::shell_quote_packages(&config.apt_packages);
             if self.is_macos_guest(config) {
                 self.ensure_homebrew()?;
                 self.ssh_exec(&format!(
@@ -440,7 +448,7 @@ chmod {mode} "$HOME/{target}""#,
 
         if !config.npm_packages.is_empty() {
             self.ensure_nodejs_runtime(config)?;
-            let packages = config.npm_packages.join(" ");
+            let packages = Self::shell_quote_packages(&config.npm_packages);
             self.ssh_exec(&format!(
                 r#"export PATH="{}"
 export NVM_DIR="$HOME/.nvm"
@@ -454,7 +462,7 @@ npm install -g {}"#,
         if !config.pip_packages.is_empty() {
             self.ensure_python_runtime(config)?;
             self.ensure_python_package_tooling(config)?;
-            let packages = config.pip_packages.join(" ");
+            let packages = Self::shell_quote_packages(&config.pip_packages);
             self.ssh_exec(&format!(
                 r#"export PATH="{}"
 python3 -m pip install --user {} {}"#,
@@ -470,7 +478,7 @@ python3 -m pip install --user {} {}"#,
 
         if !config.cargo_packages.is_empty() {
             self.ensure_rust_runtime()?;
-            let packages = config.cargo_packages.join(" ");
+            let packages = Self::shell_quote_packages(&config.cargo_packages);
             self.ssh_exec(&format!(
                 r#"export PATH="$HOME/.cargo/bin:$PATH"
 cargo install {}"#,
@@ -1056,6 +1064,20 @@ mod tests {
 
         let rendered = TartProvisioner::render_shell_overrides(&config);
         assert!(rendered.is_none());
+    }
+
+    #[test]
+    fn package_names_are_shell_quoted() {
+        let packages = vec![
+            "safe".to_string(),
+            "pkg; touch /tmp/injected".to_string(),
+            "it's".to_string(),
+        ];
+
+        assert_eq!(
+            TartProvisioner::shell_quote_packages(&packages),
+            "'safe' 'pkg; touch /tmp/injected' 'it'\"'\"'s'"
+        );
     }
 
     #[test]

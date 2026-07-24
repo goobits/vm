@@ -14,12 +14,12 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tracing::{error, info, warn};
-use vm_cli::msg;
 use vm_config::config::{BoxSpec, VmConfig};
 use vm_core::command_stream::{
     is_tool_installed, stream_command, stream_command_visible_with_env, stream_command_with_env,
 };
 use vm_core::error::Result;
+use vm_core::msg;
 use vm_core::vm_println;
 use vm_core::{get_cpu_core_count, get_total_memory_gb};
 use vm_messages::messages::MESSAGES;
@@ -786,16 +786,15 @@ impl Provider for TartProvider {
 
     fn logs(&self, container: Option<&str>) -> Result<()> {
         let vm_name = self.vm_name_with_instance(container)?;
-        // Try to read logs from Tart's configured home directory.
-        let tart_home = self.tart_home().unwrap_or_else(|| {
-            let home_env = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-            format!("{home_env}/.tart")
-        });
-        let log_path = format!("{}/vms/{}/app.log", tart_home, vm_name);
+        let tart_home = self.tart_home().map(PathBuf::from).map_or_else(
+            || vm_core::user_paths::home_dir().map(|home| home.join(".tart")),
+            Ok,
+        )?;
+        let log_path = tart_home.join("vms").join(&vm_name).join("app.log");
 
         // Check if log file exists before attempting to tail
-        if !Path::new(&log_path).exists() {
-            let error_msg = format!("Log file not found at: {}", log_path);
+        if !log_path.exists() {
+            let error_msg = format!("Log file not found at: {}", log_path.display());
             error!("{}", error_msg);
             info!("{}", MESSAGES.service.provider_logs_unavailable);
             info!(
@@ -810,11 +809,15 @@ impl Provider for TartProvider {
 
         info!(
             "{}",
-            msg!(MESSAGES.service.provider_logs_showing, path = &log_path)
+            msg!(
+                MESSAGES.service.provider_logs_showing,
+                path = log_path.display().to_string()
+            )
         );
         info!("{}", MESSAGES.common.press_ctrl_c_to_stop);
 
         // Use tail -f to follow the log file
+        let log_path = log_path.to_string_lossy();
         stream_command("tail", &["-f", &log_path])
     }
 

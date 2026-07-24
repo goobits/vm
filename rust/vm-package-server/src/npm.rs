@@ -431,7 +431,7 @@ mod tests {
             .route("/npm/{package}", axum::routing::put(publish_package))
             .with_state(state.clone());
 
-        let server = TestServer::new(app).expect("should create test server");
+        let server = TestServer::new(app);
 
         let package_name = "test-package";
         let version = "1.0.0";
@@ -479,7 +479,7 @@ mod tests {
             .route("/npm/{package}", axum::routing::put(publish_package))
             .with_state(state);
 
-        let server = TestServer::new(app).expect("should create test server");
+        let server = TestServer::new(app);
 
         let payload = json!({
             "name": "test-package",
@@ -498,7 +498,7 @@ mod tests {
             .route("/npm/{package}", axum::routing::put(publish_package))
             .with_state(state);
 
-        let server = TestServer::new(app).expect("should create test server");
+        let server = TestServer::new(app);
 
         let tarball_content = b"fake tarball content";
         let encoded_tarball = general_purpose::STANDARD.encode(tarball_content);
@@ -562,7 +562,7 @@ mod tests {
             .route("/npm/{package}", axum::routing::get(package_metadata))
             .with_state(state);
 
-        let server = TestServer::new(app).expect("should create test server");
+        let server = TestServer::new(app);
         let response = server.get(&format!("/npm/{}", package_name)).await;
 
         assert_eq!(response.status_code(), StatusCode::OK);
@@ -606,7 +606,7 @@ mod tests {
             .route("/npm/{package}", axum::routing::get(package_metadata))
             .with_state(state);
 
-        let server = TestServer::new(app).expect("should create test server");
+        let server = TestServer::new(app);
         let response = server
             .get(&format!("/npm/{}", package_name))
             .add_header("host", "example.com:3000")
@@ -639,7 +639,7 @@ mod tests {
             )
             .with_state(state);
 
-        let server = TestServer::new(app).expect("should create test server");
+        let server = TestServer::new(app);
         let response = server
             .get("/npm/test-package/-/test-package-1.0.0.tgz")
             .await;

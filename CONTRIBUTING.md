@@ -331,7 +331,7 @@ We aim to provide an initial review within 2-3 business days. Thank you for your
 ### Release Steps
 1. Update CHANGELOG.md with new version
 2. Test release candidate thoroughly
-3. Update version in package.json (if applicable)
+3. Bump version in `rust/Cargo.toml` (or run `make bump-version`)
 4. Tag release: `git tag v1.x.x`
 5. Update documentation with new features
 6. Announce release

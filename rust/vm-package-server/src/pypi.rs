@@ -393,7 +393,7 @@ mod tests {
             .route("/pypi/", axum::routing::post(upload_package))
             .with_state(state.clone());
 
-        let server = TestServer::new(app).expect("should create test server");
+        let server = TestServer::new(app);
 
         let filename = "test_package-1.0.0-py3-none-any.whl";
         let content = b"fake wheel content";
@@ -421,7 +421,7 @@ mod tests {
             .route("/pypi/", axum::routing::post(upload_package))
             .with_state(state.clone());
 
-        let server = TestServer::new(app).expect("should create test server");
+        let server = TestServer::new(app);
 
         let filename = "test-package-1.0.0.tar.gz";
         let content = b"fake tar.gz content";
@@ -447,7 +447,7 @@ mod tests {
             .route("/pypi/", axum::routing::post(upload_package))
             .with_state(state);
 
-        let server = TestServer::new(app).expect("should create test server");
+        let server = TestServer::new(app);
 
         let filename = "test-package.txt";
         let content = b"invalid file content";
@@ -481,7 +481,7 @@ mod tests {
             .route("/pypi/simple/", axum::routing::get(simple_index))
             .with_state(state);
 
-        let server = TestServer::new(app).expect("should create test server");
+        let server = TestServer::new(app);
         let response = server.get("/pypi/simple/").await;
 
         assert_eq!(response.status_code(), StatusCode::OK);
@@ -508,7 +508,7 @@ mod tests {
             .route("/pypi/simple/{package}/", axum::routing::get(package_index))
             .with_state(state);
 
-        let server = TestServer::new(app).expect("should create test server");
+        let server = TestServer::new(app);
         let response = server.get("/pypi/simple/testpackage/").await;
 
         assert_eq!(response.status_code(), StatusCode::OK);
@@ -534,7 +534,7 @@ mod tests {
             )
             .with_state(state);
 
-        let server = TestServer::new(app).expect("should create test server");
+        let server = TestServer::new(app);
         let response = server.get(&format!("/pypi/packages/{}", filename)).await;
 
         assert_eq!(response.status_code(), StatusCode::OK);

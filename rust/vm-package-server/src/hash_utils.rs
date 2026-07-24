@@ -1,5 +1,14 @@
 //! Cryptographic hashing utilities for package integrity verification
 
+/// Encode bytes as a lowercase hexadecimal string.
+fn to_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    bytes.iter().fold(String::new(), |mut acc, byte| {
+        let _ = write!(acc, "{byte:02x}");
+        acc
+    })
+}
+
 /// Calculate SHA256 hash of data.
 ///
 /// Computes the SHA256 hash of the provided byte data and returns it as a
@@ -18,7 +27,7 @@ pub fn sha256_hash(data: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(data);
-    format!("{:x}", hasher.finalize())
+    to_hex(&hasher.finalize())
 }
 
 /// Calculate SHA1 hash of data (for npm).
@@ -39,7 +48,7 @@ pub fn sha1_hash(data: &[u8]) -> String {
     use sha1::{Digest, Sha1};
     let mut hasher = Sha1::new();
     hasher.update(data);
-    format!("{:x}", hasher.finalize())
+    to_hex(&hasher.finalize())
 }
 
 #[cfg(test)]

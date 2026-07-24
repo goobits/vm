@@ -1,0 +1,4 @@
+[submodule ".claude/skills"]
+	path = .claude/skills
+	url = https://github.com/goobits/agent-skills.git
+	branch = main

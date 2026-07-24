@@ -15,7 +15,7 @@ pub fn confirm_select(prompt: &str, default: bool) -> Result<bool, dialoguer::Er
     let default_idx = usize::from(!default);
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt(prompt)
-        .items(&options)
+        .items(options)
         .default(default_idx)
         .interact()?;
 
@@ -23,9 +23,9 @@ pub fn confirm_select(prompt: &str, default: bool) -> Result<bool, dialoguer::Er
 }
 
 /// Show a shared arrow-key selector and return the selected index.
-pub fn select_index(
+pub fn select_index<T: std::fmt::Display>(
     prompt: &str,
-    items: &[impl ToString],
+    items: &[T],
     default_idx: usize,
 ) -> Result<usize, dialoguer::Error> {
     Select::with_theme(&ColorfulTheme::default())

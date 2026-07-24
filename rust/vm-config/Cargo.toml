@@ -30,7 +30,6 @@ serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }
 vm-core = { path = "../vm-core" }
 vm-messages = { path = "../vm-messages" }
-vm-cli = { path = "../vm-cli" }
 vm-plugin = { path = "../vm-plugin" }
 vm-logging = { path = "../vm-logging" }
 which = { workspace = true }
@@ -50,4 +49,4 @@ tempfile = { workspace = true }
 assert_cmd = "2.2"
 predicates = "3.1"
 tracing-subscriber = { workspace = true }
-serial_test = "3.4"
+serial_test = "3.5"

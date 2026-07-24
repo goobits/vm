@@ -22,6 +22,8 @@ pub use windows::WindowsPlatform;
 #[cfg(target_os = "macos")]
 pub use macos::MacOSPlatform;
 
-// Shell providers (available on all platforms for testing)
+// Shell providers (available on all platforms for testing). Items are reached
+// via `providers::shells::*` paths within the crate; no external consumer uses
+// the previous `pub use shells::*` re-export, so we drop the glob to keep the
+// crate's public surface intentional.
 pub mod shells;
-pub use shells::*;

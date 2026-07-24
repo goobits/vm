@@ -116,7 +116,6 @@ exceptions = [
     #{ allow = ["Zlib"], crate = "adler32" },
     # Workspace crates (private/unpublished)
     { allow = ["MIT"], crate = "vm-auth-proxy" },
-    { allow = ["MIT"], crate = "vm-cli" },
     { allow = ["MIT"], crate = "vm-core" },
     { allow = ["MIT"], crate = "vm-docker-registry" },
     { allow = ["MIT"], crate = "vm-package-server" },
@@ -143,11 +142,6 @@ exceptions = [
 # Workspace crates inherit license from workspace but need clarification
 [[licenses.clarify]]
 crate = "vm-auth-proxy"
-expression = "MIT"
-license-files = []
-
-[[licenses.clarify]]
-crate = "vm-cli"
 expression = "MIT"
 license-files = []
 

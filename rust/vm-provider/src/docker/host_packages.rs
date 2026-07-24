@@ -57,6 +57,43 @@ impl HostPackageInfo {
     }
 }
 
+/// Cached output of `<manager> list` queries to avoid spawning one subprocess
+/// per package. Populated lazily in [`detect_packages`] for the manager in use.
+#[derive(Debug, Default)]
+struct ManagerListings {
+    cargo_install_list: Option<String>,
+    npm_global_list: Option<String>,
+    pipx_short_list: Option<String>,
+}
+
+impl ManagerListings {
+    fn for_manager(manager: &PackageManager) -> Self {
+        match manager {
+            PackageManager::Cargo => Self {
+                cargo_install_list: run_command_stdout("cargo", &["install", "--list"]),
+                ..Self::default()
+            },
+            PackageManager::Npm => Self {
+                npm_global_list: run_command_stdout("npm", &["list", "-g", "--depth=0"]),
+                ..Self::default()
+            },
+            PackageManager::Pip | PackageManager::Pipx => Self {
+                pipx_short_list: run_command_stdout("pipx", &["list", "--short"]),
+                ..Self::default()
+            },
+        }
+    }
+}
+
+fn run_command_stdout(program: &str, args: &[&str]) -> Option<String> {
+    let output = Command::new(program).args(args).output().ok()?;
+    if output.status.success() {
+        Some(String::from_utf8_lossy(&output.stdout).into_owned())
+    } else {
+        None
+    }
+}
+
 /// Detects packages for the specified package manager on the host system.
 ///
 /// This function scans the host system for installed packages matching the provided
@@ -74,12 +111,20 @@ pub fn detect_packages(packages: &[String], manager: PackageManager) -> HostPack
     // Detect package manager directories
     detect_package_directories(&mut info);
 
+    // Pre-fetch listing output for the manager so per-package checks don't each
+    // spawn their own subprocess. For a typical 5-package config this drops the
+    // number of `cargo install --list` / `npm list -g` / `pipx list` spawns
+    // from O(packages) to 1.
+    let listings = ManagerListings::for_manager(&manager);
+
     // Check each package based on manager type
     for package in packages {
         let location = match manager {
-            PackageManager::Pip | PackageManager::Pipx => detect_python_package(package, &info),
-            PackageManager::Npm => detect_npm_package(package, &info),
-            PackageManager::Cargo => detect_cargo_package(package, &info),
+            PackageManager::Pip | PackageManager::Pipx => {
+                detect_python_package(package, &info, &listings)
+            }
+            PackageManager::Npm => detect_npm_package(package, &info, &listings),
+            PackageManager::Cargo => detect_cargo_package(package, &info, &listings),
         };
         info.detected_packages.insert(package.clone(), location);
     }
@@ -89,8 +134,6 @@ pub fn detect_packages(packages: &[String], manager: PackageManager) -> HostPack
 
 /// Detect all package manager directories on the host
 fn detect_package_directories(info: &mut HostPackageInfo) {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
-
     // Python directories
     if let Ok(output) = Command::new("python3")
         .args(["-c", "import site; print(site.getusersitepackages())"])
@@ -144,14 +187,19 @@ fn detect_package_directories(info: &mut HostPackageInfo) {
         if cargo_bin.exists() {
             info.cargo_bin = Some(cargo_bin);
         }
-    } else {
-        // Fallback to home-based paths if platform detection fails
-        let cargo_registry = PathBuf::from(&home).join(".cargo/registry");
+    } else if let Ok(home) = vm_core::user_paths::home_dir() {
+        // Fallback to home-based paths if platform detection of cargo_home
+        // fails. vm_core::user_paths::home_dir wraps the platform-aware
+        // lookup, so this works on Linux, macOS, and Windows; the old
+        // `env::var("HOME").unwrap_or_else(|_| "/home/user".to_string())`
+        // was wrong on Windows (no `$HOME`) and on Unix where root's home
+        // is `/root`, not `/home/user`.
+        let cargo_registry = home.join(".cargo/registry");
         if cargo_registry.exists() {
             info.cargo_registry = Some(cargo_registry);
         }
 
-        let cargo_bin = PathBuf::from(&home).join(".cargo/bin");
+        let cargo_bin = home.join(".cargo/bin");
         if cargo_bin.exists() {
             info.cargo_bin = Some(cargo_bin);
         }
@@ -159,7 +207,11 @@ fn detect_package_directories(info: &mut HostPackageInfo) {
 }
 
 /// Detect Python package (pip or pipx)
-fn detect_python_package(package: &str, info: &HostPackageInfo) -> PackageLocation {
+fn detect_python_package(
+    package: &str,
+    info: &HostPackageInfo,
+    listings: &ManagerListings,
+) -> PackageLocation {
     // Check pip first
     if let Some(ref pip_dir) = info.pip_site_packages {
         if check_pip_package(package, pip_dir) {
@@ -169,7 +221,7 @@ fn detect_python_package(package: &str, info: &HostPackageInfo) -> PackageLocati
 
     // Check pipx
     if let Some(ref pipx_dir) = info.pipx_base_dir {
-        if let Some(path) = check_pipx_package(package, pipx_dir) {
+        if let Some(path) = check_pipx_package(package, pipx_dir, listings) {
             return PackageLocation::HostPipx(path);
         }
     }
@@ -178,7 +230,11 @@ fn detect_python_package(package: &str, info: &HostPackageInfo) -> PackageLocati
 }
 
 /// Detect NPM package (global or local)
-fn detect_npm_package(package: &str, info: &HostPackageInfo) -> PackageLocation {
+fn detect_npm_package(
+    package: &str,
+    info: &HostPackageInfo,
+    listings: &ManagerListings,
+) -> PackageLocation {
     // Check local node_modules first (project dependencies)
     if let Some(ref local_dir) = info.npm_local_dir {
         let package_path = local_dir.join(package);
@@ -195,12 +251,10 @@ fn detect_npm_package(package: &str, info: &HostPackageInfo) -> PackageLocation 
         }
     }
 
-    // Check using npm list
-    if let Ok(output) = Command::new("npm")
-        .args(["list", "-g", "--depth=0", package])
-        .output()
-    {
-        if output.status.success() {
+    // Fall back to the cached `npm list -g --depth=0` output (one subprocess
+    // for the whole package list rather than one per package).
+    if let Some(ref list) = listings.npm_global_list {
+        if list.contains(package) {
             if let Some(ref global_dir) = info.npm_global_dir {
                 return PackageLocation::HostNpm(global_dir.clone());
             }
@@ -211,7 +265,11 @@ fn detect_npm_package(package: &str, info: &HostPackageInfo) -> PackageLocation 
 }
 
 /// Detect Cargo package
-fn detect_cargo_package(package: &str, info: &HostPackageInfo) -> PackageLocation {
+fn detect_cargo_package(
+    package: &str,
+    info: &HostPackageInfo,
+    listings: &ManagerListings,
+) -> PackageLocation {
     // Check cargo bin for installed binaries
     if let Some(ref bin_dir) = info.cargo_bin {
         let binary_path = bin_dir.join(package);
@@ -220,14 +278,11 @@ fn detect_cargo_package(package: &str, info: &HostPackageInfo) -> PackageLocatio
         }
     }
 
-    // Check using cargo
-    if let Ok(output) = Command::new("cargo").args(["install", "--list"]).output() {
-        if output.status.success() {
-            let output_str = String::from_utf8_lossy(&output.stdout);
-            if output_str.contains(package) {
-                if let Some(ref bin_dir) = info.cargo_bin {
-                    return PackageLocation::HostCargo(bin_dir.clone());
-                }
+    // Fall back to the cached `cargo install --list` output.
+    if let Some(ref list) = listings.cargo_install_list {
+        if list.contains(package) {
+            if let Some(ref bin_dir) = info.cargo_bin {
+                return PackageLocation::HostCargo(bin_dir.clone());
             }
         }
     }
@@ -255,16 +310,18 @@ fn check_pip_package(package: &str, site_packages: &Path) -> bool {
 }
 
 /// Check if package exists in pipx and return its path
-fn check_pipx_package(package: &str, pipx_base: &Path) -> Option<PathBuf> {
-    // Check using pipx list
-    if let Ok(output) = Command::new("pipx").args(["list", "--short"]).output() {
-        if output.status.success() {
-            let output_str = String::from_utf8_lossy(&output.stdout);
-            if output_str.contains(package) {
-                let package_venv = pipx_base.join(package);
-                if package_venv.exists() {
-                    return Some(package_venv);
-                }
+fn check_pipx_package(
+    package: &str,
+    pipx_base: &Path,
+    listings: &ManagerListings,
+) -> Option<PathBuf> {
+    // Consult the cached `pipx list --short` output instead of spawning pipx
+    // once per package.
+    if let Some(ref list) = listings.pipx_short_list {
+        if list.contains(package) {
+            let package_venv = pipx_base.join(package);
+            if package_venv.exists() {
+                return Some(package_venv);
             }
         }
     }

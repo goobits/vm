@@ -9,7 +9,7 @@ use crate::{
     context::ProviderContext,
     docker::{compose::ComposeOperations, ComposeCommand, DockerOps},
 };
-use vm_cli::msg;
+use vm_core::msg;
 use vm_core::{
     command_stream::stream_command_visible,
     error::{Result, VmError},

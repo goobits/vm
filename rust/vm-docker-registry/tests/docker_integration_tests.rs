@@ -2,6 +2,7 @@
 use vm_docker_registry::server;
 
 #[tokio::test]
+#[ignore = "Creates real Docker registry containers; run with --ignored"]
 #[cfg(feature = "integration")]
 async fn test_docker_registry_lifecycle_integration() {
     // This test requires Docker to be running.

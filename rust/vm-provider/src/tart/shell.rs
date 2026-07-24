@@ -4,8 +4,8 @@ use std::io::IsTerminal;
 use std::path::Path;
 use std::time::Duration;
 use tracing::info;
-use vm_cli::msg;
 use vm_core::error::Result;
+use vm_core::msg;
 use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
 

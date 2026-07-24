@@ -8,7 +8,7 @@ use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 use reqwest::Client;
 use std::collections::HashMap;
 use tracing::{debug, info, warn};
-use vm_cli::msg;
+use vm_core::msg;
 use vm_messages::messages::MESSAGES;
 
 /// Parse a scope string into a SecretScope enum

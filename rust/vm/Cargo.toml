@@ -35,7 +35,6 @@ sysinfo = { workspace = true, features = ["serde"] }
 vm-core = { path = "../vm-core" }
 vm-logging = { path = "../vm-logging" }
 vm-messages = { path = "../vm-messages" }
-vm-cli = { path = "../vm-cli" }
 vm-config = { path = "../vm-config" }
 vm-platform = { path = "../vm-platform" }
 vm-plugin = { path = "../vm-plugin" }
@@ -46,7 +45,7 @@ vm-package-server = { path = "../vm-package-server" }
 vm-auth-proxy = { path = "../vm-auth-proxy" }
 vm-docker-registry = { path = "../vm-docker-registry" }
 futures = "0.3.32"
-chrono = "0.4.44"
+chrono = "0.4.45"
 rand = { workspace = true }
 rayon = { workspace = true }
 walkdir = { workspace = true }
