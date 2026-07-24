@@ -43,7 +43,7 @@ pub trait InstanceResolver {
 /// This is extracted from Docker's sophisticated resolution logic
 pub fn fuzzy_match_instances(partial: &str, instances: &[InstanceInfo]) -> Result<String> {
     if instances.is_empty() {
-        return Err(VmError::Internal(format!(
+        return Err(VmError::NotFound(format!(
             "No instances found matching '{partial}'. Use 'vm list' to see available instances"
         )));
     }
@@ -89,7 +89,7 @@ pub fn fuzzy_match_instances(partial: &str, instances: &[InstanceInfo]) -> Resul
     }
 
     match matches.len() {
-        0 => Err(VmError::Internal(format!(
+        0 => Err(VmError::NotFound(format!(
             "No instance found matching '{partial}'. Use 'vm list' to see available instances"
         ))),
         1 => Ok(matches[0].clone()),
@@ -232,12 +232,8 @@ mod tests {
             created_at: None,
         }];
 
-        let result = fuzzy_match_instances("nonexistent", &instances);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("No instance found"));
+        let error = fuzzy_match_instances("nonexistent", &instances).unwrap_err();
+        assert!(matches!(error, VmError::NotFound(_)));
     }
 
     #[test]

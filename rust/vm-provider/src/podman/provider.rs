@@ -8,8 +8,8 @@ use vm_core::command_stream::is_tool_installed;
 use vm_core::error::{Result, VmError};
 
 use crate::{
-    context::ProviderContext, docker::DockerProvider, InstanceInfo, Provider, SnapshotRequest,
-    SnapshotRestoreRequest, TempProvider, VmStatusReport,
+    context::ProviderContext, docker::DockerProvider, InstanceInfo, InstanceState, Provider,
+    SnapshotRequest, SnapshotRestoreRequest, TempProvider, VmStatusReport,
 };
 use vm_config::config::VmConfig;
 
@@ -153,6 +153,10 @@ impl Provider for PodmanProvider {
         let mut report = self.docker_provider.status(container)?;
         report.provider = "podman".to_string();
         Ok(report)
+    }
+
+    fn instance_state(&self, container: Option<&str>) -> Result<InstanceState> {
+        self.docker_provider.instance_state(container)
     }
 
     fn get_sync_directory(&self) -> String {

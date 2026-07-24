@@ -1,20 +1,48 @@
 //! Container status reporting.
 
 use super::LifecycleOperations;
-use crate::{ResourceUsage, ServiceStatus, VmStatusReport};
+use crate::{InstanceState, ResourceUsage, ServiceStatus, VmStatusReport};
 use vm_core::error::{Result, VmError};
 
 impl<'a> LifecycleOperations<'a> {
+    pub fn instance_state(&self, container: Option<&str>) -> Result<InstanceState> {
+        let container_name = self.resolve_probe_target(container)?;
+        self.instance_state_for_name(&container_name)
+    }
+
+    pub(super) fn instance_state_for_name(&self, container_name: &str) -> Result<InstanceState> {
+        let output = std::process::Command::new(self.executable)
+            .args(["inspect", "--format", "{{.State.Status}}", container_name])
+            .output()
+            .map_err(|error| VmError::Internal(format!("Failed to inspect container: {error}")))?;
+
+        if !output.status.success() {
+            let details = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            if details.to_ascii_lowercase().contains("no such") {
+                return Err(VmError::NotFound(format!(
+                    "Container '{container_name}' does not exist"
+                )));
+            }
+            return Err(VmError::Internal(format!(
+                "Failed to inspect container '{container_name}': {details}"
+            )));
+        }
+
+        Ok(InstanceState::from_runtime_status(
+            String::from_utf8_lossy(&output.stdout).trim(),
+        ))
+    }
+
     pub fn status_report(&self, container: Option<&str>) -> Result<VmStatusReport> {
-        let container_name = self.resolve_target_container(container)?;
+        let container_name = self.resolve_probe_target(container)?;
         let inspect_output = std::process::Command::new(self.executable)
             .args(["inspect", &container_name])
             .output()
             .map_err(|error| VmError::Internal(format!("Failed to inspect container: {error}")))?;
 
         if !inspect_output.status.success() {
-            return Err(VmError::Internal(format!(
-                "Container '{container_name}' not found"
+            return Err(VmError::NotFound(format!(
+                "Container '{container_name}' does not exist"
             )));
         }
 
@@ -27,8 +55,13 @@ impl<'a> LifecycleOperations<'a> {
                 "Container '{container_name}' inspect returned no results"
             ))
         })?;
+        let runtime_state = InstanceState::from_runtime_status(
+            container_info["State"]["Status"]
+                .as_str()
+                .unwrap_or("unknown"),
+        );
         let state = &container_info["State"];
-        let is_running = state["Running"].as_bool().unwrap_or(false);
+        let is_running = runtime_state.is_running();
 
         let uptime = if is_running {
             self.calculate_uptime(state)
@@ -52,6 +85,7 @@ impl<'a> LifecycleOperations<'a> {
             name: container_name,
             provider: self.executable.to_string(),
             container_id: container_info["Id"].as_str().map(ToString::to_string),
+            state: runtime_state,
             is_running,
             uptime,
             resources,

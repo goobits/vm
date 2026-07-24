@@ -7,7 +7,7 @@
 
 use std::process::Command;
 use vm_core::error::{Result, VmError};
-use vm_core::{vm_dbg, vm_error};
+use vm_core::vm_dbg;
 
 /// Builder for Docker commands with fluent interface and consistent error handling.
 ///
@@ -80,7 +80,6 @@ impl DockerCommand {
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            vm_error!("Docker command failed: {}", stderr);
             Err(VmError::Internal(format!(
                 "Docker command failed with status: {}. Error: {}",
                 output.status, stderr
@@ -187,7 +186,17 @@ impl DockerOps {
         DockerCommand::new(executable)
             .subcommand("start")
             .arg(container_name)
-            .execute()
+            .execute_with_output()
+            .map(|_| ())
+    }
+
+    /// Resume a paused container by name.
+    pub fn unpause_container(executable: Option<&str>, container_name: &str) -> Result<()> {
+        DockerCommand::new(executable)
+            .subcommand("unpause")
+            .arg(container_name)
+            .execute_with_output()
+            .map(|_| ())
     }
 
     /// Remove a container by name (with force flag).

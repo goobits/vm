@@ -14,11 +14,10 @@ use super::compose_context::{
 };
 use super::compose_model::{RenderedResources, RenderedStorage};
 use super::preview::redact_compose;
-use super::{ComposeCommand, DockerOps, UserConfig};
+use super::{DockerOps, UserConfig};
 use crate::user_home::resolve_home_dir;
 use crate::{Mount, ProviderContext, TempVmState};
 use vm_config::config::VmConfig;
-use vm_core::command_stream::stream_command_visible;
 
 pub struct ComposeOperations<'a> {
     pub config: &'a VmConfig,
@@ -367,74 +366,40 @@ impl<'a> ComposeOperations<'a> {
         )
     }
 
-    pub fn start_with_compose(&self, context: &ProviderContext) -> Result<()> {
-        let container_name = self
-            .config
-            .project
-            .as_ref()
-            .and_then(|p| p.name.as_ref())
-            .map(|s| format!("{s}-dev"))
-            .unwrap_or_else(|| "vm-project-dev".to_string());
-        self.start_named_with_compose(&container_name, context)
-    }
-
-    pub fn start_named_with_compose(
-        &self,
-        container_name: &str,
-        context: &ProviderContext,
-    ) -> Result<()> {
+    pub fn start_named_with_compose(&self, container_name: &str) -> Result<()> {
         let instance_name = self.instance_name_from_container(container_name);
         let compose_path = compose_path(self.generated_dir, instance_name.as_deref());
         let container_exists =
             DockerOps::container_exists(Some(self.executable), container_name).unwrap_or(false);
 
-        if !container_exists || !compose_path.exists() {
-            let build_ops = BuildOperations::new(self.config, self.generated_dir, self.executable);
-            let build_context = build_ops.prepare_compose_build_context()?;
-            if let Some(instance_name) = &instance_name {
-                self.write_docker_compose_with_instance(&build_context, instance_name, context)?;
-            } else {
-                self.write_docker_compose(&build_context, context)?;
-            }
+        if !container_exists {
+            return Err(VmError::NotFound(format!(
+                "Container '{container_name}' does not exist"
+            )));
         }
 
-        // If the dev container exists, start it directly to avoid compose name conflicts
-        // with preserved service containers (e.g., postgres).
-        if container_exists {
-            // Start any existing service containers (if stopped).
-            let expected_services = self.get_expected_service_containers(instance_name.as_deref());
-            for service in expected_services {
-                if !DockerOps::container_exists(Some(self.executable), &service).unwrap_or(false) {
-                    continue;
-                }
-                let running = DockerOps::is_container_running(Some(self.executable), &service)
-                    .unwrap_or(false);
-                if running {
-                    continue;
-                }
-                DockerOps::start_container(Some(self.executable), &service)?;
+        // Start existing services directly to avoid Compose name conflicts.
+        let expected_services = self.get_expected_service_containers(instance_name.as_deref());
+        for service in expected_services {
+            if !DockerOps::container_exists(Some(self.executable), &service).unwrap_or(false) {
+                continue;
             }
-
-            // Start the dev container if it's not already running.
-            let dev_running =
-                DockerOps::is_container_running(Some(self.executable), container_name)
-                    .unwrap_or(false);
-            if !dev_running {
-                DockerOps::start_container(Some(self.executable), container_name)?;
+            let running =
+                DockerOps::is_container_running(Some(self.executable), &service).unwrap_or(false);
+            if running {
+                continue;
             }
-            return Ok(());
+            DockerOps::start_container(Some(self.executable), &service)?;
         }
 
-        // No existing dev container. Fall back to compose up to create/start everything.
-        let (command, extra_args): (&str, Vec<String>) = ("up", vec!["-d".to_string()]);
-        let extra_args_refs: Vec<&str> = extra_args.iter().map(|s| s.as_str()).collect();
-        let args = ComposeCommand::build_args(&compose_path, command, &extra_args_refs)?;
-        let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        stream_command_visible(self.executable, &args_refs).map_err(|e| {
-            VmError::Internal(format!(
-                "Failed to start container using docker-compose: {e}"
-            ))
-        })
+        if !compose_path.exists() {
+            tracing::debug!(
+                "Generated Compose file is unavailable; starting only '{}'",
+                container_name
+            );
+        }
+
+        DockerOps::start_container(Some(self.executable), container_name)
     }
 
     pub(super) fn instance_name_from_container(&self, container_name: &str) -> Option<String> {

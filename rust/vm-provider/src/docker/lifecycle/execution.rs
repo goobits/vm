@@ -4,6 +4,7 @@ use crate::{
     audio::MacOSAudioManager,
     context::ProviderContext,
     docker::{compose::ComposeOperations, DockerOps},
+    InstanceState,
 };
 use tracing::{info, warn};
 use vm_core::{
@@ -18,13 +19,26 @@ impl<'a> LifecycleOperations<'a> {
         container: Option<&str>,
         context: &ProviderContext,
     ) -> Result<()> {
-        let target_container = self.resolve_target_container(container)?;
+        let target_container = self.resolve_probe_target(container)?;
+        match self.instance_state_for_name(&target_container)? {
+            InstanceState::Running | InstanceState::Starting => return Ok(()),
+            InstanceState::Paused => {
+                return DockerOps::unpause_container(Some(self.executable), &target_container);
+            }
+            InstanceState::Stopped | InstanceState::Suspended => {}
+            InstanceState::Unknown(state) => {
+                return Err(VmError::Provider(format!(
+                    "Cannot start container '{target_container}' from unknown state '{state}'"
+                )));
+            }
+        }
+
         if context.global_config.is_none() {
-            return stream_command(self.executable, &["start", &target_container]);
+            return DockerOps::start_container(Some(self.executable), &target_container);
         }
 
         let compose_ops = self.regenerate_compose_with_context(container, context)?;
-        compose_ops.start_named_with_compose(&target_container, context)
+        compose_ops.start_named_with_compose(&target_container)
     }
 
     #[must_use = "container stop results should be handled"]
@@ -113,5 +127,95 @@ impl<'a> LifecycleOperations<'a> {
     ) -> Result<()> {
         self.stop_container(container)?;
         self.start_container(container, context)
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+    use vm_config::config::{ProjectConfig, VmConfig};
+    use vm_config::GlobalConfig;
+
+    fn fake_runtime(temp_dir: &TempDir, inspect_state: Option<&str>) -> (PathBuf, PathBuf) {
+        let executable = temp_dir.path().join("runtime");
+        let log = temp_dir.path().join("commands.log");
+        let inspect = inspect_state.map_or_else(
+            || "echo 'Error: No such object' >&2; exit 1".to_string(),
+            |state| format!("echo '{state}'; exit 0"),
+        );
+        fs::write(
+            &executable,
+            format!(
+                "#!/bin/sh\necho \"$@\" >> '{}'\nif [ \"$1\" = inspect ]; then {inspect}; fi\nexit 0\n",
+                log.display()
+            ),
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&executable).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&executable, permissions).unwrap();
+        (executable, log)
+    }
+
+    fn config() -> VmConfig {
+        VmConfig {
+            project: Some(ProjectConfig {
+                name: Some("demo".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn missing_start_never_falls_through_to_creation() {
+        let temp_dir = TempDir::new().unwrap();
+        let (executable, log) = fake_runtime(&temp_dir, None);
+        let config = config();
+        let generated_dir = temp_dir.path().join("generated");
+        let project_dir = temp_dir.path().join("project");
+        let ops = LifecycleOperations::new(
+            &config,
+            &generated_dir,
+            &project_dir,
+            executable.to_str().unwrap(),
+        );
+        let context = ProviderContext::default().with_config(GlobalConfig::default());
+
+        let error = ops.start_container(None, &context).unwrap_err();
+
+        assert!(matches!(error, VmError::NotFound(_)));
+        let commands = fs::read_to_string(log).unwrap();
+        assert_eq!(commands.lines().count(), 1);
+        assert!(commands.starts_with("inspect "));
+        assert!(!commands.contains(" up "));
+        assert!(!commands.contains("start "));
+    }
+
+    #[test]
+    fn stopped_start_uses_runtime_start_without_printing_runtime_output() {
+        let temp_dir = TempDir::new().unwrap();
+        let (executable, log) = fake_runtime(&temp_dir, Some("exited"));
+        let config = config();
+        let generated_dir = temp_dir.path().join("generated");
+        let project_dir = temp_dir.path().join("project");
+        let ops = LifecycleOperations::new(
+            &config,
+            &generated_dir,
+            &project_dir,
+            executable.to_str().unwrap(),
+        );
+
+        ops.start_container(None, &ProviderContext::default())
+            .unwrap();
+
+        let commands = fs::read_to_string(log).unwrap();
+        assert!(commands.lines().next().unwrap().starts_with("inspect "));
+        assert!(commands.lines().any(|line| line == "start demo-dev"));
+        assert!(!commands.contains("compose"));
     }
 }

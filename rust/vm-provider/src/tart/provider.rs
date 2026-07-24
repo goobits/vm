@@ -6,7 +6,8 @@ use crate::{
     common::instance::{extract_project_name, InstanceInfo, InstanceResolver},
     context::ProviderContext,
     progress::ProgressReporter,
-    BoxConfig, Provider, ResourceUsage, ServiceStatus, TempProvider, VmError, VmStatusReport,
+    BoxConfig, InstanceState, Provider, ResourceUsage, ServiceStatus, TempProvider, VmError,
+    VmStatusReport,
 };
 use duct::cmd;
 use serde::Deserialize;
@@ -719,11 +720,17 @@ impl Provider for TartProvider {
 
     fn start(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
         let vm_name = self.vm_name_with_instance(container)?;
+        let state = self
+            .get_instance_state(&vm_name)?
+            .ok_or_else(|| VmError::NotFound(format!("Tart VM '{vm_name}' does not exist")))?;
         if context.global_config.is_some() {
             info!("Applying config updates to Tart VM");
             self.apply_runtime_config(&vm_name, &self.config)?;
         }
-        if self.is_instance_running(&vm_name).unwrap_or(false) {
+        if matches!(
+            InstanceState::from_runtime_status(&state),
+            InstanceState::Running | InstanceState::Starting
+        ) {
             return Ok(());
         }
 
@@ -887,17 +894,19 @@ impl Provider for TartProvider {
         let instance_name = self.resolve_instance_name(container)?;
 
         let Some(state) = self.get_instance_state(&instance_name)? else {
-            return Err(VmError::Internal(format!(
-                "Tart VM '{}' not found",
+            return Err(VmError::NotFound(format!(
+                "Tart VM '{}' does not exist",
                 instance_name
             )));
         };
+        let runtime_state = InstanceState::from_runtime_status(&state);
 
-        if state != "running" || !self.is_guest_agent_ready(&instance_name) {
+        if !runtime_state.is_running() || !self.is_guest_agent_ready(&instance_name) {
             return Ok(VmStatusReport {
                 name: instance_name.clone(),
                 provider: "tart".into(),
-                is_running: false,
+                is_running: runtime_state.is_running(),
+                state: runtime_state,
                 ..Default::default()
             });
         }
@@ -908,12 +917,21 @@ impl Provider for TartProvider {
             name: instance_name,
             provider: "tart".into(),
             container_id: None,
+            state: runtime_state,
             is_running: true,
             uptime: metrics.uptime,
             resources: metrics.resources,
             services: metrics.services,
             runtime: None,
         })
+    }
+
+    fn instance_state(&self, container: Option<&str>) -> Result<InstanceState> {
+        let instance_name = self.resolve_instance_name(container)?;
+        let state = self.get_instance_state(&instance_name)?.ok_or_else(|| {
+            VmError::NotFound(format!("Tart VM '{instance_name}' does not exist"))
+        })?;
+        Ok(InstanceState::from_runtime_status(&state))
     }
 
     fn restart(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {

@@ -1,4 +1,4 @@
-use crate::{InstanceInfo, Provider, ProviderContext, TempProvider, VmStatusReport};
+use crate::{InstanceInfo, InstanceState, Provider, ProviderContext, TempProvider, VmStatusReport};
 use std::path::Path;
 use vm_config::config::VmConfig;
 use vm_core::error::Result;
@@ -46,9 +46,13 @@ impl Provider for MockProvider {
         Ok(VmStatusReport {
             name: "mock-vm".to_string(),
             provider: "mock".to_string(),
+            state: InstanceState::Running,
             is_running: true,
             ..Default::default()
         })
+    }
+    fn instance_state(&self, _container: Option<&str>) -> Result<InstanceState> {
+        Ok(InstanceState::Running)
     }
 
     fn restart(&self, _container: Option<&str>, _context: &ProviderContext) -> Result<()> {

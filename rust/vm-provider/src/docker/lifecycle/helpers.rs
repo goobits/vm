@@ -48,6 +48,24 @@ impl<'a> LifecycleOperations<'a> {
         }
     }
 
+    /// Resolve canonical names without an inventory call; otherwise use fuzzy matching.
+    pub(super) fn resolve_probe_target(&self, container: Option<&str>) -> Result<String> {
+        match container {
+            None => Ok(self.container_name()),
+            Some(name)
+                if name == self.container_name()
+                    || crate::docker::compose_model::instance_name_from_container(
+                        self.project_name(),
+                        name,
+                    )
+                    .is_some() =>
+            {
+                Ok(name.to_string())
+            }
+            Some(name) => self.resolve_container_name(name),
+        }
+    }
+
     pub(super) fn resolve_instance_name_for_target(
         &self,
         container: Option<&str>,

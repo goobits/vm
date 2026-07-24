@@ -19,6 +19,53 @@ pub use common::instance::{InstanceInfo, InstanceResolver};
 pub use context::ProviderContext;
 pub use vm_core::error::{Result as VmResult, VmError};
 
+/// Lightweight lifecycle state returned without collecting metrics or services.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InstanceState {
+    Running,
+    Stopped,
+    Starting,
+    Paused,
+    Suspended,
+    Unknown(String),
+}
+
+impl InstanceState {
+    pub fn from_runtime_status(status: &str) -> Self {
+        match status.trim().to_ascii_lowercase().as_str() {
+            "running" => Self::Running,
+            "created" | "exited" | "dead" | "stopped" => Self::Stopped,
+            "restarting" | "starting" | "removing" => Self::Starting,
+            "paused" => Self::Paused,
+            "suspended" => Self::Suspended,
+            other => Self::Unknown(other.to_string()),
+        }
+    }
+
+    pub fn is_running(&self) -> bool {
+        matches!(self, Self::Running)
+    }
+}
+
+impl Default for InstanceState {
+    fn default() -> Self {
+        Self::Unknown("unknown".to_string())
+    }
+}
+
+impl std::fmt::Display for InstanceState {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Running => formatter.write_str("running"),
+            Self::Stopped => formatter.write_str("stopped"),
+            Self::Starting => formatter.write_str("starting"),
+            Self::Paused => formatter.write_str("paused"),
+            Self::Suspended => formatter.write_str("suspended"),
+            Self::Unknown(state) => formatter.write_str(state),
+        }
+    }
+}
+
 // Status report structures for enhanced dashboard
 #[derive(Debug, Clone, Default)]
 pub struct ResourceUsage {
@@ -71,6 +118,7 @@ pub struct VmStatusReport {
     pub name: String,
     pub provider: String,
     pub container_id: Option<String>,
+    pub state: InstanceState,
     pub is_running: bool,
     pub uptime: Option<String>,
     pub resources: ResourceUsage,
@@ -353,6 +401,9 @@ pub trait Provider {
     /// Get the status of the VM.
     fn status(&self, container: Option<&str>) -> Result<VmStatusReport>;
 
+    /// Get lifecycle state without collecting metrics, services, or readiness.
+    fn instance_state(&self, container: Option<&str>) -> Result<InstanceState>;
+
     /// Restart a VM (stop then start).
     fn restart(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
         self.stop(container)?;
@@ -524,5 +575,29 @@ mod tests {
             assert!(error_msg.contains("Unknown provider"));
             assert!(error_msg.contains("unknown-provider"));
         }
+    }
+
+    #[test]
+    fn runtime_states_are_normalized() {
+        assert_eq!(
+            InstanceState::from_runtime_status("running"),
+            InstanceState::Running
+        );
+        assert_eq!(
+            InstanceState::from_runtime_status("exited"),
+            InstanceState::Stopped
+        );
+        assert_eq!(
+            InstanceState::from_runtime_status("restarting"),
+            InstanceState::Starting
+        );
+        assert_eq!(
+            InstanceState::from_runtime_status("paused"),
+            InstanceState::Paused
+        );
+        assert_eq!(
+            InstanceState::from_runtime_status("future-state"),
+            InstanceState::Unknown("future-state".to_string())
+        );
     }
 }

@@ -29,7 +29,9 @@ use tera::Tera;
 use vm_core::error::{Result, VmError};
 
 // Internal imports
-use crate::{context::ProviderContext, preflight, Provider, TempProvider, VmStatusReport};
+use crate::{
+    context::ProviderContext, preflight, InstanceState, Provider, TempProvider, VmStatusReport,
+};
 use vm_config::config::VmConfig;
 use vm_core::command_stream::is_tool_installed;
 use vm_messages::messages::MESSAGES;
@@ -318,6 +320,10 @@ impl Provider for DockerProvider {
     fn status(&self, container: Option<&str>) -> Result<VmStatusReport> {
         let lifecycle = self.lifecycle_ops();
         lifecycle.status_report(container)
+    }
+
+    fn instance_state(&self, container: Option<&str>) -> Result<InstanceState> {
+        self.lifecycle_ops().instance_state(container)
     }
 
     fn get_sync_directory(&self) -> String {
