@@ -128,7 +128,7 @@ services:
       # Explicit port mappings from vm.yaml
       {% if config.ports.mappings -%}
       {% for mapping in config.ports.mappings -%}
-      - "{{ mapping.host }}:{{ mapping.guest }}{% if mapping.protocol | lower == 'udp' %}/udp{% endif %}"
+      - "{{ port_binding }}:{{ mapping.host }}:{{ mapping.guest }}{% if mapping.protocol | lower == 'udp' %}/udp{% endif %}"
       {% endfor -%}
       {%- endif %}
       # Application port range (excluding ports used by service containers)
@@ -147,12 +147,12 @@ services:
       {% endif %}
       {% if service_ports | length == 0 %}
       # No service ports to exclude, expose full range
-      - "{{ range_start }}-{{ range_end }}:{{ range_start }}-{{ range_end }}"
+      - "{{ port_binding }}:{{ range_start }}-{{ range_end }}:{{ range_start }}-{{ range_end }}"
       {% else %}
       # Expose port range excluding service ports: {{ service_ports }}
       {% for port in range(start=range_start, end=range_end + 1) %}
         {% if port not in service_ports %}
-      - "{{ port }}:{{ port }}"
+      - "{{ port_binding }}:{{ port }}:{{ port }}"
         {% endif %}
       {% endfor %}
       {% endif %}
@@ -276,7 +276,7 @@ services:
         volume:
           nocopy: true
     ports:
-      - "{{ config.services.postgresql.port | default(value=5432) }}:5432"
+      - "{{ port_binding }}:{{ config.services.postgresql.port | default(value=5432) }}:5432"
     restart: unless-stopped
     {% if config.networking and config.networking.networks and config.networking.networks | length > 0 -%}
     networks:

@@ -109,6 +109,11 @@ impl<'a> ComposeOperations<'a> {
             Some(instance) => self.create_instance_config(base_project_name, instance),
             None => (self.config.clone(), base_project_name.to_string()),
         };
+        let port_binding = final_config
+            .vm
+            .as_ref()
+            .and_then(|vm| vm.port_binding.as_deref())
+            .unwrap_or("127.0.0.1");
         if mode == RenderMode::Preview {
             for value in final_config.environment.values_mut() {
                 *value = "<redacted>".to_string();
@@ -131,6 +136,7 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("project_uid", &user_config.uid.to_string());
         tera_context.insert("project_gid", &user_config.gid.to_string());
         tera_context.insert("project_user", &user_config.username);
+        tera_context.insert("port_binding", port_binding);
         tera_context.insert(
             "build_user_args_enabled",
             &(!BuildOperations::new(self.config, self.generated_dir, self.executable)
@@ -800,6 +806,60 @@ services:
         assert!(preview.contains("API_TOKEN=<redacted>"));
         assert!(preview.contains("DATABASE_URL=<redacted>"));
         assert!(preview.contains("<host-path>:/workspace:rw"));
+    }
+
+    #[test]
+    fn binds_all_published_ports_to_configured_address() {
+        let (_temp_dir, project_dir, generated_dir) = setup_test_env();
+        let config: VmConfig = serde_yaml_ng::from_str(
+            r#"
+provider: docker
+project:
+  name: bound-project
+vm:
+  port_binding: 127.0.0.1
+ports:
+  _range: [3360, 3361]
+  mappings:
+    - host: 4000
+      guest: 80
+services:
+  postgresql:
+    enabled: true
+    port: 55432
+host_sync:
+  worktrees:
+    enabled: false
+"#,
+        )
+        .unwrap();
+        let compose = ComposeOperations::new(&config, &generated_dir, &project_dir, "docker");
+
+        let rendered = compose
+            .render_docker_compose(&project_dir, &ProviderContext::default())
+            .unwrap();
+        let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(&rendered).unwrap();
+        let services = yaml_mapping(&yaml, "services");
+        let dev_ports = services["bound-project-dev"]["ports"]
+            .as_sequence()
+            .unwrap();
+        let postgres_ports = services["postgres"]["ports"].as_sequence().unwrap();
+
+        assert!(dev_ports
+            .iter()
+            .any(|port| { port.as_str() == Some("127.0.0.1:4000:80") }));
+        assert!(dev_ports
+            .iter()
+            .any(|port| { port.as_str() == Some("127.0.0.1:3360:3360") }));
+        assert!(dev_ports
+            .iter()
+            .any(|port| { port.as_str() == Some("127.0.0.1:3361:3361") }));
+        assert_eq!(
+            postgres_ports,
+            &[serde_yaml_ng::Value::String(
+                "127.0.0.1:55432:5432".to_string()
+            )]
+        );
     }
 
     #[test]

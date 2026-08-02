@@ -286,3 +286,23 @@ fn test_docker_database_client_installs_do_not_require_python_apt() {
         "Docker client tools must avoid Ansible apt module because snapshots may lack python3-apt"
     );
 }
+
+#[test]
+fn test_docker_engine_install_does_not_require_python_apt() {
+    let playbook = vm_provider::resources::ANSIBLE_PLAYBOOK;
+    let docker_pos = playbook
+        .find("Install Docker")
+        .expect("playbook should install Docker");
+    let user_group_pos = playbook[docker_pos..]
+        .find("Add user to docker group")
+        .expect("playbook should configure the Docker group after installation");
+    let docker_block = &playbook[docker_pos..docker_pos + user_group_pos];
+
+    assert!(docker_block.contains("apt-get install"));
+    assert!(docker_block.contains("docker.io docker-compose"));
+    assert!(docker_block.contains("command -v docker"));
+    assert!(
+        !docker_block.contains("\n        apt:"),
+        "Docker installation must avoid Ansible apt module because snapshots may expose a non-system Python"
+    );
+}

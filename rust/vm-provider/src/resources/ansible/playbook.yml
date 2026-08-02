@@ -771,14 +771,19 @@
       # Handle Docker service separately (requires user group management)
       # Layered provisioning: install if not already present
       - name: Install Docker
-        apt:
-            name:
-              - docker.io
-              - docker-compose
-            state: present
-            update_cache: yes
+        shell: |
+            set -euo pipefail
+            if command -v docker >/dev/null 2>&1 && command -v docker-compose >/dev/null 2>&1; then
+              exit 0
+            fi
+            apt-get update
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends docker.io docker-compose
+        args:
+            executable: /bin/bash
         when:
           - project_config.services.docker.enabled | default(false)
+        register: docker_install
+        changed_when: "'Setting up' in docker_install.stdout"
 
       - name: Add user to docker group
         user:
