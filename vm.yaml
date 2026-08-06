@@ -1,6 +1,8 @@
 version: '2.0'
 provider: tart
 os: auto
+tart:
+  storage_path: /Volumes/MeowDocker/Tart
 project:
   hostname: dev.vm.local
   name: vm
