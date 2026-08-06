@@ -84,7 +84,7 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
             );
             return Err(VmError::Internal(format!(
                 "Container '{}' is not healthy after mount update. Check container logs for issues",
-                &state.container_name
+                state.container_name
             )));
         }
 

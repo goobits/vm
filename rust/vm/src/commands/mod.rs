@@ -76,12 +76,18 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         Command::InternalCompletion { shell } => completion::handle(&shell),
         Command::List { all, raw } => {
             if all {
-                vm_ops::handle_list_enhanced(None, None, raw, None)
+                vm_ops::handle_list_enhanced(None, None, None, raw, None)
             } else {
                 let (provider, config, _) = load_provider_context(args.config, args.profile, None)?;
                 let project = project_name(&config);
                 let default_name = provider.resolve_instance_name(None).ok();
-                vm_ops::handle_list_enhanced(None, Some(project), raw, default_name.as_deref())
+                vm_ops::handle_list_enhanced(
+                    Some(provider.as_ref()),
+                    None,
+                    Some(project),
+                    raw,
+                    default_name.as_deref(),
+                )
             }
         }
         Command::Create { environment, force } => {

@@ -64,3 +64,4 @@ ignored = []
 [dev-dependencies]
 assert_cmd = "2.2"
 predicates = "3.1"
+vm-provider = { path = "../vm-provider", features = ["test-helpers"] }

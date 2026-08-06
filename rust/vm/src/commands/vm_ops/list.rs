@@ -9,10 +9,11 @@ use crate::commands::vm_ops::target::project_instance_matches;
 use crate::commands::vm_ops::targets::{get_all_instances, get_instances_from_provider};
 use crate::error::VmResult;
 use vm_core::vm_println;
-use vm_provider::InstanceInfo;
+use vm_provider::{InstanceInfo, Provider};
 
 /// Handle VM listing with enhanced filtering options
 pub fn handle_list_enhanced(
+    configured_provider: Option<&dyn Provider>,
     provider_filter: Option<&str>,
     project_filter: Option<&str>,
     raw: bool,
@@ -25,12 +26,9 @@ pub fn handle_list_enhanced(
         provider_filter
     );
 
-    // Get all instances from all providers (or filtered)
-    let mut all_instances = if let Some(provider_name) = provider_filter {
-        get_instances_from_provider(provider_name)?
-    } else {
-        get_all_instances()?
-    };
+    // Use the loaded project provider when available so provider-specific
+    // settings such as Tart's storage path remain in effect.
+    let mut all_instances = load_instances(configured_provider, provider_filter)?;
 
     if let Some(project_name) = project_filter {
         all_instances.retain(|instance| project_instance_matches(instance, project_name));
@@ -52,6 +50,19 @@ pub fn handle_list_enhanced(
     }
 
     Ok(())
+}
+
+fn load_instances(
+    configured_provider: Option<&dyn Provider>,
+    provider_filter: Option<&str>,
+) -> VmResult<Vec<InstanceInfo>> {
+    if let Some(provider) = configured_provider {
+        return provider.list_instances().map_err(Into::into);
+    }
+    if let Some(provider_name) = provider_filter {
+        return get_instances_from_provider(provider_name);
+    }
+    get_all_instances()
 }
 
 pub fn render_instance_table(instances: Vec<InstanceInfo>, default_name: Option<&str>) {
@@ -161,5 +172,21 @@ fn format_uptime(uptime: &Option<String>) -> String {
     match uptime {
         Some(time) => time.clone(),
         None => "-".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::load_instances;
+    use vm_provider::mock::MockProvider;
+
+    #[test]
+    fn project_listing_uses_the_configured_provider() {
+        let provider = MockProvider;
+
+        let instances = load_instances(Some(&provider), None).unwrap();
+
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].name, "mock-vm");
     }
 }

@@ -26,6 +26,14 @@ impl TartProvisioner {
         }
     }
 
+    fn host_shell(&self, command: &str) -> duct::Expression {
+        let mut expr = cmd!("sh", "-c", command);
+        if let Some(tart_home) = &self.tart_home {
+            expr = expr.env("TART_HOME", tart_home);
+        }
+        expr
+    }
+
     /// Run provisioning scripts over SSH
     pub fn provision(&self, config: &VmConfig) -> Result<()> {
         info!("Starting Tart VM provisioning for {}", self.instance_name);
@@ -283,7 +291,7 @@ fi"#
                 "cat '{}' | tart exec {} bash -lc \"mkdir -p '{}' && cat > '{}'\"",
                 source_escaped, self.instance_name, guest_parent_escaped, guest_target_escaped
             );
-            cmd!("sh", "-c", command)
+            self.host_shell(&command)
                 .run()
                 .map_err(|e| VmError::Provider(format!("Failed to sync file to Tart VM: {}", e)))?;
             return Ok(());
@@ -304,7 +312,7 @@ fi"#
                 guest_parent_escaped,
                 guest_parent_escaped
             );
-            cmd!("sh", "-c", command).run().map_err(|e| {
+            self.host_shell(&command).run().map_err(|e| {
                 VmError::Provider(format!("Failed to sync directory to Tart VM: {}", e))
             })?;
         }
@@ -355,7 +363,7 @@ chmod {mode} "$HOME/{target}""#,
             script = remote_script_escaped
         );
 
-        cmd!("sh", "-c", command).run().map_err(|e| {
+        self.host_shell(&command).run().map_err(|e| {
             VmError::Provider(format!(
                 "Failed to seed Tart guest file '{}': {}",
                 guest_relative_path, e
@@ -1041,6 +1049,22 @@ mod tests {
     use super::TartProvisioner;
     use indexmap::IndexMap;
     use vm_config::config::{BoxSpec, ProjectConfig, TerminalConfig, VmConfig, VmSettings};
+
+    #[test]
+    fn host_shell_applies_tart_home() {
+        let provisioner = TartProvisioner::new(
+            "vm-mac".to_string(),
+            "/workspace".to_string(),
+            Some("/Volumes/External SSD/Tart".to_string()),
+        );
+
+        let output = provisioner
+            .host_shell("printf '%s' \"$TART_HOME\"")
+            .read()
+            .unwrap();
+
+        assert_eq!(output, "/Volumes/External SSD/Tart");
+    }
 
     #[test]
     fn render_shell_overrides_includes_environment_exports() {

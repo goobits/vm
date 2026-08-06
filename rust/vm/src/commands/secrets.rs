@@ -222,7 +222,7 @@ async fn handle_interactive(global_config: &GlobalConfig) -> VmResult<()> {
         .allow_empty(true)
         .interact_text()
         .ok()
-        .and_then(|s: String| if s.is_empty() { None } else { Some(s) });
+        .filter(|s: &String| !s.is_empty());
 
     // Add the secret
     vm_auth_proxy::add_secret(
