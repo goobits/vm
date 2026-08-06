@@ -5,6 +5,7 @@
 
 use tracing::{debug, info_span};
 
+use crate::commands::base;
 use crate::error::{VmError, VmResult};
 use vm_config::{config::MemoryLimit, config::VmConfig, validator::ConfigValidator, GlobalConfig};
 use vm_core::{
@@ -186,6 +187,8 @@ pub async fn handle_create(
             );
         }
     }
+
+    base::ensure_configured_tart_base(&config)?;
 
     vm_progress!("Creating '{target_name}'...");
 
