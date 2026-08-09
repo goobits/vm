@@ -58,6 +58,7 @@
 
 - 👤 Authentication proxy checks use constant-time token comparison, bounded request bodies, atomic secret persistence, and rejection audit logs without exposing tokens.
 - ☁️ Snapshot imports reject absolute paths, traversal entries, symlinks, and hardlinks.
+- ☁️ Snapshot and plugin storage rejects traversal in names and manifest-controlled filenames before resolving or deleting paths.
 - ☁️ Temporary host mounts resolve symlinks before validation and reject paths that escape into protected host locations.
 - 🌐 Docker-published application and service ports honor `vm.port_binding`, defaulting to loopback.
 - 🚀 Tart package provisioning shell-quotes configured package names to prevent guest command injection.

@@ -41,5 +41,6 @@ pub use discovery::{
 };
 pub use types::{Plugin, PluginInfo, PluginType, PresetCategory, PresetContent, ServiceContent};
 pub use validation::{
-    validate_plugin, validate_plugin_with_context, ValidationError, ValidationResult,
+    is_valid_plugin_name, validate_plugin, validate_plugin_with_context, ValidationError,
+    ValidationResult,
 };

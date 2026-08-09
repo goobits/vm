@@ -239,7 +239,7 @@ impl<'a> BuildOperations<'a> {
                 vm_println!("Loading base image from snapshot '@{}'...", name);
 
                 let manager = SnapshotManager::new()?;
-                let snapshot_dir = manager.get_snapshot_dir(SnapshotScope::Global, name);
+                let snapshot_dir = manager.get_snapshot_dir(SnapshotScope::Global, name)?;
 
                 if !snapshot_dir.exists() {
                     return Err(VmError::Config(format!(

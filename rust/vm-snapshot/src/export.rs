@@ -44,7 +44,7 @@ pub async fn handle_export(
         SnapshotScope::Project(&project_name)
     };
 
-    if !manager.snapshot_exists(scope, clean_name) {
+    if !manager.snapshot_exists(scope, clean_name)? {
         return Err(VmError::validation(
             format!(
                 "Snapshot '{}' not found for project '{}'",
@@ -61,7 +61,7 @@ pub async fn handle_export(
     );
 
     // Load snapshot metadata
-    let snapshot_dir = manager.get_snapshot_dir(scope, clean_name);
+    let snapshot_dir = manager.get_snapshot_dir(scope, clean_name)?;
     let metadata_path = snapshot_dir.join("metadata.json");
     let metadata = SnapshotMetadata::load(&metadata_path)?;
 

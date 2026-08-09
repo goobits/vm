@@ -5,8 +5,8 @@ use vm_core::msg;
 use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
 use vm_plugin::{
-    discover_plugins, get_preset_plugins, get_service_plugins, validate_plugin_with_context,
-    PluginType,
+    discover_plugins, get_preset_plugins, get_service_plugins, is_valid_plugin_name,
+    validate_plugin_with_context, PluginType,
 };
 
 pub fn handle_plugin_list() -> Result<()> {
@@ -338,6 +338,12 @@ pub fn handle_plugin_install(source_path: &str) -> Result<()> {
 }
 
 pub fn handle_plugin_remove(plugin_name: &str) -> Result<()> {
+    if !is_valid_plugin_name(plugin_name) {
+        anyhow::bail!(
+            "Invalid plugin name '{plugin_name}': use only letters, numbers, hyphens, and underscores"
+        );
+    }
+
     let plugins_base = vm_platform::platform::vm_state_dir()
         .map_err(|e| anyhow::anyhow!("Could not determine VM state directory: {e}"))?
         .join("plugins");

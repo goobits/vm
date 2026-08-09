@@ -1,7 +1,7 @@
 //! Snapshot import functionality
 
 use crate::docker::execute_docker_streaming;
-use crate::manager::{SnapshotManager, SnapshotScope};
+use crate::manager::{snapshot_file_path, SnapshotManager, SnapshotScope};
 use crate::metadata::SnapshotMetadata;
 use crate::optimal_concurrency;
 use futures::stream::{self, StreamExt};
@@ -150,7 +150,7 @@ pub async fn handle_import(
         SnapshotScope::Project(project_name)
     };
 
-    if manager.snapshot_exists(scope, &snapshot_name) && !force {
+    if manager.snapshot_exists(scope, &snapshot_name)? && !force {
         return Err(VmError::validation(
             format!(
                 "Snapshot '{}' already exists for project '{}'. Use --force to overwrite.",
@@ -190,7 +190,7 @@ pub async fn handle_import(
             let images_dir = images_dir.clone();
 
             async move {
-                let image_path = images_dir.join(&image_file);
+                let image_path = snapshot_file_path(&images_dir, &image_file, "image file")?;
 
                 if !image_path.exists() {
                     vm_warning!("Image file '{}' not found, skipping", image_file);
@@ -227,7 +227,7 @@ pub async fn handle_import(
     }
 
     // Create snapshot directory
-    let snapshot_dir = manager.get_snapshot_dir(scope, &snapshot_name);
+    let snapshot_dir = manager.get_snapshot_dir(scope, &snapshot_name)?;
 
     if snapshot_dir.exists() && force {
         vm_println!("  Removing existing snapshot...");
@@ -330,7 +330,7 @@ fn validate_import_contents(
 
     let images_dir = extract_dir.join("images");
     for service in &metadata.services {
-        let image_path = images_dir.join(&service.image_file);
+        let image_path = snapshot_file_path(&images_dir, &service.image_file, "image file")?;
         if !image_path.exists() {
             return Err(VmError::validation(
                 format!("Snapshot image file is missing: {}", image_path.display()),
@@ -341,7 +341,8 @@ fn validate_import_contents(
 
     let volumes_dir = extract_dir.join("volumes");
     for volume in &metadata.volumes {
-        let archive_path = volumes_dir.join(&volume.archive_file);
+        let archive_path =
+            snapshot_file_path(&volumes_dir, &volume.archive_file, "volume archive")?;
         if !archive_path.exists() {
             return Err(VmError::validation(
                 format!(

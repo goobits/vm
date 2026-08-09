@@ -106,7 +106,7 @@ pub async fn handle_create(
     let (scope, snapshot_name) = SnapshotScope::from_name(name, Some(project_name.as_str()));
 
     // Check if snapshot already exists
-    if manager.snapshot_exists(scope, snapshot_name) {
+    if manager.snapshot_exists(scope, snapshot_name)? {
         if force {
             vm_core::vm_println!("Removing existing snapshot '{}'...", snapshot_name);
             manager.delete_snapshot(scope, snapshot_name)?;
@@ -139,7 +139,7 @@ pub async fn handle_create(
         std::env::current_dir().map_err(|e| VmError::filesystem(e, "current_dir", "get"))?;
 
     // Create snapshot directory structure
-    let snapshot_dir = manager.get_snapshot_dir(scope, snapshot_name);
+    let snapshot_dir = manager.get_snapshot_dir(scope, snapshot_name)?;
     let images_dir = snapshot_dir.join("images");
     let volumes_dir = snapshot_dir.join("volumes");
     let compose_dir = snapshot_dir.join("compose");
@@ -499,7 +499,7 @@ async fn handle_create_from_dockerfile(
 
     // Check if snapshot already exists
     let manager = SnapshotManager::new()?;
-    if manager.snapshot_exists(scope, snapshot_name) {
+    if manager.snapshot_exists(scope, snapshot_name)? {
         if force {
             vm_core::vm_println!("Removing existing snapshot '{}'...", snapshot_name);
             manager.delete_snapshot(scope, snapshot_name)?;
@@ -579,7 +579,7 @@ async fn handle_create_from_dockerfile(
     // Create snapshot directory and save metadata
     // (manager and project_scope already created earlier for duplicate check)
 
-    let snapshot_dir = manager.get_snapshot_dir(scope, snapshot_name);
+    let snapshot_dir = manager.get_snapshot_dir(scope, snapshot_name)?;
     let images_dir = snapshot_dir.join("images");
 
     // Create directories

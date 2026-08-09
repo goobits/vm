@@ -1,7 +1,7 @@
 //! Snapshot restoration functionality
 
 use crate::docker::{execute_docker, execute_docker_compose_status, execute_docker_streaming};
-use crate::manager::{SnapshotManager, SnapshotScope};
+use crate::manager::{snapshot_file_path, SnapshotManager, SnapshotScope};
 use crate::metadata::SnapshotMetadata;
 use crate::optimal_concurrency;
 use futures::stream::{self, StreamExt};
@@ -34,7 +34,7 @@ pub async fn handle_restore(
     let (scope, snapshot_name) = SnapshotScope::from_name(name, Some(project_name.as_str()));
 
     // Load snapshot metadata
-    let snapshot_dir = manager.get_snapshot_dir(scope, snapshot_name);
+    let snapshot_dir = manager.get_snapshot_dir(scope, snapshot_name)?;
     let metadata_file = snapshot_dir.join("metadata.json");
 
     if !metadata_file.exists() {
@@ -109,10 +109,10 @@ pub async fn handle_restore(
                 // Restore volume data with zstd decompression (3-5x faster than gzip)
                 // Support both .tar.zst (new) and .tar.gz (legacy) formats
                 let restore_cmd = if archive_file.ends_with(".tar.zst") {
-                    format!("zstd -d -c /backup/{} | tar -x -C /data", archive_file)
+                    "zstd -d -c \"/backup/$1\" | tar -x -C /data"
                 } else {
                     // Legacy .tar.gz format
-                    format!("tar -xzf /backup/{} -C /data", archive_file)
+                    "tar -xzf \"/backup/$1\" -C /data"
                 };
 
                 let run_args = [
@@ -125,7 +125,9 @@ pub async fn handle_restore(
                     "alpine:latest",
                     "sh",
                     "-c",
-                    &restore_cmd,
+                    restore_cmd,
+                    "snapshot-restore",
+                    &archive_file,
                 ];
 
                 // Stream output so users see decompression progress
@@ -157,7 +159,7 @@ pub async fn handle_restore(
             async move {
                 vm_core::vm_println!("  Loading image: {}", service_name);
 
-                let image_path = images_dir.join(&image_file);
+                let image_path = snapshot_file_path(&images_dir, &image_file, "image file")?;
                 let image_path_str = image_path.to_str().ok_or_else(|| {
                     VmError::general(
                         std::io::Error::new(
@@ -191,13 +193,15 @@ pub async fn handle_restore(
 
     // Backup current files
     for config_file in &[&metadata.compose_file, &metadata.vm_config_file] {
-        let source = compose_dir.join(config_file);
-        let dest = project_dir.join(config_file);
+        let source = snapshot_file_path(&compose_dir, config_file, "configuration file")?;
+        let dest = snapshot_file_path(&project_dir, config_file, "configuration file")?;
 
         if source.exists() {
             // Create backup of existing file
             if dest.exists() {
-                let backup_path = project_dir.join(format!("{}.bak", config_file));
+                let backup_name = format!("{config_file}.bak");
+                let backup_path =
+                    snapshot_file_path(&project_dir, &backup_name, "configuration backup")?;
                 tokio::fs::copy(&dest, &backup_path)
                     .await
                     .map_err(|e| VmError::filesystem(e, dest.to_string_lossy(), "copy"))?;
@@ -242,7 +246,7 @@ fn validate_snapshot_contents(
 ) -> Result<()> {
     let images_dir = snapshot_dir.join("images");
     for service in &metadata.services {
-        let image_path = images_dir.join(&service.image_file);
+        let image_path = snapshot_file_path(&images_dir, &service.image_file, "image file")?;
         if !image_path.exists() {
             return Err(VmError::validation(
                 format!("Snapshot image file is missing: {}", image_path.display()),
@@ -253,7 +257,8 @@ fn validate_snapshot_contents(
 
     let volumes_dir = snapshot_dir.join("volumes");
     for volume in &metadata.volumes {
-        let archive_path = volumes_dir.join(&volume.archive_file);
+        let archive_path =
+            snapshot_file_path(&volumes_dir, &volume.archive_file, "volume archive")?;
         if !archive_path.exists() {
             return Err(VmError::validation(
                 format!(

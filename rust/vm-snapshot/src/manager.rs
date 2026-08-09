@@ -1,8 +1,28 @@
 //! Snapshot management and lifecycle operations
 
 use crate::metadata::SnapshotMetadata;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use vm_core::error::{Result, VmError};
+
+fn validate_storage_component(value: &str, kind: &str) -> Result<()> {
+    let mut components = Path::new(value).components();
+    let is_single_component =
+        matches!(components.next(), Some(Component::Normal(_))) && components.next().is_none();
+
+    if !is_single_component {
+        return Err(VmError::validation(
+            format!("Invalid {kind} '{value}': expected a single path component"),
+            None::<String>,
+        ));
+    }
+
+    Ok(())
+}
+
+pub(crate) fn snapshot_file_path(base: &Path, name: &str, kind: &str) -> Result<PathBuf> {
+    validate_storage_component(name, kind)?;
+    Ok(base.join(name))
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SnapshotScope<'a> {
@@ -46,11 +66,11 @@ impl SnapshotManager {
     }
 
     /// Get the directory path for a specific snapshot
-    pub fn get_snapshot_dir(&self, scope: SnapshotScope<'_>, name: &str) -> PathBuf {
-        match scope {
-            SnapshotScope::Global => self.snapshots_dir.join("global").join(name),
-            SnapshotScope::Project(project) => self.snapshots_dir.join(project).join(name),
-        }
+    pub fn get_snapshot_dir(&self, scope: SnapshotScope<'_>, name: &str) -> Result<PathBuf> {
+        validate_storage_component(name, "snapshot name")?;
+        let project = scope.project_name();
+        validate_storage_component(project, "project name")?;
+        Ok(self.snapshots_dir.join(project).join(name))
     }
 
     /// List all snapshots, optionally filtered by project
@@ -59,6 +79,7 @@ impl SnapshotManager {
 
         // Determine which directories to scan
         let scan_dirs: Vec<PathBuf> = if let Some(project) = project_filter {
+            validate_storage_component(project, "project name")?;
             vec![self.snapshots_dir.join(project)]
         } else {
             // Scan all project directories
@@ -111,7 +132,7 @@ impl SnapshotManager {
 
     /// Delete a snapshot
     pub fn delete_snapshot(&self, scope: SnapshotScope<'_>, name: &str) -> Result<()> {
-        let snapshot_dir = self.get_snapshot_dir(scope, name);
+        let snapshot_dir = self.get_snapshot_dir(scope, name)?;
 
         if !snapshot_dir.exists() {
             return Err(VmError::validation(
@@ -128,9 +149,9 @@ impl SnapshotManager {
     }
 
     /// Check if a snapshot exists
-    pub fn snapshot_exists(&self, scope: SnapshotScope<'_>, name: &str) -> bool {
-        let snapshot_dir = self.get_snapshot_dir(scope, name);
-        snapshot_dir.exists() && snapshot_dir.join("metadata.json").exists()
+    pub fn snapshot_exists(&self, scope: SnapshotScope<'_>, name: &str) -> Result<bool> {
+        let snapshot_dir = self.get_snapshot_dir(scope, name)?;
+        Ok(snapshot_dir.exists() && snapshot_dir.join("metadata.json").exists())
     }
 }
 
@@ -221,7 +242,7 @@ pub async fn handle_delete(name: &str, project: Option<&str>, force: bool) -> Re
 
     let (scope, snapshot_name) = SnapshotScope::from_name(name, project);
 
-    if !manager.snapshot_exists(scope, snapshot_name) {
+    if !manager.snapshot_exists(scope, snapshot_name)? {
         let scope_desc = if matches!(scope, SnapshotScope::Global) {
             "global snapshots".to_string()
         } else if let Some(proj) = project {
@@ -265,4 +286,54 @@ pub async fn handle_delete(name: &str, project: Option<&str>, force: bool) -> Re
     vm_core::vm_success!("Snapshot '{}' deleted successfully", snapshot_name);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn manager(root: &Path) -> SnapshotManager {
+        SnapshotManager {
+            snapshots_dir: root.to_path_buf(),
+        }
+    }
+
+    #[test]
+    fn snapshot_paths_stay_within_storage_root() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let manager = manager(tempdir.path());
+
+        let path = manager
+            .get_snapshot_dir(SnapshotScope::Project("demo"), "before-upgrade")
+            .unwrap();
+
+        assert_eq!(path, tempdir.path().join("demo/before-upgrade"));
+    }
+
+    #[test]
+    fn snapshot_paths_reject_traversal_and_absolute_components() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let manager = manager(tempdir.path());
+
+        for name in ["", ".", "..", "../outside", "/tmp/outside"] {
+            assert!(manager
+                .get_snapshot_dir(SnapshotScope::Project("demo"), name)
+                .is_err());
+        }
+        assert!(manager
+            .get_snapshot_dir(SnapshotScope::Project("../outside"), "snapshot")
+            .is_err());
+    }
+
+    #[test]
+    fn snapshot_metadata_files_are_single_components() {
+        let root = Path::new("/snapshots/demo");
+
+        assert_eq!(
+            snapshot_file_path(root, "image.tar", "image file").unwrap(),
+            root.join("image.tar")
+        );
+        assert!(snapshot_file_path(root, "../image.tar", "image file").is_err());
+        assert!(snapshot_file_path(root, "/tmp/image.tar", "image file").is_err());
+    }
 }

@@ -186,12 +186,7 @@ fn validate_metadata(plugin: &Plugin, result: &mut ValidationResult) -> Result<(
             ValidationError::new("name", "Plugin name cannot be empty")
                 .with_suggestion("Add a descriptive name like 'rust-advanced' or 'postgres-db'"),
         );
-    } else if !plugin
-        .info
-        .name
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-    {
+    } else if !is_valid_plugin_name(&plugin.info.name) {
         result.add_error(
             ValidationError::new("name", "Plugin name contains invalid characters")
                 .with_suggestion("Use only alphanumeric characters, hyphens, and underscores"),
@@ -242,6 +237,14 @@ fn validate_metadata(plugin: &Plugin, result: &mut ValidationResult) -> Result<(
     }
 
     Ok(())
+}
+
+/// Return whether a plugin name is safe to use as its on-disk directory name.
+pub fn is_valid_plugin_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|character| character.is_alphanumeric() || matches!(character, '-' | '_'))
 }
 
 /// Validate preset content (preset.yaml)
@@ -604,6 +607,14 @@ environment:
         assert!(result.errors.iter().any(|e| e.field == "name"));
 
         Ok(())
+    }
+
+    #[test]
+    fn plugin_directory_names_reject_path_components() {
+        assert!(is_valid_plugin_name("rust-tools"));
+        for name in ["", ".", "..", "../presets", "/tmp/plugin", "scope/plugin"] {
+            assert!(!is_valid_plugin_name(name));
+        }
     }
 
     #[test]
