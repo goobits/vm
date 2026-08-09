@@ -227,6 +227,10 @@ fn add_terminal_and_package_fields(cache: &mut HashMap<String, SchemaType>) {
         "host_sync.ssh_agent",
         "host_sync.ssh_config",
         "host_sync.ai_tools",
+        "host_sync.ai_tools.claude",
+        "host_sync.ai_tools.antigravity",
+        "host_sync.ai_tools.gemini",
+        "host_sync.ai_tools.codex",
         "host_sync.package_links.npm",
         "host_sync.package_links.pip",
         "host_sync.package_links.cargo",
@@ -466,6 +470,10 @@ mod tests {
         );
         assert_eq!(
             lookup_field_type("terminal.show_git_branch", false),
+            SchemaType::Boolean
+        );
+        assert_eq!(
+            lookup_field_type("host_sync.ai_tools.antigravity", false),
             SchemaType::Boolean
         );
     }

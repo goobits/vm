@@ -919,7 +919,7 @@ pub struct HostSyncConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dotfiles: Vec<String>,
 
-    /// AI tool data synchronization (claude, gemini, codex)
+    /// AI tool data synchronization (Claude, Antigravity, Codex)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ai_tools: Option<AiSyncConfig>,
 
@@ -977,7 +977,7 @@ pub enum AiSyncConfig {
 
 impl Default for AiSyncConfig {
     fn default() -> Self {
-        // Default: enable claude and gemini, disable others
+        // Default: enable Claude and Antigravity, disable others.
         AiSyncConfig::Detailed(AiSyncTools::default())
     }
 }
@@ -990,10 +990,10 @@ impl AiSyncConfig {
         }
     }
 
-    pub fn is_gemini_enabled(&self) -> bool {
+    pub fn is_antigravity_enabled(&self) -> bool {
         match self {
             AiSyncConfig::Boolean(enabled) => *enabled,
-            AiSyncConfig::Detailed(tools) => tools.gemini,
+            AiSyncConfig::Detailed(tools) => tools.antigravity,
         }
     }
 
@@ -1010,8 +1010,8 @@ impl AiSyncConfig {
 pub struct AiSyncTools {
     #[serde(default = "default_true")]
     pub claude: bool,
-    #[serde(default = "default_true")]
-    pub gemini: bool,
+    #[serde(default = "default_true", alias = "gemini")]
+    pub antigravity: bool,
     #[serde(default)]
     pub codex: bool,
 }
@@ -1020,7 +1020,7 @@ impl Default for AiSyncTools {
     fn default() -> Self {
         Self {
             claude: true,
-            gemini: true,
+            antigravity: true,
             codex: false,
         }
     }
@@ -1265,7 +1265,26 @@ impl VmConfig {
 
 #[cfg(test)]
 mod container_policy_tests {
-    use super::{MemoryLimit, VmConfig, VolumeRetention, VolumeScope};
+    use super::{AiSyncConfig, MemoryLimit, VmConfig, VolumeRetention, VolumeScope};
+
+    #[test]
+    fn legacy_gemini_sync_key_enables_antigravity() {
+        let config: VmConfig = serde_yaml_ng::from_str(
+            "host_sync:\n  ai_tools:\n    claude: false\n    gemini: true\n    codex: false\n",
+        )
+        .unwrap();
+        let AiSyncConfig::Detailed(tools) = config
+            .host_sync
+            .and_then(|sync| sync.ai_tools)
+            .expect("AI sync config should parse")
+        else {
+            panic!("expected detailed AI sync config");
+        };
+
+        assert!(tools.antigravity);
+        assert!(!tools.claude);
+        assert!(!tools.codex);
+    }
 
     #[test]
     fn parses_container_storage_and_runtime_policy() {

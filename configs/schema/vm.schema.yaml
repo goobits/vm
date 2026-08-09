@@ -516,8 +516,6 @@ properties:
     type: array
     description: Global npm packages to install
     default:
-      - "@google/gemini-cli"
-      - "@openai/codex"
       - npm-check-updates
       - prettier
       - eslint
@@ -551,7 +549,6 @@ properties:
     description: Custom shell aliases
     default:
       yoclaude: claude --dangerously-skip-permissions
-      yogemini: NO_BROWSER=true GEMINI_API_KEY=${GEMINI_API_KEY:-} gemini --yolo
       yocodex: codex --dangerously-bypass-approvals-and-sandbox
     additionalProperties:
       type: string
@@ -600,10 +597,14 @@ properties:
                 type: boolean
                 default: true
                 description: Sync Claude AI data to ~/.claude/vms/{project_name}
-              gemini:
+              antigravity:
                 type: boolean
                 default: true
-                description: Sync Gemini CLI data to ~/.gemini/vms/{project_name}
+                description: Sync Antigravity CLI data (stored under ~/.gemini for compatibility)
+              gemini:
+                type: boolean
+                deprecated: true
+                description: Deprecated alias for antigravity
               codex:
                 type: boolean
                 default: false
@@ -612,7 +613,7 @@ properties:
           - true
           - false
           - claude: true
-            gemini: true
+            antigravity: true
             codex: true
       package_links:
         type: object

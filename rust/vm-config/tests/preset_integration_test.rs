@@ -840,6 +840,10 @@ fn test_vibe_tart_preset_uses_linux_tart_by_default() -> Result<()> {
     let vibe_tart = detector.load_preset("vibe-tart")?;
     assert_eq!(vibe_tart.provider.as_deref(), Some("tart"));
     assert_eq!(vibe_tart.default_profile.as_deref(), Some("tart"));
+    assert!(vibe_tart
+        .networking
+        .as_ref()
+        .is_none_or(|networking| networking.networks.is_empty()));
     let tart_profile = vibe_tart
         .profiles
         .as_ref()
@@ -888,18 +892,15 @@ fn test_vibe_tart_preset_uses_linux_tart_by_default() -> Result<()> {
             .and_then(|tart| tart.guest_os.as_deref()),
         Some("macos")
     );
-    assert!(
-        vibe_tart
-            .npm_packages
-            .contains(&"@openai/codex".to_string()),
-        "vibe-tart should provision codex as a fallback when @vibe-box is stale"
-    );
-    assert!(
-        vibe_tart
-            .npm_packages
-            .contains(&"@google/gemini-cli".to_string()),
-        "vibe-tart should provision gemini as a fallback when @vibe-box is stale"
-    );
+    let ai_tools = vibe_tart
+        .host_sync
+        .as_ref()
+        .and_then(|sync| sync.ai_tools.as_ref())
+        .expect("vibe-tart should provision current AI tools at runtime");
+    assert!(ai_tools.is_antigravity_enabled());
+    assert!(ai_tools.is_claude_enabled());
+    assert!(ai_tools.is_codex_enabled());
+    assert!(vibe_tart.npm_packages.is_empty());
 
     Ok(())
 }

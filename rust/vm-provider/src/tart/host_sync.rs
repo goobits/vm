@@ -53,12 +53,12 @@ pub fn collect_host_sync_mounts(config: &VmConfig) -> Vec<HostSyncMount> {
         );
         add_ai_sync_mount(
             &mut mounts,
-            "gemini-sync",
+            "antigravity-sync",
             &home,
             project_name,
             "gemini",
             "~/.gemini".to_string(),
-            ai_tools.is_gemini_enabled(),
+            ai_tools.is_antigravity_enabled(),
         );
     }
 
@@ -153,7 +153,7 @@ mod tests {
             host_sync: Some(HostSyncConfig {
                 ai_tools: Some(AiSyncConfig::Detailed(AiSyncTools {
                     claude: true,
-                    gemini: false,
+                    antigravity: true,
                     codex: false,
                 })),
                 ..Default::default()
@@ -172,11 +172,15 @@ mod tests {
             std::env::set_var("SUDO_USER", sudo_user);
         }
 
-        assert_eq!(mounts.len(), 1);
+        assert_eq!(mounts.len(), 2);
         assert_eq!(mounts[0].tag, "claude-sync");
         assert_eq!(mounts[0].guest_path, "~/.claude");
         assert!(mounts[0].host_path.ends_with(".vm/ai-sync/claude/demo"));
         assert!(mounts[0].host_path.is_dir());
+        assert_eq!(mounts[1].tag, "antigravity-sync");
+        assert_eq!(mounts[1].guest_path, "~/.gemini");
+        assert!(mounts[1].host_path.ends_with(".vm/ai-sync/gemini/demo"));
+        assert!(mounts[1].host_path.is_dir());
     }
 
     #[test]
@@ -196,7 +200,7 @@ mod tests {
             host_sync: Some(HostSyncConfig {
                 ai_tools: Some(AiSyncConfig::Detailed(AiSyncTools {
                     claude: false,
-                    gemini: false,
+                    antigravity: false,
                     codex: true,
                 })),
                 ..Default::default()

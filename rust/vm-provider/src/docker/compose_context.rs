@@ -39,7 +39,7 @@ pub(super) fn ensure_ai_sync_dirs(config: &VmConfig) -> Result<()> {
 
     for (enabled, tool) in [
         (ai_sync.is_claude_enabled(), "claude"),
-        (ai_sync.is_gemini_enabled(), "gemini"),
+        (ai_sync.is_antigravity_enabled(), "gemini"),
         (ai_sync.is_codex_enabled(), "codex"),
     ] {
         if !enabled {

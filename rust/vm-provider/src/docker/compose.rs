@@ -161,7 +161,10 @@ impl<'a> ComposeOperations<'a> {
             .and_then(|hs| hs.ai_tools.as_ref())
         {
             tera_context.insert("claude_sync_enabled", &ai_sync.is_claude_enabled());
-            tera_context.insert("gemini_sync_enabled", &ai_sync.is_gemini_enabled());
+            tera_context.insert(
+                "antigravity_sync_enabled",
+                &ai_sync.is_antigravity_enabled(),
+            );
             tera_context.insert("codex_sync_enabled", &ai_sync.is_codex_enabled());
         }
         // No local package mounts or environment variables needed

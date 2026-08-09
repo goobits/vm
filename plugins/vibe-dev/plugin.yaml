@@ -1,6 +1,6 @@
 name: vibe
 version: 1.0.0
-description: Vibe Development - Enhanced workflow with Claude integration
+description: Vibe Development - Enhanced workflow with AI tooling integration
 author: VM Tool Team
 plugin_type: preset
 preset_category: provision

@@ -8,10 +8,10 @@ fn test_duplicate_key_detection() {
 version: "2.0"
 provider: docker
 npm_packages:
-  - '@google/gemini-cli'
+  - 'prettier'
   - '@openai/codex'
 npm_packages:
-  - '@google/gemini-cli'
+  - 'prettier'
   - '@openai/codex'
   - prettier
 "#;
@@ -38,7 +38,7 @@ fn test_valid_yaml_parses_successfully() {
 version: "2.0"
 provider: docker
 npm_packages:
-  - '@google/gemini-cli'
+  - 'prettier'
   - '@openai/codex'
   - prettier
 "#;

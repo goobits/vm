@@ -397,7 +397,7 @@ profiles:
         fixture.set_working_dir()?;
         SimpleTestFixture::create_preset(
             "materialize-test",
-            "preset:\n  name: materialize-test\n  description: test\nprovider: tart\nprofiles:\n  tart:\n    provider: tart\n",
+            "preset:\n  name: materialize-test\n  description: test\nprovider: tart\nnetworking:\n  networks: [spacebase]\nprofiles:\n  macos:\n    provider: tart\n  tart:\n    provider: tart\n",
         )?;
         fs::write(
             fixture.test_dir.join("vm.yaml"),
@@ -405,6 +405,8 @@ profiles:
         )?;
 
         ConfigOps::unset("preset", false)?;
+        ConfigOps::unset("profiles.macos", false)?;
+        ConfigOps::unset("networking", false)?;
 
         let config: VmConfig =
             serde_yaml::from_str(&fs::read_to_string(fixture.test_dir.join("vm.yaml"))?)?;
@@ -413,6 +415,11 @@ profiles:
             .profiles
             .as_ref()
             .is_some_and(|profiles| profiles.contains_key("tart")));
+        assert!(!config
+            .profiles
+            .as_ref()
+            .is_some_and(|profiles| profiles.contains_key("macos")));
+        assert!(config.networking.is_none());
         Ok(())
     }
 }

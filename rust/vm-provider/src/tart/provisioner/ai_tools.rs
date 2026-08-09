@@ -155,40 +155,48 @@ repair_auth_json"#,
 
         self.ensure_user_home_ready()?;
 
-        if ai_tools.is_claude_enabled() {
-            self.ssh_exec(&format!(
-                r#"export PATH="{}"
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-curl -fsSL https://claude.ai/install.sh | bash || npm install -g @anthropic-ai/claude-code@latest"#,
-                Self::user_bin_path(config)
-            ))?;
-            self.prepare_json_backed_tool_home(".claude")?;
-        }
-
-        if ai_tools.is_gemini_enabled() || ai_tools.is_codex_enabled() {
+        if ai_tools.is_codex_enabled() {
             self.ensure_nodejs_runtime(config)?;
         }
 
-        if ai_tools.is_gemini_enabled() {
+        let mut tools = Vec::new();
+        if ai_tools.is_antigravity_enabled() {
+            tools.push("antigravity");
+        }
+        if ai_tools.is_claude_enabled() {
+            tools.push("claude");
+        }
+        if ai_tools.is_codex_enabled() {
+            tools.push("codex");
+        }
+
+        if !tools.is_empty() {
             self.ssh_exec(&format!(
-                r#"export PATH="{}"
+                r#"set -euo pipefail
+export PATH="{}"
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-npm install -g @google/gemini-cli@latest"#,
-                Self::user_bin_path(config)
+INSTALLER="$(mktemp)"
+trap 'rm -f "$INSTALLER"' EXIT
+cat > "$INSTALLER" <<'VM_AI_TOOLS_INSTALLER'
+{}
+VM_AI_TOOLS_INSTALLER
+bash "$INSTALLER" {}"#,
+                Self::user_bin_path(config),
+                crate::resources::AI_TOOLS_INSTALLER,
+                tools.join(" ")
             ))?;
+        }
+
+        if ai_tools.is_claude_enabled() {
+            self.prepare_json_backed_tool_home(".claude")?;
+        }
+
+        if ai_tools.is_antigravity_enabled() {
             self.prepare_json_backed_tool_home(".gemini")?;
         }
 
         if ai_tools.is_codex_enabled() {
-            self.ssh_exec(&format!(
-                r#"export PATH="{}"
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-npm install -g @openai/codex@latest"#,
-                Self::user_bin_path(config)
-            ))?;
             self.ensure_codex_runtime_config(config)?;
         }
 

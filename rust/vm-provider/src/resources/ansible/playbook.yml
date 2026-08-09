@@ -97,13 +97,13 @@
             terminal_colors: "{{ terminal_themes[project_config.terminal.theme | default('dracula')].colors | default(terminal_themes.dracula.colors) }}"
             project_ports: "{{ project_config.ports | default({}) | dict2items }}"
             home_dir: "/home/{{ project_config.vm.user | default(default_user) }}"
-            # AI sync config: host_sync.ai_tools can be boolean (true=all enabled) or object {claude: bool, gemini: bool, ...}
+            # AI sync config: host_sync.ai_tools can be boolean or granular.
             claude_sync_enabled: "{{ (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and project_config.host_sync.ai_tools.claude | default(false)))) | bool }}"
-            gemini_sync_enabled: "{{ (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and project_config.host_sync.ai_tools.gemini | default(false)))) | bool }}"
+            antigravity_sync_enabled: "{{ (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and (project_config.host_sync.ai_tools.antigravity | default(project_config.host_sync.ai_tools.gemini | default(false))))))) | bool }}"
             codex_sync_enabled: "{{ (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and project_config.host_sync.ai_tools.codex | default(false)))) | bool }}"
             # Consolidated conditions for package manager installation requirements
             # Note: nodejs_required is computed inline to avoid cross-reference issues in set_fact
-            nodejs_required: "{{ ((project_config.npm_packages is defined and project_config.npm_packages is not none and project_config.npm_packages | length > 0) or (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and (project_config.host_sync.ai_tools.claude | default(false) or project_config.host_sync.ai_tools.gemini | default(false) or project_config.host_sync.ai_tools.codex | default(false)))))) | bool }}"
+            nodejs_required: "{{ ((project_config.npm_packages is defined and project_config.npm_packages is not none and project_config.npm_packages | length > 0) or (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and project_config.host_sync.ai_tools.codex | default(false))))) | bool }}"
             pip_packages_required: "{{ (project_config.pip_packages is defined and project_config.pip_packages | length > 0) | bool }}"
             cargo_packages_required: "{{ (project_config.cargo_packages is defined and project_config.cargo_packages | length > 0) | bool }}"
             apt_packages_required: "{{ (project_config.apt_packages is defined and project_config.apt_packages | length > 0) | bool }}"
@@ -528,86 +528,24 @@
         until: apt_packages_install is succeeded
 
 
-      # AI CLI tools - install even for snapshots if sync is enabled (layered provisioning)
-      - name: Install Claude Code CLI
+      # Install current AI CLIs even when the base snapshot is stale.
+      - name: Install enabled AI CLI tools
         shell: |
             set -euo pipefail
             export HOME="/home/{{ project_user }}"
-            mkdir -p "$HOME/.local/bin"
             export PATH="$HOME/.local/bin:$PATH"
-
-            ensure_claude_launcher() {
-                if command -v claude >/dev/null 2>&1; then
-                    return 0
-                fi
-
-                local native_bin=""
-                native_bin="$(find "$HOME/.local/share/claude/versions" -maxdepth 1 -type f -perm /111 2>/dev/null | sort -V | tail -n 1 || true)"
-                if [ -n "$native_bin" ]; then
-                    ln -sf "$native_bin" "$HOME/.local/bin/claude"
-                    hash -r
-                fi
-
-                command -v claude >/dev/null 2>&1
-            }
-
-            INSTALLER="$(mktemp)"
-            trap 'rm -f "$INSTALLER"' EXIT
-            curl -fsSL https://claude.ai/install.sh -o "$INSTALLER"
-            bash "$INSTALLER"
-            if ! ensure_claude_launcher; then
-                export NVM_DIR="$HOME/.nvm"
-                [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
-                npm install -g @anthropic-ai/claude-code@latest
-                hash -r
-                if ! ensure_claude_launcher; then
-                    echo "Claude Code installer completed, but no claude launcher was found." >&2
-                    echo "Searched PATH: $PATH" >&2
-                    find "$HOME/.local" "$HOME/.claude" -maxdepth 5 -printf '%M %p -> %l\n' 2>/dev/null || true
-                    exit 1
-                fi
-            fi
-            command -v claude
-            echo "Claude Code CLI installed or updated"
-        args:
-            executable: /bin/bash
-        become_user: '{{ project_user }}'
-        when: claude_sync_enabled
-        register: claude_install
-        changed_when: "'installed or updated' in claude_install.stdout"
-
-      - name: Install Gemini CLI
-        shell: |
-            set -euo pipefail
-            export HOME="/home/{{ project_user }}"
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
-            NPM_BIN="$(npm prefix -g)/bin"
-            export PATH="$NPM_BIN:$HOME/.local/bin:$PATH"
-            npm install -g @google/gemini-cli@latest
-            command -v gemini
-        args:
-            executable: /bin/bash
-        become_user: '{{ project_user }}'
-        when: gemini_sync_enabled
-        register: gemini_install
-        changed_when: true
 
-      - name: Install Codex CLI
-        shell: |
-            set -euo pipefail
-            export HOME="/home/{{ project_user }}"
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
-            NPM_BIN="$(npm prefix -g)/bin"
-            export PATH="$NPM_BIN:$HOME/.local/bin:$PATH"
-            npm install -g @openai/codex@latest
-            command -v codex
+            tools=()
+            [[ "{{ antigravity_sync_enabled | bool | lower }}" == true ]] && tools+=(antigravity)
+            [[ "{{ claude_sync_enabled | bool | lower }}" == true ]] && tools+=(claude)
+            [[ "{{ codex_sync_enabled | bool | lower }}" == true ]] && tools+=(codex)
+            bash /app/shared/scripts/install-ai-tools.sh "${tools[@]}"
         args:
             executable: /bin/bash
         become_user: '{{ project_user }}'
-        when: codex_sync_enabled
-        register: codex_install
+        when: antigravity_sync_enabled or claude_sync_enabled or codex_sync_enabled
         changed_when: true
 
       - name: Install container pipx packages
@@ -828,46 +766,14 @@
             owner: '{{ project_user }}'
         when: claude_sync_enabled
 
-      # Gemini CLI setup
-      - name: Create Gemini settings directory
+      # Antigravity retains ~/.gemini for global rules and configuration.
+      - name: Create Antigravity settings directory
         file:
             path: '/home/{{ project_user }}/.gemini'
             state: directory
             owner: '{{ project_user }}'
             mode: '0755'
-        when: gemini_sync_enabled
-
-      - name: Check for project Gemini settings
-        stat:
-            path: '/app/shared/gemini-settings/settings.json'
-        register: gemini_settings
-        when: gemini_sync_enabled
-
-      - name: Copy project Gemini settings
-        copy:
-            src: '/app/shared/gemini-settings/settings.json'
-            dest: '/home/{{ project_user }}/.gemini/settings.json'
-            remote_src: yes
-            owner: '{{ project_user }}'
-        when:
-            - gemini_sync_enabled
-            - gemini_settings is defined
-            - gemini_settings.stat.exists
-
-      - name: Use default Gemini settings
-        copy:
-            dest: '/home/{{ project_user }}/.gemini/settings.json'
-            owner: '{{ project_user }}'
-            content: |
-                {
-                  "model": "gemini-2.5-pro",
-                  "interactive": true
-                }
-        when:
-            - gemini_sync_enabled
-            - gemini_settings is defined
-            - not gemini_settings.stat.exists
-        no_log: true
+        when: antigravity_sync_enabled
 
 
       # Project-specific environment setup
@@ -1029,6 +935,6 @@
 
                 📁 Project: {{ project_name }}
                 📍 Path: {{ project_path }}
-                🛠️ Tools: Node.js, Claude Code, Gemini CLI, Codex
+                🛠️ Tools: Node.js, Antigravity CLI, Claude Code, Codex
 
                 💡 Ready to code!

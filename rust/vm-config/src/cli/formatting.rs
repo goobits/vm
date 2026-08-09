@@ -236,7 +236,12 @@ fn flatten_config_to_shell(prefix: &str, config: &VmConfig, exports: &mut Vec<St
         .and_then(|hs| hs.ai_tools.as_ref())
     {
         add_boolean_export(exports, prefix, "claude_sync", ai_sync.is_claude_enabled());
-        add_boolean_export(exports, prefix, "gemini_sync", ai_sync.is_gemini_enabled());
+        add_boolean_export(
+            exports,
+            prefix,
+            "antigravity_sync",
+            ai_sync.is_antigravity_enabled(),
+        );
         add_boolean_export(exports, prefix, "codex_sync", ai_sync.is_codex_enabled());
     }
 }

@@ -19,9 +19,6 @@ vm:
   user: developer
 ports:
   _range: [3120, 3129]
-npm_packages:
-  - '@google/gemini-cli'
-  - '@openai/codex'
 terminal:
   show_git_branch: true
   show_timestamp: false
@@ -34,9 +31,6 @@ host_sync:
   ai_tools: true
 preset: vibe-tart
 default_profile: tart
-networking:
-  networks:
-  - spacebase
 profiles:
   docker:
     provider: docker

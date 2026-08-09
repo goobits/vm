@@ -22,14 +22,6 @@ host_sync:
 environment:
   CARGO_TARGET_DIR: /home/admin/.cache/vm-cargo-target
 
-npm_packages:
-  - '@google/gemini-cli'
-  - '@openai/codex'
-
-networking:
-  networks:
-    - spacebase
-
 terminal:
   theme: dracula
   show_git_branch: true

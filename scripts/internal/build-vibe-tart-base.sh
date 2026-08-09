@@ -157,11 +157,7 @@ if [[ "${GUEST_OS}" == "macos" ]]; then
       brew install go
     fi
 
-    curl -fsSL https://claude.ai/install.sh | bash || npm install -g @anthropic-ai/claude-code@latest
-
     npm install -g \
-      @google/gemini-cli@latest \
-      @openai/codex@latest \
       eslint \
       npm-check-updates \
       prettier
@@ -234,11 +230,7 @@ else
       sudo apt-get install -y golang-go
     fi
 
-    curl -fsSL https://claude.ai/install.sh | bash || npm install -g @anthropic-ai/claude-code@latest
-
     npm install -g \
-      @google/gemini-cli@latest \
-      @openai/codex@latest \
       eslint \
       npm-check-updates \
       prettier

@@ -150,12 +150,6 @@ vm_repair_claude_state() {
   [ -f "$HOME/.claude.json" ] && chmod 600 "$HOME/.claude.json" 2>/dev/null || true
 }
 
-vm_repair_gemini_state() {
-  vm_home_is_writable || return 1
-  mkdir -p "$HOME/.gemini" 2>/dev/null || true
-  vm_repair_empty_json_files "$HOME/.gemini"
-}
-
 vm_repair_codex_state() {
   vm_home_is_writable || return 1
   mkdir -p "$HOME/.codex" "$HOME/.codex/log" "$HOME/.codex/sessions" "$HOME/.codex/rollout" 2>/dev/null || true
@@ -170,12 +164,6 @@ if command -v claude >/dev/null 2>&1; then
   yoclaude() {
     vm_repair_claude_state
     claude --dangerously-skip-permissions "$@"
-  }
-fi
-if command -v gemini >/dev/null 2>&1; then
-  yogemini() {
-    vm_repair_gemini_state
-    NO_BROWSER=true GEMINI_API_KEY="${GEMINI_API_KEY:-}" gemini --yolo "$@"
   }
 fi
 if command -v codex >/dev/null 2>&1; then

@@ -126,7 +126,7 @@ cat <<'EOF'
 Suggested checks after each start:
 
   vm exec -- which claude
-  vm exec -- which gemini
+  vm exec -- which agy
   vm exec -- which codex
   vm exec -- git config --global user.name
   vm exec -- printenv | grep -E 'EDITOR|PATH' || true
