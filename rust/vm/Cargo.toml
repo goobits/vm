@@ -9,7 +9,6 @@ repository = "https://github.com/goobits/vm"
 homepage = "https://github.com/goobits/vm"
 keywords = ["development", "docker", "vm", "devenv"]
 categories = ["development-tools"]
-publish = true  # Override workspace publish = false
 
 [[bin]]
 name = "vm"

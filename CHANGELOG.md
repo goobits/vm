@@ -50,6 +50,7 @@
 - 🚀 Tart refreshes managed shell configuration so `yoclaude` and `yocodex` are available on the first login.
 - 🚀 Missing standard Tart vibe bases are built by the installed binary when `vm create` needs them, including when `tart.storage_path` selects another disk.
 - 📦 Empty Docker inspection results now report an error instead of returning a misleading default status.
+- 📦 Release and onboarding checks now follow the supported GitHub binary/source installation path instead of broken crates.io packaging.
 
 ### ⚡ Performance
 

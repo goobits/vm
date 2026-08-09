@@ -987,28 +987,6 @@ impl Provider for TartProvider {
     }
 }
 
-#[cfg(any(test, feature = "test-helpers"))]
-impl TartProvider {
-    /// Test-only helper method to execute commands in a specific path
-    pub fn exec_in_path(
-        &self,
-        container: Option<&str>,
-        path: &std::path::Path,
-        cmd_parts: &[&str],
-    ) -> Result<String> {
-        let instance_name = self.resolve_instance_name(container)?;
-        let command_str = cmd_parts.join(" ");
-        let ssh_command = format!("cd '{}' && {}", path.display(), command_str);
-
-        let output = self
-            .tart_expr(&["exec", &instance_name, "sh", "-c", &ssh_command])
-            .read()
-            .map_err(|e| VmError::Provider(format!("Exec in path failed: {}", e)))?;
-
-        Ok(output)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::TartProvider;

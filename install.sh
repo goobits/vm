@@ -859,7 +859,7 @@ install_vm_tool() {
         echo "Common fixes:"
         echo "  • Ensure Rust is up to date: rustup update"
         echo "  • Check internet connection"
-        echo "  • Try: cargo install goobits-vm --locked"
+        echo "  • Try: cd rust && cargo run --package vm-installer --"
 
         # Extract last meaningful error from output
         local error_detail
@@ -978,7 +978,7 @@ parse_arguments() {
                     exit $ERR_INSTALL_FAILED
                 fi
                 echo "error: versioned installs are not supported by this source installer." >&2
-                echo "use 'cargo install goobits-vm --version ${requested_version#v} --locked' or check out tag '$requested_version' and rerun ./install.sh." >&2
+                echo "check out tag '$requested_version' and rerun ./install.sh." >&2
                 exit $ERR_INSTALL_FAILED
                 ;;
             --help|-h)

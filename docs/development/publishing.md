@@ -1,8 +1,8 @@
 # Publishing
 
-The supported end-user installation path is `install.sh`. Crates.io
-publication is a maintainer workflow for the `goobits-vm` package, which
-installs the `vm` binary.
+Releases are distributed as GitHub Release binaries and installed with
+`install.sh`. The CLI depends on private workspace crates, so crates.io
+publication is intentionally disabled.
 
 ## Version Ownership
 
@@ -24,27 +24,20 @@ From a clean release commit:
 
 ```bash
 make quality-gates
-cd rust
-cargo publish --package goobits-vm --dry-run
+cargo build --manifest-path rust/Cargo.toml --package goobits-vm --release
 ```
 
-The dry run must pass before tagging or publishing. Keep crates.io credentials
-outside the repository and never place tokens in command history, scripts, or
-documentation.
+Both commands must pass before tagging a release.
 
 ## Publish
 
-After the changelog, version, and tag are approved:
+After the changelog, version, and release commit are approved, create and push
+the matching `vX.Y.Z` tag. The release workflow builds each supported target,
+publishes archives and checksums, and creates the GitHub Release.
 
-```bash
-make publish
-```
-
-The Make target publishes `goobits-vm`. Do not publish the internal workspace
-crates.
+Do not publish the internal workspace crates independently.
 
 ## Release Verification
 
-Verify the tag points to the approved commit, the published package reports the
-expected version, and the installer still installs a `vm` binary with that same
-version.
+Verify the tag points to the approved commit, every release archive has a
+checksum, and the installer installs a `vm` binary with the same version.

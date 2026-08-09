@@ -20,7 +20,7 @@ jobs:
         run: |
           set -e
           echo "Installing VM tool..."
-          cargo install vm
+          cargo install --path rust/vm --locked
           vm --version
         timeout-minutes: 10
 
