@@ -1,5 +1,9 @@
-use super::{resolve_home_dir, Path, PathBuf, Result, TartProvisioner, VmConfig};
+use super::TartProvisioner;
+use crate::tart::host_sync::resolve_home_dir;
+use std::path::{Path, PathBuf};
 use tracing::warn;
+use vm_config::config::VmConfig;
+use vm_core::error::Result;
 
 impl TartProvisioner {
     fn ensure_user_home_ready(&self) -> Result<()> {
