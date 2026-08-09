@@ -344,4 +344,75 @@ vm:
 
         Ok(())
     }
+
+    #[test]
+    fn test_unset_materializes_preset_before_removing_inherited_fields() -> Result<()> {
+        let _guard = TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let fixture = SimpleTestFixture::new()?;
+        fixture.set_working_dir()?;
+        SimpleTestFixture::create_preset(
+            "tart-test",
+            r#"preset:
+  name: tart-test
+  description: test
+provider: tart
+networking:
+  networks: [spacebase]
+profiles:
+  macos:
+    provider: tart
+  tart:
+    provider: tart
+"#,
+        )?;
+        fs::write(
+            fixture.test_dir.join("vm.yaml"),
+            "version: '2.0'\npreset: tart-test\nprovider: tart\nproject:\n  name: demo\n",
+        )?;
+
+        ConfigOps::unset("profiles.macos", false)?;
+        ConfigOps::unset("networking", false)?;
+
+        let config: VmConfig =
+            serde_yaml::from_str(&fs::read_to_string(fixture.test_dir.join("vm.yaml"))?)?;
+        assert_eq!(config.preset, None);
+        let profiles = config
+            .profiles
+            .as_ref()
+            .expect("profiles should be materialized");
+        assert!(!profiles.contains_key("macos"));
+        assert!(profiles.contains_key("tart"));
+        assert!(config.networking.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn test_unset_preset_preserves_materialized_configuration() -> Result<()> {
+        let _guard = TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let fixture = SimpleTestFixture::new()?;
+        fixture.set_working_dir()?;
+        SimpleTestFixture::create_preset(
+            "materialize-test",
+            "preset:\n  name: materialize-test\n  description: test\nprovider: tart\nprofiles:\n  tart:\n    provider: tart\n",
+        )?;
+        fs::write(
+            fixture.test_dir.join("vm.yaml"),
+            "version: '2.0'\npreset: materialize-test\nprovider: tart\nproject:\n  name: demo\n",
+        )?;
+
+        ConfigOps::unset("preset", false)?;
+
+        let config: VmConfig =
+            serde_yaml::from_str(&fs::read_to_string(fixture.test_dir.join("vm.yaml"))?)?;
+        assert_eq!(config.preset, None);
+        assert!(config
+            .profiles
+            .as_ref()
+            .is_some_and(|profiles| profiles.contains_key("tart")));
+        Ok(())
+    }
 }

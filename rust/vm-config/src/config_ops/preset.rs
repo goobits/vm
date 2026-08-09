@@ -1,5 +1,6 @@
 // External crates
 use serde_yaml_ng as serde_yaml;
+use std::path::Path;
 use tracing::instrument;
 
 // Internal imports
@@ -14,6 +15,32 @@ use vm_core::error::{Result, VmError};
 use vm_core::msg;
 use vm_core::{vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
+
+pub(crate) fn resolve_declared_presets(config: VmConfig, project_dir: &Path) -> Result<VmConfig> {
+    let Some(preset_names) = config.preset.clone() else {
+        return Ok(config);
+    };
+
+    let detector = PresetDetector::new(project_dir.to_path_buf(), paths::get_presets_dir());
+    let port_range = config
+        .ports
+        .range
+        .as_ref()
+        .and_then(|range| (range.len() == 2).then(|| format!("{}-{}", range[0], range[1])));
+    let mut resolved = VmConfig::default();
+
+    for name in preset_names
+        .split(',')
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+    {
+        let preset = load_preset_with_placeholders(&detector, name, &port_range)
+            .map_err(|error| VmError::Config(format!("Failed to load preset '{name}': {error}")))?;
+        resolved = ConfigMerger::new(resolved).merge(preset)?;
+    }
+
+    ConfigMerger::new(resolved).merge(config)
+}
 
 /// Apply preset(s) to configuration
 pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) -> Result<()> {

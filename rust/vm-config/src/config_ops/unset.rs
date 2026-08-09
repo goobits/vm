@@ -5,7 +5,9 @@ use std::fs;
 use serde_yaml_ng::Value;
 
 // Internal imports
+use crate::config::VmConfig;
 use crate::config_ops::io::{find_local_config, get_global_config_path, read_config_or_init};
+use crate::config_ops::preset::resolve_declared_presets;
 use crate::yaml::core::CoreOperations;
 use vm_core::error::Result;
 use vm_core::msg;
@@ -34,7 +36,21 @@ pub fn unset(field: &str, global: bool) -> Result<()> {
     let mut yaml_value: Value =
         CoreOperations::parse_yaml_with_diagnostics(&content, &source_desc)?;
 
-    unset_nested_field(&mut yaml_value, field)?;
+    let config: VmConfig = serde_yaml_ng::from_value(yaml_value.clone())?;
+    if config.preset.is_some() {
+        let project_dir = config_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        yaml_value = serde_yaml_ng::to_value(resolve_declared_presets(config, project_dir)?)?;
+
+        // Materialize inherited values before removal so the preset cannot restore
+        // the field on the next load.
+        unset_nested_field(&mut yaml_value, "preset")?;
+    }
+
+    if field != "preset" {
+        unset_nested_field(&mut yaml_value, field)?;
+    }
 
     CoreOperations::write_yaml_file(&config_path, &yaml_value)?;
 

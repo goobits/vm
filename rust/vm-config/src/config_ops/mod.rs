@@ -8,7 +8,7 @@
 // Internal module declarations
 mod get;
 mod io;
-mod preset;
+pub(crate) mod preset;
 mod set;
 mod unset;
 
