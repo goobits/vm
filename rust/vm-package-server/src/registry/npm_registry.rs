@@ -78,7 +78,7 @@ impl PackageRegistry for NpmRegistry {
             &package_utils::RegistryPattern::NPM,
             |filename| {
                 // Extract package name from filename (remove .json extension)
-                filename.strip_suffix(".json").map(|name| name.to_string())
+                crate::npm::package_name_from_metadata_file(filename)
             },
         )
         .await
@@ -101,10 +101,7 @@ impl PackageRegistry for NpmRegistry {
         state: &AppState,
         package_name: &str,
     ) -> AppResult<Vec<(String, String, String, u64)>> {
-        let metadata_path = state
-            .data_dir
-            .join("npm/metadata")
-            .join(format!("{package_name}.json"));
+        let metadata_path = crate::npm::metadata_path(&state.data_dir, package_name)?;
         let mut versions = Vec::new();
 
         let result = storage::read_file_string(&metadata_path).await;
@@ -152,9 +149,8 @@ impl PackageRegistry for NpmRegistry {
             limit,
             |filename| {
                 // Extract package name from filename (remove .json extension)
-                filename
-                    .strip_suffix(".json")
-                    .map(|name| (name.to_string(), String::new()))
+                crate::npm::package_name_from_metadata_file(filename)
+                    .map(|name| (name, String::new()))
             },
         )
         .await?;
@@ -162,10 +158,7 @@ impl PackageRegistry for NpmRegistry {
         let mut recent = Vec::new();
         for (package_name, _) in recent_files {
             // Read metadata file to get latest version
-            let metadata_path = state
-                .data_dir
-                .join("npm/metadata")
-                .join(format!("{package_name}.json"));
+            let metadata_path = crate::npm::metadata_path(&state.data_dir, &package_name)?;
             if let Ok(content) = storage::read_file_string(&metadata_path).await {
                 if let Ok(metadata) = serde_json::from_str::<Value>(&content) {
                     if let Some(latest) = metadata["dist-tags"]["latest"].as_str() {

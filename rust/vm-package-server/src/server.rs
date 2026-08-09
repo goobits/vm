@@ -4,7 +4,7 @@
 //! supporting npm, PyPI, and Cargo package registry operations.
 
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -85,7 +85,8 @@ async fn run_server_internal(
     // Create required components for AppState
     let upstream_config = UpstreamConfig::default();
     let upstream_client = Arc::new(UpstreamClient::new(upstream_config)?);
-    let config = Arc::new(Config::default());
+    let auth_token = std::env::var("PKG_SERVER_AUTH_TOKEN").ok();
+    let config = Arc::new(configure_security(&host, auth_token.as_deref())?);
     let server_addr = format!("http://{host}:{port}");
 
     let state = AppState {
@@ -180,6 +181,51 @@ async fn run_server_internal(
     }
 
     Ok(())
+}
+
+fn configure_security(host: &str, auth_token: Option<&str>) -> Result<Config> {
+    let mut config = Config::default();
+    let auth_token = auth_token.filter(|token| !token.trim().is_empty());
+
+    if !is_loopback_host(host) && auth_token.is_none() {
+        anyhow::bail!(
+            "Refusing to bind package server to non-loopback host '{host}' without PKG_SERVER_AUTH_TOKEN"
+        );
+    }
+
+    if let Some(token) = auth_token {
+        config.security.require_authentication = true;
+        config.security.api_keys = vec![token.to_string()];
+    }
+
+    Ok(config)
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<IpAddr>()
+            .is_ok_and(|address| address.is_loopback())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loopback_bind_does_not_require_authentication() {
+        let config = configure_security("127.0.0.1", None).unwrap();
+        assert!(!config.security.require_authentication);
+    }
+
+    #[test]
+    fn remote_bind_requires_and_enables_authentication() {
+        assert!(configure_security("0.0.0.0", None).is_err());
+
+        let config = configure_security("0.0.0.0", Some("secret-token")).unwrap();
+        assert!(config.security.require_authentication);
+        assert_eq!(config.security.api_keys, ["secret-token"]);
+    }
 }
 
 async fn index_handler() -> Html<&'static str> {

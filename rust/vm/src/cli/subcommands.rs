@@ -248,7 +248,7 @@ pub enum RegistrySubcommand {
     /// Start registry server
     #[command(hide = true)]
     Serve {
-        #[arg(long, default_value = "0.0.0.0")]
+        #[arg(long, default_value = "127.0.0.1")]
         host: String,
         #[arg(long, default_value = "3080")]
         port: u16,

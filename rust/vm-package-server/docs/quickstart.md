@@ -23,9 +23,10 @@ pkg-server start
 pkg-server start --port 9000
 ```
 
-### Option 2: Docker
+### Option 2: Network Access
 ```bash
-# Start the server listening on all interfaces
+# Remote binds require upload authentication
+export PKG_SERVER_AUTH_TOKEN="replace-with-a-strong-token"
 pkg-server start --host 0.0.0.0 --port 8080
 ```
 

@@ -32,7 +32,7 @@ pkg-server start [OPTIONS]
 ### **Options**
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
-| `--host` | | `0.0.0.0` | Host/IP to bind server to |
+| `--host` | | `127.0.0.1` | Host/IP to bind server to; remote binds require `PKG_SERVER_AUTH_TOKEN` |
 | `--port` | `-p` | `3080` | Port to run server on |
 | `--data` | | `./data` | Directory for package storage |
 

@@ -39,5 +39,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # Define the entrypoint
 ENTRYPOINT ["pkg-server"]
 
-# Default command: start server on all interfaces
+# Container networking needs an external bind and therefore PKG_SERVER_AUTH_TOKEN.
 CMD ["start", "--host", "0.0.0.0", "--port", "3080", "--data", "./data"]

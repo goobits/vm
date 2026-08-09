@@ -185,7 +185,8 @@ pub fn add_npm_package_local(tarball_file: &Path, metadata: &Value, data_dir: &P
     let package_name = metadata["name"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("Package name not found in metadata"))?;
-    let metadata_file = metadata_dir.join(format!("{package_name}.json"));
+    let metadata_file = crate::npm::metadata_path(data_dir, package_name)
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
     fs::write(&metadata_file, serde_json::to_string_pretty(metadata)?)?;
 
     info!(
@@ -281,10 +282,10 @@ pub fn remove_pypi_package_local(package_name: &str, data_dir: &Path) -> Result<
 pub fn remove_npm_package_local(package_name: &str, data_dir: &Path) -> Result<()> {
     let npm_dir = data_dir.join("npm");
     let tarballs_dir = npm_dir.join("tarballs");
-    let metadata_dir = npm_dir.join("metadata");
 
     // Remove metadata file
-    let metadata_file = metadata_dir.join(format!("{package_name}.json"));
+    let metadata_file = crate::npm::metadata_path(data_dir, package_name)
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
     if metadata_file.exists() {
         fs::remove_file(&metadata_file)?;
         info!(

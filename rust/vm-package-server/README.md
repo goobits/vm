@@ -90,7 +90,7 @@ cargo publish --registry local
 ```bash
 # Server options
 pkg-server start \
-  --host 0.0.0.0 \              # Bind address (default: 0.0.0.0)
+  --host 127.0.0.1 \            # Bind address (default: 127.0.0.1)
   --port 3080 \                 # Port number (default: 3080)
   --data /var/packages          # Storage directory (default: ./data)
 
@@ -205,9 +205,9 @@ docker run -d \
   --name pkg-server \
   --restart unless-stopped \
   -p 3080:3080 \
+  -e PKG_SERVER_AUTH_TOKEN="replace-with-a-strong-token" \
   -v $(pwd)/data:/home/appuser/data \
-  goobits-pkg-server:latest \
-  --port 3080
+  goobits-pkg-server:latest
 
 # View logs
 docker logs -f pkg-server

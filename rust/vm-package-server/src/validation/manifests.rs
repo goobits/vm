@@ -46,16 +46,6 @@ pub fn validate_package_name(name: &str, ecosystem: &str) -> ValidationResult<St
         return Err(ValidationError::ControlCharacters);
     }
 
-    // Basic character validation - allow letters, numbers, dots, hyphens, underscores
-    if !name
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
-    {
-        return Err(ValidationError::InvalidCharacters {
-            input: name.to_string(),
-        });
-    }
-
     // Ecosystem-specific validations
     match ecosystem.to_lowercase().as_str() {
         "npm" => validate_npm_package_name(name),
@@ -69,27 +59,42 @@ pub fn validate_package_name(name: &str, ecosystem: &str) -> ValidationResult<St
 
 /// Validate npm package names according to npm rules
 fn validate_npm_package_name(name: &str) -> ValidationResult<String> {
-    // npm specific rules
-    if name.starts_with('.') || name.starts_with('_') {
-        return Err(ValidationError::InvalidFormat {
-            reason: "npm package names cannot start with . or _".to_string(),
-        });
-    }
-
     if name.to_lowercase() != name {
         return Err(ValidationError::InvalidFormat {
             reason: "npm package names must be lowercase".to_string(),
         });
     }
 
-    // Check for URL-unsafe characters
-    if name
-        .chars()
-        .any(|c| matches!(c, ' ' | '/' | '%' | '&' | '?' | '#'))
-    {
-        return Err(ValidationError::InvalidCharacters {
-            input: name.to_string(),
-        });
+    let segments: Vec<&str> = if let Some(scoped) = name.strip_prefix('@') {
+        let (scope, package) =
+            scoped
+                .split_once('/')
+                .ok_or_else(|| ValidationError::InvalidFormat {
+                    reason: "scoped npm names must use @scope/package".to_string(),
+                })?;
+        if package.contains('/') {
+            return Err(ValidationError::InvalidFormat {
+                reason: "scoped npm names must contain exactly one slash".to_string(),
+            });
+        }
+        vec![scope, package]
+    } else {
+        vec![name]
+    };
+
+    for segment in segments {
+        if segment.is_empty() || segment.starts_with(['.', '_']) {
+            return Err(ValidationError::InvalidFormat {
+                reason: "npm name segments cannot be empty or start with . or _".to_string(),
+            });
+        }
+        if !segment.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_')
+        }) {
+            return Err(ValidationError::InvalidCharacters {
+                input: name.to_string(),
+            });
+        }
     }
 
     Ok(name.to_string())
@@ -251,7 +256,8 @@ mod tests {
     fn test_validate_package_name() {
         // npm tests
         assert!(validate_package_name("express", "npm").is_ok());
-        assert!(validate_package_name("@scope/package", "npm").is_err()); // @ not in basic regex
+        assert!(validate_package_name("@scope/package", "npm").is_ok());
+        assert!(validate_package_name("@scope/../package", "npm").is_err());
         assert!(validate_package_name("Express", "npm").is_err()); // must be lowercase
 
         // PyPI tests

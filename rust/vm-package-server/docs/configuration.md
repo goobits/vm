@@ -12,7 +12,7 @@ pkg-server start [OPTIONS]
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--host` | `0.0.0.0` | Bind address for the server |
+| `--host` | `127.0.0.1` | Bind address for the server |
 | `--port` | `3080` | Port number |
 | `--data` | `./data` | Storage directory for packages |
 
@@ -25,40 +25,21 @@ RUST_LOG=debug pkg-server start
 # Maximum verbosity
 RUST_LOG=trace pkg-server start
 
-# Authentication token (for publishing)
+# Authentication token (required for non-loopback binds)
 export PKG_SERVER_AUTH_TOKEN="your-secret-api-key"
 ```
 
 ## Authentication
 
-The server supports optional Bearer token authentication to protect package upload endpoints.
-
-### Configuration File
-
-Create or edit `config.json` in the working directory:
-
-```json
-{
-  "security": {
-    "require_authentication": true,
-    "api_keys": ["your-secret-api-key-here"],
-    "allowed_publishers": []
-  }
-}
-```
-
-### Settings Explained
-
-- **`require_authentication`**: Enable/disable auth (default: `false`)
-- **`api_keys`**: Array of valid API keys for authentication
-- **`allowed_publishers`**: Reserved for future use (username filtering)
+The server enables Bearer token authentication when `PKG_SERVER_AUTH_TOKEN` is set. A token is mandatory when binding beyond the local machine.
 
 ### Using Authentication
 
 #### Environment Variable (Recommended)
 ```bash
 export PKG_SERVER_AUTH_TOKEN="your-secret-api-key"
-pkg-server add  # Automatically uses the token
+pkg-server start --host 0.0.0.0
+pkg-server add  # The client automatically uses the same token
 ```
 
 #### Manual Authentication

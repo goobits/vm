@@ -50,7 +50,7 @@ impl ManagedService for PackageRegistryService {
         // Spawn server with shutdown capability
         tokio::spawn(async move {
             if let Err(e) = vm_package_server::server::run_server_with_shutdown(
-                "0.0.0.0".to_string(),
+                "127.0.0.1".to_string(),
                 port,
                 data_dir,
                 Some(shutdown_rx),

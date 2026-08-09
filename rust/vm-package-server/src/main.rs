@@ -28,7 +28,7 @@ enum Commands {
     /// Start the package server
     Start {
         /// Host to bind to
-        #[arg(long, default_value = "0.0.0.0")]
+        #[arg(long, default_value = "127.0.0.1")]
         host: String,
 
         /// Port to bind to
@@ -43,7 +43,7 @@ enum Commands {
     /// Start the package server in background
     Background {
         /// Host to bind to
-        #[arg(long, default_value = "0.0.0.0")]
+        #[arg(long, default_value = "127.0.0.1")]
         host: String,
 
         /// Port to bind to

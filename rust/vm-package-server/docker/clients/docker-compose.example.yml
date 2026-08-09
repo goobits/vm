@@ -12,6 +12,7 @@ services:
       - package-data:/home/appuser/data
     environment:
       - RUST_LOG=info
+      - PKG_SERVER_AUTH_TOKEN=${PKG_SERVER_AUTH_TOKEN:?set PKG_SERVER_AUTH_TOKEN}
     restart: unless-stopped
     networks:
       - package-net

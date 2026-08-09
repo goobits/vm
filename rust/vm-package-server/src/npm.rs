@@ -7,6 +7,7 @@ use axum::{
 };
 use base64::{engine::general_purpose, Engine as _};
 use serde_json::{json, Value};
+use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
 
 use crate::validation;
@@ -14,6 +15,23 @@ use crate::validation_utils::FileStreamValidator;
 use crate::{
     sha1_hash, storage, validate_filename, AppError, AppResult, AppState, SuccessResponse,
 };
+
+fn validate_package(package: &str) -> AppResult<String> {
+    validation::validate_package_name(package, "npm")
+        .map_err(|error| AppError::BadRequest(format!("Invalid npm package name: {error}")))
+}
+
+pub(crate) fn metadata_path(data_dir: &Path, package: &str) -> AppResult<PathBuf> {
+    let package = validate_package(package)?;
+    let file_name = format!("{}.json", package.replace('/', "%2F"));
+    Ok(data_dir.join("npm/metadata").join(file_name))
+}
+
+pub(crate) fn package_name_from_metadata_file(file_name: &str) -> Option<String> {
+    file_name
+        .strip_suffix(".json")
+        .map(|name| name.replace("%2F", "/"))
+}
 
 // Deprecated functions have been removed.
 
@@ -54,10 +72,7 @@ pub async fn package_metadata(
 ) -> AppResult<Json<Value>> {
     debug!(package = %package, "Incoming npm metadata request");
     let host = &state.server_addr;
-    let metadata_path = state
-        .data_dir
-        .join("npm/metadata")
-        .join(format!("{package}.json"));
+    let metadata_path = metadata_path(&state.data_dir, &package)?;
 
     info!(package = %package, "Fetching npm package metadata");
 
@@ -134,6 +149,7 @@ pub async fn download_tarball(
     AxumPath((package, filename)): AxumPath<(String, String)>,
     State(state): State<Arc<AppState>>,
 ) -> AppResult<Vec<u8>> {
+    let package = validate_package(&package)?;
     // Validate filename to prevent path traversal
     validate_filename(&filename)?;
 
@@ -226,6 +242,7 @@ pub async fn publish_package(
     Json(mut payload): Json<Value>,
 ) -> AppResult<Json<SuccessResponse>> {
     crate::auth::validate_auth_headers(&state.config, &headers)?;
+    let metadata_path = metadata_path(&state.data_dir, &package)?;
 
     debug!(package = %package, "Incoming npm publish request");
     info!(package = %package, "Publishing npm package");
@@ -300,10 +317,6 @@ pub async fn publish_package(
             }
 
             // Save metadata
-            let metadata_path = state
-                .data_dir
-                .join("npm/metadata")
-                .join(format!("{package}.json"));
             let metadata_str = serde_json::to_string_pretty(&payload)?;
             storage::save_file(metadata_path, metadata_str.as_bytes()).await?;
 
@@ -422,6 +435,18 @@ mod tests {
                 }
             }
         })
+    }
+
+    #[test]
+    fn metadata_paths_encode_scopes_and_reject_traversal() {
+        let root = std::path::Path::new("/registry");
+        assert_eq!(
+            metadata_path(root, "@scope/package").unwrap(),
+            root.join("npm/metadata/@scope%2Fpackage.json")
+        );
+        for package in ["..", "../outside", "@scope/../outside", "/tmp/outside"] {
+            assert!(metadata_path(root, package).is_err());
+        }
     }
 
     #[tokio::test]

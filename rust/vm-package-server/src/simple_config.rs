@@ -18,7 +18,7 @@ impl Default for SimpleConfig {
     fn default() -> Self {
         Self {
             port: 3080,
-            host: "0.0.0.0".to_string(),
+            host: "127.0.0.1".to_string(),
             data_dir: dirs::home_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
                 .join(".vm")
