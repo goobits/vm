@@ -9,11 +9,11 @@ version: "2.0"
 provider: docker
 npm_packages:
   - 'prettier'
-  - '@openai/codex'
+  - 'eslint'
 npm_packages:
   - 'prettier'
-  - '@openai/codex'
-  - prettier
+  - 'eslint'
+  - 'typescript'
 "#;
 
     let result: Result<serde_yaml_ng::Value, _> =
@@ -39,8 +39,8 @@ version: "2.0"
 provider: docker
 npm_packages:
   - 'prettier'
-  - '@openai/codex'
-  - prettier
+  - 'eslint'
+  - 'typescript'
 "#;
 
     let result: Result<serde_yaml_ng::Value, _> =

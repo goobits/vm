@@ -88,8 +88,8 @@ mod tests {
     fn ai_tools_use_one_current_runtime_installer() {
         assert!(AI_TOOLS_INSTALLER.contains("https://antigravity.google/cli/install.sh"));
         assert!(AI_TOOLS_INSTALLER.contains("https://claude.ai/install.sh"));
-        assert!(AI_TOOLS_INSTALLER.contains("@openai/codex@latest"));
-        assert!(!AI_TOOLS_INSTALLER.contains("npm install -g @anthropic-ai/claude-code"));
+        assert!(AI_TOOLS_INSTALLER.contains("https://chatgpt.com/codex/install.sh"));
+        assert!(!AI_TOOLS_INSTALLER.contains("npm install -g"));
         assert_eq!(ANSIBLE_PLAYBOOK.matches("install-ai-tools.sh").count(), 1);
         assert!(!ANSIBLE_PLAYBOOK.contains("@google/gemini-cli@latest"));
     }

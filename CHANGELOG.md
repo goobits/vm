@@ -24,7 +24,7 @@
 
 ### 🔧 Changed
 
-- ☁️ AI CLI provisioning replaces deprecated Gemini CLI with Antigravity and uses one runtime installer for Antigravity, Claude Code, and Codex.
+- ☁️ AI CLI provisioning replaces deprecated Gemini CLI with Antigravity and uses one shared runtime path for the current native Antigravity, Claude Code, and Codex installers.
 - ☁️ Vibe presets no longer attach projects to the `spacebase` network unless explicitly configured.
 - 🪟 Environment listing is project-aware by default, with `vm list --all` providing the global inventory.
 - 🪟 Profile and target selection consistently prefer explicit names, configured defaults, canonical environments, sole matches, then an interactive choice.

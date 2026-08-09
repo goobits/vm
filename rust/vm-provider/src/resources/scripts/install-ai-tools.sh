@@ -5,32 +5,40 @@ set -euo pipefail
 export PATH="$HOME/.local/bin:$PATH"
 
 install_tool() {
+  local executable installer shell legacy_package
+
   case "$1" in
     antigravity)
-      curl -fsSL https://antigravity.google/cli/install.sh | bash
-      command -v agy >/dev/null
-      if command -v npm >/dev/null 2>&1; then
-        npm uninstall -g @google/gemini-cli >/dev/null 2>&1 || true
-      fi
+      executable=agy
+      installer=https://antigravity.google/cli/install.sh
+      shell=bash
+      legacy_package=@google/gemini-cli
       ;;
     claude)
-      curl -fsSL https://claude.ai/install.sh | bash
-      command -v claude >/dev/null
+      executable=claude
+      installer=https://claude.ai/install.sh
+      shell=bash
+      legacy_package=@anthropic-ai/claude-code
       ;;
     codex)
-      if ! command -v npm >/dev/null 2>&1; then
-        echo "Codex installation requires npm" >&2
-        exit 1
-      fi
-      npm install -g @openai/codex@latest
-      hash -r
-      command -v codex >/dev/null
+      executable=codex
+      installer=https://chatgpt.com/codex/install.sh
+      shell=sh
+      legacy_package=@openai/codex
       ;;
     *)
       echo "Unsupported AI tool: $1" >&2
       exit 2
       ;;
   esac
+
+  if command -v npm >/dev/null 2>&1; then
+    npm uninstall -g "$legacy_package" >/dev/null 2>&1 || true
+  fi
+
+  curl -fsSL "$installer" | "$shell"
+  hash -r
+  command -v "$executable" >/dev/null
 }
 
 if [[ $# -eq 0 ]]; then

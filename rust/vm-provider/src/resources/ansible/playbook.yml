@@ -101,9 +101,8 @@
             claude_sync_enabled: "{{ (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and project_config.host_sync.ai_tools.claude | default(false)))) | bool }}"
             antigravity_sync_enabled: "{{ (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and (project_config.host_sync.ai_tools.antigravity | default(project_config.host_sync.ai_tools.gemini | default(false))))))) | bool }}"
             codex_sync_enabled: "{{ (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and project_config.host_sync.ai_tools.codex | default(false)))) | bool }}"
-            # Consolidated conditions for package manager installation requirements
-            # Note: nodejs_required is computed inline to avoid cross-reference issues in set_fact
-            nodejs_required: "{{ ((project_config.npm_packages is defined and project_config.npm_packages is not none and project_config.npm_packages | length > 0) or (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and project_config.host_sync.ai_tools.codex | default(false))))) | bool }}"
+            # Package manager installation requirements
+            nodejs_required: "{{ (project_config.npm_packages is defined and project_config.npm_packages is not none and project_config.npm_packages | length > 0) | bool }}"
             pip_packages_required: "{{ (project_config.pip_packages is defined and project_config.pip_packages | length > 0) | bool }}"
             cargo_packages_required: "{{ (project_config.cargo_packages is defined and project_config.cargo_packages | length > 0) | bool }}"
             apt_packages_required: "{{ (project_config.apt_packages is defined and project_config.apt_packages | length > 0) | bool }}"
@@ -534,8 +533,6 @@
             set -euo pipefail
             export HOME="/home/{{ project_user }}"
             export PATH="$HOME/.local/bin:$PATH"
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
 
             tools=()
             [[ "{{ antigravity_sync_enabled | bool | lower }}" == true ]] && tools+=(antigravity)

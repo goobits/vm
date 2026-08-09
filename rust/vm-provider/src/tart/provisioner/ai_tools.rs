@@ -155,10 +155,6 @@ repair_auth_json"#,
 
         self.ensure_user_home_ready()?;
 
-        if ai_tools.is_codex_enabled() {
-            self.ensure_nodejs_runtime(config)?;
-        }
-
         let mut tools = Vec::new();
         if ai_tools.is_antigravity_enabled() {
             tools.push("antigravity");
@@ -174,8 +170,6 @@ repair_auth_json"#,
             self.ssh_exec(&format!(
                 r#"set -euo pipefail
 export PATH="{}"
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 INSTALLER="$(mktemp)"
 trap 'rm -f "$INSTALLER"' EXIT
 cat > "$INSTALLER" <<'VM_AI_TOOLS_INSTALLER'
