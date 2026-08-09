@@ -226,28 +226,10 @@ pub async fn handle_import(
             .collect::<Result<Vec<_>>>()?;
     }
 
-    // Create snapshot directory
-    let snapshot_dir = manager.get_snapshot_dir(scope, &snapshot_name)?;
-
-    if snapshot_dir.exists() && force {
-        vm_println!("  Removing existing snapshot...");
-        tokio::fs::remove_dir_all(&snapshot_dir)
-            .await
-            .map_err(|e| {
-                VmError::filesystem(e, snapshot_dir.display().to_string(), "remove_dir_all")
-            })?;
-    }
-
     vm_println!("  Installing snapshot...");
-
-    tokio::fs::create_dir_all(&snapshot_dir)
-        .await
-        .map_err(|e| {
-            VmError::filesystem(e, snapshot_dir.display().to_string(), "create_dir_all")
-        })?;
-
-    // Copy all snapshot contents
-    copy_dir_all(&extract_dir, &snapshot_dir).await?;
+    let staging = manager.create_staging_dir(scope, &snapshot_name)?;
+    copy_dir_all(&extract_dir, staging.path()).await?;
+    manager.install_staged_snapshot(staging, scope, &snapshot_name, force)?;
 
     vm_success!("Snapshot '{}' imported successfully!", snapshot_name);
 

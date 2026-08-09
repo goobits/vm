@@ -106,24 +106,19 @@ pub async fn handle_create(
     let (scope, snapshot_name) = SnapshotScope::from_name(name, Some(project_name.as_str()));
 
     // Check if snapshot already exists
-    if manager.snapshot_exists(scope, snapshot_name)? {
-        if force {
-            vm_core::vm_println!("Removing existing snapshot '{}'...", snapshot_name);
-            manager.delete_snapshot(scope, snapshot_name)?;
+    if manager.snapshot_exists(scope, snapshot_name)? && !force {
+        let scope_desc = if matches!(scope, SnapshotScope::Global) {
+            "global".to_string()
         } else {
-            let scope_desc = if matches!(scope, SnapshotScope::Global) {
-                "global".to_string()
-            } else {
-                format!("project '{}'", project_name)
-            };
-            return Err(VmError::validation(
-                format!(
-                    "Snapshot '{}' already exists for {}. Use --force to overwrite.",
-                    snapshot_name, scope_desc
-                ),
-                None::<String>,
-            ));
-        }
+            format!("project '{}'", project_name)
+        };
+        return Err(VmError::validation(
+            format!(
+                "Snapshot '{}' already exists for {}. Use --force to overwrite.",
+                snapshot_name, scope_desc
+            ),
+            None::<String>,
+        ));
     }
 
     let display_scope = if matches!(scope, SnapshotScope::Global) {
@@ -139,7 +134,8 @@ pub async fn handle_create(
         std::env::current_dir().map_err(|e| VmError::filesystem(e, "current_dir", "get"))?;
 
     // Create snapshot directory structure
-    let snapshot_dir = manager.get_snapshot_dir(scope, snapshot_name)?;
+    let staging = manager.create_staging_dir(scope, snapshot_name)?;
+    let snapshot_dir = staging.path().to_path_buf();
     let images_dir = snapshot_dir.join("images");
     let volumes_dir = snapshot_dir.join("volumes");
     let compose_dir = snapshot_dir.join("compose");
@@ -407,6 +403,7 @@ pub async fn handle_create(
     };
 
     metadata.save(snapshot_dir.join("metadata.json"))?;
+    manager.install_staged_snapshot(staging, scope, snapshot_name, force)?;
 
     vm_core::vm_success!(
         "Snapshot '{}' created successfully ({:.2} MB)",
@@ -499,20 +496,14 @@ async fn handle_create_from_dockerfile(
 
     // Check if snapshot already exists
     let manager = SnapshotManager::new()?;
-    if manager.snapshot_exists(scope, snapshot_name)? {
-        if force {
-            vm_core::vm_println!("Removing existing snapshot '{}'...", snapshot_name);
-            manager.delete_snapshot(scope, snapshot_name)?;
-        } else {
-            let scope_desc = "global".to_string();
-            return Err(VmError::validation(
-                format!(
-                    "Snapshot '{}' already exists for {}. Use --force to overwrite.",
-                    snapshot_name, scope_desc
-                ),
-                None::<String>,
-            ));
-        }
+    if manager.snapshot_exists(scope, snapshot_name)? && !force {
+        return Err(VmError::validation(
+            format!(
+                "Snapshot '{}' already exists globally. Use --force to overwrite.",
+                snapshot_name
+            ),
+            None::<String>,
+        ));
     }
 
     // Build the image tag
@@ -579,7 +570,8 @@ async fn handle_create_from_dockerfile(
     // Create snapshot directory and save metadata
     // (manager and project_scope already created earlier for duplicate check)
 
-    let snapshot_dir = manager.get_snapshot_dir(scope, snapshot_name)?;
+    let staging = manager.create_staging_dir(scope, snapshot_name)?;
+    let snapshot_dir = staging.path().to_path_buf();
     let images_dir = snapshot_dir.join("images");
 
     // Create directories
@@ -645,6 +637,7 @@ async fn handle_create_from_dockerfile(
     };
 
     metadata.save(snapshot_dir.join("metadata.json"))?;
+    manager.install_staged_snapshot(staging, scope, snapshot_name, force)?;
 
     vm_core::vm_success!(
         "Snapshot '{}' created successfully ({:.2} MB)",

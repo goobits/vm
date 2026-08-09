@@ -2,7 +2,8 @@
 use crate::error::{VmError, VmResult};
 use crate::utils::confirm_select;
 use chrono::Local;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
+use uuid::Uuid;
 use vm_config::GlobalConfig;
 
 /// Get the base directory for backups
@@ -19,7 +20,7 @@ fn get_backup_dir() -> VmResult<PathBuf> {
 }
 
 /// Execute a command in the postgres docker container
-async fn execute_docker_command(args: &[&str], input: Option<Vec<u8>>) -> VmResult<Vec<u8>> {
+async fn execute_docker_command(args: &[&str], input: Option<&[u8]>) -> VmResult<Vec<u8>> {
     let executable = detect_container_runtime();
     let mut cmd = tokio::process::Command::new(&executable);
     cmd.arg("exec").arg("-i").arg("vm-postgres-global");
@@ -37,7 +38,7 @@ async fn execute_docker_command(args: &[&str], input: Option<Vec<u8>>) -> VmResu
 
     if let (Some(input_data), Some(mut stdin)) = (input, child.stdin.take()) {
         use tokio::io::AsyncWriteExt;
-        if let Err(e) = stdin.write_all(&input_data).await {
+        if let Err(e) = stdin.write_all(input_data).await {
             return Err(VmError::general(
                 e,
                 "Failed to write to docker command stdin",
@@ -60,6 +61,139 @@ async fn execute_docker_command(args: &[&str], input: Option<Vec<u8>>) -> VmResu
     }
 }
 
+fn validate_backup_component(name: &str) -> VmResult<()> {
+    let mut components = Path::new(name).components();
+    let is_single_component =
+        matches!(components.next(), Some(Component::Normal(_))) && components.next().is_none();
+
+    if !is_single_component {
+        return Err(VmError::validation(
+            format!("Invalid backup name '{name}'"),
+            Some("Use a filename without directories or traversal components".to_string()),
+        ));
+    }
+
+    Ok(())
+}
+
+fn quote_pg_identifier(identifier: &str) -> String {
+    format!("\"{}\"", identifier.replace('"', "\"\""))
+}
+
+fn quote_pg_literal(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+async fn execute_admin_sql(query: &str) -> VmResult<Vec<u8>> {
+    execute_docker_command(
+        &[
+            "psql",
+            "-U",
+            "postgres",
+            "-d",
+            "postgres",
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-tA",
+            "-c",
+            query,
+        ],
+        None,
+    )
+    .await
+}
+
+async fn database_exists(db_name: &str) -> VmResult<bool> {
+    let query = format!(
+        "SELECT 1 FROM pg_database WHERE datname = {};",
+        quote_pg_literal(db_name)
+    );
+    let output = execute_admin_sql(&query).await?;
+    Ok(String::from_utf8_lossy(&output).trim() == "1")
+}
+
+async fn disconnect_database(db_name: &str) -> VmResult<()> {
+    let query = format!(
+        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = {} AND pid <> pg_backend_pid();",
+        quote_pg_literal(db_name)
+    );
+    execute_admin_sql(&query).await?;
+    Ok(())
+}
+
+async fn create_database(db_name: &str) -> VmResult<()> {
+    execute_docker_command(&["createdb", "-U", "postgres", "--", db_name], None).await?;
+    Ok(())
+}
+
+async fn drop_database(db_name: &str) -> VmResult<()> {
+    disconnect_database(db_name).await?;
+    execute_docker_command(
+        &["dropdb", "-U", "postgres", "--if-exists", "--", db_name],
+        None,
+    )
+    .await?;
+    Ok(())
+}
+
+async fn rename_database(from: &str, to: &str) -> VmResult<()> {
+    let query = format!(
+        "ALTER DATABASE {} RENAME TO {};",
+        quote_pg_identifier(from),
+        quote_pg_identifier(to)
+    );
+    execute_admin_sql(&query).await?;
+    Ok(())
+}
+
+async fn replace_database(staging_name: &str, db_name: &str, previous_name: &str) -> VmResult<()> {
+    let had_previous = match database_exists(db_name).await {
+        Ok(exists) => exists,
+        Err(error) => {
+            let _ = drop_database(staging_name).await;
+            return Err(error);
+        }
+    };
+
+    if had_previous {
+        if let Err(error) = disconnect_database(db_name).await {
+            let _ = drop_database(staging_name).await;
+            return Err(error);
+        }
+        if let Err(error) = rename_database(db_name, previous_name).await {
+            let _ = drop_database(staging_name).await;
+            return Err(error);
+        }
+    }
+
+    if let Err(error) = rename_database(staging_name, db_name).await {
+        if had_previous {
+            if let Err(recovery_error) = rename_database(previous_name, db_name).await {
+                return Err(VmError::general(
+                    recovery_error,
+                    format!(
+                        "Failed to promote replacement database and to recover original database '{db_name}'"
+                    ),
+                ));
+            }
+        }
+        let _ = drop_database(staging_name).await;
+        return Err(error);
+    }
+
+    if had_previous {
+        if let Err(error) = drop_database(previous_name).await {
+            vm_core::vm_warning!(
+                "Database was replaced, but the previous copy '{}' could not be removed: {}",
+                previous_name,
+                error
+            );
+        }
+    }
+
+    Ok(())
+}
+
 fn detect_container_runtime() -> String {
     vm_config::AppConfig::load(None, None, None)
         .ok()
@@ -79,6 +213,7 @@ pub async fn backup_db(
     backup_name: Option<&str>,
     retention_count: u32,
 ) -> VmResult<()> {
+    validate_backup_component(backup_name.unwrap_or(db_name))?;
     let timestamp = Local::now().format("%Y%m%d_%H%M%S");
     let backup_file_name = match backup_name {
         Some(name) => format!("{name}_{timestamp}.dump"),
@@ -109,6 +244,7 @@ pub async fn backup_db(
 
 /// Restore a database
 pub async fn restore_db(backup_name: &str, db_name: &str) -> VmResult<()> {
+    validate_backup_component(backup_name)?;
     let backup_path = get_backup_dir()?.join(backup_name);
     if !backup_path.exists() {
         return Err(VmError::validation(
@@ -121,43 +257,34 @@ pub async fn restore_db(backup_name: &str, db_name: &str) -> VmResult<()> {
         .await
         .map_err(|e| VmError::filesystem(e, backup_path.to_string_lossy(), "read"))?;
 
-    // Drop and recreate the database before restoring
-    execute_docker_command(
-        &[
-            "psql",
-            "-U",
-            "postgres",
-            "-c",
-            &format!("DROP DATABASE IF EXISTS \"{db_name}\";"),
-        ],
-        None,
-    )
-    .await?;
-    execute_docker_command(
-        &[
-            "psql",
-            "-U",
-            "postgres",
-            "-c",
-            &format!("CREATE DATABASE \"{db_name}\";"),
-        ],
-        None,
-    )
-    .await?;
+    // Validate the archive before touching any database.
+    execute_docker_command(&["pg_restore", "--list"], Some(&backup_data)).await?;
 
-    execute_docker_command(
+    // Restore into a staging database so the current database stays intact if
+    // validation or restoration fails.
+    let operation_id = Uuid::new_v4().simple().to_string();
+    let staging_name = format!("vm_restore_{operation_id}");
+    let previous_name = format!("vm_previous_{operation_id}");
+    create_database(&staging_name).await?;
+
+    let restore_result = execute_docker_command(
         &[
             "pg_restore",
             "-U",
             "postgres",
             "-d",
-            db_name,
-            "--clean",
-            "--if-exists",
+            &staging_name,
+            "--exit-on-error",
         ],
-        Some(backup_data),
+        Some(&backup_data),
     )
-    .await?;
+    .await;
+    if let Err(error) = restore_result {
+        let _ = drop_database(&staging_name).await;
+        return Err(error);
+    }
+
+    replace_database(&staging_name, db_name, &previous_name).await?;
 
     vm_core::vm_success!("Database '{}' restored from '{}'", db_name, backup_name);
     Ok(())
@@ -192,7 +319,7 @@ pub async fn import_db(db_name: &str, file: &Path) -> VmResult<()> {
         .await
         .map_err(|e| VmError::filesystem(e, file.to_string_lossy(), "read"))?;
 
-    execute_docker_command(&["psql", "-U", "postgres", "-d", db_name], Some(sql_data)).await?;
+    execute_docker_command(&["psql", "-U", "postgres", "-d", db_name], Some(&sql_data)).await?;
 
     vm_core::vm_success!("Database '{}' imported from {:?}", db_name, file);
     Ok(())
@@ -208,29 +335,11 @@ pub async fn reset_db(db_name: &str, force: bool) -> VmResult<()> {
         }
     }
 
-    execute_docker_command(
-        &[
-            "psql",
-            "-U",
-            "postgres",
-            "-c",
-            &format!("DROP DATABASE IF EXISTS \"{db_name}\";"),
-        ],
-        None,
-    )
-    .await?;
-
-    execute_docker_command(
-        &[
-            "psql",
-            "-U",
-            "postgres",
-            "-c",
-            &format!("CREATE DATABASE \"{db_name}\";"),
-        ],
-        None,
-    )
-    .await?;
+    let operation_id = Uuid::new_v4().simple().to_string();
+    let staging_name = format!("vm_reset_{operation_id}");
+    let previous_name = format!("vm_previous_{operation_id}");
+    create_database(&staging_name).await?;
+    replace_database(&staging_name, db_name, &previous_name).await?;
 
     vm_core::vm_success!("Database '{}' has been reset.", db_name);
     Ok(())
@@ -323,4 +432,29 @@ async fn clean_old_backups(db_name: &str, retention_count: u32) -> VmResult<()> 
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn postgres_values_are_quoted_as_one_identifier_or_literal() {
+        assert_eq!(
+            quote_pg_identifier("db\"; DROP DATABASE postgres; --"),
+            "\"db\"\"; DROP DATABASE postgres; --\""
+        );
+        assert_eq!(
+            quote_pg_literal("db'; SELECT 1; --"),
+            "'db''; SELECT 1; --'"
+        );
+    }
+
+    #[test]
+    fn backup_names_reject_paths() {
+        assert!(validate_backup_component("database.dump").is_ok());
+        for name in ["", ".", "..", "../database.dump", "/tmp/database.dump"] {
+            assert!(validate_backup_component(name).is_err());
+        }
+    }
 }

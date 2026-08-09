@@ -38,6 +38,8 @@
 - ☁️ AI tool state directories remain writable by the environment user across Docker and Tart provisioning.
 - ☁️ Environment removal completes configured database backups before destruction, and cleanup removes only VM-managed disposable volumes.
 - ☁️ Snapshot exports publish atomically, preventing partial archives from appearing at the requested destination after interruption or disk exhaustion.
+- ☁️ Forced snapshot creation and import stage replacements before swapping them into place, preserving the previous snapshot when preparation fails.
+- ☁️ PostgreSQL restores validate dumps and restore into a staging database before replacing the current database.
 - ☁️ Generated Compose, container configuration, and port-registry files use atomic writes to avoid partial state after failures.
 - ☁️ Temporary-environment state locks time out with recovery guidance instead of hanging indefinitely.
 - 🌐 Package-registry commands no longer panic inside the async runtime.
@@ -59,6 +61,7 @@
 - 👤 Authentication proxy checks use constant-time token comparison, bounded request bodies, atomic secret persistence, and rejection audit logs without exposing tokens.
 - ☁️ Snapshot imports reject absolute paths, traversal entries, symlinks, and hardlinks.
 - ☁️ Snapshot and plugin storage rejects traversal in names and manifest-controlled filenames before resolving or deleting paths.
+- ☁️ Database backup filenames reject traversal, and PostgreSQL identifiers are quoted before administrative SQL executes.
 - ☁️ Temporary host mounts resolve symlinks before validation and reject paths that escape into protected host locations.
 - 🌐 The package registry binds to loopback by default, requires bearer authentication for remote binds, and safely keys npm metadata filenames.
 - 🌐 Docker-published application and service ports honor `vm.port_binding`, defaulting to loopback.

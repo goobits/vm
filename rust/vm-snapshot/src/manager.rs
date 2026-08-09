@@ -73,6 +73,94 @@ impl SnapshotManager {
         Ok(self.snapshots_dir.join(project).join(name))
     }
 
+    /// Create staging beside the final snapshot so installation can use renames.
+    pub fn create_staging_dir(
+        &self,
+        scope: SnapshotScope<'_>,
+        name: &str,
+    ) -> Result<tempfile::TempDir> {
+        let target = self.get_snapshot_dir(scope, name)?;
+        let parent = target.parent().ok_or_else(|| {
+            VmError::validation("Snapshot target has no parent directory", None::<String>)
+        })?;
+        std::fs::create_dir_all(parent).map_err(|error| {
+            VmError::filesystem(error, parent.to_string_lossy(), "create_dir_all")
+        })?;
+        tempfile::Builder::new()
+            .prefix(".snapshot-staging-")
+            .tempdir_in(parent)
+            .map_err(|error| VmError::filesystem(error, parent.to_string_lossy(), "tempdir"))
+    }
+
+    /// Install a complete staged snapshot, preserving the current snapshot on failure.
+    pub fn install_staged_snapshot(
+        &self,
+        staging: tempfile::TempDir,
+        scope: SnapshotScope<'_>,
+        name: &str,
+        force: bool,
+    ) -> Result<()> {
+        let target = self.get_snapshot_dir(scope, name)?;
+        if target.exists() && !force {
+            return Err(VmError::validation(
+                format!("Snapshot '{name}' already exists. Use --force to overwrite."),
+                None::<String>,
+            ));
+        }
+
+        if !staging.path().join("metadata.json").is_file() {
+            return Err(VmError::validation(
+                "Staged snapshot is missing metadata.json",
+                None::<String>,
+            ));
+        }
+
+        if !target.exists() {
+            std::fs::rename(staging.path(), &target)
+                .map_err(|error| VmError::filesystem(error, target.to_string_lossy(), "rename"))?;
+            return Ok(());
+        }
+
+        let parent = target.parent().ok_or_else(|| {
+            VmError::validation("Snapshot target has no parent directory", None::<String>)
+        })?;
+        let backup = tempfile::Builder::new()
+            .prefix(".snapshot-previous-")
+            .tempdir_in(parent)
+            .map_err(|error| VmError::filesystem(error, parent.to_string_lossy(), "tempdir"))?;
+        let backup_path = backup.path().to_path_buf();
+        backup.close().map_err(|error| {
+            VmError::filesystem(error, backup_path.to_string_lossy(), "remove_dir_all")
+        })?;
+
+        std::fs::rename(&target, &backup_path)
+            .map_err(|error| VmError::filesystem(error, target.to_string_lossy(), "rename"))?;
+        if let Err(error) = std::fs::rename(staging.path(), &target) {
+            if let Err(recovery_error) = std::fs::rename(&backup_path, &target) {
+                return Err(VmError::general(
+                    recovery_error,
+                    format!("Failed to install snapshot '{name}' and recover its previous version"),
+                ));
+            }
+            return Err(VmError::filesystem(
+                error,
+                target.to_string_lossy(),
+                "rename",
+            ));
+        }
+
+        if let Err(error) = std::fs::remove_dir_all(&backup_path) {
+            vm_core::vm_warning!(
+                "Snapshot '{}' was replaced, but its previous copy at '{}' could not be removed: {}",
+                name,
+                backup_path.display(),
+                error
+            );
+        }
+
+        Ok(())
+    }
+
     /// List all snapshots, optionally filtered by project
     pub fn list_snapshots(&self, project_filter: Option<&str>) -> Result<Vec<SnapshotMetadata>> {
         let mut snapshots = Vec::new();
@@ -104,6 +192,13 @@ impl SnapshotManager {
                 .map_err(|e| VmError::filesystem(e, project_dir.to_string_lossy(), "read_dir"))?;
 
             for entry in read_dir.filter_map(|e| e.ok()) {
+                let file_name = entry.file_name();
+                let file_name = file_name.to_string_lossy();
+                if file_name.starts_with(".snapshot-staging-")
+                    || file_name.starts_with(".snapshot-previous-")
+                {
+                    continue;
+                }
                 let snapshot_dir = entry.path();
                 if !snapshot_dir.is_dir() {
                     continue;
@@ -335,5 +430,71 @@ mod tests {
         );
         assert!(snapshot_file_path(root, "../image.tar", "image file").is_err());
         assert!(snapshot_file_path(root, "/tmp/image.tar", "image file").is_err());
+    }
+
+    #[test]
+    fn staged_install_replaces_only_after_staging_is_complete() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let manager = manager(tempdir.path());
+        let scope = SnapshotScope::Project("demo");
+        let target = manager.get_snapshot_dir(scope, "release").unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("metadata.json"), "old").unwrap();
+
+        let staging = manager.create_staging_dir(scope, "release").unwrap();
+        std::fs::write(staging.path().join("metadata.json"), "new").unwrap();
+        manager
+            .install_staged_snapshot(staging, scope, "release", true)
+            .unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(target.join("metadata.json")).unwrap(),
+            "new"
+        );
+        assert_eq!(
+            std::fs::read_dir(target.parent().unwrap()).unwrap().count(),
+            1
+        );
+    }
+
+    #[test]
+    fn staged_install_without_force_preserves_existing_snapshot() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let manager = manager(tempdir.path());
+        let scope = SnapshotScope::Project("demo");
+        let target = manager.get_snapshot_dir(scope, "release").unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("metadata.json"), "old").unwrap();
+
+        let staging = manager.create_staging_dir(scope, "release").unwrap();
+        std::fs::write(staging.path().join("metadata.json"), "new").unwrap();
+        assert!(manager
+            .install_staged_snapshot(staging, scope, "release", false)
+            .is_err());
+
+        assert_eq!(
+            std::fs::read_to_string(target.join("metadata.json")).unwrap(),
+            "old"
+        );
+    }
+
+    #[test]
+    fn incomplete_staging_preserves_existing_snapshot() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let manager = manager(tempdir.path());
+        let scope = SnapshotScope::Project("demo");
+        let target = manager.get_snapshot_dir(scope, "release").unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("metadata.json"), "old").unwrap();
+
+        let staging = manager.create_staging_dir(scope, "release").unwrap();
+        assert!(manager
+            .install_staged_snapshot(staging, scope, "release", true)
+            .is_err());
+
+        assert_eq!(
+            std::fs::read_to_string(target.join("metadata.json")).unwrap(),
+            "old"
+        );
     }
 }
