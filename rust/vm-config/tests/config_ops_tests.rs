@@ -25,8 +25,6 @@ impl SimpleTestFixture {
         // This prevents stale cache entries from previous tests interfering with current test
         vm_config::preset_cache::clear_preset_cache();
 
-        let _ = fs::remove_file("/tmp/vm.yaml");
-
         let temp_dir = TempDir::new()?;
         let test_dir = temp_dir.path().to_path_buf();
 
@@ -102,6 +100,44 @@ impl Drop for SimpleTestFixture {
 #[cfg(test)]
 mod config_ops_tests {
     use super::*;
+
+    const TART_PRESET: &str = r#"preset:
+  name: tart-test
+  description: test
+provider: tart
+networking:
+  networks: [spacebase]
+profiles:
+  macos:
+    provider: tart
+  tart:
+    provider: tart
+"#;
+
+    fn tart_preset_fixture() -> Result<SimpleTestFixture> {
+        let fixture = SimpleTestFixture::new()?;
+        fixture.set_working_dir()?;
+        SimpleTestFixture::create_preset("tart-test", TART_PRESET)?;
+        fs::write(
+            fixture.test_dir.join("vm.yaml"),
+            "version: '2.0'\npreset: tart-test\nprovider: tart\nproject:\n  name: demo\n",
+        )?;
+        Ok(fixture)
+    }
+
+    fn assert_only_tart_profile_remains(fixture: &SimpleTestFixture) -> Result<()> {
+        let config: VmConfig =
+            serde_yaml::from_str(&fs::read_to_string(fixture.test_dir.join("vm.yaml"))?)?;
+        assert_eq!(config.preset, None);
+        let profiles = config
+            .profiles
+            .as_ref()
+            .expect("profiles should be materialized");
+        assert_eq!(profiles.len(), 1);
+        assert!(profiles.contains_key("tart"));
+        assert!(config.networking.is_none());
+        Ok(())
+    }
 
     #[test]
     fn test_local_config_set_and_get() -> Result<()> {
@@ -350,42 +386,12 @@ vm:
         let _guard = TEST_MUTEX
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let fixture = SimpleTestFixture::new()?;
-        fixture.set_working_dir()?;
-        SimpleTestFixture::create_preset(
-            "tart-test",
-            r#"preset:
-  name: tart-test
-  description: test
-provider: tart
-networking:
-  networks: [spacebase]
-profiles:
-  macos:
-    provider: tart
-  tart:
-    provider: tart
-"#,
-        )?;
-        fs::write(
-            fixture.test_dir.join("vm.yaml"),
-            "version: '2.0'\npreset: tart-test\nprovider: tart\nproject:\n  name: demo\n",
-        )?;
+        let fixture = tart_preset_fixture()?;
 
         ConfigOps::unset("profiles.macos", false)?;
         ConfigOps::unset("networking", false)?;
 
-        let config: VmConfig =
-            serde_yaml::from_str(&fs::read_to_string(fixture.test_dir.join("vm.yaml"))?)?;
-        assert_eq!(config.preset, None);
-        let profiles = config
-            .profiles
-            .as_ref()
-            .expect("profiles should be materialized");
-        assert!(!profiles.contains_key("macos"));
-        assert!(profiles.contains_key("tart"));
-        assert!(config.networking.is_none());
-        Ok(())
+        assert_only_tart_profile_remains(&fixture)
     }
 
     #[test]
@@ -393,33 +399,12 @@ profiles:
         let _guard = TEST_MUTEX
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let fixture = SimpleTestFixture::new()?;
-        fixture.set_working_dir()?;
-        SimpleTestFixture::create_preset(
-            "materialize-test",
-            "preset:\n  name: materialize-test\n  description: test\nprovider: tart\nnetworking:\n  networks: [spacebase]\nprofiles:\n  macos:\n    provider: tart\n  tart:\n    provider: tart\n",
-        )?;
-        fs::write(
-            fixture.test_dir.join("vm.yaml"),
-            "version: '2.0'\npreset: materialize-test\nprovider: tart\nproject:\n  name: demo\n",
-        )?;
+        let fixture = tart_preset_fixture()?;
 
         ConfigOps::unset("preset", false)?;
         ConfigOps::unset("profiles.macos", false)?;
         ConfigOps::unset("networking", false)?;
 
-        let config: VmConfig =
-            serde_yaml::from_str(&fs::read_to_string(fixture.test_dir.join("vm.yaml"))?)?;
-        assert_eq!(config.preset, None);
-        assert!(config
-            .profiles
-            .as_ref()
-            .is_some_and(|profiles| profiles.contains_key("tart")));
-        assert!(!config
-            .profiles
-            .as_ref()
-            .is_some_and(|profiles| profiles.contains_key("macos")));
-        assert!(config.networking.is_none());
-        Ok(())
+        assert_only_tart_profile_remains(&fixture)
     }
 }
