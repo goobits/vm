@@ -40,7 +40,7 @@ fn test_vm_exec_command() -> Result<()> {
 
 #[test]
 #[ignore = "Creates real Docker containers; run with --ignored"]
-fn test_vm_ssh_command_execution() -> Result<()> {
+fn test_vm_ssh_auto_creates_and_executes() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
 
@@ -53,27 +53,7 @@ fn test_vm_ssh_command_execution() -> Result<()> {
     fixture.create_test_config()?;
     fixture.create_test_dockerfile()?;
 
-    // Create and start VM
-    let create_output = fixture.run_vm_command(&["create"])?;
-    assert!(
-        create_output.status.success(),
-        "vm create failed: {}",
-        String::from_utf8_lossy(&create_output.stderr)
-    );
-
-    let start_output = fixture.run_vm_command(&["start"])?;
-    assert!(
-        start_output.status.success(),
-        "vm start failed: {}",
-        String::from_utf8_lossy(&start_output.stderr)
-    );
-
-    assert!(
-        fixture.wait_for_container_state("running", 30),
-        "Container did not start in time"
-    );
-
-    // Test ssh --command
+    // A shell command creates the configured environment before connecting.
     let output = fixture.run_vm_command(&["ssh", "-e", "echo Hello from SSH"])?;
     assert!(
         output.status.success(),
@@ -87,6 +67,10 @@ fn test_vm_ssh_command_execution() -> Result<()> {
         stdout.contains("Hello from SSH"),
         "SSH command output not found in stdout: {}",
         stdout
+    );
+    assert!(
+        fixture.wait_for_container_state("running", 30),
+        "Container was not created and started"
     );
 
     fixture.cleanup_test_containers()?;

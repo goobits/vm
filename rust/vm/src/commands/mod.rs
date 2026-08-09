@@ -3,7 +3,8 @@
 use crate::cli::{Args, Command, PluginSubcommand, SecretSubcommand, TunnelSubcommand};
 use crate::error::{VmError, VmResult};
 use command_context::{
-    load_provider_context, load_runtime_context, load_runtime_subject, project_name,
+    load_or_create_runtime_subject, load_provider_context, load_runtime_context,
+    load_runtime_subject, project_name,
 };
 use environment::resolve_environment;
 use vm_config::AppConfig;
@@ -144,7 +145,8 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             path,
             command,
         } => {
-            let subject = load_runtime_subject(args.config, args.profile, environment)?;
+            let subject =
+                load_or_create_runtime_subject(args.config, args.profile, environment).await?;
             match command {
                 Some(command) => {
                     vm_ops::handle_exec(

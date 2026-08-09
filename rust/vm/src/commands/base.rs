@@ -11,6 +11,7 @@ use vm_core::vm_println;
 const DOCKER_BASE_NAME: &str = "@vibe-box";
 const TART_LINUX_BASE_NAME: &str = "vibe-tart-linux-base";
 const TART_MACOS_BASE_NAME: &str = "vibe-tart-sequoia-base";
+const TART_BASE_BUILDER: &str = include_str!("../../scripts/build-vibe-tart-base.sh");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct TartVibeBase {
@@ -173,12 +174,19 @@ fn tart_list_contains_base(output: &[u8], base_name: &str) -> VmResult<bool> {
 }
 
 fn build_tart_base(guest_os: &str, base_name: &str, config: Option<&VmConfig>) -> VmResult<()> {
-    let script = resolve_tool_path("scripts/internal/build-vibe-tart-base.sh");
-    let mut command = Command::new(script);
+    let mut command = Command::new("bash");
     if let Some(config) = config {
         apply_tart_home(&mut command, config);
     }
-    command.args(["--guest-os", guest_os, "--name", base_name]);
+    command.args([
+        "-c",
+        TART_BASE_BUILDER,
+        "vm-tart-base-builder",
+        "--guest-os",
+        guest_os,
+        "--name",
+        base_name,
+    ]);
     run_command(command, "build Tart vibe base")?;
     vm_println!("Built Tart {guest_os} vibe base: {base_name}");
     Ok(())
@@ -268,15 +276,16 @@ fn ensure_supported_preset(preset: &str) -> VmResult<()> {
 }
 
 fn run_command(mut command: Command, context: &str) -> VmResult<()> {
-    let status = command
-        .status()
-        .map_err(|e| VmError::general(e, format!("Failed to {context}")))?;
+    let status = command.status().map_err(|error| {
+        let message = format!("Failed to {context}: {error}");
+        VmError::general(error, message)
+    })?;
 
     if status.success() {
         Ok(())
     } else {
         Err(VmError::validation(
-            format!("{context} failed"),
+            format!("{context} failed with {status}"),
             None::<String>,
         ))
     }
@@ -286,7 +295,8 @@ fn run_command(mut command: Command, context: &str) -> VmResult<()> {
 mod tests {
     use super::{
         apply_tart_home, configured_tart_vibe_base, resolve_tart_guest_os, tart_base_name,
-        tart_list_contains_base, TartVibeBase, TART_LINUX_BASE_NAME, TART_MACOS_BASE_NAME,
+        tart_list_contains_base, TartVibeBase, TART_BASE_BUILDER, TART_LINUX_BASE_NAME,
+        TART_MACOS_BASE_NAME,
     };
     use std::ffi::OsStr;
     use std::process::Command;
@@ -309,6 +319,13 @@ mod tests {
         assert_eq!(resolve_tart_guest_os("macos").unwrap(), "macos");
         assert_eq!(tart_base_name("linux"), "vibe-tart-linux-base");
         assert_eq!(tart_base_name("macos"), "vibe-tart-sequoia-base");
+    }
+
+    #[test]
+    fn tart_base_builder_is_embedded_in_the_binary() {
+        assert!(TART_BASE_BUILDER.starts_with("#!/usr/bin/env bash"));
+        assert!(TART_BASE_BUILDER.contains("tart clone"));
+        assert!(TART_BASE_BUILDER.contains("--guest-os"));
     }
 
     #[test]

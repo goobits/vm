@@ -7,80 +7,48 @@ use tracing::{debug, info_span};
 
 use crate::commands::base;
 use crate::error::{VmError, VmResult};
-use vm_config::{config::MemoryLimit, config::VmConfig, validator::ConfigValidator, GlobalConfig};
-use vm_core::{
-    get_cpu_core_count, get_total_memory_gb, vm_hint, vm_println, vm_progress, vm_success,
-    vm_warning,
-};
+use vm_config::{config::VmConfig, validator::ConfigValidator, GlobalConfig};
+use vm_core::{vm_hint, vm_println, vm_progress, vm_success, vm_warning};
 use vm_provider::{Provider, ProviderContext};
 
 use super::helpers::{has_enabled_services, print_vm_runtime_details, register_vm_services_helper};
-use super::target::canonical_instance_name;
+use super::target::{
+    canonical_instance_name, creation_instance_name, find_runtime_target, resolve_runtime_target,
+};
 
-/// Auto-adjust resource allocation based on system availability
-fn auto_adjust_resources(config: &mut VmConfig) -> VmResult<()> {
-    // Get system resources (fallback to reasonable defaults if detection fails)
-    let system_cpus = get_cpu_core_count().unwrap_or(2);
-    let system_memory_gb = get_total_memory_gb().unwrap_or(4);
-
-    let vm_settings = if let Some(settings) = config.vm.as_mut() {
-        settings
-    } else {
-        return Ok(()); // No vm settings to adjust
-    };
-    let mut adjusted = false;
-
-    // Check and adjust CPU allocation
-    if let Some(cpu_limit) = &vm_settings.cpus {
-        if let Some(requested_cpus) = cpu_limit.to_count() {
-            if requested_cpus > system_cpus {
-                // Use 50% of available CPUs, minimum 1, maximum available
-                let safe_cpus = (system_cpus / 2).max(1).min(system_cpus);
-
-                vm_warning!(
-                    "Requested {requested_cpus} CPUs; using {safe_cpus} of {system_cpus} available"
-                );
-
-                vm_settings.cpus = Some(vm_config::config::CpuLimit::Limited(safe_cpus));
-                adjusted = true;
-            }
-        }
-        // If unlimited, no adjustment needed
+/// Resolve an existing target or create it from the loaded `vm.yaml` configuration.
+pub(crate) async fn resolve_or_create_target(
+    provider: &dyn Provider,
+    config: &VmConfig,
+    global_config: &GlobalConfig,
+    requested: Option<&str>,
+) -> VmResult<String> {
+    if let Some(target) = find_runtime_target(provider, config, requested)? {
+        return Ok(target);
     }
 
-    // Check and adjust memory allocation
-    if let Some(memory_limit) = &vm_settings.memory {
-        if let Some(requested_mb) = memory_limit.to_mb() {
-            let requested_gb = (requested_mb as u64) / 1024;
+    vm_progress!("No environment found; creating it from vm.yaml...");
+    let project = config
+        .project
+        .as_ref()
+        .and_then(|project| project.name.as_deref())
+        .unwrap_or("vm-project");
+    handle_create(
+        provider.clone_box(),
+        config.clone(),
+        global_config.clone(),
+        false,
+        creation_instance_name(provider.name(), project, requested),
+    )
+    .await?;
 
-            // Leave 2GB for host OS, use up to 75% of remaining
-            let max_safe_memory = system_memory_gb.saturating_sub(2);
-
-            // Only adjust if request exceeds available memory (minus headroom)
-            if requested_gb > max_safe_memory {
-                let safe_memory_mb = (max_safe_memory * 1024) as u32;
-
-                vm_warning!(
-                    "Requested {requested_gb}GB RAM; using {max_safe_memory}GB of {system_memory_gb}GB available"
-                );
-
-                vm_settings.memory = Some(MemoryLimit::Limited(safe_memory_mb));
-                adjusted = true;
-            }
-        }
-    }
-
-    if adjusted {
-        vm_hint!("Resource adjustments apply to this creation only; vm.yaml was not changed");
-    }
-
-    Ok(())
+    resolve_runtime_target(provider, config, requested)
 }
 
 /// Handle VM creation
 pub async fn handle_create(
     provider: Box<dyn Provider>,
-    mut config: VmConfig,
+    config: VmConfig,
     global_config: GlobalConfig,
     force: bool,
     instance: Option<String>,
@@ -89,7 +57,6 @@ pub async fn handle_create(
     let _enter = span.enter();
     debug!("Starting VM creation");
 
-    auto_adjust_resources(&mut config)?;
     vm_progress!("Validating configuration...");
 
     let vm_name = config

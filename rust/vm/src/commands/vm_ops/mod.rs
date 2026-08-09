@@ -19,6 +19,7 @@ pub(super) mod targets;
 
 // Re-export all public handlers for external use
 pub use create::handle_create;
+pub(super) use create::resolve_or_create_target;
 pub use destroy::handle_destroy;
 pub use helpers::handle_get_sync_directory;
 pub use interaction::{handle_copy, handle_exec, handle_logs, handle_ssh};

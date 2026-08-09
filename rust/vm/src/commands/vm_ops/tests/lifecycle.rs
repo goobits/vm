@@ -7,6 +7,7 @@ use std::sync::{
 
 use super::{ensure_running, StartOutcome};
 use crate::commands::vm_ops::interaction::{handle_exec, handle_ssh};
+use crate::commands::vm_ops::resolve_or_create_target;
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_provider::{
     InstanceInfo, InstanceState, Provider, ProviderContext, VmError as ProviderError,
@@ -16,6 +17,7 @@ use vm_provider::{
 #[derive(Clone)]
 struct FakeProvider {
     state: Arc<Mutex<Option<InstanceState>>>,
+    instance_name: Arc<Mutex<String>>,
     starts: Arc<AtomicUsize>,
     creates: Arc<AtomicUsize>,
     shells: Arc<AtomicUsize>,
@@ -27,6 +29,7 @@ impl FakeProvider {
     fn new(state: Option<InstanceState>) -> Self {
         Self {
             state: Arc::new(Mutex::new(state)),
+            instance_name: Arc::new(Mutex::new("demo-dev".to_string())),
             starts: Arc::new(AtomicUsize::new(0)),
             creates: Arc::new(AtomicUsize::new(0)),
             shells: Arc::new(AtomicUsize::new(0)),
@@ -41,6 +44,19 @@ impl FakeProvider {
     }
 }
 
+fn project_config() -> VmConfig {
+    serde_yaml_ng::from_str(
+        r#"
+provider: mock
+project:
+  name: demo
+vm:
+  user: developer
+"#,
+    )
+    .unwrap()
+}
+
 impl Provider for FakeProvider {
     fn name(&self) -> &'static str {
         "fake"
@@ -48,6 +64,19 @@ impl Provider for FakeProvider {
 
     fn create(&self, _context: &ProviderContext) -> ProviderResult<()> {
         self.creates.fetch_add(1, Ordering::SeqCst);
+        *self.instance_name.lock().unwrap() = "demo-dev".to_string();
+        *self.state.lock().unwrap() = Some(InstanceState::Running);
+        Ok(())
+    }
+
+    fn create_instance(
+        &self,
+        instance_name: &str,
+        _context: &ProviderContext,
+    ) -> ProviderResult<()> {
+        self.creates.fetch_add(1, Ordering::SeqCst);
+        *self.instance_name.lock().unwrap() = format!("demo-{instance_name}-dev");
+        *self.state.lock().unwrap() = Some(InstanceState::Running);
         Ok(())
     }
 
@@ -96,7 +125,7 @@ impl Provider for FakeProvider {
     fn status(&self, container: Option<&str>) -> ProviderResult<VmStatusReport> {
         let state = self.instance_state(container)?;
         Ok(VmStatusReport {
-            name: "demo-dev".to_string(),
+            name: self.instance_name.lock().unwrap().clone(),
             provider: "fake".to_string(),
             is_running: state.is_running(),
             state,
@@ -119,11 +148,26 @@ impl Provider for FakeProvider {
     }
 
     fn list_instances(&self) -> ProviderResult<Vec<InstanceInfo>> {
-        Ok(Vec::new())
+        let Some(state) = self.state.lock().unwrap().clone() else {
+            return Ok(Vec::new());
+        };
+        Ok(vec![InstanceInfo {
+            name: self.instance_name.lock().unwrap().clone(),
+            id: "demo-id".to_string(),
+            status: state.to_string(),
+            provider: "fake".to_string(),
+            project: Some("demo".to_string()),
+            uptime: None,
+            created_at: None,
+        }])
     }
 
     fn clone_box(&self) -> Box<dyn Provider> {
         Box::new(self.clone())
+    }
+
+    fn supports_multi_instance(&self) -> bool {
+        true
     }
 }
 
@@ -165,7 +209,7 @@ async fn running_environment_is_not_started_again() {
 }
 
 #[tokio::test]
-async fn missing_environment_is_never_created() {
+async fn ensure_running_does_not_create_a_missing_environment() {
     let provider = FakeProvider::new(None);
 
     let result = ensure_running(
@@ -180,6 +224,46 @@ async fn missing_environment_is_never_created() {
     assert!(result.is_err());
     assert_eq!(provider.starts.load(Ordering::SeqCst), 0);
     assert_eq!(provider.creates.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn shell_target_is_created_from_config_when_missing() {
+    let provider = FakeProvider::new(None);
+    let config = project_config();
+
+    let target = resolve_or_create_target(&provider, &config, &GlobalConfig::default(), None)
+        .await
+        .unwrap();
+
+    handle_ssh(
+        Box::new(provider.clone()),
+        Some(&target),
+        Some(PathBuf::from(".")),
+        config,
+        GlobalConfig::default(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(target, "demo-dev");
+    assert_eq!(provider.creates.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.shells.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn named_shell_target_is_created_when_missing() {
+    let provider = FakeProvider::new(None);
+    let target = resolve_or_create_target(
+        &provider,
+        &project_config(),
+        &GlobalConfig::default(),
+        Some("backend"),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(target, "demo-backend-dev");
+    assert_eq!(provider.creates.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
@@ -204,12 +288,16 @@ async fn concurrent_start_is_idempotent() {
 #[tokio::test]
 async fn shell_starts_a_stopped_environment_before_connecting() {
     let provider = FakeProvider::new(Some(InstanceState::Stopped));
+    let config = project_config();
+    let target = resolve_or_create_target(&provider, &config, &GlobalConfig::default(), None)
+        .await
+        .unwrap();
 
     handle_ssh(
         Box::new(provider.clone()),
-        Some("demo-dev"),
+        Some(&target),
         Some(PathBuf::from(".")),
-        VmConfig::default(),
+        config,
         GlobalConfig::default(),
     )
     .await

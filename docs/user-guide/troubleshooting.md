@@ -51,9 +51,9 @@ vm ssh
 vm exec -- pwd
 ```
 
-Both commands automatically start the selected environment when it exists but
-is stopped. If no environment exists, create it explicitly with
-`vm run linux`.
+`vm ssh` creates the selected environment from `vm.yaml` when it is missing and
+starts it when stopped. `vm exec` starts an existing stopped environment but
+does not create one.
 
 ## Docker In A macOS Tart Guest
 

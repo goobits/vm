@@ -42,8 +42,9 @@ vm stop
 ```
 
 `vm run` creates the environment if it does not exist and starts it if it is stopped.
-`vm shell` (or `vm ssh`) and `vm exec` start an existing stopped environment
-before connecting. Omitting a name uses the project default.
+`vm shell` (or `vm ssh`) creates the configured environment when missing and
+starts it when stopped. `vm exec` only starts an existing environment. Omitting
+a name uses the project default.
 `vm list` lists environments for the current project. Use `vm list --all` for the global inventory.
 See [target selection](docs/user-guide/cli-reference.md#target-selection) when a
 project has multiple environments.

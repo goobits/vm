@@ -109,7 +109,7 @@ pub enum Command {
         #[arg(long)]
         raw: bool,
     },
-    /// Open a shell, starting an existing stopped environment first
+    /// Open a shell, creating it when missing or starting it when stopped
     #[command(visible_alias = "ssh")]
     Shell {
         /// Environment name; omit to use the project default

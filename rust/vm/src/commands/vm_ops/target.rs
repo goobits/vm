@@ -26,11 +26,56 @@ pub(super) fn canonical_instance_name(
     }
 }
 
+pub(super) fn creation_instance_name(
+    provider: &str,
+    project: &str,
+    requested: Option<&str>,
+) -> Option<String> {
+    let requested = requested?;
+    if requested == project || requested == canonical_instance_name(provider, project, None) {
+        return None;
+    }
+
+    let project_prefix = format!("{project}-");
+    let instance = match provider {
+        "tart" => requested.strip_prefix(&project_prefix),
+        _ => requested
+            .strip_prefix(&project_prefix)
+            .and_then(|name| name.strip_suffix("-dev")),
+    };
+
+    Some(instance.unwrap_or(requested).to_string())
+}
+
 pub fn resolve_runtime_target(
     provider: &dyn Provider,
     config: &VmConfig,
     requested: Option<&str>,
 ) -> VmResult<String> {
+    find_runtime_target(provider, config, requested)?.ok_or_else(|| match requested {
+        Some(requested) => VmError::validation(
+            format!("No environment matches '{requested}'"),
+            Some("Run `vm list` and use an exact environment name"),
+        ),
+        None => {
+            let project = config
+                .project
+                .as_ref()
+                .and_then(|project| project.name.as_deref())
+                .unwrap_or("vm-project");
+            VmError::validation(
+                format!("No environment exists for project '{project}'"),
+                Some("Create it from vm.yaml with `vm ssh`"),
+            )
+        }
+    })
+}
+
+pub(super) fn find_runtime_target(
+    provider: &dyn Provider,
+    config: &VmConfig,
+    requested: Option<&str>,
+) -> VmResult<Option<String>> {
     let project = config
         .project
         .as_ref()
@@ -47,16 +92,9 @@ pub fn resolve_runtime_target(
         .collect::<Vec<_>>();
 
     match choose_target(&instances, project, &canonical, requested) {
-        TargetChoice::Selected(name) => Ok(name),
-        TargetChoice::Ambiguous(candidates) => select_ambiguous_target(candidates),
-        TargetChoice::Missing if requested.is_some() => Err(VmError::validation(
-            format!("No environment matches '{}'", requested.unwrap_or_default()),
-            Some("Run `vm list` and use an exact environment name"),
-        )),
-        TargetChoice::Missing => Err(VmError::validation(
-            format!("No environment exists for project '{project}'"),
-            Some("Create one with `vm run linux`"),
-        )),
+        TargetChoice::Selected(name) => Ok(Some(name)),
+        TargetChoice::Ambiguous(candidates) => select_ambiguous_target(candidates).map(Some),
+        TargetChoice::Missing => Ok(None),
     }
 }
 
@@ -189,7 +227,9 @@ pub fn project_instance_matches(instance: &InstanceInfo, project_name: &str) -> 
 
 #[cfg(test)]
 mod tests {
-    use super::{canonical_instance_name, choose_target, copy_target, TargetChoice};
+    use super::{
+        canonical_instance_name, choose_target, copy_target, creation_instance_name, TargetChoice,
+    };
     use vm_provider::InstanceInfo;
 
     fn instance(name: &str) -> InstanceInfo {
@@ -261,5 +301,22 @@ mod tests {
         );
         assert_eq!(canonical_instance_name("docker", "demo", None), "demo-dev");
         assert_eq!(canonical_instance_name("tart", "demo", None), "demo");
+    }
+
+    #[test]
+    fn creation_names_normalize_default_and_canonical_targets() {
+        assert_eq!(creation_instance_name("tart", "demo", Some("demo")), None);
+        assert_eq!(
+            creation_instance_name("docker", "demo", Some("demo-dev")),
+            None
+        );
+        assert_eq!(
+            creation_instance_name("tart", "demo", Some("demo-feature")),
+            Some("feature".to_string())
+        );
+        assert_eq!(
+            creation_instance_name("docker", "demo", Some("demo-feature-dev")),
+            Some("feature".to_string())
+        );
     }
 }

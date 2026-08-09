@@ -246,6 +246,22 @@ profiles:
     }
 
     #[test]
+    fn default_shell_preserves_the_configured_provider() {
+        let path = write_config(
+            "configured-provider",
+            r#"
+provider: tart
+tart:
+  guest_os: linux
+"#,
+        );
+
+        let resolved = resolve_environment(Some(path.clone()), None, None).unwrap();
+        assert_resolved(resolved, None, None, None);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn noninteractive_ambiguity_lists_profiles() {
         if std::io::stdin().is_terminal() && std::io::stderr().is_terminal() {
             return;

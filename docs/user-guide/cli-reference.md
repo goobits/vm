@@ -81,6 +81,11 @@ vm logs [name] [--follow] [--tail <n>]
 vm copy <source> <destination>
 ```
 
+`vm shell` and its `vm ssh` alias create a missing environment directly from
+the selected `vm.yaml` configuration, then connect. Existing stopped
+environments are started first. Other interaction commands require an existing
+environment.
+
 Examples:
 
 ```bash

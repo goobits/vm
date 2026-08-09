@@ -6,7 +6,7 @@
 
 ### 🌟 Highlights
 
-- 🪟 Default shell and exec connections now resolve the configured environment and start it when stopped.
+- 🪟 Default shell connections create the configured environment when missing, while shell and exec connections start it when stopped.
 - ☁️ Container storage policies add durable scoped volumes, bounded tmpfs, resource limits, and log rotation.
 - ☁️ Fingerprinted dependency and Playwright bootstrap skips unchanged work and exposes runtime storage evidence.
 - ☁️ Lifecycle cleanup and removal preserve managed data and complete configured database backups before deletion.
@@ -28,7 +28,7 @@
 - ☁️ Vibe presets no longer attach projects to the `spacebase` network unless explicitly configured.
 - 🪟 Environment listing is project-aware by default, with `vm list --all` providing the global inventory.
 - 🪟 Profile and target selection consistently prefer explicit names, configured defaults, canonical environments, sole matches, then an interactive choice.
-- 🪟 Shell, SSH, and exec commands start an existing stopped environment before connecting without creating a missing one.
+- 🪟 Shell and SSH create a missing environment from `vm.yaml`; shell, SSH, and exec start an existing stopped environment before connecting.
 - 🪟 CLI output and actionable error hints now follow one consistent stdout and stderr contract.
 - 🚀 macOS Tart environments use the Sequoia base and run Docker through Colima with QEMU software emulation instead of unsupported nested virtualization.
 
@@ -45,7 +45,7 @@
 - 🌐 Single-port ranges and explicit create-time port mappings now validate correctly.
 - 🚀 Tart stop operations are idempotent, and resolved stopped guests start reliably before shell connections.
 - 🚀 Docker client and service provisioning no longer depends on Python APT bindings and avoids reinstalling tools that are already present.
-- 🚀 Missing standard Tart vibe bases are built automatically when `vm create` needs them, including when `tart.storage_path` selects another disk.
+- 🚀 Missing standard Tart vibe bases are built by the installed binary when `vm create` needs them, including when `tart.storage_path` selects another disk.
 - 📦 Empty Docker inspection results now report an error instead of returning a misleading default status.
 
 ### ⚡ Performance

@@ -43,6 +43,31 @@ pub(super) fn load_runtime_subject(
     )
 }
 
+pub(super) async fn load_or_create_runtime_subject(
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+    environment: Option<String>,
+) -> VmResult<RuntimeSubject> {
+    vm_progress!("Finding environment...");
+    let resolved = resolve_environment(config_path.clone(), profile, environment)?;
+    let (provider, config, global_config) =
+        load_provider_context(config_path, resolved.profile, resolved.provider_override)?;
+    let target = vm_ops::resolve_or_create_target(
+        provider.as_ref(),
+        &config,
+        &global_config,
+        resolved.target.as_deref(),
+    )
+    .await?;
+
+    Ok(RuntimeSubject {
+        provider,
+        config,
+        global_config,
+        target,
+    })
+}
+
 pub(super) fn load_runtime_context(
     config_path: Option<PathBuf>,
     profile: Option<String>,

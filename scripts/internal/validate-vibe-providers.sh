@@ -91,7 +91,7 @@ fi
 if [[ "${BUILD_TART_BASE}" == "true" ]]; then
   require_tool tart
   run_step "Building Tart vibe base" \
-    "${REPO_ROOT}/scripts/internal/build-vibe-tart-base.sh" --name "${TART_BASE_NAME}"
+    bash "${REPO_ROOT}/rust/vm/scripts/build-vibe-tart-base.sh" --name "${TART_BASE_NAME}"
 fi
 
 echo
