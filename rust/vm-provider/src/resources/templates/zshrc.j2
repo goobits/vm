@@ -1,5 +1,8 @@
 # {{ project_name }} Development Environment Shell Configuration
 
+# User binaries installed by VM provisioning (AI CLIs, pipx, and pip --user).
+export PATH="$HOME/.local/bin:$PATH"
+
 # NVM Configuration (handles npm global packages in PATH)
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
@@ -90,7 +93,7 @@ case "$(uname -s)" in
     alias diff='diff --color=auto'
     ;;
 esac
-export VM_AI_ALIAS_REPAIR_VERSION=2
+export VM_SHELL_CONFIG_VERSION=3
 
 vm_home_is_writable() {
   local _vm_home_test="$HOME/.vm-home-write-test"
@@ -203,9 +206,6 @@ fi
 # Rust Environment
 export PATH="$HOME/.cargo/bin:$PATH"
 {% endif %}
-
-# User binaries (pipx, pip --user, manual installs, etc.)
-export PATH="$HOME/.local/bin:$PATH"
 
 {% if project_config.pip_packages is defined and project_config.pip_packages | length > 0 %}
 # Python/pyenv Environment (if available)

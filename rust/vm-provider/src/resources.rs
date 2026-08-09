@@ -11,6 +11,8 @@ pub const BOOTSTRAP_NODE_TASK: &str = include_str!("resources/ansible/tasks/boot
 pub const NODE_TOOLCHAIN_TASK: &str = include_str!("resources/ansible/tasks/node-toolchain.yml");
 pub const SERVICE_DEFINITIONS: &str = include_str!("resources/services/service_definitions.yml");
 pub const ZSHRC_TEMPLATE: &str = include_str!("resources/templates/zshrc.j2");
+#[cfg(any(feature = "tart", test))]
+pub(crate) const SHELL_CONFIG_VERSION: &str = "3";
 pub const THEMES_JSON: &str = include_str!("resources/templates/themes.json");
 pub const CLAUDE_SETTINGS_TEMPLATE: &str =
     include_str!("resources/settings/claude-settings.json.j2");
@@ -82,7 +84,7 @@ fn write_if_changed(path: &Path, content: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{AI_TOOLS_INSTALLER, ANSIBLE_PLAYBOOK};
+    use super::{AI_TOOLS_INSTALLER, ANSIBLE_PLAYBOOK, SHELL_CONFIG_VERSION, ZSHRC_TEMPLATE};
 
     #[test]
     fn ai_tools_use_one_current_runtime_installer() {
@@ -92,5 +94,22 @@ mod tests {
         assert!(!AI_TOOLS_INSTALLER.contains("npm install -g"));
         assert_eq!(ANSIBLE_PLAYBOOK.matches("install-ai-tools.sh").count(), 1);
         assert!(!ANSIBLE_PLAYBOOK.contains("@google/gemini-cli@latest"));
+    }
+
+    #[test]
+    fn ai_tool_path_precedes_shell_wrapper_detection() {
+        let path = ZSHRC_TEMPLATE
+            .find("export PATH=\"$HOME/.local/bin:$PATH\"")
+            .unwrap();
+
+        assert!(path < ZSHRC_TEMPLATE.find("if command -v claude").unwrap());
+        assert!(path < ZSHRC_TEMPLATE.find("if command -v codex").unwrap());
+        assert_eq!(
+            ZSHRC_TEMPLATE
+                .matches("export PATH=\"$HOME/.local/bin:$PATH\"")
+                .count(),
+            1
+        );
+        assert!(ZSHRC_TEMPLATE.contains(&format!("VM_SHELL_CONFIG_VERSION={SHELL_CONFIG_VERSION}")));
     }
 }

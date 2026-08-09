@@ -45,6 +45,7 @@
 - 🌐 Single-port ranges and explicit create-time port mappings now validate correctly.
 - 🚀 Tart stop operations are idempotent, and resolved stopped guests start reliably before shell connections.
 - 🚀 Docker client and service provisioning no longer depends on Python APT bindings and avoids reinstalling tools that are already present.
+- 🚀 Tart refreshes managed shell configuration so `yoclaude` and `yocodex` are available on the first login.
 - 🚀 Missing standard Tart vibe bases are built by the installed binary when `vm create` needs them, including when `tart.storage_path` selects another disk.
 - 📦 Empty Docker inspection results now report an error instead of returning a misleading default status.
 

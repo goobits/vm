@@ -1,5 +1,5 @@
 use super::{provider::TartProvider, provisioner::TartProvisioner};
-use crate::VmError;
+use crate::{resources::SHELL_CONFIG_VERSION, VmError};
 use std::thread;
 use std::time::{Duration, Instant};
 use vm_core::error::Result;
@@ -70,13 +70,12 @@ impl TartProvider {
     }
 
     fn is_shell_config_ready(&self, instance_name: &str) -> bool {
+        let probe = format!(
+            "test -f \"$HOME/.zshrc\" && grep -Fq 'VM_PROJECT_PATH=' \"$HOME/.zshrc\" && grep -Fq 'VM_SHELL_CONFIG_VERSION={SHELL_CONFIG_VERSION}' \"$HOME/.zshrc\""
+        );
         self.tart().exec_probe(
             instance_name,
-            [
-                "sh",
-                "-lc",
-                "test -f \"$HOME/.zshrc\" && grep -Fq 'VM_PROJECT_PATH=' \"$HOME/.zshrc\" && grep -Fq 'VM_AI_ALIAS_REPAIR_VERSION=2' \"$HOME/.zshrc\"",
-            ],
+            ["sh", "-lc", probe.as_str()],
             Duration::from_secs(5),
         )
     }

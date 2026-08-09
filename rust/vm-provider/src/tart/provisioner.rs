@@ -1187,7 +1187,7 @@ mod tests {
 
         assert!(rendered.contains("PROMPT='🍎 "));
         assert!(rendered.contains("alias gs='git status'"));
-        assert!(rendered.contains("VM_AI_ALIAS_REPAIR_VERSION=2"));
+        assert!(rendered.contains("VM_SHELL_CONFIG_VERSION=3"));
         assert!(rendered.contains("yocodex()"));
         assert!(rendered.contains("vm_repair_codex_state"));
         assert!(rendered.contains("VM_PROJECT_PATH=\"$(vm_b64decode 'L3dvcmtzcGFjZQ==')\""));
