@@ -1,6 +1,8 @@
 use serde::Serialize;
-use vm_config::config::{CpuLimit, MemoryLimit, VmConfig, VolumeRetention, VolumeScope};
-use vm_core::error::{Result, VmError};
+use vm_config::config::{VmConfig, VolumeRetention, VolumeScope};
+use vm_core::error::Result;
+
+use crate::resource_limits::ResolvedResources;
 
 #[derive(Serialize)]
 pub(super) struct RenderedResources {
@@ -10,33 +12,13 @@ pub(super) struct RenderedResources {
 
 impl RenderedResources {
     pub fn resolve(config: &VmConfig) -> Result<Self> {
-        let vm = config.vm.as_ref();
-        let memory = match vm.and_then(|settings| settings.memory.as_ref()) {
-            Some(MemoryLimit::Limited(megabytes)) => Some(format!("{megabytes}m")),
-            Some(limit @ MemoryLimit::Percentage(_)) => {
-                let total_megabytes = vm_platform::platform::total_memory_gb()
-                    .map_err(|error| {
-                        VmError::Internal(format!("Failed to resolve host memory: {error}"))
-                    })?
-                    .saturating_mul(1024);
-                limit
-                    .resolve_percentage(total_megabytes)
-                    .map(|megabytes| format!("{megabytes}m"))
-            }
-            Some(MemoryLimit::Unlimited) | None => None,
-        };
-        let cpus = match vm.and_then(|settings| settings.cpus.as_ref()) {
-            Some(CpuLimit::Limited(count)) => Some(*count),
-            Some(limit @ CpuLimit::Percentage(_)) => {
-                let available = vm_platform::platform::cpu_core_count().map_err(|error| {
-                    VmError::Internal(format!("Failed to resolve host CPU count: {error}"))
-                })?;
-                limit.resolve_percentage(available)
-            }
-            Some(CpuLimit::Unlimited) | None => None,
-        };
+        let resources = ResolvedResources::resolve(config)?;
+        let memory = resources.memory_mb.map(|megabytes| format!("{megabytes}m"));
 
-        Ok(Self { memory, cpus })
+        Ok(Self {
+            memory,
+            cpus: resources.cpus,
+        })
     }
 }
 
@@ -184,7 +166,7 @@ pub(super) fn container_architecture() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vm_config::config::VmSettings;
+    use vm_config::config::{CpuLimit, MemoryLimit, VmSettings};
 
     #[test]
     fn resolves_fixed_resource_limits_for_compose() {

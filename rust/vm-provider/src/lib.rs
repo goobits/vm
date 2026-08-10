@@ -145,6 +145,7 @@ pub struct SnapshotRestoreRequest {
 pub mod common;
 pub mod context;
 pub mod progress;
+mod resource_limits;
 pub mod resources;
 
 // Re-export template constants for testing

@@ -7,7 +7,7 @@
 //! - Configuration loading and validation
 //! - Configuration merging and preset management
 //! - CLI utilities for configuration initialization
-//! - Resource management utilities
+//! - Resource limit parsing and validation
 //!
 //! ## Preset System
 //!
@@ -38,7 +38,6 @@ pub mod paths;
 pub mod ports;
 pub mod preset; // Made public for integration tests - used internally by config_ops and cli
 pub mod preset_cache; // Preset caching layer
-pub mod resources; // VM resource suggestions
 pub mod schema; // Schema-aware type detection
 pub mod validate;
 pub mod validator;

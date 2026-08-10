@@ -6,6 +6,7 @@ use crate::{
     common::instance::{extract_project_name, InstanceInfo, InstanceResolver},
     context::ProviderContext,
     progress::ProgressReporter,
+    resource_limits::ResolvedResources,
     BoxConfig, InstanceState, Provider, ResourceUsage, ServiceStatus, TempProvider, VmError,
     VmStatusReport,
 };
@@ -399,40 +400,38 @@ impl TartProvider {
     }
 
     fn apply_runtime_config(&self, instance: &str, config: &VmConfig) -> Result<()> {
-        if let Some(cpus) = config.vm.as_ref().and_then(|v| v.cpus.as_ref()) {
-            if let Some(count) = cpus.to_count() {
-                let adjusted_count = Self::adjust_cpu_count(count);
-                if adjusted_count != count {
-                    warn!(
-                        "Requested {} CPUs but only {} are available; applying {} CPUs",
-                        count,
-                        get_cpu_core_count().unwrap_or(2),
-                        adjusted_count
-                    );
-                }
-                info!("Setting CPU count to {}", adjusted_count);
-                self.tart_expr(&["set", instance, "--cpu", &adjusted_count.to_string()])
-                    .run()
-                    .map_err(|e| VmError::Provider(format!("Failed to set CPU: {}", e)))?;
+        let resources = ResolvedResources::resolve(config)?;
+
+        if let Some(count) = resources.cpus {
+            let adjusted_count = Self::adjust_cpu_count(count);
+            if adjusted_count != count {
+                warn!(
+                    "Requested {} CPUs but only {} are available; applying {} CPUs",
+                    count,
+                    get_cpu_core_count().unwrap_or(2),
+                    adjusted_count
+                );
             }
+            info!("Setting CPU count to {}", adjusted_count);
+            self.tart_expr(&["set", instance, "--cpu", &adjusted_count.to_string()])
+                .run()
+                .map_err(|e| VmError::Provider(format!("Failed to set CPU: {}", e)))?;
         }
 
-        if let Some(memory) = config.vm.as_ref().and_then(|v| v.memory.as_ref()) {
-            if let Some(memory_mb) = memory.to_mb() {
-                let adjusted_memory_mb = Self::adjust_memory_mb(memory_mb);
-                if adjusted_memory_mb != memory_mb {
-                    warn!(
-                        "Requested {} MB RAM but only {} GB total memory is available; applying {} MB",
-                        memory_mb,
-                        get_total_memory_gb().unwrap_or(4),
-                        adjusted_memory_mb
-                    );
-                }
-                info!("Setting memory to {}MB", adjusted_memory_mb);
-                self.tart_expr(&["set", instance, "--memory", &adjusted_memory_mb.to_string()])
-                    .run()
-                    .map_err(|e| VmError::Provider(format!("Failed to set memory: {}", e)))?;
+        if let Some(memory_mb) = resources.memory_mb {
+            let adjusted_memory_mb = Self::adjust_memory_mb(memory_mb);
+            if adjusted_memory_mb != memory_mb {
+                warn!(
+                    "Requested {} MB RAM but only {} GB total memory is available; applying {} MB",
+                    memory_mb,
+                    get_total_memory_gb().unwrap_or(4),
+                    adjusted_memory_mb
+                );
             }
+            info!("Setting memory to {}MB", adjusted_memory_mb);
+            self.tart_expr(&["set", instance, "--memory", &adjusted_memory_mb.to_string()])
+                .run()
+                .map_err(|e| VmError::Provider(format!("Failed to set memory: {}", e)))?;
         }
 
         Ok(())
@@ -585,45 +584,24 @@ impl TartProvider {
         }
         ProgressReporter::task(&main_phase, "Image cloned successfully.");
 
-        // Configure VM with memory/CPU settings if specified
-        if let Some(vm_config) = &config.vm {
-            if let Some(memory) = &vm_config.memory {
-                match memory.to_mb() {
-                    Some(mb) => {
-                        ProgressReporter::task(
-                            &main_phase,
-                            &format!("Setting memory to {} MB...", mb),
-                        );
-                        self.stream_tart_command(&["set", vm_name, "--memory", &mb.to_string()])?;
-                        ProgressReporter::task(&main_phase, "Memory configured.");
-                    }
-                    None => {
-                        ProgressReporter::task(
-                            &main_phase,
-                            "Memory set to unlimited (no Tart limit).",
-                        );
-                    }
-                }
-            }
+        // Resolve percentages once and apply the same host-relative values used by
+        // container providers. Tart still enforces a small host-safety margin.
+        let resources = ResolvedResources::resolve(config)?;
+        if let Some(memory_mb) = resources.memory_mb {
+            let memory_mb = Self::adjust_memory_mb(memory_mb);
+            ProgressReporter::task(
+                &main_phase,
+                &format!("Setting memory to {} MB...", memory_mb),
+            );
+            self.stream_tart_command(&["set", vm_name, "--memory", &memory_mb.to_string()])?;
+            ProgressReporter::task(&main_phase, "Memory configured.");
+        }
 
-            if let Some(cpus) = &vm_config.cpus {
-                match cpus.to_count() {
-                    Some(count) => {
-                        ProgressReporter::task(
-                            &main_phase,
-                            &format!("Setting CPUs to {}...", count),
-                        );
-                        self.stream_tart_command(&["set", vm_name, "--cpu", &count.to_string()])?;
-                        ProgressReporter::task(&main_phase, "CPUs configured.");
-                    }
-                    None => {
-                        ProgressReporter::task(
-                            &main_phase,
-                            "CPUs set to unlimited (no Tart limit).",
-                        );
-                    }
-                }
-            }
+        if let Some(cpus) = resources.cpus {
+            let cpus = Self::adjust_cpu_count(cpus);
+            ProgressReporter::task(&main_phase, &format!("Setting CPUs to {}...", cpus));
+            self.stream_tart_command(&["set", vm_name, "--cpu", &cpus.to_string()])?;
+            ProgressReporter::task(&main_phase, "CPUs configured.");
         }
 
         // Set disk size if specified

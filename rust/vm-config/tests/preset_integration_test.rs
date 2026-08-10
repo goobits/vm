@@ -11,7 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tempfile::TempDir;
-use vm_config::config::{BoxSpec, ProjectConfig, TerminalConfig, VmConfig};
+use vm_config::config::{BoxSpec, CpuLimit, MemoryLimit, ProjectConfig, TerminalConfig, VmConfig};
 use vm_core::error::Result;
 
 // Re-export PresetDetector for tests (since preset module is pub(crate))
@@ -840,6 +840,9 @@ fn test_vibe_tart_preset_uses_linux_tart_by_default() -> Result<()> {
     let vibe_tart = detector.load_preset("vibe-tart")?;
     assert_eq!(vibe_tart.provider.as_deref(), Some("tart"));
     assert_eq!(vibe_tart.default_profile.as_deref(), Some("tart"));
+    let vm = vibe_tart.vm.as_ref().expect("vibe-tart should size its VM");
+    assert_eq!(vm.memory, Some(MemoryLimit::Percentage(75)));
+    assert_eq!(vm.cpus, Some(CpuLimit::Percentage(75)));
     assert!(vibe_tart
         .networking
         .as_ref()

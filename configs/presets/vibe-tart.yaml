@@ -7,8 +7,8 @@ provider: tart
 
 vm:
   box: '@vibe-box'
-  cpus: 6
-  memory: 8192
+  cpus: 75%
+  memory: 75%
   swap: 2048
   user: developer
 
@@ -37,8 +37,6 @@ profiles:
       workspace_path: /workspace
     vm:
       box: vibe-tart-linux-base
-      memory: 16384
-      cpus: 8
     tart:
       guest_os: linux
       disk_size: 80
@@ -50,8 +48,6 @@ profiles:
       workspace_path: /workspace
     vm:
       box: vibe-tart-sequoia-base
-      memory: 16384
-      cpus: 8
     tart:
       guest_os: macos
       disk_size: 80
