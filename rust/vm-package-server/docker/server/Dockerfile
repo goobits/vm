@@ -9,13 +9,15 @@ RUN cargo build --locked --release \
       --features standalone-binary \
       --bin pkg-server \
       --package vm-package-work \
-      --bin pkg-work && \
+      --bin pkg-work \
+      --bin pkg-git-askpass && \
     install -m 0755 target/release/pkg-server /usr/local/bin/pkg-server && \
-    install -m 0755 target/release/pkg-work /usr/local/bin/pkg-work
+    install -m 0755 target/release/pkg-work /usr/local/bin/pkg-work && \
+    install -m 0755 target/release/pkg-git-askpass /usr/local/bin/pkg-git-askpass
 
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git && \
     rm -rf /var/lib/apt/lists/* && \
     groupadd --gid 10001 packages && \
     useradd --uid 10001 --gid packages --create-home packages && \
@@ -25,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 
 COPY --from=builder /usr/local/bin/pkg-server /usr/local/bin/pkg-server
 COPY --from=builder /usr/local/bin/pkg-work /usr/local/bin/pkg-work
+COPY --from=builder /usr/local/bin/pkg-git-askpass /usr/local/bin/pkg-git-askpass
 
 USER 10001:10001
 WORKDIR /data

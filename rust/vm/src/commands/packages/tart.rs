@@ -213,6 +213,7 @@ fn sync_controller_files(files: &ApplianceFiles) -> VmResult<()> {
         (files.read_token_path(), "read-token"),
         (files.publish_token_path(), "publish-token"),
         (files.controller_token_path(), "controller-token"),
+        (files.git_token_path(), "git-token"),
     ] {
         let content = std::fs::read(&source).map_err(|error| {
             VmError::filesystem(

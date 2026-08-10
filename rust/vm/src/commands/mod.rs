@@ -299,7 +299,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             )
             .await
         }
-        Command::Packages { command } => packages::handle(command).await,
+        Command::Packages { command } => packages::handle(command, args.config, args.profile).await,
         Command::Tunnel { command } => handle_tunnel_command(command, args.config, args.profile),
         Command::GetSyncDirectory => {
             let (provider, _, _) = load_provider_context(args.config, args.profile, None)?;

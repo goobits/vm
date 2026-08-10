@@ -39,6 +39,38 @@ pub enum PackagesSubcommand {
         #[arg(long, value_enum, default_value = "auto")]
         runtime: PackageInfrastructureRuntime,
     },
+    /// Register one canonical shared-package repository
+    Register {
+        name: String,
+        #[arg(long, value_parser = ["npm", "cargo", "python"])]
+        ecosystem: String,
+        #[arg(long)]
+        repository: String,
+        #[arg(long, default_value = "main")]
+        branch: String,
+    },
+    /// List registered shared-package repositories
+    List,
+    /// Create an isolated package checkout and attach it to this project
+    Checkout {
+        package: String,
+        #[arg(long)]
+        agent: String,
+        /// Defaults to the current project
+        #[arg(long)]
+        consumer: Option<String>,
+        #[arg(long)]
+        task: String,
+    },
+    /// Show one package checkout
+    Show { checkout_id: String },
+    /// Install or clear the controller's private Git token
+    Auth {
+        #[arg(long, conflicts_with = "clear")]
+        token_file: Option<PathBuf>,
+        #[arg(long)]
+        clear: bool,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]

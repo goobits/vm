@@ -110,6 +110,7 @@ mod tests {
         assert!(COMPOSE_YAML.contains("workflow-state:/data/state"));
         assert!(COMPOSE_YAML.contains("workflow-receipts:/data/receipts"));
         assert!(COMPOSE_YAML.contains("agent-temporary-data:/data/agents"));
+        assert!(COMPOSE_YAML.contains("source-mirrors:/data/sources"));
         assert!(COMPOSE_YAML.contains("work_controller_token"));
         assert!(GATEWAY_CONFIG.contains("reverse_proxy work:3091"));
         assert!(!COMPOSE_YAML.contains("/var/run/docker.sock"));

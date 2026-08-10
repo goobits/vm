@@ -3930,8 +3930,10 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "url",
  "vm-core",
  "vm-packages",
 ]

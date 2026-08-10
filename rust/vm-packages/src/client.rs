@@ -4,8 +4,8 @@ use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    CheckoutLease, CheckoutRecord, CreateCheckout, LeaseRequest, RegistryEndpoints,
-    TransitionRequest, WorkflowReceipt,
+    CheckoutLease, CheckoutRecord, CreateCheckout, LeaseRequest, PackageDefinition,
+    RegisterPackage, RegistryEndpoints, TransitionRequest, WorkflowReceipt,
 };
 
 pub type PackageInventory = BTreeMap<String, Vec<String>>;
@@ -78,6 +78,19 @@ impl PackageInfrastructureClient {
         self.post_work("v1/checkouts", request).await
     }
 
+    pub async fn register_package(&self, request: &RegisterPackage) -> Result<PackageDefinition> {
+        self.post_work("v1/packages", request).await
+    }
+
+    pub async fn package_definitions(&self) -> Result<Vec<PackageDefinition>> {
+        self.get_work("v1/packages").await
+    }
+
+    pub async fn package_definition(&self, name: &str) -> Result<PackageDefinition> {
+        let name = url::form_urlencoded::byte_serialize(name.as_bytes()).collect::<String>();
+        self.get_work(&format!("v1/packages/{name}")).await
+    }
+
     pub async fn checkouts(&self) -> Result<Vec<CheckoutRecord>> {
         self.get_work("v1/checkouts").await
     }
@@ -118,6 +131,14 @@ impl PackageInfrastructureClient {
     ) -> Result<CheckoutRecord> {
         self.post_work(&format!("v1/checkouts/{checkout_id}/transition"), request)
             .await
+    }
+
+    pub fn checkout_archive_url(&self, checkout_id: &str, consumer: &str) -> String {
+        let consumer =
+            url::form_urlencoded::byte_serialize(consumer.as_bytes()).collect::<String>();
+        self.work_url(&format!(
+            "v1/checkouts/{checkout_id}/archive?consumer={consumer}"
+        ))
     }
 
     async fn get_json<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T> {
@@ -186,5 +207,22 @@ impl PackageInfrastructureClient {
             self.endpoints.gateway(),
             path.trim_start_matches('/')
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PackageInfrastructureClient;
+    use crate::RegistryEndpoints;
+
+    #[test]
+    fn checkout_archive_url_is_gateway_scoped_and_encoded() {
+        let client = PackageInfrastructureClient::new(
+            RegistryEndpoints::new("https://packages.internal").unwrap(),
+        );
+        assert_eq!(
+            client.checkout_archive_url("checkout-1", "project/a"),
+            "https://packages.internal/work/v1/checkouts/checkout-1/archive?consumer=project%2Fa"
+        );
     }
 }

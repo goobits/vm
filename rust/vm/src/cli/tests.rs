@@ -201,6 +201,36 @@ fn packages_up_parses_tart_appliance() {
 }
 
 #[test]
+fn package_checkout_parses_isolated_work_request() {
+    assert!(matches!(
+        Args::parse_from([
+            "vm",
+            "packages",
+            "checkout",
+            "auth",
+            "--agent",
+            "agent-17",
+            "--consumer",
+            "project-a",
+            "--task",
+            "fix refresh",
+        ])
+        .command,
+        Command::Packages {
+            command: PackagesSubcommand::Checkout {
+                package,
+                agent,
+                consumer: Some(consumer),
+                task,
+            }
+        } if package == "auth"
+            && agent == "agent-17"
+            && consumer == "project-a"
+            && task == "fix refresh"
+    ));
+}
+
+#[test]
 fn plugin_install_parses() {
     assert!(matches!(
         Args::parse_from(["vm", "plugin", "install", "/path/to/plugin"]).command,

@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 use vm_packages::{
-    CheckoutLease, CheckoutRecord, CreateCheckout, LeaseRecord, LeaseRequest, ReceiptKind,
-    TransitionRequest, WorkflowReceipt, WorkflowState, WorkflowTransition,
+    CheckoutLease, CheckoutRecord, CreateCheckout, LeaseRecord, LeaseRequest, PackageDefinition,
+    ReceiptKind, RegisterPackage, TransitionRequest, WorkflowReceipt, WorkflowState,
+    WorkflowTransition,
 };
 
 use crate::{WorkError, WorkResult};
@@ -33,6 +34,8 @@ struct Database {
     receipts: BTreeMap<String, WorkflowReceipt>,
     #[serde(default)]
     idempotency: BTreeMap<String, IdempotencyRecord>,
+    #[serde(default)]
+    packages: BTreeMap<String, PackageDefinition>,
 }
 
 pub struct Store {
@@ -58,6 +61,10 @@ impl Store {
         store.expire_leases().await?;
         store.materialize_receipts().await?;
         Ok(store)
+    }
+
+    pub(crate) fn root(&self) -> &Path {
+        &self.root
     }
 
     pub async fn create_checkout(&self, request: CreateCheckout) -> WorkResult<CheckoutLease> {
@@ -156,6 +163,148 @@ impl Store {
             checkout: record,
             lease_token: Some(token),
         })
+    }
+
+    pub async fn register_package(
+        &self,
+        request: RegisterPackage,
+    ) -> WorkResult<PackageDefinition> {
+        validate_register(&request)?;
+        let mut current = self.database.lock().await;
+        if let Some(existing) = current.packages.get(&request.name) {
+            if existing.ecosystem == request.ecosystem
+                && existing.repository == request.repository
+                && existing.default_branch == request.default_branch
+            {
+                return Ok(existing.clone());
+            }
+            return Err(WorkError::Conflict(format!(
+                "package '{}' is already registered with different settings",
+                request.name
+            )));
+        }
+        let definition = PackageDefinition {
+            name: request.name,
+            ecosystem: request.ecosystem,
+            repository: request.repository,
+            default_branch: request.default_branch,
+            registered_at: Utc::now(),
+        };
+        let mut next = current.clone();
+        next.packages
+            .insert(definition.name.clone(), definition.clone());
+        self.commit(&mut current, next).await?;
+        Ok(definition)
+    }
+
+    pub async fn package(&self, name: &str) -> WorkResult<PackageDefinition> {
+        self.database
+            .lock()
+            .await
+            .packages
+            .get(name)
+            .cloned()
+            .ok_or_else(|| WorkError::NotFound(format!("package {name}")))
+    }
+
+    pub async fn packages(&self) -> Vec<PackageDefinition> {
+        self.database
+            .lock()
+            .await
+            .packages
+            .values()
+            .cloned()
+            .collect()
+    }
+
+    pub async fn record_source(
+        &self,
+        checkout_id: &str,
+        base_branch: String,
+        base_commit: String,
+        branch: String,
+        worktree: String,
+    ) -> WorkResult<CheckoutRecord> {
+        let mut current = self.database.lock().await;
+        let mut next = current.clone();
+        let now = Utc::now();
+        let checkout = next
+            .checkouts
+            .get_mut(checkout_id)
+            .ok_or_else(|| WorkError::NotFound(checkout_id.to_string()))?;
+        if checkout.state != WorkflowState::Created {
+            return Err(WorkError::Conflict(
+                "source can only be attached to a created checkout".into(),
+            ));
+        }
+        checkout.base_branch = Some(base_branch);
+        checkout.base_commit = Some(base_commit.clone());
+        checkout.branch = Some(branch);
+        checkout.worktree = Some(worktree);
+        checkout.state = WorkflowState::CheckedOut;
+        checkout.updated_at = now;
+        let actor = checkout.agent.clone();
+        let receipt = receipt(
+            &mut next,
+            ReceiptInput {
+                kind: ReceiptKind::SourcePrepared,
+                checkout_id,
+                actor: &actor,
+                previous: Some(WorkflowState::Created),
+                next: WorkflowState::CheckedOut,
+                commit: Some(base_commit),
+                validation_result: None,
+                reason: "isolated source checkout prepared",
+                timestamp: now,
+            },
+        );
+        let checkout = next
+            .checkouts
+            .get_mut(checkout_id)
+            .expect("checkout remains present");
+        checkout.transitions.push(WorkflowTransition {
+            timestamp: now,
+            actor,
+            previous: Some(WorkflowState::Created),
+            next: WorkflowState::CheckedOut,
+            commit: receipt.commit.clone(),
+            validation_result: None,
+            reason: receipt.reason.clone(),
+            receipt_id: receipt.receipt_id.clone(),
+        });
+        let result = checkout.clone();
+        next.receipts.insert(receipt.receipt_id.clone(), receipt);
+        self.commit(&mut current, next).await?;
+        Ok(result)
+    }
+
+    pub async fn authorize_lease(
+        &self,
+        checkout_id: &str,
+        consumer: &str,
+        token: &str,
+    ) -> WorkResult<CheckoutRecord> {
+        validate_label("consumer", consumer)?;
+        let checkout = self.get_checkout(checkout_id).await?;
+        if !checkout
+            .consumers
+            .iter()
+            .any(|candidate| candidate == consumer)
+        {
+            return Err(WorkError::Unauthorized(
+                "checkout is not assigned to this consumer".into(),
+            ));
+        }
+        let lease = checkout
+            .lease
+            .as_ref()
+            .ok_or_else(|| WorkError::Conflict("checkout has no active lease".into()))?;
+        if lease.expires_at <= Utc::now() || lease.token_digest != digest(token) {
+            return Err(WorkError::Unauthorized(
+                "invalid or expired checkout lease".into(),
+            ));
+        }
+        Ok(checkout)
     }
 
     pub async fn get_checkout(&self, checkout_id: &str) -> WorkResult<CheckoutRecord> {
@@ -520,6 +669,28 @@ fn validate_create(request: &CreateCheckout) -> WorkResult<()> {
     validate_idempotency_key(&request.idempotency_key)
 }
 
+fn validate_register(request: &RegisterPackage) -> WorkResult<()> {
+    validate_label("package", &request.name)?;
+    validate_label("default branch", &request.default_branch)?;
+    let repository = url::Url::parse(&request.repository)
+        .map_err(|_| WorkError::Invalid("repository must be an absolute URL".into()))?;
+    if !matches!(repository.scheme(), "https" | "ssh" | "file") {
+        return Err(WorkError::Invalid(
+            "repository URL must use https, ssh, or an appliance-local file URL".into(),
+        ));
+    }
+    if repository.password().is_some()
+        || (repository.scheme() == "https" && !repository.username().is_empty())
+        || repository.query().is_some()
+        || repository.fragment().is_some()
+    {
+        return Err(WorkError::Invalid(
+            "repository URL must not contain credentials, query parameters, or fragments".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_lease_request(request: &LeaseRequest) -> WorkResult<()> {
     validate_label("lease holder", &request.holder)?;
     if request.lease_token.trim().is_empty() {
@@ -636,6 +807,7 @@ async fn atomic_write(path: PathBuf, content: Vec<u8>) -> WorkResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use vm_packages::PackageEcosystem;
 
     fn request(key: &str, agent: &str) -> CreateCheckout {
         CreateCheckout {
@@ -765,5 +937,44 @@ mod tests {
             .await
             .unwrap();
         assert!(renewed.lease.is_some());
+    }
+
+    #[tokio::test]
+    async fn catalog_retries_are_exact_and_checkout_archives_are_consumer_scoped() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).await.unwrap();
+        let package = RegisterPackage {
+            name: "auth".into(),
+            ecosystem: PackageEcosystem::Cargo,
+            repository: "https://example.com/auth.git".into(),
+            default_branch: "main".into(),
+        };
+        assert_eq!(
+            store.register_package(package.clone()).await.unwrap(),
+            store.register_package(package).await.unwrap()
+        );
+        assert!(store
+            .register_package(RegisterPackage {
+                name: "auth".into(),
+                ecosystem: PackageEcosystem::Cargo,
+                repository: "https://example.com/other.git".into(),
+                default_branch: "main".into(),
+            })
+            .await
+            .is_err());
+
+        let checkout = store
+            .create_checkout(request("scoped", "agent-1"))
+            .await
+            .unwrap();
+        let token = checkout.lease_token.unwrap();
+        assert!(store
+            .authorize_lease(&checkout.checkout.checkout_id, "project-a", &token)
+            .await
+            .is_ok());
+        assert!(store
+            .authorize_lease(&checkout.checkout.checkout_id, "project-c", &token)
+            .await
+            .is_err());
     }
 }

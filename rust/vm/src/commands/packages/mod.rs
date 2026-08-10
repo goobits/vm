@@ -1,9 +1,11 @@
+mod catalog;
+mod checkout;
 mod docker;
 mod files;
 mod process;
 mod tart;
 
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 use crate::cli::{PackageInfrastructureRuntime, PackagesSubcommand};
 use crate::error::{VmError, VmResult};
@@ -40,25 +42,35 @@ fn client_environment(
     read_token: String,
     provider: &str,
 ) -> VmResult<ClientEnvironment> {
-    let gateway = match (state.runtime, provider) {
-        (InfrastructureRuntime::Docker, "tart") => {
-            return Err(VmError::validation(
-                "A Docker-hosted package appliance is not reachable from Tart guests",
-                Some("Run `vm packages up --runtime tart` so every environment can reach it"),
-            ));
-        }
-        (InfrastructureRuntime::Docker, "docker" | "podman") => format!(
-            "http://{}:{}",
-            vm_platform::platform::get_host_gateway(),
-            state.gateway_port
-        ),
-        _ => state.gateway_url.clone(),
-    };
+    let gateway = gateway_for_provider(state, provider)?;
     let endpoints = RegistryEndpoints::new(gateway).map_err(VmError::from)?;
     ClientEnvironment::new(endpoints, read_token).map_err(VmError::from)
 }
 
-pub(super) async fn handle(command: PackagesSubcommand) -> VmResult<()> {
+fn gateway_for_provider(state: &ApplianceState, provider: &str) -> VmResult<String> {
+    match (state.runtime, provider) {
+        (InfrastructureRuntime::Docker, "tart") => Err(VmError::validation(
+            "A Docker-hosted package appliance is not reachable from Tart guests",
+            Some("Run `vm packages up --runtime tart` so every environment can reach it"),
+        )),
+        (InfrastructureRuntime::Docker, "docker" | "podman") => Ok(format!(
+            "http://{}:{}",
+            vm_platform::platform::get_host_gateway(),
+            state.gateway_port
+        )),
+        (InfrastructureRuntime::Docker, _) => Err(VmError::validation(
+            format!("Provider '{provider}' cannot reach a Docker-hosted package appliance"),
+            Some("Use the Tart package infrastructure runtime"),
+        )),
+        (InfrastructureRuntime::Tart, _) => Ok(state.gateway_url.clone()),
+    }
+}
+
+pub(super) async fn handle(
+    command: PackagesSubcommand,
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+) -> VmResult<()> {
     let files = ApplianceFiles::discover()?;
     match command {
         PackagesSubcommand::Up {
@@ -69,7 +81,54 @@ pub(super) async fn handle(command: PackagesSubcommand) -> VmResult<()> {
         PackagesSubcommand::Down { runtime } => down(&files, runtime),
         PackagesSubcommand::Status { runtime } => status(&files, runtime).await,
         PackagesSubcommand::Doctor { runtime } => doctor(&files, runtime).await,
+        PackagesSubcommand::Register {
+            name,
+            ecosystem,
+            repository,
+            branch,
+        } => catalog::register(&files, name, ecosystem, repository, branch).await,
+        PackagesSubcommand::List => catalog::list(&files).await,
+        PackagesSubcommand::Checkout {
+            package,
+            agent,
+            consumer,
+            task,
+        } => {
+            checkout::handle(
+                &files,
+                checkout::CheckoutIntent {
+                    config_path,
+                    profile,
+                    package,
+                    agent,
+                    consumer,
+                    task,
+                },
+            )
+            .await
+        }
+        PackagesSubcommand::Show { checkout_id } => catalog::show(&files, &checkout_id).await,
+        PackagesSubcommand::Auth { token_file, clear } => {
+            catalog::configure_git_auth(&files, token_file, clear)
+        }
     }
+}
+
+fn configured_client(files: &ApplianceFiles) -> VmResult<PackageInfrastructureClient> {
+    configured_state_and_client(files).map(|(_, client)| client)
+}
+
+fn configured_state_and_client(
+    files: &ApplianceFiles,
+) -> VmResult<(ApplianceState, PackageInfrastructureClient)> {
+    let state = files.read_state()?.ok_or_else(|| {
+        VmError::validation(
+            "Package infrastructure is not configured",
+            Some("Run `vm packages up` first"),
+        )
+    })?;
+    let client = workflow_client(files, &state)?;
+    Ok((state, client))
 }
 
 async fn up(

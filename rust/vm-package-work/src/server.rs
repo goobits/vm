@@ -2,19 +2,22 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::{
-    extract::{Path, Request, State},
-    http::{header, StatusCode},
+    body::Body,
+    extract::{Path, Query, Request, State},
+    http::{header, HeaderMap, StatusCode},
     middleware::{self, Next},
-    response::Response,
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
 use tokio::net::TcpListener;
+use tokio_util::io::ReaderStream;
 use vm_packages::{
-    authorization_token, CheckoutLease, CreateCheckout, LeaseRequest, TransitionRequest,
+    authorization_token, CheckoutLease, CreateCheckout, LeaseRequest, PackageDefinition,
+    RegisterPackage, TransitionRequest,
 };
 
-use crate::{Store, WorkError, WorkResult};
+use crate::{SourceManager, Store, WorkError, WorkResult};
 
 #[derive(Clone)]
 struct Access {
@@ -25,6 +28,7 @@ struct Access {
 #[derive(Clone)]
 struct AppState {
     store: Arc<Store>,
+    source: SourceManager,
     access: Access,
 }
 
@@ -33,19 +37,24 @@ pub fn router(
     read_token: impl Into<String>,
     controller_token: impl Into<String>,
 ) -> Router {
+    let source = SourceManager::new(store.root());
     let state = AppState {
         store,
+        source,
         access: Access {
             read_token: read_token.into(),
             controller_token: controller_token.into(),
         },
     };
     let reads = Router::new()
+        .route("/v1/packages", get(list_packages))
+        .route("/v1/packages/{*name}", get(get_package))
         .route("/v1/checkouts", get(list_checkouts))
         .route("/v1/checkouts/{checkout_id}", get(get_checkout))
         .route("/v1/receipts/{receipt_id}", get(get_receipt))
         .route_layer(middleware::from_fn_with_state(state.clone(), read_auth));
     let writes = Router::new()
+        .route("/v1/packages", post(register_package))
         .route("/v1/checkouts", post(create_checkout))
         .route("/v1/checkouts/{checkout_id}/lease/renew", post(renew_lease))
         .route(
@@ -60,6 +69,7 @@ pub fn router(
 
     Router::new()
         .route("/health", get(health))
+        .route("/v1/checkouts/{checkout_id}/archive", get(download_archive))
         .merge(reads)
         .merge(writes)
         .with_state(state)
@@ -99,6 +109,17 @@ async fn list_checkouts(
     Ok(Json(state.store.list_checkouts().await?))
 }
 
+async fn list_packages(State(state): State<AppState>) -> WorkResult<Json<Vec<PackageDefinition>>> {
+    Ok(Json(state.store.packages().await))
+}
+
+async fn get_package(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> WorkResult<Json<PackageDefinition>> {
+    Ok(Json(state.store.package(&name).await?))
+}
+
 async fn get_checkout(
     State(state): State<AppState>,
     Path(checkout_id): Path<String>,
@@ -117,9 +138,19 @@ async fn create_checkout(
     State(state): State<AppState>,
     Json(request): Json<CreateCheckout>,
 ) -> WorkResult<(StatusCode, Json<CheckoutLease>)> {
+    state.store.package(&request.package).await?;
+    let mut checkout = state.store.create_checkout(request).await?;
+    checkout.checkout = state.source.prepare(&state.store, &checkout).await?;
+    Ok((StatusCode::CREATED, Json(checkout)))
+}
+
+async fn register_package(
+    State(state): State<AppState>,
+    Json(request): Json<RegisterPackage>,
+) -> WorkResult<(StatusCode, Json<PackageDefinition>)> {
     Ok((
         StatusCode::CREATED,
-        Json(state.store.create_checkout(request).await?),
+        Json(state.store.register_package(request).await?),
     ))
 }
 
@@ -147,6 +178,42 @@ async fn transition(
     Json(request): Json<TransitionRequest>,
 ) -> WorkResult<Json<vm_packages::CheckoutRecord>> {
     Ok(Json(state.store.transition(&checkout_id, request).await?))
+}
+
+#[derive(serde::Deserialize)]
+struct ArchiveQuery {
+    consumer: String,
+}
+
+async fn download_archive(
+    State(state): State<AppState>,
+    Path(checkout_id): Path<String>,
+    Query(query): Query<ArchiveQuery>,
+    headers: HeaderMap,
+) -> WorkResult<Response> {
+    let token = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(authorization_token)
+        .ok_or_else(|| WorkError::Unauthorized("missing checkout lease credential".into()))?;
+    let checkout = state
+        .store
+        .authorize_lease(&checkout_id, &query.consumer, &token)
+        .await?;
+    let archive = state.source.archive(&checkout).await?;
+    let file = tokio::fs::File::open(archive).await?;
+    let body = Body::from_stream(ReaderStream::new(file));
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/x-git-bundle"),
+            (
+                header::CONTENT_DISPOSITION,
+                "attachment; filename=checkout.bundle",
+            ),
+        ],
+        body,
+    )
+        .into_response())
 }
 
 async fn read_auth(
@@ -228,9 +295,14 @@ mod tests {
         );
         assert_eq!(
             server
-                .post("/v1/checkouts")
+                .post("/v1/packages")
                 .add_header(header::AUTHORIZATION, "Bearer controller")
-                .json(&checkout())
+                .json(&serde_json::json!({
+                    "name": "auth",
+                    "ecosystem": "cargo",
+                    "repository": "https://example.com/auth.git",
+                    "default_branch": "main"
+                }))
                 .await
                 .status_code(),
             StatusCode::CREATED

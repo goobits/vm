@@ -132,6 +132,7 @@ pub struct TransitionRequest {
 #[serde(rename_all = "snake_case")]
 pub enum ReceiptKind {
     Checkout,
+    SourcePrepared,
     LeaseAcquired,
     LeaseRenewed,
     LeaseReleased,

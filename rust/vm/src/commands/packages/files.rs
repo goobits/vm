@@ -10,6 +10,7 @@ const ENVIRONMENT_FILE: &str = "environment.env";
 const READ_TOKEN_FILE: &str = "read-token";
 const PUBLISH_TOKEN_FILE: &str = "publish-token";
 const CONTROLLER_TOKEN_FILE: &str = "controller-token";
+const GIT_TOKEN_FILE: &str = "git-token";
 const STATE_FILE: &str = "state.json";
 
 #[derive(Debug, Clone)]
@@ -59,12 +60,27 @@ impl ApplianceFiles {
         self.root.join(CONTROLLER_TOKEN_FILE)
     }
 
+    pub(super) fn git_token_path(&self) -> PathBuf {
+        self.root.join(GIT_TOKEN_FILE)
+    }
+
     pub(super) fn read_token(&self) -> VmResult<String> {
         self.token(&self.read_token_path())
     }
 
     pub(super) fn controller_token(&self) -> VmResult<String> {
         self.token(&self.controller_token_path())
+    }
+
+    pub(super) fn set_git_token(&self, token: &str) -> VmResult<()> {
+        if token.contains(['\r', '\n']) {
+            return Err(VmError::validation(
+                "Git token must be a single line",
+                Some("Pass a file containing only the token"),
+            ));
+        }
+        self.ensure_root()?;
+        write_private(&self.git_token_path(), token.as_bytes())
     }
 
     fn token(&self, path: &Path) -> VmResult<String> {
@@ -96,6 +112,9 @@ impl ApplianceFiles {
                 let token = vm_core::secrets::generate_random_password(48);
                 write_private(&path, token.as_bytes())?;
             }
+        }
+        if !self.git_token_path().exists() {
+            write_private(&self.git_token_path(), b"")?;
         }
         Ok(())
     }
@@ -188,6 +207,7 @@ mod tests {
         assert!(files.read_token_path().is_file());
         assert!(files.publish_token_path().is_file());
         assert!(files.controller_token_path().is_file());
+        assert!(files.git_token_path().is_file());
         assert_eq!(
             std::fs::read_to_string(files.publish_token_path())
                 .unwrap()

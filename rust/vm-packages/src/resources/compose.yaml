@@ -27,6 +27,8 @@ services:
     restart: unless-stopped
     environment:
       RUST_LOG: info
+      PKG_WORK_GIT_ASKPASS: /usr/local/bin/pkg-git-askpass
+      PKG_WORK_GIT_TOKEN_FILE: /run/secrets/git_token
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
@@ -62,7 +64,7 @@ services:
         export PKG_WORK_READ_TOKEN="$$(cat /run/secrets/work_read_token)"
         export PKG_WORK_CONTROLLER_TOKEN="$$(cat /run/secrets/work_controller_token)"
         exec pkg-work start --host 0.0.0.0 --port 3091 --data /data
-    secrets: [work_read_token, work_controller_token]
+    secrets: [work_read_token, work_controller_token, git_token]
     expose: ["3091"]
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:3091/health"]
@@ -77,7 +79,8 @@ services:
       - workflow-receipts:/data/receipts
       - workflow-logs:/data/logs
       - agent-temporary-data:/data/agents
-    networks: [packages]
+      - source-mirrors:/data/sources
+    networks: [packages, egress]
 
 networks:
   packages:
@@ -95,6 +98,8 @@ secrets:
     file: ./read-token
   work_controller_token:
     file: ./controller-token
+  git_token:
+    file: ./git-token
 
 volumes:
   gateway-data:
@@ -108,3 +113,4 @@ volumes:
   workflow-receipts:
   workflow-logs:
   agent-temporary-data:
+  source-mirrors:
