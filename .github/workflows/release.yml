@@ -9,6 +9,57 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  package-images:
+    name: Publish ${{ matrix.image }} image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - image: vm-package-server
+            dockerfile: vm-package-server/docker/server/Dockerfile
+          - image: vm-package-jobs
+            dockerfile: vm-package-jobs/Dockerfile
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+
+    - name: Log in to GHCR
+      uses: docker/login-action@v4
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Generate image metadata
+      id: metadata
+      uses: docker/metadata-action@v6
+      with:
+        images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+        tags: |
+          type=semver,pattern={{version}}
+
+    - name: Build and publish image
+      uses: docker/build-push-action@v7
+      with:
+        context: rust
+        file: rust/${{ matrix.dockerfile }}
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.metadata.outputs.tags }}
+        labels: ${{ steps.metadata.outputs.labels }}
+        cache-from: type=gha,scope=${{ matrix.image }}
+        cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+        provenance: true
+        sbom: true
+
   release:
     name: Create GitHub Release
     runs-on: ${{ matrix.os }}

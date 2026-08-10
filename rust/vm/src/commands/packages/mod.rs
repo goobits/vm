@@ -1,5 +1,6 @@
 mod catalog;
 mod checkout;
+mod consumer;
 mod docker;
 mod files;
 mod integration;
@@ -14,7 +15,7 @@ use std::{path::PathBuf, time::Duration};
 use crate::cli::{PackageInfrastructureRuntime, PackagesSubcommand};
 use crate::error::{VmError, VmResult};
 use vm_config::config::VmConfig;
-use vm_core::{vm_println, vm_success};
+use vm_core::{vm_hint, vm_println, vm_success};
 use vm_packages::{
     ApplianceConfig, ApplianceState, ClientEnvironment, InfrastructureRuntime,
     PackageInfrastructureClient, RegistryEndpoints,
@@ -76,6 +77,15 @@ pub(super) async fn handle(
     profile: Option<String>,
 ) -> VmResult<()> {
     let files = ApplianceFiles::discover()?;
+    let _operation_lock = match &command {
+        PackagesSubcommand::Backups { .. }
+        | PackagesSubcommand::Backup { .. }
+        | PackagesSubcommand::Restore { .. } => None,
+        PackagesSubcommand::Up { .. } | PackagesSubcommand::Down { .. } => {
+            Some(files.acquire_lifecycle_lock()?)
+        }
+        _ => Some(files.acquire_operation_lock()?),
+    };
     match command {
         PackagesSubcommand::Up {
             runtime,
@@ -86,6 +96,25 @@ pub(super) async fn handle(
         PackagesSubcommand::Down { runtime } => down(&files, runtime),
         PackagesSubcommand::Status { runtime } => status(&files, runtime).await,
         PackagesSubcommand::Doctor { runtime } => doctor(&files, runtime).await,
+        PackagesSubcommand::Backups { runtime } => {
+            maintenance(&files, runtime, MaintenanceTask::List)
+        }
+        PackagesSubcommand::Backup { runtime } => {
+            let backup_id = format!(
+                "backup-{}-{}",
+                chrono::Utc::now().format("%Y%m%dT%H%M%SZ"),
+                vm_core::secrets::generate_random_password(8)
+            );
+            maintenance(&files, runtime, MaintenanceTask::Backup(&backup_id))?;
+            vm_success!("Package infrastructure backup created");
+            vm_println!("Backup: {backup_id}");
+            Ok(())
+        }
+        PackagesSubcommand::Restore { backup_id, runtime } => {
+            maintenance(&files, runtime, MaintenanceTask::Restore(&backup_id))?;
+            vm_success!("Package infrastructure restored from {backup_id}");
+            Ok(())
+        }
         PackagesSubcommand::Register {
             name,
             ecosystem,
@@ -94,6 +123,11 @@ pub(super) async fn handle(
             ci_registry,
         } => catalog::register(&files, name, ecosystem, repository, branch, ci_registry).await,
         PackagesSubcommand::List => catalog::list(&files).await,
+        PackagesSubcommand::Consumer { command } => consumer::handle_catalog(&files, command).await,
+        PackagesSubcommand::Consumers { package } => {
+            consumer::show_consumers(&files, &package).await
+        }
+        PackagesSubcommand::Drift => consumer::show_drift(&files).await,
         PackagesSubcommand::Checkout {
             package,
             agent,
@@ -114,6 +148,12 @@ pub(super) async fn handle(
             .await
         }
         PackagesSubcommand::Show { checkout_id } => catalog::show(&files, &checkout_id).await,
+        PackagesSubcommand::Cancel { checkout_id } => {
+            cancel_checkout(&files, config_path, profile, &checkout_id).await
+        }
+        PackagesSubcommand::Cleanup { checkout_id } => {
+            cleanup_checkout(&files, config_path, profile, &checkout_id).await
+        }
         PackagesSubcommand::Submit {
             checkout_id,
             consumer,
@@ -136,7 +176,10 @@ pub(super) async fn handle(
         PackagesSubcommand::Publish {
             submission_id,
             push_source,
-        } => release::handle(&files, submission_id, push_source).await,
+        } => release::handle(&files, config_path, profile, submission_id, push_source).await,
+        PackagesSubcommand::Rollout { target, consumer } => {
+            consumer::rollout(&files, target, consumer).await
+        }
         PackagesSubcommand::Auth {
             token_file,
             ci_token_file,
@@ -148,6 +191,52 @@ pub(super) async fn handle(
 
 fn configured_client(files: &ApplianceFiles) -> VmResult<PackageInfrastructureClient> {
     configured_state_and_client(files).map(|(_, client)| client)
+}
+
+async fn cleanup_checkout(
+    files: &ApplianceFiles,
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+    checkout_id: &str,
+) -> VmResult<()> {
+    let client = configured_client(files)?;
+    let checkout = client.checkout(checkout_id).await?;
+    let closed = client
+        .cleanup_checkout(
+            checkout_id,
+            &vm_packages::CleanupRequest {
+                actor: "vm-controller".into(),
+                idempotency_key: format!("cleanup-{checkout_id}"),
+            },
+        )
+        .await?;
+    if let Err(error) = checkout::cleanup_local(config_path, profile, &checkout) {
+        vm_hint!("Service checkout closed; local temporary data was unavailable: {error}");
+    }
+    vm_success!("Checkout {} is {:?}", closed.checkout_id, closed.state);
+    Ok(())
+}
+
+async fn cancel_checkout(
+    files: &ApplianceFiles,
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+    checkout_id: &str,
+) -> VmResult<()> {
+    configured_client(files)?
+        .transition(
+            checkout_id,
+            &vm_packages::TransitionRequest {
+                next: vm_packages::WorkflowState::Cancelled,
+                actor: "vm-controller".into(),
+                reason: "checkout cancelled by operator".into(),
+                commit: None,
+                validation_result: Some("cancelled".into()),
+                idempotency_key: format!("cancel-{checkout_id}"),
+            },
+        )
+        .await?;
+    cleanup_checkout(files, config_path, profile, checkout_id).await
 }
 
 fn configured_state_and_client(
@@ -167,6 +256,35 @@ fn configured_state_and_client(
 enum PackageJob<'a> {
     Review(&'a str),
     Release(&'a str),
+    Rollout(&'a str),
+}
+
+#[derive(Debug, Clone, Copy)]
+enum MaintenanceTask<'a> {
+    List,
+    Backup(&'a str),
+    Restore(&'a str),
+}
+
+impl<'a> MaintenanceTask<'a> {
+    fn action(self) -> &'static str {
+        match self {
+            Self::List => "list",
+            Self::Backup(_) => "backup",
+            Self::Restore(_) => "restore",
+        }
+    }
+
+    fn backup_id(self) -> Option<&'a str> {
+        match self {
+            Self::List => None,
+            Self::Backup(id) | Self::Restore(id) => Some(id),
+        }
+    }
+
+    fn requires_pause(self) -> bool {
+        !matches!(self, Self::List)
+    }
 }
 
 impl<'a> PackageJob<'a> {
@@ -174,16 +292,20 @@ impl<'a> PackageJob<'a> {
         match self {
             Self::Review(_) => "reviewer",
             Self::Release(_) => "releaser",
+            Self::Rollout(_) => "rollout",
         }
     }
 
     fn variable(self) -> &'static str {
-        "SUBMISSION_ID"
+        match self {
+            Self::Review(_) | Self::Release(_) => "SUBMISSION_ID",
+            Self::Rollout(_) => "ROLLOUT_ID",
+        }
     }
 
     fn id(self) -> &'a str {
         match self {
-            Self::Review(id) | Self::Release(id) => id,
+            Self::Review(id) | Self::Release(id) | Self::Rollout(id) => id,
         }
     }
 }
@@ -199,6 +321,36 @@ fn launch_job(files: &ApplianceFiles, state: &ApplianceState, job: PackageJob<'_
         InfrastructureRuntime::Docker => docker::run_job(files, job),
         InfrastructureRuntime::Tart => tart::run_job(files, job),
     }
+}
+
+fn maintenance(
+    files: &ApplianceFiles,
+    requested: PackageInfrastructureRuntime,
+    task: MaintenanceTask<'_>,
+) -> VmResult<()> {
+    let _maintenance_lock = files.acquire_maintenance_lock()?;
+    let state = files.read_state()?.ok_or_else(|| {
+        VmError::validation(
+            "Package infrastructure is not configured",
+            Some("Run `vm packages up` first"),
+        )
+    })?;
+    if let Some(backup_id) = task.backup_id() {
+        process::validate_job_id(backup_id)?;
+    }
+    let runtime = explicit_or_state_runtime(requested, state.runtime);
+    let output = match runtime {
+        InfrastructureRuntime::Docker => docker::maintenance(files, task)?,
+        InfrastructureRuntime::Tart => tart::maintenance(files, task)?,
+    };
+    if matches!(task, MaintenanceTask::List) {
+        if output.trim().is_empty() {
+            vm_println!("No package infrastructure backups");
+        } else {
+            vm_println!("{output}");
+        }
+    }
+    Ok(())
 }
 
 fn launch_review(

@@ -180,6 +180,28 @@ vm doctor --prune-pnpm-store [--container <environment>]
 redacts environment values and host paths, and does not contact the provider.
 pnpm pruning is explicit and never runs during create, start, or bootstrap.
 
+## Package Infrastructure
+
+```bash
+vm packages up [--runtime <docker|tart>]
+vm packages status
+vm packages doctor
+vm packages backup
+vm packages backups
+vm packages restore <backup-id>
+vm packages checkout <package> --agent <agent> --task <task>
+vm packages submit <checkout-id>
+vm packages cancel <checkout-id>
+vm packages cleanup <checkout-id>
+vm packages integrate <submission-id>
+vm packages publish <submission-id> --push-source
+vm packages drift
+vm packages rollout <package>@<version> --to <consumer>
+```
+
+See [Package Infrastructure](package-infrastructure.md) for the provider
+boundary, registration, credentials, release workflow, and recovery model.
+
 ## Plugins
 
 ```bash

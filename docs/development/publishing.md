@@ -33,7 +33,10 @@ Both commands must pass before tagging a release.
 
 After the changelog, version, and release commit are approved, create and push
 the matching `vX.Y.Z` tag. The release workflow builds each supported target,
-publishes archives and checksums, and creates the GitHub Release.
+publishes archives and checksums, creates the GitHub Release, and publishes the
+matching multi-architecture `vm-package-server` and `vm-package-jobs` images to
+GHCR. The image tag omits the leading `v` so it matches the CLI's default image
+references.
 
 Publish the matching Tart Linux base from the `Publish Tart Linux base` manual
 workflow. It requires an Apple Silicon self-hosted runner labeled

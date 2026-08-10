@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use vm_config::config::VmConfig;
 
 use crate::commands::command_context::RuntimeSubject;
@@ -13,6 +15,25 @@ pub(super) fn exec<const N: usize>(subject: &RuntimeSubject, command: [&str; N])
         .provider
         .exec(Some(subject.target.as_str()), &command)
         .map_err(VmError::from)
+}
+
+pub(super) fn copy_private(
+    subject: &RuntimeSubject,
+    content: &[u8],
+    destination: &str,
+) -> VmResult<()> {
+    let mut temporary = tempfile::NamedTempFile::new().map_err(VmError::from)?;
+    temporary.write_all(content).map_err(VmError::from)?;
+    temporary.flush().map_err(VmError::from)?;
+    subject
+        .provider
+        .copy(
+            &temporary.path().to_string_lossy(),
+            destination,
+            Some(subject.target.as_str()),
+        )
+        .map_err(VmError::from)?;
+    exec(subject, ["chmod", "600", destination])
 }
 
 pub(super) fn exec_in_workspace<const N: usize>(

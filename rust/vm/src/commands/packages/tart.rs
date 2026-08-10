@@ -10,7 +10,7 @@ use vm_packages::{COMPOSE_PROJECT, TART_BASE_NAME, TART_INSTANCE_NAME};
 use crate::error::{VmError, VmResult};
 
 use super::files::ApplianceFiles;
-use super::{process, PackageJob};
+use super::{process, MaintenanceTask, PackageJob};
 
 const GUEST_ROOT: &str = "/opt/vm-packages";
 const READY_TIMEOUT: Duration = Duration::from_secs(120);
@@ -28,9 +28,7 @@ pub(super) fn up(files: &ApplianceFiles, port: u16) -> VmResult<String> {
     sync_controller_files(files)?;
     vm_progress!("Starting package infrastructure inside Tart...");
     process::run(
-        &mut guest_shell(&format!(
-            "cd {GUEST_ROOT} && sudo docker compose --project-name {COMPOSE_PROJECT} --file compose.yaml --env-file environment.env up --detach --remove-orphans --pull always"
-        )),
+        &mut compose_command("up --detach --remove-orphans --pull always"),
         "start the Tart package appliance",
     )?;
     gateway_url(port)
@@ -43,9 +41,7 @@ pub(super) fn down(files: &ApplianceFiles) -> VmResult<()> {
     if entry.state.eq_ignore_ascii_case("running") {
         if files.compose_path().exists() {
             process::run(
-                &mut guest_shell(&format!(
-                    "cd {GUEST_ROOT} && sudo docker compose --project-name {COMPOSE_PROJECT} --file compose.yaml --env-file environment.env down --remove-orphans"
-                )),
+                &mut compose_command("down --remove-orphans"),
                 "stop the Tart package appliance",
             )?;
         }
@@ -57,10 +53,26 @@ pub(super) fn down(files: &ApplianceFiles) -> VmResult<()> {
     Ok(())
 }
 
-pub(super) fn status(_files: &ApplianceFiles) -> VmResult<String> {
-    Ok(find_entry(TART_INSTANCE_NAME)?
-        .map(|entry| entry.state.to_ascii_lowercase())
-        .unwrap_or_else(|| "missing".to_string()))
+pub(super) fn status(files: &ApplianceFiles) -> VmResult<String> {
+    let Some(entry) = find_entry(TART_INSTANCE_NAME)? else {
+        return Ok("missing".into());
+    };
+    if !entry.state.eq_ignore_ascii_case("running") || !files.compose_path().exists() {
+        return Ok("stopped".into());
+    }
+    let output = process::output(
+        &mut compose_command("ps --status running --services"),
+        "inspect the Tart package appliance",
+    )?;
+    Ok(if String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .any(|service| service == "gateway")
+    {
+        "running"
+    } else {
+        "stopped"
+    }
+    .into())
 }
 
 pub(super) fn doctor(files: &ApplianceFiles) -> VmResult<()> {
@@ -73,9 +85,7 @@ pub(super) fn doctor(files: &ApplianceFiles) -> VmResult<()> {
             )?;
             if files.compose_path().exists() {
                 process::output(
-                    &mut guest_shell(&format!(
-                        "cd {GUEST_ROOT} && sudo docker compose --project-name {COMPOSE_PROJECT} --file compose.yaml --env-file environment.env config --quiet"
-                    )),
+                    &mut compose_command("config --quiet"),
                     "validate the Tart package appliance definition",
                 )?;
             }
@@ -108,14 +118,57 @@ pub(super) fn gateway_url(port: u16) -> VmResult<String> {
 pub(super) fn run_job(_files: &ApplianceFiles, job: PackageJob<'_>) -> VmResult<()> {
     process::validate_job_id(job.id())?;
     process::run(
-        &mut guest_shell(&format!(
-            "cd {GUEST_ROOT} && sudo docker compose --project-name {COMPOSE_PROJECT} --file compose.yaml --env-file environment.env run --rm --no-deps --env {}={} {}",
+        &mut compose_command(&format!(
+            "run --rm --no-deps --env {}={} {}",
             job.variable(),
             job.id(),
             job.service(),
         )),
         "run the ephemeral package job",
     )
+}
+
+pub(super) fn maintenance(files: &ApplianceFiles, task: MaintenanceTask<'_>) -> VmResult<String> {
+    let vm_was_running = find_entry(TART_INSTANCE_NAME)?
+        .is_some_and(|entry| entry.state.eq_ignore_ascii_case("running"));
+    let services_were_running = vm_was_running && status(files)? == "running";
+    ensure_instance(files)?;
+    ensure_docker()?;
+    sync_controller_files(files)?;
+
+    if task.requires_pause() {
+        process::run(
+            &mut compose_command("stop gateway registry work"),
+            "pause the Tart package appliance",
+        )?;
+    }
+    let id_argument = task
+        .backup_id()
+        .map_or_else(String::new, |id| format!(" --env BACKUP_ID={id}"));
+    let operation = process::output(
+        &mut compose_command(&format!(
+            "run --rm --no-deps --env BACKUP_ACTION={}{} maintenance",
+            task.action(),
+            id_argument
+        )),
+        &format!("{} the Tart package appliance", task.action()),
+    );
+    let restart = if task.requires_pause() && services_were_running {
+        process::run(
+            &mut compose_command("up --detach gateway"),
+            "resume the Tart package appliance",
+        )
+    } else if !vm_was_running {
+        process::run(
+            Command::new("tart").args(["stop", TART_INSTANCE_NAME]),
+            "stop the package infrastructure VM after maintenance",
+        )
+    } else {
+        Ok(())
+    };
+    let output = operation?;
+    restart?;
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
 fn format_gateway_url(address: &str, port: u16) -> String {
@@ -228,6 +281,7 @@ fn sync_controller_files(files: &ApplianceFiles) -> VmResult<()> {
         (files.controller_token_path(), "controller-token"),
         (files.reviewer_token_path(), "reviewer-token"),
         (files.release_token_path(), "release-token"),
+        (files.rollout_token_path(), "rollout-token"),
         (files.git_token_path(), "git-token"),
         (files.ci_publish_token_path(), "ci-publish-token"),
     ] {
@@ -270,6 +324,12 @@ fn guest_shell(script: &str) -> Command {
     let mut command = Command::new("tart");
     command.args(["exec", TART_INSTANCE_NAME, "bash", "-lc", script]);
     command
+}
+
+fn compose_command(arguments: &str) -> Command {
+    guest_shell(&format!(
+        "cd {GUEST_ROOT} && sudo docker compose --project-name {COMPOSE_PROJECT} --file compose.yaml --env-file environment.env {arguments}"
+    ))
 }
 
 #[cfg(test)]

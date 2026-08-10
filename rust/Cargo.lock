@@ -1191,6 +1191,7 @@ dependencies = [
  "dialoguer",
  "dirs",
  "flate2",
+ "fs2",
  "futures",
  "num_cpus",
  "predicates",

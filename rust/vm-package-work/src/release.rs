@@ -345,8 +345,8 @@ mod tests {
     use super::*;
     use crate::ImportedSubmission;
     use vm_packages::{
-        CheckOutcome, CreateCheckout, IntegrationRecord, PackageEcosystem, PublicApiDiff,
-        RegisterPackage, ReviewRequest, TransitionRequest, ValidationRequest,
+        CheckOutcome, CleanupRequest, CreateCheckout, IntegrationRecord, PackageEcosystem,
+        PublicApiDiff, RegisterPackage, ReviewRequest, TransitionRequest, ValidationRequest,
         VersionRecommendation,
     };
 
@@ -509,12 +509,45 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(complete.state, WorkflowState::Published);
+        let closed = store
+            .close_checkout(
+                &checkout.checkout_id,
+                CleanupRequest {
+                    actor: "release-service".into(),
+                    idempotency_key: "cleanup-release".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(closed.state, WorkflowState::Closed);
+        assert_eq!(
+            store
+                .close_checkout(
+                    &checkout.checkout_id,
+                    CleanupRequest {
+                        actor: "release-service".into(),
+                        idempotency_key: "cleanup-release".into(),
+                    },
+                )
+                .await
+                .unwrap()
+                .state,
+            WorkflowState::Closed
+        );
         drop(store);
 
         let reopened = Store::open(directory.path()).await.unwrap();
         assert_eq!(
             reopened.release(&release.release_id).await.unwrap().state,
             WorkflowState::Published
+        );
+        assert_eq!(
+            reopened
+                .get_checkout(&checkout.checkout_id)
+                .await
+                .unwrap()
+                .state,
+            WorkflowState::Closed
         );
         assert!(directory
             .path()

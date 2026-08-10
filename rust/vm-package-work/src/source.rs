@@ -7,8 +7,10 @@ use std::sync::Arc;
 use sha2::{Digest, Sha256};
 use tokio::process::Command;
 use tokio::sync::Mutex;
-use vm_packages::{CheckoutLease, CheckoutRecord, TransitionRequest, WorkflowState};
-use vm_packages::{IntegrationRecord, IntegrationRequest, SubmissionRecord};
+use vm_packages::{
+    CheckoutLease, CheckoutRecord, IntegrationRecord, IntegrationRequest, RolloutRecord,
+    RolloutState, SubmissionRecord, TransitionRequest, WorkflowState,
+};
 
 use crate::{io::atomic_write, ImportedSubmission, Store, WorkError, WorkResult};
 
@@ -87,6 +89,21 @@ impl SourceManager {
         )
         .await?;
         Ok(archive)
+    }
+
+    pub async fn cleanup_checkout(&self, checkout: &CheckoutRecord) -> WorkResult<()> {
+        let lock = self
+            .lock(&format!("checkout:{}", checkout.checkout_id))
+            .await;
+        let _guard = lock.lock().await;
+        let checkout_root = self.root.join("agents").join(&checkout.checkout_id);
+        if checkout.worktree.is_some() {
+            self.checkout_source(checkout)?;
+        }
+        if tokio::fs::try_exists(&checkout_root).await? {
+            tokio::fs::remove_dir_all(&checkout_root).await?;
+        }
+        Ok(())
     }
 
     pub async fn submission_staging_path(&self, checkout: &CheckoutRecord) -> WorkResult<PathBuf> {
@@ -454,6 +471,281 @@ impl SourceManager {
         Ok(bundle)
     }
 
+    pub async fn prepare_rollout(
+        &self,
+        store: &Store,
+        rollout: &RolloutRecord,
+    ) -> WorkResult<RolloutRecord> {
+        if rollout.state != RolloutState::Created {
+            return Ok(rollout.clone());
+        }
+        let consumer = store.consumer(&rollout.consumer).await?;
+        let lock = self.lock(&format!("consumer:{}", consumer.name)).await;
+        let _guard = lock.lock().await;
+        let mirrors = self.root.join("sources/consumers");
+        tokio::fs::create_dir_all(&mirrors).await?;
+        let mirror = mirrors.join(format!("{}.git", source_key(&consumer.name)));
+        self.sync_mirror(&mirror, &consumer.repository).await?;
+        let canonical_ref = format!("refs/heads/{}", consumer.default_branch);
+        let base_commit = git_output(
+            self.git()
+                .arg("--git-dir")
+                .arg(&mirror)
+                .arg("rev-parse")
+                .arg(&canonical_ref),
+            "resolve consumer rollout base commit",
+        )
+        .await?;
+        let rollout_root = self.root.join("rollouts").join(&rollout.rollout_id);
+        let source = rollout_root.join("source");
+        tokio::fs::create_dir_all(&rollout_root).await?;
+        if tokio::fs::try_exists(&source).await? {
+            tokio::fs::remove_dir_all(&source).await?;
+        }
+        run(
+            self.git()
+                .arg("clone")
+                .arg("--no-hardlinks")
+                .arg(&mirror)
+                .arg(&source),
+            "create isolated consumer rollout checkout",
+        )
+        .await?;
+        let branch = format!(
+            "rollouts/{}/{}",
+            source_key(&rollout.package),
+            rollout.rollout_id
+        );
+        run(
+            self.git()
+                .arg("-C")
+                .arg(&source)
+                .args(["switch", "--create"])
+                .arg(&branch)
+                .arg(&base_commit),
+            "create consumer rollout branch",
+        )
+        .await?;
+        run(
+            self.git()
+                .arg("-C")
+                .arg(&source)
+                .args(["remote", "set-url", "origin"])
+                .arg(&consumer.repository),
+            "set canonical consumer remote",
+        )
+        .await?;
+        store
+            .record_rollout_source(
+                &rollout.rollout_id,
+                base_commit,
+                branch,
+                source.to_string_lossy().into_owned(),
+            )
+            .await
+    }
+
+    pub async fn rollout_bundle(&self, rollout: &RolloutRecord) -> WorkResult<PathBuf> {
+        let lock = self.lock(&format!("rollout:{}", rollout.rollout_id)).await;
+        let _guard = lock.lock().await;
+        let source = self.rollout_source(rollout)?;
+        if !source.is_dir() {
+            return Err(WorkError::Conflict("rollout source is not ready".into()));
+        }
+        let bundle = source
+            .parent()
+            .expect("managed rollout source has a parent")
+            .join("source.bundle");
+        if tokio::fs::try_exists(&bundle).await? {
+            tokio::fs::remove_file(&bundle).await?;
+        }
+        run(
+            self.git()
+                .arg("-C")
+                .arg(&source)
+                .args(["bundle", "create"])
+                .arg(&bundle)
+                .arg("--all"),
+            "bundle isolated consumer rollout",
+        )
+        .await?;
+        Ok(bundle)
+    }
+
+    pub async fn rollout_staging_path(&self, rollout: &RolloutRecord) -> WorkResult<PathBuf> {
+        let source = self.rollout_source(rollout)?;
+        if !source.is_dir() {
+            return Err(WorkError::Conflict("rollout source is not ready".into()));
+        }
+        let uploads = source
+            .parent()
+            .expect("managed rollout source has a parent")
+            .join("uploads");
+        tokio::fs::create_dir_all(&uploads).await?;
+        Ok(uploads.join(format!(
+            "{}.bundle",
+            vm_core::secrets::generate_random_password(16)
+        )))
+    }
+
+    pub async fn cleanup_rollout(&self, rollout: &RolloutRecord) -> WorkResult<()> {
+        let lock = self.lock(&format!("rollout:{}", rollout.rollout_id)).await;
+        let _guard = lock.lock().await;
+        let source = self.rollout_source(rollout)?;
+        let rollout_root = source
+            .parent()
+            .ok_or_else(|| WorkError::Internal("managed rollout has no parent".into()))?;
+        if tokio::fs::try_exists(rollout_root).await? {
+            tokio::fs::remove_dir_all(rollout_root).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn import_rollout(
+        &self,
+        store: &Store,
+        rollout: &RolloutRecord,
+        bundle: &Path,
+    ) -> WorkResult<RolloutRecord> {
+        let lock = self.lock(&format!("rollout:{}", rollout.rollout_id)).await;
+        let _guard = lock.lock().await;
+        let source = self.rollout_source(rollout)?;
+        let branch = rollout
+            .branch
+            .as_deref()
+            .ok_or_else(|| WorkError::Conflict("rollout branch is missing".into()))?;
+        let base_commit = rollout
+            .base_commit
+            .as_deref()
+            .ok_or_else(|| WorkError::Conflict("rollout base commit is missing".into()))?;
+        run(
+            self.git()
+                .arg("-C")
+                .arg(&source)
+                .args(["bundle", "verify"])
+                .arg(bundle),
+            "verify consumer rollout bundle",
+        )
+        .await?;
+        let heads = git_output(
+            self.git()
+                .args(["bundle", "list-heads"])
+                .arg(bundle)
+                .arg(format!("refs/heads/{branch}")),
+            "read consumer rollout bundle head",
+        )
+        .await?;
+        let submitted_commit = heads
+            .split_whitespace()
+            .next()
+            .filter(|commit| {
+                matches!(commit.len(), 40 | 64)
+                    && commit
+                        .chars()
+                        .all(|character| character.is_ascii_hexdigit())
+            })
+            .ok_or_else(|| WorkError::Invalid("bundle does not contain the rollout branch".into()))?
+            .to_string();
+        if submitted_commit == base_commit {
+            return Err(WorkError::Invalid(
+                "rollout contains no dependency update commit".into(),
+            ));
+        }
+        let submitted_ref = format!("refs/rollouts/{submitted_commit}");
+        run(
+            self.git()
+                .arg("-C")
+                .arg(&source)
+                .arg("fetch")
+                .arg(bundle)
+                .arg(format!("refs/heads/{branch}:{submitted_ref}")),
+            "import consumer rollout commit",
+        )
+        .await?;
+        run(
+            self.git().arg("-C").arg(&source).args([
+                "merge-base",
+                "--is-ancestor",
+                base_commit,
+                &submitted_commit,
+            ]),
+            "verify consumer rollout ancestry",
+        )
+        .await?;
+        run(
+            self.git()
+                .arg("-C")
+                .arg(&source)
+                .arg("diff")
+                .arg("--check")
+                .arg(format!("{base_commit}..{submitted_commit}")),
+            "validate consumer rollout diff",
+        )
+        .await?;
+        let paths = git_output(
+            self.git()
+                .arg("-C")
+                .arg(&source)
+                .args(["diff", "--name-only"])
+                .arg(format!("{base_commit}..{submitted_commit}")),
+            "inspect consumer rollout paths",
+        )
+        .await?;
+        let invalid = paths
+            .lines()
+            .find(|path| !allowed_rollout_path(rollout.ecosystem, path));
+        if let Some(path) = invalid {
+            return Err(WorkError::Invalid(format!(
+                "rollout changed unrelated path '{path}'"
+            )));
+        }
+        store
+            .record_rollout_submission(&rollout.rollout_id, submitted_commit)
+            .await
+    }
+
+    pub async fn push_rollout(&self, store: &Store, rollout: &RolloutRecord) -> WorkResult<()> {
+        if rollout.state != RolloutState::Validating {
+            return Err(WorkError::Conflict("rollout is not ready to push".into()));
+        }
+        let source = self.rollout_source(rollout)?;
+        let branch = rollout
+            .branch
+            .as_deref()
+            .ok_or_else(|| WorkError::Conflict("rollout branch is missing".into()))?;
+        let submitted_commit = rollout
+            .submitted_commit
+            .as_deref()
+            .ok_or_else(|| WorkError::Conflict("rollout commit is missing".into()))?;
+        let consumer = store.consumer(&rollout.consumer).await?;
+        let reference = format!("refs/heads/{branch}");
+        let remote = git_output(
+            self.git()
+                .args(["ls-remote", &consumer.repository, &reference]),
+            "inspect consumer rollout branch",
+        )
+        .await?;
+        if let Some(commit) = remote.split_whitespace().next() {
+            if commit == submitted_commit {
+                return Ok(());
+            }
+            return Err(WorkError::Conflict(
+                "remote rollout branch already points to a different commit".into(),
+            ));
+        }
+        run(
+            self.git()
+                .arg("-C")
+                .arg(&source)
+                .arg("push")
+                .arg("origin")
+                .arg(format!("{submitted_commit}:{reference}")),
+            "push tested consumer rollout branch",
+        )
+        .await?;
+        Ok(())
+    }
+
     async fn prepare_locked(
         &self,
         store: &Store,
@@ -604,6 +896,43 @@ impl SourceManager {
         }
         Ok(source)
     }
+
+    fn rollout_source(&self, rollout: &RolloutRecord) -> WorkResult<PathBuf> {
+        let source = rollout
+            .worktree
+            .as_deref()
+            .map(PathBuf::from)
+            .ok_or_else(|| WorkError::Conflict("rollout source is not ready".into()))?;
+        let expected = self
+            .root
+            .join("rollouts")
+            .join(&rollout.rollout_id)
+            .join("source");
+        if source != expected {
+            return Err(WorkError::Internal(
+                "rollout source escaped its managed directory".into(),
+            ));
+        }
+        Ok(source)
+    }
+}
+
+fn allowed_rollout_path(ecosystem: vm_packages::PackageEcosystem, path: &str) -> bool {
+    match ecosystem {
+        vm_packages::PackageEcosystem::Npm => matches!(
+            path,
+            "package.json"
+                | "package-lock.json"
+                | "npm-shrinkwrap.json"
+                | "pnpm-lock.yaml"
+                | "yarn.lock"
+        ),
+        vm_packages::PackageEcosystem::Cargo => matches!(path, "Cargo.toml" | "Cargo.lock"),
+        vm_packages::PackageEcosystem::Python => matches!(
+            path,
+            "pyproject.toml" | "uv.lock" | "poetry.lock" | "requirements.txt"
+        ),
+    }
 }
 
 async fn run(command: &mut Command, operation: &str) -> WorkResult<Output> {
@@ -656,7 +985,10 @@ mod tests {
     use std::process::{Command as StdCommand, Stdio};
 
     use super::*;
-    use vm_packages::{CreateCheckout, PackageEcosystem, RegisterPackage};
+    use vm_packages::{
+        CreateCheckout, CreateRollout, PackageEcosystem, PublicationRecord, RegisterConsumer,
+        RegisterPackage, ReleaseRecord, RolloutState,
+    };
 
     fn git(repository: &Path, args: &[&str]) {
         assert!(StdCommand::new("git")
@@ -780,5 +1112,156 @@ mod tests {
             .unwrap();
         assert_eq!(submission.state, WorkflowState::Submitted);
         assert_ne!(submission.base_commit, submission.submitted_commit);
+        source.cleanup_checkout(&active).await.unwrap();
+        source.cleanup_checkout(&active).await.unwrap();
+        assert!(!data.join("agents").join(&active.checkout_id).exists());
+    }
+
+    #[tokio::test]
+    async fn consumer_rollout_isolated_bundle_pushes_only_its_upgrade_branch() {
+        let directory = tempfile::tempdir().unwrap();
+        let package_repository = directory.path().join("package");
+        std::fs::create_dir(&package_repository).unwrap();
+        git(&package_repository, &["init", "--initial-branch", "main"]);
+        git(
+            &package_repository,
+            &["config", "user.email", "test@example.com"],
+        );
+        git(&package_repository, &["config", "user.name", "Test"]);
+        std::fs::write(
+            package_repository.join("Cargo.toml"),
+            "[package]\nname='auth'\nversion='1.1.0'\n",
+        )
+        .unwrap();
+        git(&package_repository, &["add", "Cargo.toml"]);
+        git(&package_repository, &["commit", "-m", "auth release"]);
+
+        let consumer_repository = directory.path().join("consumer-repository");
+        std::fs::create_dir(&consumer_repository).unwrap();
+        git(&consumer_repository, &["init", "--initial-branch", "main"]);
+        git(
+            &consumer_repository,
+            &["config", "user.email", "test@example.com"],
+        );
+        git(&consumer_repository, &["config", "user.name", "Test"]);
+        std::fs::write(
+            consumer_repository.join("Cargo.toml"),
+            "[package]\nname='app'\nversion='1.0.0'\n[dependencies]\nauth='1.0.0'\n",
+        )
+        .unwrap();
+        git(&consumer_repository, &["add", "Cargo.toml"]);
+        git(&consumer_repository, &["commit", "-m", "initial consumer"]);
+
+        let data = directory.path().join("data");
+        let store = Store::open(&data).await.unwrap();
+        store
+            .register_package(RegisterPackage {
+                name: "auth".into(),
+                ecosystem: PackageEcosystem::Cargo,
+                repository: url::Url::from_file_path(&package_repository)
+                    .unwrap()
+                    .into(),
+                default_branch: "main".into(),
+                ci_registry: None,
+            })
+            .await
+            .unwrap();
+        let now = chrono::Utc::now();
+        store.database.lock().await.releases.insert(
+            "rel-auth".into(),
+            ReleaseRecord {
+                release_id: "rel-auth".into(),
+                submission_id: "sub-auth".into(),
+                checkout_id: "checkout-auth".into(),
+                package: "auth".into(),
+                version: "1.1.0".into(),
+                source_repository: url::Url::from_file_path(&package_repository)
+                    .unwrap()
+                    .into(),
+                source_commit: "a".repeat(40),
+                tag: "v1.1.0".into(),
+                artifact_digest: "b".repeat(64),
+                source_pushed: true,
+                expected_registries: vec!["https://packages.example/cargo/".into()],
+                publications: vec![PublicationRecord {
+                    registry: "https://packages.example/cargo/".into(),
+                    artifact_digest: "b".repeat(64),
+                    published_at: now,
+                }],
+                state: WorkflowState::Published,
+                created_at: now,
+                updated_at: now,
+            },
+        );
+        store
+            .register_consumer(RegisterConsumer {
+                name: "app".into(),
+                repository: url::Url::from_file_path(&consumer_repository)
+                    .unwrap()
+                    .into(),
+                default_branch: "main".into(),
+                dependencies: std::collections::BTreeMap::from([("auth".into(), "1.0.0".into())]),
+            })
+            .await
+            .unwrap();
+        let rollout = store
+            .create_rollout(CreateRollout {
+                package: "auth".into(),
+                version: "1.1.0".into(),
+                consumer: "app".into(),
+                actor: "controller".into(),
+                idempotency_key: "create-rollout-source".into(),
+            })
+            .await
+            .unwrap();
+        let source = SourceManager::new(&data);
+        let rollout = source.prepare_rollout(&store, &rollout).await.unwrap();
+        assert_eq!(rollout.state, RolloutState::Active);
+        let bundle = source.rollout_bundle(&rollout).await.unwrap();
+        let agent = directory.path().join("rollout-agent");
+        assert!(StdCommand::new("git")
+            .arg("clone")
+            .arg(&bundle)
+            .arg(&agent)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap()
+            .success());
+        git(&agent, &["switch", rollout.branch.as_deref().unwrap()]);
+        git(&agent, &["config", "user.email", "rollout@example.com"]);
+        git(&agent, &["config", "user.name", "Rollout"]);
+        std::fs::write(
+            agent.join("Cargo.toml"),
+            "[package]\nname='app'\nversion='1.0.0'\n[dependencies]\nauth='1.1.0'\n",
+        )
+        .unwrap();
+        git(&agent, &["add", "Cargo.toml"]);
+        git(&agent, &["commit", "-m", "update auth"]);
+        let submitted = directory.path().join("rollout-submitted.bundle");
+        git(
+            &agent,
+            &["bundle", "create", submitted.to_str().unwrap(), "--all"],
+        );
+        let rollout = source
+            .import_rollout(&store, &rollout, &submitted)
+            .await
+            .unwrap();
+        assert_eq!(rollout.state, RolloutState::Validating);
+        source.push_rollout(&store, &rollout).await.unwrap();
+        let remote = StdCommand::new("git")
+            .arg("-C")
+            .arg(&consumer_repository)
+            .args(["rev-parse", rollout.branch.as_deref().unwrap()])
+            .output()
+            .unwrap();
+        assert!(remote.status.success());
+        assert_eq!(
+            String::from_utf8(remote.stdout).unwrap().trim(),
+            rollout.submitted_commit.as_deref().unwrap()
+        );
+        source.cleanup_rollout(&rollout).await.unwrap();
+        source.cleanup_rollout(&rollout).await.unwrap();
+        assert!(!data.join("rollouts").join(&rollout.rollout_id).exists());
     }
 }

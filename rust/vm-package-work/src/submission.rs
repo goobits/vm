@@ -463,6 +463,9 @@ pub(crate) fn transition_records(
     }
     checkout.state = next;
     checkout.updated_at = now;
+    if next.revokes_lease() {
+        checkout.lease = None;
+    }
     checkout.transitions.push(WorkflowTransition {
         timestamp: now,
         actor: actor.to_string(),

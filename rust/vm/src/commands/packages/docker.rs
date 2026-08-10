@@ -5,7 +5,7 @@ use vm_core::{vm_println, vm_progress};
 use vm_packages::COMPOSE_PROJECT;
 
 use super::files::ApplianceFiles;
-use super::{process, PackageJob};
+use super::{process, MaintenanceTask, PackageJob};
 
 pub(super) fn up(files: &ApplianceFiles, port: u16) -> VmResult<String> {
     doctor(files)?;
@@ -62,6 +62,45 @@ pub(super) fn run_job(files: &ApplianceFiles, job: PackageJob<'_>) -> VmResult<(
             .arg(job.service()),
         "run the ephemeral package job",
     )
+}
+
+pub(super) fn maintenance(files: &ApplianceFiles, task: MaintenanceTask<'_>) -> VmResult<String> {
+    doctor(files)?;
+    let was_running = task.requires_pause() && status(files)? == "running";
+    if task.requires_pause() {
+        process::run(
+            compose(files).args(["stop", "gateway", "registry", "work"]),
+            "pause the Docker package appliance",
+        )?;
+    }
+
+    let mut command = maintenance_command(files, task);
+    let operation = process::output(
+        &mut command,
+        &format!("{} the Docker package appliance", task.action()),
+    );
+    let restart = if was_running {
+        process::run(
+            compose(files).args(["up", "--detach", "gateway"]),
+            "resume the Docker package appliance",
+        )
+    } else {
+        Ok(())
+    };
+    let output = operation?;
+    restart?;
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn maintenance_command(files: &ApplianceFiles, task: MaintenanceTask<'_>) -> Command {
+    let mut command = compose(files);
+    command.args(["run", "--rm", "--no-deps", "--env"]);
+    command.arg(format!("BACKUP_ACTION={}", task.action()));
+    if let Some(backup_id) = task.backup_id() {
+        command.arg("--env").arg(format!("BACKUP_ID={backup_id}"));
+    }
+    command.arg("maintenance");
+    command
 }
 
 fn compose(files: &ApplianceFiles) -> Command {

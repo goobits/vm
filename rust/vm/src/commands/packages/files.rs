@@ -1,4 +1,4 @@
-use std::fs;
+use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
 
 use crate::error::{VmError, VmResult};
@@ -12,9 +12,11 @@ const PUBLISH_TOKEN_FILE: &str = "publish-token";
 const CONTROLLER_TOKEN_FILE: &str = "controller-token";
 const REVIEWER_TOKEN_FILE: &str = "reviewer-token";
 const RELEASE_TOKEN_FILE: &str = "release-token";
+const ROLLOUT_TOKEN_FILE: &str = "rollout-token";
 const GIT_TOKEN_FILE: &str = "git-token";
 const CI_PUBLISH_TOKEN_FILE: &str = "ci-publish-token";
 const STATE_FILE: &str = "state.json";
+const MAINTENANCE_LOCK_FILE: &str = "maintenance.lock";
 
 #[derive(Debug, Clone)]
 pub(super) struct ApplianceFiles {
@@ -79,6 +81,10 @@ impl ApplianceFiles {
         self.root.join(RELEASE_TOKEN_FILE)
     }
 
+    pub(super) fn rollout_token_path(&self) -> PathBuf {
+        self.root.join(ROLLOUT_TOKEN_FILE)
+    }
+
     pub(super) fn read_token(&self) -> VmResult<String> {
         self.token(&self.read_token_path())
     }
@@ -121,6 +127,61 @@ impl ApplianceFiles {
         self.root.join("tart-run.log")
     }
 
+    pub(super) fn acquire_maintenance_lock(&self) -> VmResult<File> {
+        use fs2::FileExt;
+
+        let file = self.lock_file()?;
+        file.try_lock_exclusive().map_err(|_| {
+            VmError::validation(
+                "Another package backup or restore is already running",
+                Some("Wait for it to finish, then retry"),
+            )
+        })?;
+        Ok(file)
+    }
+
+    pub(super) fn acquire_operation_lock(&self) -> VmResult<File> {
+        let file = self.lock_file()?;
+        fs2::FileExt::try_lock_shared(&file).map_err(|_| {
+            VmError::validation(
+                "Package infrastructure maintenance is running",
+                Some("Wait for it to finish, then retry"),
+            )
+        })?;
+        Ok(file)
+    }
+
+    pub(super) fn acquire_lifecycle_lock(&self) -> VmResult<File> {
+        let file = self.lock_file()?;
+        fs2::FileExt::try_lock_exclusive(&file).map_err(|_| {
+            VmError::validation(
+                "Another package infrastructure operation is running",
+                Some("Wait for it to finish, then retry"),
+            )
+        })?;
+        Ok(file)
+    }
+
+    fn lock_file(&self) -> VmResult<File> {
+        self.ensure_root()?;
+        let path = self.root.join(MAINTENANCE_LOCK_FILE);
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&path)
+            .map_err(|error| {
+                VmError::filesystem(
+                    error,
+                    path.display().to_string(),
+                    "open package maintenance lock",
+                )
+            })?;
+        set_mode(&path, 0o600)?;
+        Ok(file)
+    }
+
     pub(super) fn materialize(&self, config: &ApplianceConfig) -> VmResult<()> {
         self.ensure_root()?;
         write_private(&self.compose_path(), COMPOSE_YAML.as_bytes())?;
@@ -132,6 +193,7 @@ impl ApplianceFiles {
             self.controller_token_path(),
             self.reviewer_token_path(),
             self.release_token_path(),
+            self.rollout_token_path(),
         ] {
             if !path.exists() {
                 let token = vm_core::secrets::generate_random_password(48);
@@ -238,6 +300,7 @@ mod tests {
         assert!(files.controller_token_path().is_file());
         assert!(files.reviewer_token_path().is_file());
         assert!(files.release_token_path().is_file());
+        assert!(files.rollout_token_path().is_file());
         assert!(files.git_token_path().is_file());
         assert!(files.ci_publish_token_path().is_file());
         assert_eq!(
@@ -249,5 +312,19 @@ mod tests {
         assert_eq!(files.read_token().unwrap().len(), 48);
         assert_eq!(files.controller_token().unwrap().len(), 48);
         assert!(!files.root().join("npm").exists());
+    }
+
+    #[test]
+    fn maintenance_is_exclusive_while_normal_operations_can_share() {
+        let directory = tempfile::tempdir().unwrap();
+        let files = ApplianceFiles::at(directory.path().join("packages"));
+        let first = files.acquire_operation_lock().unwrap();
+        let second = files.acquire_operation_lock().unwrap();
+        assert!(files.acquire_maintenance_lock().is_err());
+
+        drop((first, second));
+        let maintenance = files.acquire_maintenance_lock().unwrap();
+        assert!(files.acquire_operation_lock().is_err());
+        drop(maintenance);
     }
 }

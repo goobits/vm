@@ -12,6 +12,8 @@ architecture notes stay beside the package they describe.
   [CLI Reference](user-guide/cli-reference.md) owns durable workflows and
   target-selection behavior.
 - [Configuration Guide](user-guide/configuration.md) owns `vm.yaml` semantics.
+- [Package Infrastructure](user-guide/package-infrastructure.md) owns shared
+  package registries, development, release, rollout, and recovery workflows.
 - [Troubleshooting](user-guide/troubleshooting.md) owns recovery guidance.
 - [Testing Guide](development/testing.md) owns supported quality commands.
 - [Architecture](development/architecture.md) owns code boundaries.
@@ -65,6 +67,10 @@ Extending VM functionality with custom plugins.
 **Shared Services**
 [user-guide/shared-services.md](user-guide/shared-services.md)
 Global services shared across all VMs.
+
+**Package Infrastructure**
+[user-guide/package-infrastructure.md](user-guide/package-infrastructure.md)
+Private npm, Cargo, and Python package workflows shared by Docker and Tart.
 
 ---
 

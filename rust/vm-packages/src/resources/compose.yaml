@@ -12,7 +12,6 @@ services:
         condition: service_healthy
       work:
         condition: service_healthy
-    cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
     read_only: true
     tmpfs: ["/tmp"]
@@ -44,11 +43,11 @@ services:
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
     volumes:
-      - registry-npm-artifacts:/data/npm
-      - registry-cargo-artifacts:/data/cargo
-      - registry-pypi-artifacts:/data/pypi
+      - registry-metadata:/data
+      - registry-npm-artifacts:/data/npm/tarballs
+      - registry-cargo-artifacts:/data/cargo/crates
+      - registry-pypi-artifacts:/data/pypi/packages
       - registry-upstream-cache:/data/cache
-      - registry-metadata:/data/metadata
     networks: [packages, egress]
 
   work:
@@ -65,8 +64,9 @@ services:
         export PKG_WORK_CONTROLLER_TOKEN="$$(cat /run/secrets/work_controller_token)"
         export PKG_WORK_REVIEWER_TOKEN="$$(cat /run/secrets/work_reviewer_token)"
         export PKG_WORK_RELEASE_TOKEN="$$(cat /run/secrets/work_release_token)"
+        export PKG_WORK_ROLLOUT_TOKEN="$$(cat /run/secrets/work_rollout_token)"
         exec pkg-work start --host 0.0.0.0 --port 3091 --data /data
-    secrets: [work_read_token, work_controller_token, work_reviewer_token, work_release_token, git_token]
+    secrets: [work_read_token, work_controller_token, work_reviewer_token, work_release_token, work_rollout_token, git_token]
     expose: ["3091"]
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:3091/health"]
@@ -81,6 +81,7 @@ services:
       - workflow-receipts:/data/receipts
       - workflow-logs:/data/logs
       - agent-temporary-data:/data/agents
+      - rollout-temporary-data:/data/rollouts
       - source-mirrors:/data/sources
     networks: [packages, egress]
 
@@ -89,6 +90,8 @@ services:
     image: "${VM_PACKAGES_JOB_IMAGE:?required}"
     environment:
       PKG_REVIEW_GATEWAY: http://gateway:8080
+      PKG_CLIENT_GATEWAY: http://gateway:8080
+      PKG_CLIENT_READ_TOKEN_FILE: /run/secrets/reviewer_read_token
       CARGO_HOME: /tmp/cargo-home
       CARGO_TARGET_DIR: /tmp/cargo-target
       npm_config_cache: /tmp/npm-cache
@@ -96,15 +99,8 @@ services:
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
-        read_token="$$(cat /run/secrets/reviewer_read_token)"
+        . /usr/local/lib/pkg-client-env.sh
         export PKG_REVIEW_TOKEN="$$(cat /run/secrets/reviewer_token)"
-        export NPM_CONFIG_REGISTRY="http://reader:$${read_token}@gateway:8080/npm/"
-        export PIP_INDEX_URL="http://reader:$${read_token}@gateway:8080/pypi/simple/"
-        export CARGO_REGISTRIES_VM_INDEX="sparse+http://gateway:8080/cargo/index/"
-        export CARGO_REGISTRIES_VM_TOKEN="$${read_token}"
-        export CARGO_SOURCE_CRATES_IO_REPLACE_WITH=vm
-        export CARGO_SOURCE_VM_REGISTRY="sparse+http://gateway:8080/cargo/index/"
-        export CARGO_REGISTRY_GLOBAL_CREDENTIAL_PROVIDERS=cargo:token
         exec pkg-review --submission "$${SUBMISSION_ID:?required}"
     secrets: [reviewer_read_token, reviewer_token]
     cap_drop: ["ALL"]
@@ -124,19 +120,131 @@ services:
       PKG_RELEASE_PUBLISH_TOKEN_FILE: /run/secrets/publish_token
       PKG_RELEASE_GIT_TOKEN_FILE: /run/secrets/git_token
       PKG_RELEASE_CI_TOKEN_FILE: /run/secrets/ci_publish_token
+      PKG_CLIENT_GATEWAY: http://gateway:8080
+      PKG_CLIENT_READ_TOKEN_FILE: /run/secrets/releaser_read_token
       CARGO_HOME: /tmp/cargo-home
       CARGO_TARGET_DIR: /tmp/cargo-target
       npm_config_cache: /tmp/npm-cache
       PIP_CACHE_DIR: /tmp/pip-cache
     entrypoint: ["/bin/sh", "-ec"]
     command:
-      - exec pkg-release --submission "$${SUBMISSION_ID:?required}" --push-source
-    secrets: [release_token, publish_token, git_token, ci_publish_token]
+      - |
+        . /usr/local/lib/pkg-client-env.sh
+        exec pkg-release --submission "$${SUBMISSION_ID:?required}" --push-source
+    secrets: [releaser_read_token, release_token, publish_token, git_token, ci_publish_token]
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
     read_only: true
     tmpfs: ["/tmp:rw,exec,nosuid,size=8g"]
     networks: [packages, egress]
+
+  rollout:
+    profiles: [jobs]
+    image: "${VM_PACKAGES_JOB_IMAGE:?required}"
+    environment:
+      PKG_ROLLOUT_GATEWAY: http://gateway:8080
+      PKG_ROLLOUT_TOKEN_FILE: /run/secrets/rollout_token
+      PKG_CLIENT_GATEWAY: http://gateway:8080
+      PKG_CLIENT_READ_TOKEN_FILE: /run/secrets/rollout_read_token
+      CARGO_HOME: /tmp/cargo-home
+      CARGO_TARGET_DIR: /tmp/cargo-target
+      npm_config_cache: /tmp/npm-cache
+      PIP_CACHE_DIR: /tmp/pip-cache
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        . /usr/local/lib/pkg-client-env.sh
+        exec pkg-rollout --rollout "$${ROLLOUT_ID:?required}"
+    secrets: [rollout_read_token, rollout_token]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp:rw,exec,nosuid,size=8g"]
+    networks: [packages]
+
+  maintenance:
+    profiles: [maintenance]
+    image: "${VM_PACKAGES_JOB_IMAGE:?required}"
+    user: "0:0"
+    environment:
+      BACKUP_ACTION: "${BACKUP_ACTION:-list}"
+      BACKUP_ID: "${BACKUP_ID:-}"
+      VM_PACKAGES_VERSION: "${VM_PACKAGES_VERSION:-unknown}"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        datasets="gateway_data gateway_config npm cargo pypi cache metadata state receipts logs agents rollouts sources"
+        valid_id() {
+          test -n "$${BACKUP_ID}" &&
+          test "$${#BACKUP_ID}" -le 160 &&
+          case "$${BACKUP_ID}" in *[!A-Za-z0-9_-]*) false;; *) true;; esac
+        }
+        case "$${BACKUP_ACTION}" in
+          list)
+            find /backups -mindepth 1 -maxdepth 1 -type d -name 'backup-*' -printf '%f\n' | sort
+            ;;
+          backup)
+            valid_id || { echo "invalid backup identifier" >&2; exit 2; }
+            final="/backups/$${BACKUP_ID}"
+            temporary="/backups/.$${BACKUP_ID}.tmp"
+            test ! -e "$${final}" && test ! -e "$${temporary}" || {
+              echo "backup already exists: $${BACKUP_ID}" >&2
+              exit 3
+            }
+            mkdir "$${temporary}"
+            for dataset in $${datasets}; do
+              tar --numeric-owner -C "/volumes/$${dataset}" -czf "$${temporary}/$${dataset}.tar.gz" .
+            done
+            {
+              echo "backup_id=$${BACKUP_ID}"
+              echo "created_at=$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              echo "controller_version=$${VM_PACKAGES_VERSION}"
+              echo "datasets=$${datasets}"
+            } > "$${temporary}/receipt.txt"
+            (cd "$${temporary}" && sha256sum *.tar.gz receipt.txt > manifest.sha256)
+            mv "$${temporary}" "$${final}"
+            echo "$${BACKUP_ID}"
+            ;;
+          restore)
+            valid_id || { echo "invalid backup identifier" >&2; exit 2; }
+            source="/backups/$${BACKUP_ID}"
+            test -d "$${source}" || { echo "backup not found: $${BACKUP_ID}" >&2; exit 4; }
+            (cd "$${source}" && sha256sum --check manifest.sha256)
+            touch "$${source}/restore-in-progress"
+            for dataset in $${datasets}; do
+              target="/volumes/$${dataset}"
+              find "$${target}" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+              tar --numeric-owner -C "$${target}" -xzf "$${source}/$${dataset}.tar.gz"
+            done
+            rm -f "$${source}/restore-in-progress"
+            date -u +%Y-%m-%dT%H:%M:%SZ > "$${source}/restored-at.txt"
+            echo "$${BACKUP_ID}"
+            ;;
+          *)
+            echo "unsupported maintenance action: $${BACKUP_ACTION}" >&2
+            exit 2
+            ;;
+        esac
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp:rw,nosuid,size=256m"]
+    network_mode: none
+    volumes:
+      - infrastructure-backups:/backups
+      - gateway-data:/volumes/gateway_data
+      - gateway-config:/volumes/gateway_config
+      - registry-npm-artifacts:/volumes/npm
+      - registry-cargo-artifacts:/volumes/cargo
+      - registry-pypi-artifacts:/volumes/pypi
+      - registry-upstream-cache:/volumes/cache
+      - registry-metadata:/volumes/metadata
+      - workflow-state:/volumes/state
+      - workflow-receipts:/volumes/receipts
+      - workflow-logs:/volumes/logs
+      - agent-temporary-data:/volumes/agents
+      - rollout-temporary-data:/volumes/rollouts
+      - source-mirrors:/volumes/sources
 
 networks:
   packages:
@@ -158,12 +266,20 @@ secrets:
     file: ./reviewer-token
   work_release_token:
     file: ./release-token
+  work_rollout_token:
+    file: ./rollout-token
   reviewer_read_token:
     file: ./read-token
   reviewer_token:
     file: ./reviewer-token
   release_token:
     file: ./release-token
+  releaser_read_token:
+    file: ./read-token
+  rollout_read_token:
+    file: ./read-token
+  rollout_token:
+    file: ./rollout-token
   git_token:
     file: ./git-token
   ci_publish_token:
@@ -181,4 +297,6 @@ volumes:
   workflow-receipts:
   workflow-logs:
   agent-temporary-data:
+  rollout-temporary-data:
   source-mirrors:
+  infrastructure-backups:

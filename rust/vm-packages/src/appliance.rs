@@ -88,8 +88,12 @@ impl ApplianceConfig {
 
     pub fn environment(&self) -> String {
         format!(
-            "VM_PACKAGES_BIND={}\nVM_PACKAGES_PORT={}\nVM_PACKAGES_REGISTRY_IMAGE={}\nVM_PACKAGES_JOB_IMAGE={}\n",
-            self.bind_address, self.gateway_port, self.registry_image, self.job_image
+            "VM_PACKAGES_BIND={}\nVM_PACKAGES_PORT={}\nVM_PACKAGES_REGISTRY_IMAGE={}\nVM_PACKAGES_JOB_IMAGE={}\nVM_PACKAGES_VERSION={}\n",
+            self.bind_address,
+            self.gateway_port,
+            self.registry_image,
+            self.job_image,
+            env!("CARGO_PKG_VERSION")
         )
     }
 }
@@ -113,21 +117,26 @@ mod tests {
     fn compose_keeps_private_data_in_named_volumes() {
         let definition: serde_yaml_ng::Value = serde_yaml_ng::from_str(COMPOSE_YAML).unwrap();
         assert!(definition.get("services").is_some());
-        assert!(COMPOSE_YAML.contains("registry-npm-artifacts:/data/npm"));
-        assert!(COMPOSE_YAML.contains("registry-cargo-artifacts:/data/cargo"));
-        assert!(COMPOSE_YAML.contains("registry-pypi-artifacts:/data/pypi"));
+        assert!(COMPOSE_YAML.contains("registry-metadata:/data"));
+        assert!(COMPOSE_YAML.contains("registry-npm-artifacts:/data/npm/tarballs"));
+        assert!(COMPOSE_YAML.contains("registry-cargo-artifacts:/data/cargo/crates"));
+        assert!(COMPOSE_YAML.contains("registry-pypi-artifacts:/data/pypi/packages"));
         assert!(COMPOSE_YAML.contains("workflow-state:/data/state"));
         assert!(COMPOSE_YAML.contains("workflow-receipts:/data/receipts"));
         assert!(COMPOSE_YAML.contains("agent-temporary-data:/data/agents"));
+        assert!(COMPOSE_YAML.contains("rollout-temporary-data:/data/rollouts"));
         assert!(COMPOSE_YAML.contains("source-mirrors:/data/sources"));
+        assert!(COMPOSE_YAML.contains("infrastructure-backups:/backups"));
         assert!(COMPOSE_YAML.contains("work_controller_token"));
         assert!(COMPOSE_YAML.contains("work_release_token"));
+        assert!(COMPOSE_YAML.contains("work_rollout_token"));
         assert!(COMPOSE_YAML.contains("agent-temporary-data:/data/agents:ro"));
         assert!(
             COMPOSE_YAML.contains("entrypoint: [\"pkg-release\"]")
                 || COMPOSE_YAML.contains("exec pkg-release")
         );
         assert!(COMPOSE_YAML.contains("profiles: [jobs]"));
+        assert!(COMPOSE_YAML.contains("profiles: [maintenance]"));
         assert!(GATEWAY_CONFIG.contains("reverse_proxy work:3091"));
         assert!(!COMPOSE_YAML.contains("/var/run/docker.sock"));
         assert!(!COMPOSE_YAML.contains("/workspace"));

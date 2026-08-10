@@ -7,7 +7,7 @@ use vm_packages::{
 };
 
 use crate::commands::command_context::{
-    load_or_create_runtime_subject, project_name, RuntimeSubject,
+    load_or_create_runtime_subject, load_runtime_subject, project_name, RuntimeSubject,
 };
 use crate::error::{VmError, VmResult};
 
@@ -15,7 +15,7 @@ use super::{
     configured_state_and_client,
     files::ApplianceFiles,
     gateway_for_provider,
-    runtime::{checkout_root, exec, exec_in_workspace},
+    runtime::{checkout_root, copy_private, exec, exec_in_workspace},
 };
 
 pub(super) struct CheckoutIntent {
@@ -25,6 +25,34 @@ pub(super) struct CheckoutIntent {
     pub(super) agent: String,
     pub(super) consumer: Option<String>,
     pub(super) task: String,
+}
+
+pub(super) fn cleanup_local(
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+    checkout: &vm_packages::CheckoutRecord,
+) -> VmResult<()> {
+    let subject = load_runtime_subject(config_path, profile, None)?;
+    let current_project = project_name(&subject.config);
+    if !checkout
+        .consumers
+        .iter()
+        .any(|consumer| consumer == current_project)
+    {
+        return Err(VmError::validation(
+            "Checkout is not assigned to the current project",
+            None::<String>,
+        ));
+    }
+    exec(
+        &subject,
+        [
+            "rm",
+            "-rf",
+            "--",
+            checkout_root(&checkout.checkout_id).as_str(),
+        ],
+    )
 }
 
 pub(super) async fn handle(files: &ApplianceFiles, intent: CheckoutIntent) -> VmResult<()> {
@@ -67,6 +95,15 @@ pub(super) async fn handle(files: &ApplianceFiles, intent: CheckoutIntent) -> Vm
         &consumer,
         definition.ecosystem,
     ) {
+        let _ = exec(
+            &subject,
+            [
+                "rm",
+                "-rf",
+                "--",
+                checkout_root(&checkout.checkout.checkout_id).as_str(),
+            ],
+        );
         let _ = client
             .transition(
                 &checkout.checkout.checkout_id,
@@ -118,7 +155,13 @@ fn attach(
     let archive_client =
         PackageInfrastructureClient::new(RegistryEndpoints::new(gateway).map_err(VmError::from)?);
     let url = archive_client.checkout_archive_url(&checkout.checkout_id, consumer);
+    let header = format!("{root}/authorization-header");
     exec(subject, ["mkdir", "-p", root.as_str()])?;
+    copy_private(
+        subject,
+        format!("Authorization: Bearer {lease_token}\n").as_bytes(),
+        &header,
+    )?;
     exec(
         subject,
         [
@@ -128,7 +171,7 @@ fn attach(
             "--show-error",
             "--location",
             "--header",
-            &format!("Authorization: Bearer {lease_token}"),
+            &format!("@{header}"),
             &url,
             "--output",
             &archive,
@@ -149,17 +192,6 @@ fn attach(
         ],
     )?;
     exec(subject, ["rm", "-f", archive.as_str()])?;
-    exec(
-        subject,
-        [
-            "/bin/sh",
-            "-c",
-            "umask 077; printf 'Authorization: Bearer %s' \"$1\" > \"$2\"",
-            "vm-package-lease",
-            lease_token,
-            &format!("{root}/authorization-header"),
-        ],
-    )?;
     apply_override(subject, ecosystem, &checkout.package, &source)
 }
 

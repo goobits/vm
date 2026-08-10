@@ -1,0 +1,165 @@
+# Package Infrastructure
+
+VM manages one private package appliance for npm, Cargo, and Python. Package
+source work, validation, review, release, and rollout run in project
+environments or ephemeral appliance containers—not as native Mac processes.
+
+## Architecture
+
+For Docker and Tart consumers together, use the Tart runtime:
+
+```text
+Mac
+  vm CLI + Tart only
+        |
+        v
+Dedicated Linux Tart VM
+  Docker Compose package appliance
+    + gateway         one private URL
+    + registry        npm + Cargo + PyPI + artifact cache/proxy
+    + work service    workflow state, Git mirrors, receipts
+    + ephemeral jobs  review, release, rollout, maintenance
+    + named volumes   artifacts, caches, state, receipts, worktrees
+        |
+        +-----------------------+
+        |                       |
+        v                       v
+Docker project             Tart project
+versioned packages         versioned packages
+or one leased checkout     or one leased checkout
+```
+
+The Mac stores controller configuration and launches Docker or Tart. It does
+not clone package repositories, run package checks, build releases, or publish
+artifacts. Project agents never receive Git credentials or registry storage.
+
+## Start the Appliance
+
+```bash
+vm packages up --runtime tart
+vm packages doctor
+```
+
+Use `--runtime docker` only when every consumer is Docker-based. Its gateway is
+loopback-bound and is deliberately rejected for Tart consumers. The Tart
+appliance exposes its gateway on the private VM address so both providers can
+reach it.
+
+VM injects the gateway and a read-only token through npm, Cargo, and pip
+environment settings whenever it creates or starts a project environment.
+Projects keep ordinary versioned dependencies; no local/remote branch belongs
+in application code.
+
+## Register Sources and Consumers
+
+Store Git and optional remote-registry tokens as controller secrets:
+
+```bash
+vm packages auth --token-file /secure/input/git-token
+vm packages auth --ci-token-file /secure/input/registry-token
+```
+
+The input files are read once. The tokens are exposed only to the scoped
+service or release job that needs them.
+
+Register each package repository and each consumer inventory:
+
+```bash
+vm packages register auth \
+  --ecosystem cargo \
+  --repository https://github.com/example/auth.git \
+  --ci-registry https://ci-registry.example/cargo/index/
+
+vm packages consumer register project-a \
+  --repository https://github.com/example/project-a.git \
+  --dependency auth@1.4.2
+```
+
+Supported ecosystems are `npm`, `cargo`, and `python`. A package has one
+canonical repository and immutable published versions.
+
+## Develop and Release a Package
+
+Run checkout from the selected consumer project:
+
+```bash
+vm packages checkout auth \
+  --agent agent-17 \
+  --task "fix token refresh"
+```
+
+The work service records the canonical base commit, creates a unique branch,
+and returns a bundle to an isolated checkout under the project environment's
+`/tmp`. Only that project receives the unpublished override. Other consumers
+remain on their published versions.
+
+Commit the intended package changes inside the project environment, then run:
+
+```bash
+vm packages submit <checkout-id>
+vm packages integrate <submission-id>
+vm packages publish <submission-id> --push-source
+```
+
+Submission validates the exact bundle and selected consumers, then launches a
+credential-free ephemeral reviewer. Integration is serialized against the
+latest canonical commit. Publication requires explicit source-push authority,
+verifies the semantic version bump, pushes the matching commit and tag, and
+publishes the same immutable artifact locally and to the configured CI
+registry. A successful release closes and removes only its temporary checkout.
+
+Every mutating step is idempotent and writes a durable receipt. A retry resumes
+from the recorded state instead of creating a second merge, tag, or release.
+Use `vm packages cancel <checkout-id>` to stop eligible work. Use
+`vm packages cleanup <checkout-id>` to remove temporary data for a failed,
+rejected, cancelled, or already-published checkout.
+
+## Drift and Explicit Rollouts
+
+Publishing never upgrades consumers automatically:
+
+```bash
+vm packages consumers auth
+vm packages drift
+vm packages rollout auth@1.5.0 --to project-a
+```
+
+A rollout clones the consumer inside an ephemeral job, updates only its root
+manifest and lockfile, runs its checks, and pushes a dedicated review branch.
+The registered consumer version changes only after its normal review process
+updates the inventory. Rerun `vm packages consumer register` with the reviewed
+version to refresh that inventory and close the matching rollout receipt.
+
+## Backup and Recovery
+
+Backups stay inside a private appliance named volume:
+
+```bash
+vm packages backup
+vm packages backups
+vm packages restore <backup-id>
+```
+
+Backup and restore pause the registry and work services, archive every data
+volume separately, and verify SHA-256 manifests before restore. Restores are
+retryable after interruption. `vm packages down` preserves every volume.
+
+These are local operational backups; export the Docker or Tart storage through
+your infrastructure backup system to protect against physical disk loss.
+
+## Security Boundaries
+
+- The gateway is private by default and all workflow routes are authenticated.
+- Read, controller, reviewer, rollout, release, and publish credentials are
+  separate.
+- Project and integration agents never receive Git credentials.
+- Project environments consume registry protocols and never mount registry
+  volumes.
+- Worktrees are isolated by checkout or rollout ID.
+- Only the release job can push source/tags and publish artifacts, and the CLI
+  must explicitly authorize that job.
+- Receipts contain identities, commits, digests, outcomes, and timestamps—not
+  secrets.
+
+Use `vm packages status` for runtime health and `vm packages doctor` for the
+gateway, Compose definition, credentials, and workflow service checks.

@@ -51,6 +51,7 @@ walkdir = { workspace = true }
 num_cpus = { workspace = true }
 flate2 = "1.1"
 tar = "0.4"
+fs2 = { workspace = true }
 
 [features]
 default = []

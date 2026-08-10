@@ -1,3 +1,4 @@
+mod consumer;
 mod error;
 mod io;
 mod release;
@@ -7,7 +8,7 @@ mod store;
 mod submission;
 
 pub use error::{WorkError, WorkResult};
-pub use server::{router, run};
+pub use server::{router, run, WorkCredentials};
 pub use source::SourceManager;
 pub use store::Store;
 pub use submission::ImportedSubmission;

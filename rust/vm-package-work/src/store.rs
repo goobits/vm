@@ -7,11 +7,12 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 use vm_packages::{
-    CheckoutLease, CheckoutRecord, CreateCheckout, LeaseRecord, LeaseRequest, PackageDefinition,
-    ReceiptKind, RegisterPackage, ReleaseRecord, SubmissionRecord, TransitionRequest,
-    WorkflowReceipt, WorkflowState, WorkflowTransition,
+    CheckoutLease, CheckoutRecord, CleanupRequest, ConsumerRecord, CreateCheckout, LeaseRecord,
+    LeaseRequest, PackageDefinition, ReceiptKind, RegisterPackage, ReleaseRecord, RolloutRecord,
+    SubmissionRecord, TransitionRequest, WorkflowReceipt, WorkflowState, WorkflowTransition,
 };
 
+use crate::submission::transition_records;
 use crate::{io::atomic_write, WorkError, WorkResult};
 
 const STATE_FILE: &str = "state/workflows.json";
@@ -41,6 +42,10 @@ pub(crate) struct Database {
     pub(crate) submissions: BTreeMap<String, SubmissionRecord>,
     #[serde(default)]
     pub(crate) releases: BTreeMap<String, ReleaseRecord>,
+    #[serde(default)]
+    pub(crate) consumers: BTreeMap<String, ConsumerRecord>,
+    #[serde(default)]
+    pub(crate) rollouts: BTreeMap<String, RolloutRecord>,
 }
 
 pub struct Store {
@@ -468,50 +473,36 @@ impl Store {
                 .ok_or_else(|| WorkError::Internal("idempotency target is missing".into()));
         }
         let mut next = current.clone();
-        let now = Utc::now();
-        let checkout = next
+        let previous = next
             .checkouts
-            .get_mut(checkout_id)
-            .ok_or_else(|| WorkError::NotFound(checkout_id.to_string()))?;
-        let previous = checkout.state;
+            .get(checkout_id)
+            .ok_or_else(|| WorkError::NotFound(checkout_id.to_string()))?
+            .state;
         if !previous.can_transition_to(request.next) {
             return Err(WorkError::Conflict(format!(
                 "cannot transition from {previous:?} to {:?}",
                 request.next
             )));
         }
-        checkout.state = request.next;
-        checkout.updated_at = now;
-        let receipt = receipt(
-            &mut next,
-            ReceiptInput {
-                kind: ReceiptKind::Transition,
-                checkout_id,
-                actor: &request.actor,
-                previous: Some(previous),
-                next: request.next,
-                commit: request.commit.clone(),
-                validation_result: request.validation_result.clone(),
-                reason: &request.reason,
-                timestamp: now,
-            },
-        );
-        let checkout = next
-            .checkouts
-            .get_mut(checkout_id)
-            .expect("checkout remains present");
-        checkout.transitions.push(WorkflowTransition {
-            timestamp: now,
-            actor: request.actor,
-            previous: Some(previous),
-            next: request.next,
-            commit: request.commit,
-            validation_result: request.validation_result,
-            reason: request.reason,
-            receipt_id: receipt.receipt_id.clone(),
-        });
-        let result = checkout.clone();
-        next.receipts.insert(receipt.receipt_id.clone(), receipt);
+        let submission_id = next
+            .submissions
+            .values()
+            .filter(|submission| submission.checkout_id == checkout_id)
+            .max_by_key(|submission| submission.created_at)
+            .map(|submission| submission.submission_id.clone());
+        if let Some(submission_id) = submission_id {
+            transition_records(
+                &mut next,
+                &submission_id,
+                request.next,
+                ReceiptKind::Transition,
+                &request.actor,
+                &request.reason,
+                request.validation_result.clone(),
+            )?;
+        } else {
+            transition_checkout_record(&mut next, checkout_id, &request)?;
+        }
         next.idempotency.insert(
             request.idempotency_key,
             IdempotencyRecord {
@@ -519,6 +510,87 @@ impl Store {
                 target_id: checkout_id.to_string(),
             },
         );
+        let result = next
+            .checkouts
+            .get(checkout_id)
+            .cloned()
+            .expect("checkout remains present");
+        self.commit(&mut current, next).await?;
+        Ok(result)
+    }
+
+    pub async fn close_checkout(
+        &self,
+        checkout_id: &str,
+        request: CleanupRequest,
+    ) -> WorkResult<CheckoutRecord> {
+        validate_label("cleanup actor", &request.actor)?;
+        validate_idempotency_key(&request.idempotency_key)?;
+        let fingerprint = operation_fingerprint("cleanup_checkout", Some(checkout_id), &request)?;
+        let mut current = self.database.lock().await;
+        if let Some(existing) = current.idempotency.get(&request.idempotency_key) {
+            ensure_fingerprint(existing, &fingerprint)?;
+            return current
+                .checkouts
+                .get(&existing.target_id)
+                .cloned()
+                .ok_or_else(|| WorkError::Internal("idempotency target is missing".into()));
+        }
+        let checkout = current
+            .checkouts
+            .get(checkout_id)
+            .ok_or_else(|| WorkError::NotFound(checkout_id.to_string()))?;
+        if checkout.state == WorkflowState::Closed {
+            return Ok(checkout.clone());
+        }
+        if !matches!(
+            checkout.state,
+            WorkflowState::Published
+                | WorkflowState::Rejected
+                | WorkflowState::Cancelled
+                | WorkflowState::Failed
+        ) {
+            return Err(WorkError::Conflict(
+                "only a terminal checkout can be cleaned up".into(),
+            ));
+        }
+
+        let mut next = current.clone();
+        let submission_id = next
+            .submissions
+            .values()
+            .filter(|submission| submission.checkout_id == checkout_id)
+            .max_by_key(|submission| submission.created_at)
+            .map(|submission| submission.submission_id.clone());
+        if let Some(submission_id) = submission_id {
+            transition_records(
+                &mut next,
+                &submission_id,
+                WorkflowState::Closed,
+                ReceiptKind::Cleanup,
+                &request.actor,
+                "temporary checkout and integration data removed",
+                Some("cleanup_complete".into()),
+            )?;
+        } else {
+            close_checkout_record(&mut next, checkout_id, &request.actor)?;
+        }
+        next.checkouts
+            .get_mut(checkout_id)
+            .expect("checkout remains present")
+            .lease = None;
+        next.idempotency.insert(
+            request.idempotency_key,
+            IdempotencyRecord {
+                fingerprint,
+                target_id: checkout_id.to_string(),
+            },
+        );
+        let result = next
+            .checkouts
+            .get(checkout_id)
+            .cloned()
+            .expect("checkout remains present");
         self.commit(&mut current, next).await?;
         Ok(result)
     }
@@ -613,8 +685,124 @@ impl Store {
             )
             .await?;
         }
+        let consumers = self.root.join("receipts/consumers");
+        tokio::fs::create_dir_all(&consumers).await?;
+        for consumer in database.consumers.values() {
+            atomic_write(
+                consumers.join(format!("{}.json", consumer.name)),
+                pretty_json(consumer)?,
+            )
+            .await?;
+        }
+        let rollouts = self.root.join("receipts/rollouts");
+        tokio::fs::create_dir_all(&rollouts).await?;
+        for rollout in database.rollouts.values() {
+            atomic_write(
+                rollouts.join(format!("{}.json", rollout.rollout_id)),
+                pretty_json(rollout)?,
+            )
+            .await?;
+        }
         Ok(())
     }
+}
+
+fn transition_checkout_record(
+    database: &mut Database,
+    checkout_id: &str,
+    request: &TransitionRequest,
+) -> WorkResult<()> {
+    let previous = database
+        .checkouts
+        .get(checkout_id)
+        .ok_or_else(|| WorkError::NotFound(checkout_id.to_string()))?
+        .state;
+    let now = Utc::now();
+    let transition = receipt(
+        database,
+        ReceiptInput {
+            kind: ReceiptKind::Transition,
+            checkout_id,
+            actor: &request.actor,
+            previous: Some(previous),
+            next: request.next,
+            commit: request.commit.clone(),
+            validation_result: request.validation_result.clone(),
+            reason: &request.reason,
+            timestamp: now,
+        },
+    );
+    let checkout = database
+        .checkouts
+        .get_mut(checkout_id)
+        .expect("checkout remains present");
+    checkout.state = request.next;
+    checkout.updated_at = now;
+    if request.next.revokes_lease() {
+        checkout.lease = None;
+    }
+    checkout.transitions.push(WorkflowTransition {
+        timestamp: now,
+        actor: request.actor.clone(),
+        previous: Some(previous),
+        next: request.next,
+        commit: request.commit.clone(),
+        validation_result: request.validation_result.clone(),
+        reason: request.reason.clone(),
+        receipt_id: transition.receipt_id.clone(),
+    });
+    database
+        .receipts
+        .insert(transition.receipt_id.clone(), transition);
+    Ok(())
+}
+
+fn close_checkout_record(
+    database: &mut Database,
+    checkout_id: &str,
+    actor: &str,
+) -> WorkResult<()> {
+    let checkout = database
+        .checkouts
+        .get(checkout_id)
+        .ok_or_else(|| WorkError::NotFound(checkout_id.to_string()))?;
+    let previous = checkout.state;
+    let commit = checkout.base_commit.clone();
+    let now = Utc::now();
+    let cleanup = receipt(
+        database,
+        ReceiptInput {
+            kind: ReceiptKind::Cleanup,
+            checkout_id,
+            actor,
+            previous: Some(previous),
+            next: WorkflowState::Closed,
+            commit: commit.clone(),
+            validation_result: Some("cleanup_complete".into()),
+            reason: "temporary checkout data removed",
+            timestamp: now,
+        },
+    );
+    let checkout = database
+        .checkouts
+        .get_mut(checkout_id)
+        .expect("checkout remains present");
+    checkout.state = WorkflowState::Closed;
+    checkout.updated_at = now;
+    checkout.transitions.push(WorkflowTransition {
+        timestamp: now,
+        actor: actor.into(),
+        previous: Some(previous),
+        next: WorkflowState::Closed,
+        commit,
+        validation_result: Some("cleanup_complete".into()),
+        reason: "temporary checkout data removed".into(),
+        receipt_id: cleanup.receipt_id.clone(),
+    });
+    database
+        .receipts
+        .insert(cleanup.receipt_id.clone(), cleanup);
+    Ok(())
 }
 
 pub(crate) struct ReceiptInput<'a> {
@@ -644,7 +832,7 @@ pub(crate) fn receipt(database: &mut Database, input: ReceiptInput<'_>) -> Workf
     }
 }
 
-fn next_id(database: &mut Database) -> u64 {
+pub(crate) fn next_id(database: &mut Database) -> u64 {
     database.sequence += 1;
     database.sequence
 }
@@ -688,24 +876,26 @@ fn validate_create(request: &CreateCheckout) -> WorkResult<()> {
 fn validate_register(request: &RegisterPackage) -> WorkResult<()> {
     validate_label("package", &request.name)?;
     validate_label("default branch", &request.default_branch)?;
-    let repository = url::Url::parse(&request.repository)
-        .map_err(|_| WorkError::Invalid("repository must be an absolute URL".into()))?;
-    if !matches!(repository.scheme(), "https" | "ssh" | "file") {
-        return Err(WorkError::Invalid(
-            "repository URL must use https, ssh, or an appliance-local file URL".into(),
-        ));
+    validate_repository_url(&request.repository)?;
+    if let Some(registry) = request.ci_registry.as_deref() {
+        validate_registry_url(registry)?;
     }
-    if repository.password().is_some()
+    Ok(())
+}
+
+pub(crate) fn validate_repository_url(value: &str) -> WorkResult<()> {
+    let repository = url::Url::parse(value)
+        .map_err(|_| WorkError::Invalid("repository must be an absolute URL".into()))?;
+    if !matches!(repository.scheme(), "https" | "ssh" | "file")
+        || repository.password().is_some()
         || (repository.scheme() == "https" && !repository.username().is_empty())
         || repository.query().is_some()
         || repository.fragment().is_some()
     {
         return Err(WorkError::Invalid(
-            "repository URL must not contain credentials, query parameters, or fragments".into(),
+            "repository URL must use https, ssh, or an appliance-local file URL without embedded credentials, query, or fragment"
+                .into(),
         ));
-    }
-    if let Some(registry) = request.ci_registry.as_deref() {
-        validate_registry_url(registry)?;
     }
     Ok(())
 }
@@ -841,6 +1031,7 @@ fn pretty_json(value: &impl Serialize) -> WorkResult<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ImportedSubmission;
     use vm_packages::PackageEcosystem;
 
     fn request(key: &str, agent: &str) -> CreateCheckout {
@@ -1012,5 +1203,133 @@ mod tests {
             .authorize_lease(&checkout.checkout.checkout_id, "project-c", &token)
             .await
             .is_err());
+    }
+
+    #[tokio::test]
+    async fn terminal_checkout_cleanup_is_idempotent_without_source() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).await.unwrap();
+        let checkout = store
+            .create_checkout(request("cleanup", "agent-1"))
+            .await
+            .unwrap()
+            .checkout;
+        store
+            .transition(
+                &checkout.checkout_id,
+                TransitionRequest {
+                    next: WorkflowState::Failed,
+                    actor: "controller".into(),
+                    reason: "source preparation failed".into(),
+                    commit: None,
+                    validation_result: Some("failed".into()),
+                    idempotency_key: "fail-cleanup".into(),
+                },
+            )
+            .await
+            .unwrap();
+        let request = CleanupRequest {
+            actor: "controller".into(),
+            idempotency_key: "close-cleanup".into(),
+        };
+        assert_eq!(
+            store
+                .close_checkout(&checkout.checkout_id, request.clone())
+                .await
+                .unwrap()
+                .state,
+            WorkflowState::Closed
+        );
+        assert_eq!(
+            store
+                .close_checkout(&checkout.checkout_id, request)
+                .await
+                .unwrap()
+                .state,
+            WorkflowState::Closed
+        );
+    }
+
+    #[tokio::test]
+    async fn checkout_transition_keeps_submission_in_sync_when_cancelled() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).await.unwrap();
+        let checkout = store
+            .create_checkout(request("cancel", "agent-1"))
+            .await
+            .unwrap()
+            .checkout;
+        store
+            .record_source(
+                &checkout.checkout_id,
+                "main".into(),
+                "a".repeat(40),
+                "agents/agent-1/cancel".into(),
+                "/data/agents/cancel/source".into(),
+            )
+            .await
+            .unwrap();
+        store
+            .transition(
+                &checkout.checkout_id,
+                TransitionRequest {
+                    next: WorkflowState::Active,
+                    actor: "agent-1".into(),
+                    reason: "attached".into(),
+                    commit: None,
+                    validation_result: None,
+                    idempotency_key: "activate-cancel".into(),
+                },
+            )
+            .await
+            .unwrap();
+        let submission = store
+            .record_submission(
+                &checkout.checkout_id,
+                ImportedSubmission {
+                    submitted_commit: "b".repeat(40),
+                    diff_digest: "c".repeat(64),
+                },
+            )
+            .await
+            .unwrap();
+        store
+            .transition(
+                &checkout.checkout_id,
+                TransitionRequest {
+                    next: WorkflowState::NeedsChanges,
+                    actor: "reviewer".into(),
+                    reason: "revise".into(),
+                    commit: None,
+                    validation_result: Some("needs_changes".into()),
+                    idempotency_key: "revise-cancel".into(),
+                },
+            )
+            .await
+            .unwrap();
+        let cancelled = store
+            .transition(
+                &checkout.checkout_id,
+                TransitionRequest {
+                    next: WorkflowState::Cancelled,
+                    actor: "controller".into(),
+                    reason: "cancelled".into(),
+                    commit: None,
+                    validation_result: Some("cancelled".into()),
+                    idempotency_key: "cancel-checkout".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(cancelled.state, WorkflowState::Cancelled);
+        assert!(cancelled.lease.is_none());
+        assert_eq!(
+            store
+                .submission(&submission.submission_id)
+                .await
+                .unwrap()
+                .state,
+            WorkflowState::Cancelled
+        );
     }
 }

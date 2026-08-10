@@ -231,6 +231,60 @@ fn package_checkout_parses_isolated_work_request() {
 }
 
 #[test]
+fn package_recovery_commands_parse() {
+    assert!(matches!(
+        Args::parse_from(["vm", "packages", "restore", "backup-20260810"]),
+        Args {
+            command: Command::Packages {
+                command: PackagesSubcommand::Restore { backup_id, .. }
+            },
+            ..
+        } if backup_id == "backup-20260810"
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "packages", "cleanup", "pkg-auth-1"]),
+        Args {
+            command: Command::Packages {
+                command: PackagesSubcommand::Cleanup { checkout_id }
+            },
+            ..
+        } if checkout_id == "pkg-auth-1"
+    ));
+}
+
+#[test]
+fn package_inventory_and_rollout_commands_parse() {
+    assert!(matches!(
+        Args::parse_from([
+            "vm",
+            "packages",
+            "consumer",
+            "register",
+            "project-a",
+            "--repository",
+            "https://example.com/project-a.git",
+            "--dependency",
+            "auth@1.4.2",
+        ]),
+        Args {
+            command: Command::Packages {
+                command: PackagesSubcommand::Consumer { .. }
+            },
+            ..
+        }
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "packages", "rollout", "auth@1.5.0", "--to", "project-a"]),
+        Args {
+            command: Command::Packages {
+                command: PackagesSubcommand::Rollout { target, consumer }
+            },
+            ..
+        } if target == "auth@1.5.0" && consumer == "project-a"
+    ));
+}
+
+#[test]
 fn plugin_install_parses() {
     assert!(matches!(
         Args::parse_from(["vm", "plugin", "install", "/path/to/plugin"]).command,

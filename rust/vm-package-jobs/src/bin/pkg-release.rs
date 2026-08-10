@@ -1,4 +1,5 @@
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -8,8 +9,9 @@ use semver::Version;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use vm_packages::{
-    BeginReleaseRequest, CompleteReleaseRequest, PackageEcosystem, PackageInfrastructureClient,
-    PublicationRequest, RegistryEndpoints, ReleaseRecord, VersionRecommendation, WorkflowState,
+    BeginReleaseRequest, CleanupRequest, CompleteReleaseRequest, PackageEcosystem,
+    PackageInfrastructureClient, PublicationRequest, RegistryEndpoints, ReleaseRecord,
+    VersionRecommendation, WorkflowState,
 };
 
 #[derive(Parser)]
@@ -54,7 +56,15 @@ async fn main() -> Result<()> {
     let client = PackageInfrastructureClient::new(RegistryEndpoints::new(&gateway)?)
         .with_release_token(release_token.clone());
     let submission = client.submission(&cli.submission).await?;
-    if submission.state == WorkflowState::Published {
+    if matches!(
+        submission.state,
+        WorkflowState::Published | WorkflowState::Closed
+    ) {
+        let release_id = submission
+            .release_id
+            .as_deref()
+            .context("published submission has no release record")?;
+        cleanup_release(&client, release_id).await?;
         println!("{} is already published", submission.submission_id);
         return Ok(());
     }
@@ -199,10 +209,24 @@ async fn main() -> Result<()> {
             },
         )
         .await?;
+    cleanup_release(&client, &released.release_id).await?;
     println!(
         "{}@{} published from {} ({})",
         released.package, released.version, released.source_commit, released.release_id
     );
+    Ok(())
+}
+
+async fn cleanup_release(client: &PackageInfrastructureClient, release_id: &str) -> Result<()> {
+    client
+        .cleanup_release(
+            release_id,
+            &CleanupRequest {
+                actor: "package-release-service".into(),
+                idempotency_key: operation_key("cleanup", release_id),
+            },
+        )
+        .await?;
     Ok(())
 }
 
@@ -658,12 +682,13 @@ fn publish_artifact(
                 .split_once("://")
                 .map(|(_, rest)| rest)
                 .context("npm registry must be an HTTP(S) URL")?;
-            fs::write(
+            write_secret_file(
                 &npmrc,
                 format!(
                     "registry={}\n//{}:_authToken={}\nalways-auth=true\n",
                     destination.registry, authority, destination.token
-                ),
+                )
+                .as_bytes(),
             )?;
             run(
                 Command::new("npm")
@@ -678,19 +703,13 @@ fn publish_artifact(
         PackageEcosystem::Cargo => {
             run(
                 Command::new("cargo")
-                    .args([
-                        "publish",
-                        "--no-verify",
-                        "--registry",
-                        "vmrelease",
-                        "--token",
-                    ])
-                    .arg(&destination.token)
+                    .args(["publish", "--no-verify", "--registry", "vmrelease"])
                     .arg("--config")
                     .arg(format!(
                         "registries.vmrelease.index=\"{}\"",
                         destination.registry
                     ))
+                    .env("CARGO_REGISTRIES_VMRELEASE_TOKEN", &destination.token)
                     .current_dir(source),
                 "publish Cargo release",
             )?;
@@ -705,16 +724,25 @@ fn publish_artifact(
                         "--non-interactive",
                         "--repository-url",
                         &destination.registry,
-                        "--username",
-                        "__token__",
-                        "--password",
-                        &destination.token,
                     ])
                     .arg(artifact)
+                    .env("TWINE_USERNAME", "__token__")
+                    .env("TWINE_PASSWORD", &destination.token)
                     .current_dir(source),
                 "publish Python release",
             )?;
         }
+    }
+    Ok(())
+}
+
+fn write_secret_file(path: &Path, content: &[u8]) -> Result<()> {
+    let mut file = OpenOptions::new().create_new(true).write(true).open(path)?;
+    file.write_all(content)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(fs::Permissions::from_mode(0o600))?;
     }
     Ok(())
 }

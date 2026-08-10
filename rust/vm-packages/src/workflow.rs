@@ -49,6 +49,13 @@ impl WorkflowState {
     pub fn is_terminal(self) -> bool {
         matches!(self, Self::Closed)
     }
+
+    pub fn revokes_lease(self) -> bool {
+        matches!(
+            self,
+            Self::Published | Self::Rejected | Self::Cancelled | Self::Failed | Self::Closed
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -125,6 +132,12 @@ pub struct TransitionRequest {
     pub reason: String,
     pub commit: Option<String>,
     pub validation_result: Option<String>,
+    pub idempotency_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CleanupRequest {
+    pub actor: String,
     pub idempotency_key: String,
 }
 

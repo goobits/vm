@@ -1,13 +1,14 @@
 use std::collections::BTreeMap;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    BeginReleaseRequest, CheckoutLease, CheckoutRecord, CompleteReleaseRequest, CreateCheckout,
-    IntegrationRequest, LeaseRequest, PackageDefinition, PublicationRequest, RegisterPackage,
-    RegistryEndpoints, ReleaseRecord, ReviewRequest, SubmissionRecord, TransitionRequest,
-    ValidationRequest, WorkflowReceipt,
+    BeginReleaseRequest, CheckoutLease, CheckoutRecord, CleanupRequest, CompleteReleaseRequest,
+    ConsumerRecord, ConsumerUsage, CreateCheckout, CreateRollout, IntegrationRequest, LeaseRequest,
+    PackageDefinition, PackageDrift, PublicationRequest, RegisterConsumer, RegisterPackage,
+    RegistryEndpoints, ReleaseRecord, ReviewRequest, RolloutRecord, RolloutValidationRequest,
+    SubmissionRecord, TransitionRequest, ValidationRequest, WorkflowReceipt,
 };
 
 pub type PackageInventory = BTreeMap<String, Vec<String>>;
@@ -28,6 +29,7 @@ pub struct PackageInfrastructureClient {
     controller_token: Option<String>,
     reviewer_token: Option<String>,
     release_token: Option<String>,
+    rollout_token: Option<String>,
 }
 
 impl PackageInfrastructureClient {
@@ -39,6 +41,7 @@ impl PackageInfrastructureClient {
             controller_token: None,
             reviewer_token: None,
             release_token: None,
+            rollout_token: None,
         }
     }
 
@@ -59,6 +62,11 @@ impl PackageInfrastructureClient {
 
     pub fn with_release_token(mut self, token: impl Into<String>) -> Self {
         self.release_token = Some(token.into());
+        self
+    }
+
+    pub fn with_rollout_token(mut self, token: impl Into<String>) -> Self {
+        self.rollout_token = Some(token.into());
         self
     }
 
@@ -177,24 +185,15 @@ impl PackageInfrastructureClient {
         submission_id: &str,
         request: &ReviewRequest,
     ) -> Result<SubmissionRecord> {
-        let url = self.work_url(&format!("v1/submissions/{submission_id}/review"));
-        let token = self
-            .reviewer_token
-            .as_ref()
-            .or(self.controller_token.as_ref())
-            .context("package workflow reviewer credential is unavailable")?;
-        self.http
-            .post(&url)
-            .bearer_auth(token)
-            .json(request)
-            .send()
-            .await
-            .with_context(|| format!("failed to connect to package workflow at {url}"))?
-            .error_for_status()
-            .with_context(|| format!("package workflow rejected POST {url}"))?
-            .json()
-            .await
-            .with_context(|| format!("package workflow returned invalid JSON from {url}"))
+        self.post_authenticated(
+            &format!("v1/submissions/{submission_id}/review"),
+            request,
+            self.reviewer_token
+                .as_deref()
+                .or(self.controller_token.as_deref()),
+            "reviewer",
+        )
+        .await
     }
 
     pub async fn prepare_integration(
@@ -256,6 +255,63 @@ impl PackageInfrastructureClient {
             .await
     }
 
+    pub async fn cleanup_release(
+        &self,
+        release_id: &str,
+        request: &CleanupRequest,
+    ) -> Result<CheckoutRecord> {
+        self.post_release(&format!("v1/releases/{release_id}/cleanup"), request)
+            .await
+    }
+
+    pub async fn cleanup_checkout(
+        &self,
+        checkout_id: &str,
+        request: &CleanupRequest,
+    ) -> Result<CheckoutRecord> {
+        self.post_work(&format!("v1/checkouts/{checkout_id}/cleanup"), request)
+            .await
+    }
+
+    pub async fn register_consumer(&self, request: &RegisterConsumer) -> Result<ConsumerRecord> {
+        self.post_work("v1/consumers", request).await
+    }
+
+    pub async fn consumers(&self) -> Result<Vec<ConsumerRecord>> {
+        self.get_work("v1/consumers").await
+    }
+
+    pub async fn package_consumers(&self, package: &str) -> Result<Vec<ConsumerUsage>> {
+        let package = url::form_urlencoded::byte_serialize(package.as_bytes()).collect::<String>();
+        self.get_work(&format!("v1/consumers/by-package/{package}"))
+            .await
+    }
+
+    pub async fn drift(&self) -> Result<Vec<PackageDrift>> {
+        self.get_work("v1/drift").await
+    }
+
+    pub async fn create_rollout(&self, request: &CreateRollout) -> Result<RolloutRecord> {
+        self.post_work("v1/rollouts", request).await
+    }
+
+    pub async fn rollouts(&self) -> Result<Vec<RolloutRecord>> {
+        self.get_work("v1/rollouts").await
+    }
+
+    pub async fn rollout(&self, rollout_id: &str) -> Result<RolloutRecord> {
+        self.get_work(&format!("v1/rollouts/{rollout_id}")).await
+    }
+
+    pub async fn complete_rollout(
+        &self,
+        rollout_id: &str,
+        request: &RolloutValidationRequest,
+    ) -> Result<RolloutRecord> {
+        self.post_rollout(&format!("v1/rollouts/{rollout_id}/complete"), request)
+            .await
+    }
+
     pub fn checkout_archive_url(&self, checkout_id: &str, consumer: &str) -> String {
         let consumer =
             url::form_urlencoded::byte_serialize(consumer.as_bytes()).collect::<String>();
@@ -284,6 +340,14 @@ impl PackageInfrastructureClient {
         self.work_url(&format!("v1/submissions/{submission_id}/release-bundle"))
     }
 
+    pub fn rollout_bundle_url(&self, rollout_id: &str) -> String {
+        self.work_url(&format!("v1/rollouts/{rollout_id}/bundle"))
+    }
+
+    pub fn rollout_upload_url(&self, rollout_id: &str) -> String {
+        self.work_url(&format!("v1/rollouts/{rollout_id}/submission"))
+    }
+
     async fn get_json<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T> {
         let url = format!("{}/{}", self.endpoints.gateway(), path);
         let mut request = self.http.get(&url);
@@ -309,6 +373,7 @@ impl PackageInfrastructureClient {
             .or(self.controller_token.as_ref())
             .or(self.reviewer_token.as_ref())
             .or(self.release_token.as_ref())
+            .or(self.rollout_token.as_ref())
             .context("package workflow read credential is unavailable")?;
         self.http
             .get(&url)
@@ -328,22 +393,8 @@ impl PackageInfrastructureClient {
         T: serde::de::DeserializeOwned,
         B: Serialize + ?Sized,
     {
-        let Some(token) = self.controller_token.as_ref() else {
-            bail!("package workflow controller credential is unavailable");
-        };
-        let url = self.work_url(path);
-        self.http
-            .post(&url)
-            .bearer_auth(token)
-            .json(body)
-            .send()
+        self.post_authenticated(path, body, self.controller_token.as_deref(), "controller")
             .await
-            .with_context(|| format!("failed to connect to package workflow at {url}"))?
-            .error_for_status()
-            .with_context(|| format!("package workflow rejected POST {url}"))?
-            .json()
-            .await
-            .with_context(|| format!("package workflow returned invalid JSON from {url}"))
     }
 
     async fn post_release<T, B>(&self, path: &str, body: &B) -> Result<T>
@@ -351,11 +402,46 @@ impl PackageInfrastructureClient {
         T: serde::de::DeserializeOwned,
         B: Serialize + ?Sized,
     {
-        let token = self
-            .release_token
-            .as_ref()
-            .or(self.controller_token.as_ref())
-            .context("package workflow release credential is unavailable")?;
+        self.post_authenticated(
+            path,
+            body,
+            self.release_token
+                .as_deref()
+                .or(self.controller_token.as_deref()),
+            "release",
+        )
+        .await
+    }
+
+    async fn post_rollout<T, B>(&self, path: &str, body: &B) -> Result<T>
+    where
+        T: serde::de::DeserializeOwned,
+        B: Serialize + ?Sized,
+    {
+        self.post_authenticated(
+            path,
+            body,
+            self.rollout_token
+                .as_deref()
+                .or(self.controller_token.as_deref()),
+            "rollout",
+        )
+        .await
+    }
+
+    async fn post_authenticated<T, B>(
+        &self,
+        path: &str,
+        body: &B,
+        token: Option<&str>,
+        scope: &str,
+    ) -> Result<T>
+    where
+        T: serde::de::DeserializeOwned,
+        B: Serialize + ?Sized,
+    {
+        let token =
+            token.with_context(|| format!("package workflow {scope} credential is unavailable"))?;
         let url = self.work_url(path);
         self.http
             .post(&url)

@@ -7,6 +7,7 @@
 mod appliance;
 mod catalog;
 mod client;
+mod consumer;
 mod credentials;
 mod ecosystem;
 mod environment;
@@ -20,6 +21,10 @@ pub use appliance::{
 };
 pub use catalog::{PackageDefinition, RegisterPackage};
 pub use client::{InfrastructureStatus, PackageInfrastructureClient, PackageInventory};
+pub use consumer::{
+    ConsumerRecord, ConsumerUsage, CreateRollout, PackageDrift, RegisterConsumer, RolloutRecord,
+    RolloutState, RolloutTransition, RolloutValidationRequest,
+};
 pub use credentials::authorization_token;
 pub use ecosystem::{PackageEcosystem, ParsePackageEcosystemError};
 pub use environment::{ClientEnvironment, RegistryEndpoints};
@@ -33,6 +38,6 @@ pub use submission::{
     VersionRecommendation,
 };
 pub use workflow::{
-    CheckoutLease, CheckoutRecord, CreateCheckout, LeaseRecord, LeaseRequest, ReceiptKind,
-    TransitionRequest, WorkflowReceipt, WorkflowState, WorkflowTransition,
+    CheckoutLease, CheckoutRecord, CleanupRequest, CreateCheckout, LeaseRecord, LeaseRequest,
+    ReceiptKind, TransitionRequest, WorkflowReceipt, WorkflowState, WorkflowTransition,
 };

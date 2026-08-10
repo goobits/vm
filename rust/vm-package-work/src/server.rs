@@ -15,10 +15,12 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio_util::io::ReaderStream;
 use vm_packages::{
-    authorization_token, BeginReleaseRequest, CheckoutLease, CompleteReleaseRequest,
-    CreateCheckout, IntegrationRequest, LeaseRequest, PackageDefinition, PublicationRequest,
-    RegisterPackage, ReleaseRecord, ReviewRequest, SubmissionRecord, TransitionRequest,
-    ValidationRequest, WorkflowState,
+    authorization_token, BeginReleaseRequest, CheckoutLease, CleanupRequest,
+    CompleteReleaseRequest, ConsumerRecord, ConsumerUsage, CreateCheckout, CreateRollout,
+    IntegrationRequest, LeaseRequest, PackageDefinition, PackageDrift, PublicationRequest,
+    RegisterConsumer, RegisterPackage, ReleaseRecord, ReviewRequest, RolloutRecord, RolloutState,
+    RolloutValidationRequest, SubmissionRecord, TransitionRequest, ValidationRequest,
+    WorkflowState,
 };
 
 use crate::{SourceManager, Store, WorkError, WorkResult};
@@ -26,37 +28,74 @@ use crate::{SourceManager, Store, WorkError, WorkResult};
 const MAX_SUBMISSION_BYTES: u64 = 256 * 1024 * 1024;
 
 #[derive(Clone)]
-struct Access {
+pub struct WorkCredentials {
     read_token: String,
     controller_token: String,
     reviewer_token: String,
     release_token: String,
+    rollout_token: String,
+}
+
+impl WorkCredentials {
+    pub fn new(
+        read_token: impl Into<String>,
+        controller_token: impl Into<String>,
+        reviewer_token: impl Into<String>,
+        release_token: impl Into<String>,
+        rollout_token: impl Into<String>,
+    ) -> Self {
+        Self {
+            read_token: read_token.into(),
+            controller_token: controller_token.into(),
+            reviewer_token: reviewer_token.into(),
+            release_token: release_token.into(),
+            rollout_token: rollout_token.into(),
+        }
+    }
+
+    fn tokens(&self) -> [&str; 5] {
+        [
+            &self.read_token,
+            &self.controller_token,
+            &self.reviewer_token,
+            &self.release_token,
+            &self.rollout_token,
+        ]
+    }
+
+    fn validate(&self) -> WorkResult<()> {
+        let tokens = self.tokens();
+        if tokens.iter().any(|token| token.trim().is_empty()) {
+            return Err(WorkError::Invalid(
+                "read, controller, reviewer, release, and rollout tokens are required".into(),
+            ));
+        }
+        if tokens
+            .iter()
+            .enumerate()
+            .any(|(index, token)| tokens[..index].contains(token))
+        {
+            return Err(WorkError::Invalid(
+                "read, controller, reviewer, release, and rollout tokens must be distinct".into(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
 struct AppState {
     store: Arc<Store>,
     source: SourceManager,
-    access: Access,
+    access: WorkCredentials,
 }
 
-pub fn router(
-    store: Arc<Store>,
-    read_token: impl Into<String>,
-    controller_token: impl Into<String>,
-    reviewer_token: impl Into<String>,
-    release_token: impl Into<String>,
-) -> Router {
+pub fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router {
     let source = SourceManager::new(store.root());
     let state = AppState {
         store,
         source,
-        access: Access {
-            read_token: read_token.into(),
-            controller_token: controller_token.into(),
-            reviewer_token: reviewer_token.into(),
-            release_token: release_token.into(),
-        },
+        access: credentials,
     };
     let reads = Router::new()
         .route("/v1/packages", get(list_packages))
@@ -68,6 +107,11 @@ pub fn router(
         .route("/v1/submissions/{submission_id}", get(get_submission))
         .route("/v1/releases", get(list_releases))
         .route("/v1/releases/{release_id}", get(get_release))
+        .route("/v1/consumers", get(list_consumers))
+        .route("/v1/consumers/by-package/{*name}", get(package_consumers))
+        .route("/v1/drift", get(drift))
+        .route("/v1/rollouts", get(list_rollouts))
+        .route("/v1/rollouts/{rollout_id}", get(get_rollout))
         .route(
             "/v1/checkouts/{checkout_id}/submission",
             get(get_checkout_submission),
@@ -76,12 +120,18 @@ pub fn router(
     let writes = Router::new()
         .route("/v1/packages", post(register_package))
         .route("/v1/checkouts", post(create_checkout))
+        .route("/v1/consumers", post(register_consumer))
+        .route("/v1/rollouts", post(create_rollout))
         .route("/v1/checkouts/{checkout_id}/lease/renew", post(renew_lease))
         .route(
             "/v1/checkouts/{checkout_id}/lease/release",
             post(release_lease),
         )
         .route("/v1/checkouts/{checkout_id}/transition", post(transition))
+        .route(
+            "/v1/checkouts/{checkout_id}/cleanup",
+            post(cleanup_checkout),
+        )
         .route(
             "/v1/submissions/{submission_id}/validate",
             post(validate_submission),
@@ -114,11 +164,17 @@ pub fn router(
             post(record_publication),
         )
         .route("/v1/releases/{release_id}/complete", post(complete_release))
+        .route("/v1/releases/{release_id}/cleanup", post(cleanup_release))
         .route(
             "/v1/submissions/{submission_id}/release-bundle",
             get(download_release_bundle),
         )
         .route_layer(middleware::from_fn_with_state(state.clone(), release_auth));
+    let rollouts = Router::new()
+        .route("/v1/rollouts/{rollout_id}/bundle", get(download_rollout))
+        .route("/v1/rollouts/{rollout_id}/submission", post(upload_rollout))
+        .route("/v1/rollouts/{rollout_id}/complete", post(complete_rollout))
+        .route_layer(middleware::from_fn_with_state(state.clone(), rollout_auth));
 
     Router::new()
         .route("/health", get(health))
@@ -135,6 +191,7 @@ pub fn router(
         .merge(writes)
         .merge(reviews)
         .merge(releases)
+        .merge(rollouts)
         .with_state(state)
 }
 
@@ -142,45 +199,13 @@ pub async fn run(
     host: String,
     port: u16,
     data: PathBuf,
-    read_token: String,
-    controller_token: String,
-    reviewer_token: String,
-    release_token: String,
+    credentials: WorkCredentials,
 ) -> WorkResult<()> {
-    if read_token.trim().is_empty()
-        || controller_token.trim().is_empty()
-        || reviewer_token.trim().is_empty()
-        || release_token.trim().is_empty()
-    {
-        return Err(WorkError::Invalid(
-            "read, controller, reviewer, and release tokens are required".into(),
-        ));
-    }
-    if read_token == controller_token
-        || read_token == reviewer_token
-        || controller_token == reviewer_token
-        || read_token == release_token
-        || controller_token == release_token
-        || reviewer_token == release_token
-    {
-        return Err(WorkError::Invalid(
-            "read, controller, reviewer, and release tokens must be distinct".into(),
-        ));
-    }
+    credentials.validate()?;
     let listener = TcpListener::bind((host.as_str(), port)).await?;
     let store = Arc::new(Store::open(data).await?);
     tracing::info!(host, port, "package-work service listening");
-    axum::serve(
-        listener,
-        router(
-            store,
-            read_token,
-            controller_token,
-            reviewer_token,
-            release_token,
-        ),
-    )
-    .await?;
+    axum::serve(listener, router(store, credentials)).await?;
     Ok(())
 }
 
@@ -250,6 +275,32 @@ async fn get_release(
     Ok(Json(state.store.release(&release_id).await?))
 }
 
+async fn list_consumers(State(state): State<AppState>) -> WorkResult<Json<Vec<ConsumerRecord>>> {
+    Ok(Json(state.store.consumers().await))
+}
+
+async fn package_consumers(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> WorkResult<Json<Vec<ConsumerUsage>>> {
+    Ok(Json(state.store.package_consumers(&name).await?))
+}
+
+async fn drift(State(state): State<AppState>) -> WorkResult<Json<Vec<PackageDrift>>> {
+    Ok(Json(state.store.drift().await))
+}
+
+async fn list_rollouts(State(state): State<AppState>) -> WorkResult<Json<Vec<RolloutRecord>>> {
+    Ok(Json(state.store.rollouts().await))
+}
+
+async fn get_rollout(
+    State(state): State<AppState>,
+    Path(rollout_id): Path<String>,
+) -> WorkResult<Json<RolloutRecord>> {
+    Ok(Json(state.store.rollout(&rollout_id).await?))
+}
+
 async fn create_checkout(
     State(state): State<AppState>,
     Json(request): Json<CreateCheckout>,
@@ -268,6 +319,25 @@ async fn register_package(
         StatusCode::CREATED,
         Json(state.store.register_package(request).await?),
     ))
+}
+
+async fn register_consumer(
+    State(state): State<AppState>,
+    Json(request): Json<RegisterConsumer>,
+) -> WorkResult<(StatusCode, Json<ConsumerRecord>)> {
+    Ok((
+        StatusCode::CREATED,
+        Json(state.store.register_consumer(request).await?),
+    ))
+}
+
+async fn create_rollout(
+    State(state): State<AppState>,
+    Json(request): Json<CreateRollout>,
+) -> WorkResult<(StatusCode, Json<RolloutRecord>)> {
+    let rollout = state.store.create_rollout(request).await?;
+    let rollout = state.source.prepare_rollout(&state.store, &rollout).await?;
+    Ok((StatusCode::CREATED, Json(rollout)))
 }
 
 async fn renew_lease(
@@ -376,6 +446,64 @@ async fn complete_release(
     ))
 }
 
+async fn cleanup_release(
+    State(state): State<AppState>,
+    Path(release_id): Path<String>,
+    Json(request): Json<CleanupRequest>,
+) -> WorkResult<Json<vm_packages::CheckoutRecord>> {
+    let release = state.store.release(&release_id).await?;
+    if release.state != WorkflowState::Published {
+        return Err(WorkError::Conflict(
+            "only a published release checkout can be cleaned up".into(),
+        ));
+    }
+    let checkout = state.store.get_checkout(&release.checkout_id).await?;
+    if !matches!(
+        checkout.state,
+        WorkflowState::Published | WorkflowState::Closed
+    ) {
+        return Err(WorkError::Conflict(
+            "release checkout is not ready for cleanup".into(),
+        ));
+    }
+    cleanup_managed_checkout(&state, checkout, request).await
+}
+
+async fn cleanup_checkout(
+    State(state): State<AppState>,
+    Path(checkout_id): Path<String>,
+    Json(request): Json<CleanupRequest>,
+) -> WorkResult<Json<vm_packages::CheckoutRecord>> {
+    let checkout = state.store.get_checkout(&checkout_id).await?;
+    if !matches!(
+        checkout.state,
+        WorkflowState::Published
+            | WorkflowState::Rejected
+            | WorkflowState::Cancelled
+            | WorkflowState::Failed
+            | WorkflowState::Closed
+    ) {
+        return Err(WorkError::Conflict(
+            "only a terminal checkout can be cleaned up".into(),
+        ));
+    }
+    cleanup_managed_checkout(&state, checkout, request).await
+}
+
+async fn cleanup_managed_checkout(
+    state: &AppState,
+    checkout: vm_packages::CheckoutRecord,
+    request: CleanupRequest,
+) -> WorkResult<Json<vm_packages::CheckoutRecord>> {
+    state.source.cleanup_checkout(&checkout).await?;
+    Ok(Json(
+        state
+            .store
+            .close_checkout(&checkout.checkout_id, request)
+            .await?,
+    ))
+}
+
 #[derive(serde::Deserialize)]
 struct ArchiveQuery {
     consumer: String,
@@ -430,28 +558,7 @@ async fn upload_submission(
         .await?;
     let staging = state.source.submission_staging_path(&checkout).await?;
     let result = async {
-        let mut file = tokio::fs::File::create(&staging).await?;
-        let mut stream = body.into_data_stream();
-        let mut written = 0_u64;
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|error| {
-                WorkError::Invalid(format!("failed to read submitted bundle: {error}"))
-            })?;
-            written = written
-                .checked_add(chunk.len() as u64)
-                .ok_or_else(|| WorkError::Invalid("submitted bundle is too large".into()))?;
-            if written > MAX_SUBMISSION_BYTES {
-                return Err(WorkError::Invalid(format!(
-                    "submitted bundle exceeds {MAX_SUBMISSION_BYTES} bytes"
-                )));
-            }
-            file.write_all(&chunk).await?;
-        }
-        file.sync_all().await?;
-        drop(file);
-        if written == 0 {
-            return Err(WorkError::Invalid("submitted bundle is empty".into()));
-        }
+        receive_bundle(body, &staging, "submitted").await?;
         state
             .source
             .import_submission(&state.store, &checkout, &staging)
@@ -462,6 +569,93 @@ async fn upload_submission(
         let _ = tokio::fs::remove_file(&staging).await;
     }
     Ok((StatusCode::CREATED, Json(result?)))
+}
+
+async fn download_rollout(
+    State(state): State<AppState>,
+    Path(rollout_id): Path<String>,
+) -> WorkResult<Response> {
+    let rollout = state.store.rollout(&rollout_id).await?;
+    if rollout.state != RolloutState::Active {
+        return Err(WorkError::Conflict("rollout is not active".into()));
+    }
+    let bundle = state.source.rollout_bundle(&rollout).await?;
+    let file = tokio::fs::File::open(bundle).await?;
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/x-git-bundle"),
+            (
+                header::CONTENT_DISPOSITION,
+                "attachment; filename=rollout.bundle",
+            ),
+        ],
+        Body::from_stream(ReaderStream::new(file)),
+    )
+        .into_response())
+}
+
+async fn upload_rollout(
+    State(state): State<AppState>,
+    Path(rollout_id): Path<String>,
+    body: Body,
+) -> WorkResult<(StatusCode, Json<RolloutRecord>)> {
+    let rollout = state.store.rollout(&rollout_id).await?;
+    if rollout.state != RolloutState::Active {
+        return Err(WorkError::Conflict("rollout is not active".into()));
+    }
+    let staging = state.source.rollout_staging_path(&rollout).await?;
+    let result = async {
+        receive_bundle(body, &staging, "rollout").await?;
+        state
+            .source
+            .import_rollout(&state.store, &rollout, &staging)
+            .await
+    }
+    .await;
+    let _ = tokio::fs::remove_file(&staging).await;
+    Ok((StatusCode::CREATED, Json(result?)))
+}
+
+async fn complete_rollout(
+    State(state): State<AppState>,
+    Path(rollout_id): Path<String>,
+    Json(request): Json<RolloutValidationRequest>,
+) -> WorkResult<Json<RolloutRecord>> {
+    let rollout = state.store.rollout(&rollout_id).await?;
+    if request.passed {
+        state.source.push_rollout(&state.store, &rollout).await?;
+        state.source.cleanup_rollout(&rollout).await?;
+    }
+    let completed = state.store.complete_rollout(&rollout_id, request).await?;
+    if !completed.state.eq(&RolloutState::ReadyForReview) {
+        state.source.cleanup_rollout(&completed).await?;
+    }
+    Ok(Json(completed))
+}
+
+async fn receive_bundle(body: Body, path: &std::path::Path, label: &str) -> WorkResult<()> {
+    let mut file = tokio::fs::File::create(path).await?;
+    let mut stream = body.into_data_stream();
+    let mut written = 0_u64;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|error| {
+            WorkError::Invalid(format!("failed to read {label} bundle: {error}"))
+        })?;
+        written = written
+            .checked_add(chunk.len() as u64)
+            .ok_or_else(|| WorkError::Invalid(format!("{label} bundle is too large")))?;
+        if written > MAX_SUBMISSION_BYTES {
+            return Err(WorkError::Invalid(format!(
+                "{label} bundle exceeds {MAX_SUBMISSION_BYTES} bytes"
+            )));
+        }
+        file.write_all(&chunk).await?;
+    }
+    file.sync_all().await?;
+    if written == 0 {
+        return Err(WorkError::Invalid(format!("{label} bundle is empty")));
+    }
+    Ok(())
 }
 
 async fn download_integration(
@@ -530,14 +724,7 @@ async fn read_auth(
     request: Request,
     next: Next,
 ) -> WorkResult<Response> {
-    let token = request_token(&request)?;
-    if token != state.access.read_token
-        && token != state.access.controller_token
-        && token != state.access.reviewer_token
-        && token != state.access.release_token
-    {
-        return Err(WorkError::Unauthorized("invalid read credential".into()));
-    }
+    authorize(&request, &state.access.tokens(), "read")?;
     Ok(next.run(request).await)
 }
 
@@ -546,10 +733,24 @@ async fn release_auth(
     request: Request,
     next: Next,
 ) -> WorkResult<Response> {
-    let token = request_token(&request)?;
-    if token != state.access.release_token && token != state.access.controller_token {
-        return Err(WorkError::Unauthorized("invalid release credential".into()));
-    }
+    authorize(
+        &request,
+        &[&state.access.release_token, &state.access.controller_token],
+        "release",
+    )?;
+    Ok(next.run(request).await)
+}
+
+async fn rollout_auth(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> WorkResult<Response> {
+    authorize(
+        &request,
+        &[&state.access.rollout_token, &state.access.controller_token],
+        "rollout",
+    )?;
     Ok(next.run(request).await)
 }
 
@@ -558,12 +759,11 @@ async fn reviewer_auth(
     request: Request,
     next: Next,
 ) -> WorkResult<Response> {
-    let token = request_token(&request)?;
-    if token != state.access.reviewer_token && token != state.access.controller_token {
-        return Err(WorkError::Unauthorized(
-            "invalid reviewer credential".into(),
-        ));
-    }
+    authorize(
+        &request,
+        &[&state.access.reviewer_token, &state.access.controller_token],
+        "reviewer",
+    )?;
     Ok(next.run(request).await)
 }
 
@@ -572,12 +772,19 @@ async fn controller_auth(
     request: Request,
     next: Next,
 ) -> WorkResult<Response> {
-    if request_token(&request)? != state.access.controller_token {
-        return Err(WorkError::Unauthorized(
-            "invalid controller credential".into(),
-        ));
-    }
+    authorize(&request, &[&state.access.controller_token], "controller")?;
     Ok(next.run(request).await)
+}
+
+fn authorize(request: &Request, allowed: &[&str], scope: &str) -> WorkResult<()> {
+    let token = request_token(request)?;
+    if allowed.contains(&token.as_str()) {
+        Ok(())
+    } else {
+        Err(WorkError::Unauthorized(format!(
+            "invalid {scope} credential"
+        )))
+    }
 }
 
 fn request_token(request: &Request) -> WorkResult<String> {
@@ -608,7 +815,10 @@ mod tests {
     async fn health_is_public_and_workflow_access_is_scoped() {
         let directory = tempfile::tempdir().unwrap();
         let store = Arc::new(Store::open(directory.path()).await.unwrap());
-        let server = TestServer::new(router(store, "read", "controller", "reviewer", "release"));
+        let server = TestServer::new(router(
+            store,
+            WorkCredentials::new("read", "controller", "reviewer", "release", "rollout"),
+        ));
 
         assert_eq!(server.get("/health").await.status_code(), StatusCode::OK);
         assert_eq!(

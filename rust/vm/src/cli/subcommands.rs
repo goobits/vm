@@ -13,6 +13,23 @@ pub enum PackageInfrastructureRuntime {
 }
 
 #[derive(Debug, Clone, Subcommand)]
+pub enum PackageConsumerSubcommand {
+    /// Register a consumer repository and its current internal dependencies
+    Register {
+        name: String,
+        #[arg(long)]
+        repository: String,
+        #[arg(long, default_value = "main")]
+        branch: String,
+        /// Repeat as --dependency package@version
+        #[arg(long = "dependency", required = true)]
+        dependencies: Vec<String>,
+    },
+    /// List registered consumer repositories
+    List,
+}
+
+#[derive(Debug, Clone, Subcommand)]
 pub enum PackagesSubcommand {
     /// Create or update the shared package-infrastructure appliance
     Up {
@@ -42,6 +59,22 @@ pub enum PackagesSubcommand {
         #[arg(long, value_enum, default_value = "auto")]
         runtime: PackageInfrastructureRuntime,
     },
+    /// List appliance-local infrastructure backups
+    Backups {
+        #[arg(long, value_enum, default_value = "auto")]
+        runtime: PackageInfrastructureRuntime,
+    },
+    /// Create a consistent backup in a private named volume
+    Backup {
+        #[arg(long, value_enum, default_value = "auto")]
+        runtime: PackageInfrastructureRuntime,
+    },
+    /// Restore a private named-volume backup while services are stopped
+    Restore {
+        backup_id: String,
+        #[arg(long, value_enum, default_value = "auto")]
+        runtime: PackageInfrastructureRuntime,
+    },
     /// Register one canonical shared-package repository
     Register {
         name: String,
@@ -57,6 +90,15 @@ pub enum PackagesSubcommand {
     },
     /// List registered shared-package repositories
     List,
+    /// Manage consumer repositories tracked by the package infrastructure
+    Consumer {
+        #[command(subcommand)]
+        command: PackageConsumerSubcommand,
+    },
+    /// Show consumers and pending upgrades for one package
+    Consumers { package: String },
+    /// Show package-version drift across registered consumers
+    Drift,
     /// Create an isolated package checkout and attach it to this project
     Checkout {
         package: String,
@@ -70,6 +112,10 @@ pub enum PackagesSubcommand {
     },
     /// Show one package checkout
     Show { checkout_id: String },
+    /// Cancel an eligible checkout and remove its temporary data
+    Cancel { checkout_id: String },
+    /// Remove a terminal checkout's temporary service and project data
+    Cleanup { checkout_id: String },
     /// Validate and submit committed package work for integration review
     Submit {
         checkout_id: String,
@@ -92,6 +138,13 @@ pub enum PackagesSubcommand {
         /// Explicitly authorize the source commit and release tag push
         #[arg(long)]
         push_source: bool,
+    },
+    /// Create, test, and push one isolated consumer upgrade branch
+    Rollout {
+        /// Package and immutable version, for example auth@1.5.0
+        target: String,
+        #[arg(long = "to")]
+        consumer: String,
     },
     /// Install or clear the controller's private Git token
     Auth {
