@@ -4,6 +4,7 @@ use std::{borrow::Cow, fs, process::Command};
 
 use super::LifecycleOperations;
 use crate::docker::{build::BuildOperations, DockerOps, UserConfig};
+use crate::project_plan::{ProjectPlan, PROJECT_PLAN_CONFIG_KEY};
 use vm_config::config::VmConfig;
 use vm_core::error::{Result, VmError};
 
@@ -73,19 +74,13 @@ impl<'a> LifecycleOperations<'a> {
     pub(super) fn prepare_config_for_copy(
         &self,
         container_pipx_packages: &[String],
-    ) -> Result<Cow<'_, VmConfig>> {
-        let needs_pip_clear = !self.config.pip_packages.is_empty();
-        let needs_extra_config = !container_pipx_packages.is_empty();
-
-        if !needs_pip_clear && !needs_extra_config {
-            return Ok(Cow::Borrowed(self.config));
-        }
-
+        project_plan: &ProjectPlan,
+    ) -> Result<VmConfig> {
         let mut config = self.config.clone();
-        if needs_pip_clear {
+        if !config.pip_packages.is_empty() {
             config.pip_packages.clear();
         }
-        if needs_extra_config {
+        if !container_pipx_packages.is_empty() {
             config.extra_config.insert(
                 "container_pipx_packages".to_string(),
                 serde_json::to_value(container_pipx_packages).map_err(|error| {
@@ -95,8 +90,14 @@ impl<'a> LifecycleOperations<'a> {
                 })?,
             );
         }
+        config.extra_config.insert(
+            PROJECT_PLAN_CONFIG_KEY.to_string(),
+            serde_json::to_value(project_plan).map_err(|error| {
+                VmError::Internal(format!("Failed to serialize project install plan: {error}"))
+            })?,
+        );
 
-        Ok(Cow::Owned(config))
+        Ok(config)
     }
 
     #[must_use = "temp config preparation results should be checked"]
@@ -129,7 +130,9 @@ impl<'a> LifecycleOperations<'a> {
         } else {
             Vec::new()
         };
-        let config_for_copy = self.prepare_config_for_copy(&container_pipx_packages)?;
+        let project_plan = ProjectPlan::detect(self.project_dir, self.config);
+        let config_for_copy =
+            self.prepare_config_for_copy(&container_pipx_packages, &project_plan)?;
         let config_json = config_for_copy.to_json()?;
 
         if self.config_matches_container(container_name, &config_json) {

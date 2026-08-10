@@ -39,11 +39,12 @@ use std::fs;
 use std::path::Path;
 use tracing::warn;
 use vm_core::error::{Result, VmError};
-use vm_core::file_system::{has_any_dir, has_any_file, has_file, has_file_containing};
+use vm_core::file_system::has_file_containing;
 
 pub mod git;
 pub mod os;
 pub mod presets;
+mod project;
 pub mod tools;
 
 pub use os::detect_host_os;
@@ -51,6 +52,7 @@ pub use presets::{
     detect_preset_for_project, get_detected_technologies, get_recommended_preset,
     is_multi_tech_project, is_react_project,
 };
+pub use project::ProjectFacts;
 pub use tools::{detect_databases, detect_languages, has_command, ToolDetector};
 
 /// Check if a directory contains a Python project.
@@ -78,10 +80,7 @@ pub use tools::{detect_databases, detect_languages, has_command, ToolDetector};
 /// }
 /// ```
 pub fn is_python_project(dir: &Path) -> bool {
-    has_any_file(
-        dir,
-        &["requirements.txt", "pyproject.toml", "setup.py", "Pipfile"],
-    )
+    ProjectFacts::detect(dir).has_python_project()
 }
 
 /// Check if a directory is a pipx virtual environment.
@@ -171,9 +170,10 @@ fn detect_js_framework(json: &Value) -> String {
 /// ```
 pub fn detect_project_type(dir: &Path) -> HashSet<String> {
     let mut types = HashSet::new();
+    let facts = ProjectFacts::detect(dir);
 
     // --- Node.js Detection ---
-    if has_file(dir, "package.json") {
+    if facts.package_json {
         if let Ok(content) = fs::read_to_string(dir.join("package.json")) {
             if let Ok(json) = serde_json::from_str::<Value>(&content) {
                 let framework = detect_js_framework(&json);
@@ -184,7 +184,7 @@ pub fn detect_project_type(dir: &Path) -> HashSet<String> {
     }
 
     // --- Python Detection ---
-    if is_python_project(dir) {
+    if facts.has_python_project() {
         let mut framework = "python".to_string();
         if has_file_containing(dir, "requirements.txt", "Django")
             || has_file_containing(dir, "requirements.txt", "django")
@@ -199,17 +199,17 @@ pub fn detect_project_type(dir: &Path) -> HashSet<String> {
     }
 
     // --- Rust Detection ---
-    if has_file(dir, "Cargo.toml") {
+    if facts.cargo_toml {
         types.insert("rust".to_string());
     }
 
     // --- Go Detection ---
-    if has_file(dir, "go.mod") {
+    if facts.go_mod {
         types.insert("go".to_string());
     }
 
     // --- Ruby Detection ---
-    if has_file(dir, "Gemfile") {
+    if facts.gemfile {
         let mut framework = "ruby".to_string();
         if has_file_containing(dir, "Gemfile", "rails") {
             framework = "rails".to_string();
@@ -218,20 +218,17 @@ pub fn detect_project_type(dir: &Path) -> HashSet<String> {
     }
 
     // --- PHP Detection ---
-    if has_file(dir, "composer.json") {
+    if facts.composer_json {
         types.insert("php".to_string());
     }
 
     // --- Docker Detection ---
-    if has_any_file(
-        dir,
-        &["Dockerfile", "docker-compose.yml", "docker-compose.yaml"],
-    ) {
+    if facts.docker {
         types.insert("docker".to_string());
     }
 
     // --- Kubernetes Detection ---
-    if has_any_file(dir, &["k8s.yaml", "k8s.yml"]) || has_any_dir(dir, &["kubernetes", "k8s"]) {
+    if facts.kubernetes {
         types.insert("kubernetes".to_string());
     }
 

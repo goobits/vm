@@ -145,4 +145,11 @@ mod tests {
         assert!(HOME_STATE_REPAIR.contains("find \"$path\" -xdev"));
         assert_eq!(ANSIBLE_PLAYBOOK.matches("repair-home-state.sh").count(), 0);
     }
+
+    #[test]
+    fn ansible_consumes_the_shared_host_project_plan() {
+        assert!(ANSIBLE_PLAYBOOK.contains("_vm_project_plan"));
+        assert!(!ANSIBLE_PLAYBOOK.contains("project_package_files"));
+        assert!(!ANSIBLE_PLAYBOOK.contains("Inspect project package files"));
+    }
 }

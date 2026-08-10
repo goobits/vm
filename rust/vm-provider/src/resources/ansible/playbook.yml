@@ -122,26 +122,20 @@
         when:
             - item.key is match('^[A-Za-z_][A-Za-z0-9_-]*$')
 
-      - name: Inspect project package files
-        stat:
-            path: '{{ project_path }}/{{ item }}'
-        loop:
-            - package.json
-            - pnpm-lock.yaml
-            - package-lock.json
-        register: project_package_files
+      - name: Load shared project plan
+        set_fact:
+            project_facts: "{{ project_config.get('_vm_project_plan', {}).get('facts', {}) }}"
+            project_installs: "{{ project_config.get('_vm_project_plan', {}).get('installs', {}) }}"
 
       - name: Set project bootstrap metadata
         set_fact:
-            package_json_exists: '{{ project_package_files.results[0].stat.exists }}'
-            pnpm_lock_exists: '{{ project_package_files.results[1].stat.exists }}'
-            npm_lock_exists: '{{ project_package_files.results[2].stat.exists }}'
+            package_json_exists: "{{ project_facts.get('package_json', false) | bool }}"
+            pnpm_lock_exists: "{{ project_facts.get('pnpm_lock', false) | bool }}"
+            npm_lock_exists: "{{ project_facts.get('npm_lock', false) | bool }}"
+            node_dependency_manager: "{{ project_installs.get('node_dependencies', '') | default('', true) }}"
+            nodejs_required: "{{ project_installs.get('node_runtime', nodejs_required) | bool }}"
             bootstrap_dependencies_enabled: "{{ project_config.get('bootstrap', {}).get('dependencies', true) | bool }}"
-            playwright_browsers: "{{ project_config.get('bootstrap', {}).get('playwright', {}).get('browsers', []) }}"
-
-      - name: Include detected Node project in toolchain requirements
-        set_fact:
-            nodejs_required: "{{ nodejs_required or (package_json_exists and (pnpm_lock_exists or npm_lock_exists)) }}"
+            playwright_browsers: "{{ project_installs.get('playwright_browsers', project_config.get('bootstrap', {}).get('playwright', {}).get('browsers', [])) }}"
 
       # User creation pre-task
       - name: Ensure project user supplemental groups exist

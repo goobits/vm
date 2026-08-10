@@ -6,6 +6,7 @@ use crate::{
     common::instance::{extract_project_name, InstanceInfo, InstanceResolver},
     context::ProviderContext,
     progress::ProgressReporter,
+    project_plan::ProjectPlan,
     resource_limits::ResolvedResources,
     shell_session, tart_base, BoxConfig, InstanceState, Provider, ResourceUsage, ServiceStatus,
     TempProvider, VmError, VmStatusReport,
@@ -637,7 +638,8 @@ impl TartProvider {
             self.get_sync_directory(),
             self.tart_home(),
         );
-        if let Err(e) = provisioner.provision(config) {
+        let project_plan = ProjectPlan::detect(&self.host_workspace_path()?, config);
+        if let Err(e) = provisioner.provision(config, &project_plan) {
             warn!(
                 "Initial provisioning failed: {}. The VM is created but may not be fully configured.",
                 e
@@ -924,7 +926,8 @@ impl Provider for TartProvider {
             self.tart_home(),
         );
 
-        provisioner.provision(&self.config)?;
+        let project_plan = ProjectPlan::detect(&self.host_workspace_path()?, &self.config);
+        provisioner.provision(&self.config, &project_plan)?;
 
         info!("Configuration applied");
         Ok(())

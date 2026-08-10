@@ -1,4 +1,5 @@
 use super::TartProvisioner;
+use crate::project_plan::{PrimaryRuntime, ProjectPlan};
 use tracing::{info, warn};
 use vm_config::config::VmConfig;
 use vm_core::error::Result;
@@ -179,36 +180,25 @@ chmod +x '{workspace}/start-colima'
         Ok(())
     }
 
-    pub(super) fn provision_framework_dependencies(&self, config: &VmConfig) -> Result<()> {
-        let framework = self.detect_framework()?;
-        info!("Detected framework: {}", framework);
+    pub(super) fn provision_framework_dependencies(
+        &self,
+        config: &VmConfig,
+        project_plan: &ProjectPlan,
+    ) -> Result<()> {
+        let runtime = project_plan.primary_runtime();
+        info!("Detected framework: {}", runtime.as_str());
 
-        match framework.as_str() {
-            "nodejs" => self.provision_nodejs(config)?,
-            "python" => self.provision_python(config)?,
-            "ruby" => self.provision_ruby(config)?,
-            "rust" => self.provision_rust()?,
-            "go" => self.provision_go(config)?,
-            _ => warn!("Unknown framework: {}, skipping", framework),
+        match runtime {
+            PrimaryRuntime::Node => self.provision_nodejs(config)?,
+            PrimaryRuntime::Python => self.provision_python(config)?,
+            PrimaryRuntime::Ruby => self.provision_ruby(config)?,
+            PrimaryRuntime::Rust => self.provision_rust()?,
+            PrimaryRuntime::Go => self.provision_go(config)?,
+            PrimaryRuntime::Unknown => warn!("Unknown framework, skipping"),
         }
 
         self.provision_databases(config)?;
         Ok(())
-    }
-
-    fn detect_framework(&self) -> Result<String> {
-        let detection_script = r#"
-            if [ -f "package.json" ]; then echo "nodejs"
-            elif [ -f "requirements.txt" ] || [ -f "pyproject.toml" ]; then echo "python"
-            elif [ -f "Gemfile" ]; then echo "ruby"
-            elif [ -f "Cargo.toml" ]; then echo "rust"
-            elif [ -f "go.mod" ]; then echo "go"
-            else echo "unknown"
-            fi
-        "#;
-
-        let output = self.ssh_exec(&format!("cd {} && {}", self.project_dir, detection_script))?;
-        Ok(output.trim().to_string())
     }
 
     fn ensure_nodejs_runtime(&self, config: &VmConfig) -> Result<()> {

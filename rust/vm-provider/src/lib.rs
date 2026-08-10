@@ -145,6 +145,7 @@ pub struct SnapshotRestoreRequest {
 pub mod common;
 pub mod context;
 pub mod progress;
+mod project_plan;
 mod resource_limits;
 pub mod resources;
 mod shell_session;

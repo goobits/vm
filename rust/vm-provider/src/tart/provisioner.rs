@@ -1,5 +1,5 @@
 use super::provider::tart_run_log_path;
-use crate::tart_base;
+use crate::{project_plan::ProjectPlan, tart_base};
 use duct::cmd;
 use tracing::info;
 use vm_config::config::{BoxSpec, VmConfig};
@@ -36,7 +36,7 @@ impl TartProvisioner {
     }
 
     /// Run provisioning scripts over SSH
-    pub fn provision(&self, config: &VmConfig) -> Result<()> {
+    pub(crate) fn provision(&self, config: &VmConfig, project_plan: &ProjectPlan) -> Result<()> {
         info!("Starting Tart VM provisioning for {}", self.instance_name);
 
         // 1. Wait for VM to be ready
@@ -63,8 +63,8 @@ impl TartProvisioner {
         // host-synced config directories such as ~/.claude.
         self.ensure_host_sync_mounts(config)?;
 
-        // 6. Detect framework and install dependencies
-        self.provision_framework_dependencies(config)?;
+        // 6. Install project dependencies from the shared host plan
+        self.provision_framework_dependencies(config, project_plan)?;
 
         // 7. Run custom provision scripts if present
         self.run_custom_provision_scripts(config)?;
