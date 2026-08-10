@@ -1,6 +1,6 @@
 # Changelog
 
-<!-- CHANGELOG audit cutoff: 2026-08-05. commit 32c128a2 on main. -->
+<!-- CHANGELOG audit cutoff: 2026-08-10. commit 391c7932 on main. -->
 
 ## [Unreleased]
 
@@ -8,10 +8,10 @@
 
 - 🪟 Default shell connections create the configured environment when missing, while shell and exec connections start it when stopped.
 - ☁️ Container storage policies add durable scoped volumes, bounded tmpfs, resource limits, and log rotation.
-- ☁️ Fingerprinted dependency and Playwright bootstrap skips unchanged work and exposes runtime storage evidence.
+- ☁️ Provider-neutral tool caches and fingerprinted bootstrap preserve downloads while skipping unchanged dependency and Playwright work.
 - ☁️ Lifecycle cleanup and removal preserve managed data and complete configured database backups before deletion.
-- 🚀 macOS Tart environments use Sequoia and support Docker through Colima with QEMU software emulation.
-- 🚀 `vm create` builds a missing standard Tart vibe base automatically at the configured storage location.
+- 🚀 `vibe-tart` defaults to a Linux guest with Docker Engine while retaining an explicit macOS/Colima fallback.
+- 🚀 Environment creation builds a missing standard Tart vibe base automatically at the configured storage location.
 - 📦 Redacted `vm config render` output previews the exact generated provider configuration.
 
 ### ✨ Added
@@ -30,6 +30,7 @@
 - 🪟 Profile and target selection consistently prefer explicit names, configured defaults, canonical environments, sole matches, then an interactive choice.
 - 🪟 Shell and SSH create a missing environment from `vm.yaml`; shell, SSH, and exec start an existing stopped environment before connecting.
 - 🪟 CLI output and actionable error hints now follow one consistent stdout and stderr contract.
+- 🚀 Linux-first `vibe-tart` routing uses the versioned Tart base and Docker Engine directly; macOS/Colima remains an explicit fallback.
 - 🚀 macOS Tart environments use the Sequoia base and run Docker through Colima with QEMU software emulation instead of unsupported nested virtualization.
 
 ### 🐛 Fixed
@@ -48,13 +49,18 @@
 - 🚀 Tart stop operations are idempotent, and resolved stopped guests start reliably before shell connections.
 - 🚀 Docker client and service provisioning no longer depends on Python APT bindings and avoids reinstalling tools that are already present.
 - 🚀 Tart refreshes managed shell configuration so `yoclaude` and `yocodex` are available on the first login.
-- 🚀 Missing standard Tart vibe bases are built by the installed binary when `vm create` needs them, including when `tart.storage_path` selects another disk.
+- 🚀 Tart guest-home sync and mount paths expand the intended guest home instead of creating literal `$HOME` paths.
+- 🚀 Missing standard Tart vibe bases are built by the installed binary when environment creation needs them, including through `vm ssh` and on another configured disk.
+- 📦 Preset-backed `vm config unset` operations materialize the effective preset before removal, so deleted profiles and fields stay removed.
 - 📦 Empty Docker inspection results now report an error instead of returning a misleading default status.
 - 📦 Release and onboarding checks now follow the supported GitHub binary/source installation path instead of broken crates.io packaging.
 
 ### ⚡ Performance
 
 - ☁️ Fingerprinted bootstrap skips locked dependency and browser installation when the relevant inputs have not changed.
+- ☁️ Provider-neutral Cargo, Node, Go, Python, uv, Corepack, npm, and Playwright caches persist across Docker recreation and remain off source binds in every provider.
+- 🚀 Tart provisioning batches ordered guest work and reuses one host-detected project plan, reducing SSH round trips and repeated filesystem probes.
+- 🚀 Shell startup defers NVM loading, while versioned home repair and AI installers skip work when the guest state is current.
 - 🚀 Host package discovery performs one Cargo, npm, or pipx inventory lookup per package manager instead of one subprocess per requested package.
 
 ### 🔒 Security
@@ -66,13 +72,14 @@
 - ☁️ Temporary host mounts resolve symlinks before validation and reject paths that escape into protected host locations.
 - 🌐 The package registry binds to loopback by default, requires bearer authentication for remote binds, and safely keys npm metadata filenames.
 - 🌐 Docker-published application and service ports honor `vm.port_binding`, defaulting to loopback.
-- 🚀 Tart package provisioning shell-quotes configured package names to prevent guest command injection.
+- 🚀 Tart host and guest commands use one canonical quoting path for package, mount, copy, shell, and provisioning values so config cannot become shell syntax.
 - 📦 Copied environment configuration is readable only by its container owner.
 
 ### 🏠 Internal
 
 - 📦 CLI command ownership, provider lifecycle contracts, instance-state queries, and target resolution were consolidated behind smaller explicit boundaries.
 - 🚀 Tart provisioning is separated into host sync, package/runtime, service, shell, and AI-tool modules.
+- 🚀 Docker and Tart share project detection, Node bootstrap, cache policy, home repair, shell configuration, stable naming, and guest command helpers.
 - 📦 The former `vm-cli` message helper moved into `vm-core`, unused glob exports were removed, and shared host-home resolution replaced provider duplication.
 - 🧪 Workspace dependencies, Rust 1.90 compatibility, CI execution, formatting gates, and output-contract regression coverage were refreshed.
 - 📚 CLI, architecture, testing, publishing, plugin, and provider guidance now use one canonical VM 5.x documentation set.
