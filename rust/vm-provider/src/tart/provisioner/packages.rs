@@ -2,6 +2,7 @@ use super::TartProvisioner;
 use tracing::{info, warn};
 use vm_config::config::VmConfig;
 use vm_core::error::Result;
+use vm_core::vm_warning;
 
 impl TartProvisioner {
     pub(super) fn provision_generic_packages(&self, config: &VmConfig) -> Result<()> {
@@ -76,6 +77,9 @@ cargo install {}"#,
         }
 
         if self.is_macos_guest(config) {
+            vm_warning!(
+                "Docker in a macOS Tart guest uses Colima with QEMU software emulation and will be much slower. Prefer the Linux Tart profile for Docker workloads."
+            );
             return self.install_macos_docker_tools();
         }
 

@@ -252,10 +252,9 @@ Next steps:
   2. Start Tart from the same project directory:
        vm run mac
 
-  3. Docker inside the macOS guest requires an M3/M4 Mac runner, host macOS 15+,
-     guest macOS 15+, and Tart nested virtualization:
+  3. Docker inside the macOS guest uses Colima with QEMU software emulation and
+     is much slower than Docker in the Linux Tart profile:
        tart:
-         nested: true
          install_docker: true
 
 This script is the backend for:
@@ -274,7 +273,7 @@ Next steps:
   2. Start it with:
        vm run linux --provider tart
 
-  3. If a project needs Docker inside Tart, enable it in vm.yaml:
+  3. The vibe-tart preset enables Docker inside the Linux guest:
        tart:
          install_docker: true
 

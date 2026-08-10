@@ -1,17 +1,20 @@
 version: '2.0'
 provider: tart
-os: auto
 tart:
+  guest_os: linux
+  disk_size: 80
+  ssh_user: admin
+  install_docker: true
   storage_path: /Volumes/MeowDocker/Tart
 project:
   hostname: dev.vm.local
   name: vm
   workspace_path: /workspace
 vm:
-  box: '@vibe-box'
-  cpus: 6
+  box: vibe-tart-linux-base
+  cpus: 75%
   gui: false
-  memory: 8192
+  memory: 75%
   port_binding: 127.0.0.1
   swap: 2048
   swappiness: 60
@@ -29,38 +32,3 @@ environment:
 host_sync:
   git_config: true
   ai_tools: true
-preset: vibe-tart
-default_profile: tart
-profiles:
-  docker:
-    provider: docker
-    ports: {}
-  linux:
-    provider: tart
-    tart:
-      guest_os: linux
-      disk_size: 80
-      ssh_user: admin
-      install_docker: true
-    project:
-      workspace_path: /workspace
-    vm:
-      box: vibe-tart-linux-base
-      memory: 16384
-      cpus: 8
-    ports: {}
-  tart:
-    provider: tart
-    tart:
-      guest_os: macos
-      disk_size: 80
-      rosetta: true
-      ssh_user: admin
-      install_docker: true
-    project:
-      workspace_path: /workspace
-    vm:
-      box: vibe-tart-sequoia-base
-      memory: 16384
-      cpus: 8
-    ports: {}
