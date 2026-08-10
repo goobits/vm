@@ -1,5 +1,6 @@
 use crate::error::{AppError, AppResult};
 use crate::validation_utils::FileStreamValidator;
+use std::future::Future;
 use std::path::Path;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
@@ -91,9 +92,54 @@ pub async fn read_file<P: AsRef<Path>>(path: P) -> AppResult<Vec<u8>> {
     FileStreamValidator::validate_and_read_file(path).await
 }
 
+/// Read an immutable artifact locally, then from a persistent read-through cache.
+pub async fn read_local_or_cache<L, C, F, Fut>(
+    local_path: L,
+    cache_path: C,
+    fetch: F,
+) -> AppResult<Vec<u8>>
+where
+    L: AsRef<Path>,
+    C: AsRef<Path>,
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = AppResult<Vec<u8>>>,
+{
+    match read_file(local_path).await {
+        Ok(content) => Ok(content),
+        Err(AppError::NotFound(_)) => read_through_cache(cache_path, fetch).await,
+        Err(error) => Err(error),
+    }
+}
+
+/// Fetch and persist an immutable artifact when it is absent from the cache.
+pub async fn read_through_cache<P, F, Fut>(path: P, fetch: F) -> AppResult<Vec<u8>>
+where
+    P: AsRef<Path>,
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = AppResult<Vec<u8>>>,
+{
+    let path = path.as_ref();
+    match read_file(path).await {
+        Ok(content) => return Ok(content),
+        Err(AppError::NotFound(_)) => {}
+        Err(error) => return Err(error),
+    }
+
+    let content = fetch().await?;
+    save_immutable(path, &content).await?;
+    Ok(content)
+}
+
 /// Read file content as a string with size validation
 pub async fn read_file_string<P: AsRef<Path>>(path: P) -> AppResult<String> {
     let path = path.as_ref();
+
+    if !path.exists() {
+        return Err(AppError::NotFound(format!(
+            "File not found: {}",
+            path.display()
+        )));
+    }
 
     // Use centralized validation and string file reading logic
     FileStreamValidator::validate_and_read_file_string(path).await
@@ -150,7 +196,11 @@ pub async fn append_to_file<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C)
 
 #[cfg(test)]
 mod tests {
-    use super::save_immutable;
+    use super::{read_local_or_cache, save_immutable};
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
 
     #[tokio::test]
     async fn immutable_artifacts_allow_exact_retries_only() {
@@ -163,5 +213,27 @@ mod tests {
 
         assert!(matches!(error, crate::AppError::Conflict(_)));
         assert_eq!(tokio::fs::read(artifact).await.unwrap(), b"first");
+    }
+
+    #[tokio::test]
+    async fn read_through_cache_fetches_an_artifact_once() {
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("published/package.tgz");
+        let cached = directory.path().join("cache/package.tgz");
+        let fetches = Arc::new(AtomicUsize::new(0));
+
+        for _ in 0..2 {
+            let fetches = Arc::clone(&fetches);
+            let content = read_local_or_cache(&local, &cached, move || async move {
+                fetches.fetch_add(1, Ordering::SeqCst);
+                Ok(b"upstream".to_vec())
+            })
+            .await
+            .unwrap();
+            assert_eq!(content, b"upstream");
+        }
+
+        assert_eq!(fetches.load(Ordering::SeqCst), 1);
+        assert_eq!(tokio::fs::read(cached).await.unwrap(), b"upstream");
     }
 }

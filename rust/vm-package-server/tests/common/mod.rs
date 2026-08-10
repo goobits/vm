@@ -5,7 +5,7 @@
 
 #![allow(dead_code)]
 
-use anyhow::Result;
+use anyhow::{anyhow, bail, Result};
 use std::fs;
 use std::net::TcpListener;
 use std::path::Path;
@@ -97,41 +97,38 @@ pub fn find_available_port() -> Result<u16> {
 
 /// Starts a test server process and waits for it to be ready
 ///
-/// Returns the spawned process and whether the server started successfully.
-/// The caller is responsible for killing the process.
+/// Returns the ready process. The caller is responsible for killing it.
 pub async fn start_test_server(
     port: u16,
     data_dir: &Path,
     additional_args: &[&str],
-) -> Result<(std::process::Child, bool)> {
+) -> Result<std::process::Child> {
     let port_str = port.to_string();
     let data_str = data_dir.to_str().unwrap();
 
-    let mut args = vec![
-        "run",
-        "--bin",
-        "pkg-server",
-        "--",
-        "start",
-        "--port",
-        &port_str,
-        "--data",
-        data_str,
-        "--no-config",
-        "--foreground",
-    ];
+    let mut args = vec!["start", "--port", &port_str, "--data", data_str];
     args.extend(additional_args);
 
-    let child = Command::new("cargo")
+    let executable = option_env!("CARGO_BIN_EXE_pkg-server")
+        .ok_or_else(|| anyhow!("pkg-server test binary is unavailable"))?;
+    let mut child = Command::new(executable)
         .args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
 
     // Wait for server to start with retry logic
-    let server_started = wait_for_server_start(port).await;
+    if wait_for_server_start(port).await {
+        return Ok(child);
+    }
 
-    Ok((child, server_started))
+    child.kill().ok();
+    let output = child.wait_with_output()?;
+    bail!(
+        "test server failed to start\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    )
 }
 
 /// Waits for a server to start on the given port
@@ -171,181 +168,4 @@ pub fn kill_server_with_output(mut child: std::process::Child) -> Result<()> {
         }
     }
     Ok(())
-}
-
-/// Executes a CLI command and returns the output
-pub fn execute_cli_command(
-    args: &[&str],
-    current_dir: Option<&Path>,
-) -> Result<std::process::Output> {
-    let mut cmd = Command::new("cargo");
-    cmd.args([
-        "run",
-        "--features=standalone-binary",
-        "--bin",
-        "pkg-server",
-        "--",
-    ]);
-    cmd.args(args);
-
-    if let Some(dir) = current_dir {
-        cmd.current_dir(dir);
-    }
-
-    Ok(cmd.output()?)
-}
-
-/// Creates a test package.json file for NPM tests
-pub fn create_test_package_json(dir: &Path, name: &str, version: &str) -> Result<()> {
-    let package_json = format!(
-        r#"{{
-    "name": "{}",
-    "version": "{}",
-    "description": "Test package for E2E testing"
-}}"#,
-        name, version
-    );
-    fs::write(dir.join("package.json"), package_json)?;
-    Ok(())
-}
-
-/// Common assertion helpers
-pub mod assertions {
-    use std::path::Path;
-
-    /// Asserts that all standard package directories exist
-    pub fn assert_package_directories_exist(data_dir: &Path) {
-        assert!(
-            data_dir.join("pypi/packages").exists(),
-            "PyPI directory should be created"
-        );
-        assert!(
-            data_dir.join("npm/tarballs").exists(),
-            "NPM directory should be created"
-        );
-        assert!(
-            data_dir.join("cargo/crates").exists(),
-            "Cargo directory should be created"
-        );
-    }
-
-    /// Asserts that a command completed successfully with helpful error message
-    pub fn assert_command_success(output: &std::process::Output, command_name: &str) {
-        if !output.status.success() {
-            eprintln!("{} command failed:", command_name);
-            eprintln!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-            eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
-        }
-        assert!(
-            output.status.success(),
-            "{} command should succeed",
-            command_name
-        );
-    }
-
-    /// Asserts that command output contains expected content
-    pub fn assert_output_contains(output: &std::process::Output, expected: &str, context: &str) {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            stdout.contains(expected),
-            "{} output should contain '{}', got: {}",
-            context,
-            expected,
-            stdout
-        );
-    }
-}
-
-/// Test data management utilities
-pub mod test_data {
-    use anyhow::Result;
-    use std::fs;
-    use std::path::Path;
-
-    /// Creates a minimal Cargo.toml file for testing
-    pub fn create_test_cargo_toml(dir: &Path, name: &str, version: &str) -> Result<()> {
-        let cargo_toml = format!(
-            r#"[package]
-name = "{}"
-version = "{}"
-edition = "2021"
-
-[dependencies]
-"#,
-            name, version
-        );
-        fs::write(dir.join("Cargo.toml"), cargo_toml)?;
-
-        // Create src/lib.rs
-        fs::create_dir_all(dir.join("src"))?;
-        fs::write(dir.join("src/lib.rs"), "// Test library\n")?;
-
-        Ok(())
-    }
-
-    /// Creates a minimal setup.py file for testing
-    pub fn create_test_setup_py(dir: &Path, name: &str, version: &str) -> Result<()> {
-        let setup_py = format!(
-            r#"from setuptools import setup
-
-setup(
-    name="{}",
-    version="{}",
-    description="Test package",
-    py_modules=["{}"],
-)
-"#,
-            name, version, name
-        );
-        fs::write(dir.join("setup.py"), setup_py)?;
-
-        // Create a simple Python module
-        fs::write(dir.join(format!("{}.py", name)), "# Test module\n")?;
-
-        Ok(())
-    }
-
-    /// Cleanup utility for removing generated files
-    pub fn cleanup_build_artifacts(dir: &Path) -> Result<()> {
-        // Remove common build artifacts
-        let artifacts = ["target", "dist", "build", "*.egg-info"];
-
-        for artifact in artifacts {
-            let path = dir.join(artifact);
-            if path.exists() {
-                if path.is_dir() {
-                    fs::remove_dir_all(&path)?;
-                } else {
-                    fs::remove_file(&path)?;
-                }
-            }
-        }
-
-        // Remove .tgz files from NPM pack
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            if let Some(ext) = entry.path().extension() {
-                if ext == "tgz" {
-                    fs::remove_file(entry.path())?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-}
-
-/// Compatibility layer for axum-test version issues
-pub mod compat {
-    use axum::Router;
-    use std::sync::Arc;
-    use vm_package_server::AppState;
-
-    /// Creates a compatible test service from a router
-    ///
-    /// This function handles the axum version compatibility issues
-    /// by converting the router to an IntoMakeService which is compatible with axum-test
-    pub fn make_test_service(router: Router<Arc<AppState>>) -> Router<Arc<AppState>> {
-        router
-    }
 }

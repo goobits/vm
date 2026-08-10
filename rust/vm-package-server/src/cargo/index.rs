@@ -139,7 +139,7 @@ pub async fn index_file(
             debug!(crate_name = %crate_name, "Serving index from local storage");
             Ok(content)
         }
-        Err(_) => {
+        Err(AppError::NotFound(_)) => {
             // Index not found locally, try upstream crates.io
             debug!(crate_name = %crate_name, "Index not found locally, checking upstream crates.io");
             match state
@@ -157,6 +157,7 @@ pub async fn index_file(
                 }
             }
         }
+        Err(error) => Err(error),
     }
 }
 

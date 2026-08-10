@@ -103,6 +103,7 @@ pub async fn simple_index(State(state): State<Arc<AppState>>) -> AppResult<Html<
 pub async fn package_index(
     AxumPath(package): AxumPath<String>,
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
 ) -> AppResult<Html<String>> {
     info!(package = %package, "Generating PyPI package index");
     let normalized_package = normalize_pypi_name(&package);
@@ -141,7 +142,10 @@ pub async fn package_index(
         {
             Ok(upstream_html) => {
                 info!(package = %package, "Found package on upstream PyPI, proxying response");
-                return Ok(Html(upstream_html));
+                return Ok(Html(rewrite_upstream_links(
+                    upstream_html,
+                    &state.public_base_url(&headers),
+                )));
             }
             Err(_) => {
                 debug!(package = %package, "Package not found on upstream PyPI either");
@@ -166,6 +170,13 @@ pub async fn package_index(
 
     html.push_str("  </body>\n</html>");
     Ok(Html(html))
+}
+
+fn rewrite_upstream_links(html: String, public_base_url: &str) -> String {
+    html.replace(
+        "https://files.pythonhosted.org/packages/",
+        &format!("{public_base_url}/pypi/upstream/"),
+    )
 }
 
 // Deprecated functions have been removed.
@@ -200,29 +211,36 @@ pub async fn download_file(
     validate_filename(&filename)?;
 
     info!(filename = %filename, "Downloading PyPI package file");
-    let file_path = state.data_dir.join("pypi/packages").join(&filename);
+    let data = storage::read_file(state.data_dir.join("pypi/packages").join(&filename)).await?;
+    info!(filename = %filename, size = data.len(), "Serving PyPI package file");
+    Ok(data)
+}
 
-    // Try local file first
-    match storage::read_file(&file_path).await {
-        Ok(data) => {
-            debug!(filename = %filename, size = data.len(), "Serving file from local storage");
-            Ok(data)
-        }
-        Err(_) => {
-            // File not found locally, try upstream PyPI
-            debug!(filename = %filename, "File not found locally, checking upstream PyPI");
-            match state.upstream_client.stream_pypi_file(&filename).await {
-                Ok(bytes) => {
-                    info!(filename = %filename, size = bytes.len(), "Streaming file from upstream PyPI");
-                    Ok(bytes.to_vec())
-                }
-                Err(e) => {
-                    debug!(filename = %filename, error = %e, "File not found on upstream PyPI either");
-                    Err(e)
-                }
-            }
-        }
-    }
+/// Proxies and persistently caches an immutable upstream PyPI artifact.
+pub async fn download_upstream_file(
+    AxumPath(path): AxumPath<String>,
+    State(state): State<Arc<AppState>>,
+) -> AppResult<Vec<u8>> {
+    let safe_path = validation::validate_safe_path(&path)
+        .map_err(|error| AppError::BadRequest(format!("Invalid PyPI artifact path: {error}")))?;
+    let filename = safe_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| AppError::BadRequest("PyPI artifact path has no filename".into()))?;
+    validate_filename(filename)?;
+
+    let cache_path = state.data_dir.join("cache/pypi").join(&safe_path);
+    let upstream = Arc::clone(&state.upstream_client);
+    let upstream_path = path.clone();
+    let data = storage::read_through_cache(cache_path, move || async move {
+        upstream
+            .stream_pypi_file(&upstream_path)
+            .await
+            .map(|bytes| bytes.to_vec())
+    })
+    .await?;
+    info!(path = %path, size = data.len(), "Serving cached upstream PyPI artifact");
+    Ok(data)
 }
 
 /// Uploads a new PyPI package to the repository.
@@ -538,5 +556,16 @@ mod tests {
 
         assert_eq!(response.status_code(), StatusCode::OK);
         assert_eq!(response.as_bytes().to_vec(), content.to_vec());
+    }
+
+    #[test]
+    fn upstream_package_links_stay_behind_the_gateway() {
+        let html = r#"<a href="https://files.pythonhosted.org/packages/ab/cd/hash/pkg.whl#sha256=123">pkg</a>"#;
+        let rewritten = rewrite_upstream_links(html.into(), "https://packages.internal");
+
+        assert_eq!(
+            rewritten,
+            r#"<a href="https://packages.internal/pypi/upstream/ab/cd/hash/pkg.whl#sha256=123">pkg</a>"#
+        );
     }
 }

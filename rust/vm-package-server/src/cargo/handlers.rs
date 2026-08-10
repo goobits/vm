@@ -168,33 +168,21 @@ pub async fn download_crate(
         AppError::BadRequest(format!("Generated unsafe filename '{filename}': {e}"))
     })?;
 
-    let file_path = state.data_dir.join("cargo/crates").join(&filename);
+    let local_path = state.data_dir.join("cargo/crates").join(&filename);
+    let cache_path = state.data_dir.join("cache/cargo/crates").join(&filename);
+    let upstream = Arc::clone(&state.upstream_client);
+    let upstream_crate = crate_name.clone();
+    let upstream_version = version.clone();
 
-    // Try local file first
-    match storage::read_file(&file_path).await {
-        Ok(data) => {
-            debug!(crate_name = %crate_name, version = %version, size = data.len(), "Serving crate from local storage");
-            Ok(data)
-        }
-        Err(_) => {
-            // File not found locally, try upstream crates.io
-            debug!(crate_name = %crate_name, version = %version, "Crate not found locally, checking upstream crates.io");
-            match state
-                .upstream_client
-                .stream_cargo_crate(&crate_name, &version)
-                .await
-            {
-                Ok(bytes) => {
-                    info!(crate_name = %crate_name, version = %version, size = bytes.len(), "Streaming crate from upstream crates.io");
-                    Ok(bytes.to_vec())
-                }
-                Err(e) => {
-                    debug!(crate_name = %crate_name, version = %version, error = %e, "Crate not found on upstream crates.io either");
-                    Err(e)
-                }
-            }
-        }
-    }
+    let data = storage::read_local_or_cache(local_path, cache_path, move || async move {
+        upstream
+            .stream_cargo_crate(&upstream_crate, &upstream_version)
+            .await
+            .map(|bytes| bytes.to_vec())
+    })
+    .await?;
+    info!(crate_name = %crate_name, version = %version, size = data.len(), "Serving Cargo crate");
+    Ok(data)
 }
 
 /// Publishes a new Cargo crate version to the local registry.

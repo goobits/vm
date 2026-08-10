@@ -18,6 +18,11 @@ name = "pkg-server"
 path = "src/main.rs"
 required-features = ["standalone-binary"]
 
+[[test]]
+name = "cli_commands_e2e_test"
+path = "tests/cli_commands_e2e_test.rs"
+required-features = ["standalone-binary"]
+
 [dependencies]
 async-trait = "0.1"
 axum = { workspace = true }

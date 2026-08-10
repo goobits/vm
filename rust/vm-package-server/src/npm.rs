@@ -13,7 +13,8 @@ use tracing::{debug, info, warn};
 use crate::validation;
 use crate::validation_utils::FileStreamValidator;
 use crate::{
-    sha1_hash, storage, validate_filename, AppError, AppResult, AppState, SuccessResponse,
+    sha1_hash, sha256_hash, storage, validate_filename, AppError, AppResult, AppState,
+    SuccessResponse,
 };
 
 fn validate_package(package: &str) -> AppResult<String> {
@@ -35,8 +36,10 @@ async fn merge_metadata(path: &Path, incoming: &Value) -> AppResult<Value> {
             .map_err(|error| AppError::BadRequest(format!("Invalid npm version: {error}")))?;
     }
 
-    let Ok(existing) = storage::read_file_string(path).await else {
-        return Ok(incoming.clone());
+    let existing = match storage::read_file_string(path).await {
+        Ok(existing) => existing,
+        Err(AppError::NotFound(_)) => return Ok(incoming.clone()),
+        Err(error) => return Err(error),
     };
     let mut merged: Value = serde_json::from_str(&existing)?;
     let versions = merged["versions"].as_object_mut().ok_or_else(|| {
@@ -121,15 +124,13 @@ pub async fn package_metadata(
     info!(package = %package, "Fetching npm package metadata");
 
     // Check if metadata file exists
-    let result = storage::read_file_string(&metadata_path).await;
-    if let Ok(content) = result {
-        if let Ok(mut metadata) = serde_json::from_str::<Value>(&content) {
-            // Update tarball URLs with current host
+    match storage::read_file_string(&metadata_path).await {
+        Ok(content) => {
+            let mut metadata = serde_json::from_str::<Value>(&content)?;
             if let Some(versions) = metadata["versions"].as_object_mut() {
                 for version_data in versions.values_mut() {
                     if let Some(dist) = version_data["dist"].as_object_mut() {
                         if let Some(tarball) = dist["tarball"].as_str() {
-                            // Replace the host in the tarball URL
                             if let Some(path) = tarball.split("/npm/").nth(1) {
                                 dist["tarball"] = json!(format!("{host}/npm/{path}"));
                             }
@@ -139,6 +140,8 @@ pub async fn package_metadata(
             }
             return Ok(Json(metadata));
         }
+        Err(AppError::NotFound(_)) => {}
+        Err(error) => return Err(error),
     }
 
     // No local metadata found, try upstream NPM
@@ -199,32 +202,24 @@ pub async fn download_tarball(
 
     debug!(package = %package, filename = %filename, "Incoming npm tarball download request");
     info!(package = %package, filename = %filename, "Downloading npm tarball");
-    let file_path = state.data_dir.join("npm/tarballs").join(&filename);
+    let local_path = state.data_dir.join("npm/tarballs").join(&filename);
+    let cache_path = state
+        .data_dir
+        .join("cache/npm")
+        .join(sha256_hash(package.as_bytes()))
+        .join(&filename);
+    let tarball_url = format!("/{package}/-/{filename}");
+    let upstream = Arc::clone(&state.upstream_client);
 
-    // Try local file first
-    match storage::read_file(&file_path).await {
-        Ok(data) => {
-            debug!(package = %package, filename = %filename, size = data.len(), "Serving tarball from local storage");
-            Ok(data)
-        }
-        Err(_) => {
-            // File not found locally, try upstream NPM
-            debug!(package = %package, filename = %filename, "Tarball not found locally, checking upstream NPM");
-
-            // Construct the tarball URL for upstream
-            let tarball_url = format!("/{package}/-/{filename}");
-            match state.upstream_client.stream_npm_tarball(&tarball_url).await {
-                Ok(bytes) => {
-                    info!(package = %package, filename = %filename, size = bytes.len(), "Streaming tarball from upstream NPM");
-                    Ok(bytes.to_vec())
-                }
-                Err(e) => {
-                    debug!(package = %package, filename = %filename, error = %e, "Tarball not found on upstream NPM either");
-                    Err(e)
-                }
-            }
-        }
-    }
+    let data = storage::read_local_or_cache(local_path, cache_path, move || async move {
+        upstream
+            .stream_npm_tarball(&tarball_url)
+            .await
+            .map(|bytes| bytes.to_vec())
+    })
+    .await?;
+    info!(package = %package, filename = %filename, size = data.len(), "Serving npm tarball");
+    Ok(data)
 }
 
 /// Publishes a new NPM package version to the local registry.

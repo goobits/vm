@@ -22,8 +22,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     groupadd --gid 10001 packages && \
     useradd --uid 10001 --gid packages --create-home packages && \
     install -d -o packages -g packages \
-      /data/npm /data/cargo /data/pypi /data/cache /data/metadata \
-      /data/state /data/receipts /data/logs /data/agents
+      /data/npm /data/cargo /data/pypi /data/cache \
+      /data/state /data/receipts /data/logs /data/agents \
+      /data/rollouts /data/sources
 
 COPY --from=builder /usr/local/bin/pkg-server /usr/local/bin/pkg-server
 COPY --from=builder /usr/local/bin/pkg-work /usr/local/bin/pkg-work

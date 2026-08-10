@@ -235,7 +235,7 @@ impl UpstreamClient {
             ));
         }
 
-        let url = format!("{}/packages/{}", self.config.pypi_url, filename);
+        let url = format!("https://files.pythonhosted.org/packages/{filename}");
         debug!(url = %url, "Streaming file from PyPI");
 
         let response = self.get_client()?.get(&url).send().await.map_err(|e| {

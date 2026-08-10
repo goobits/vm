@@ -154,6 +154,7 @@ fn app_router(state: AppState) -> Router {
         .route("/pypi/simple/", get(pypi::simple_index))
         .route("/pypi/simple/{package}/", get(pypi::package_index))
         .route("/pypi/packages/{filename}", get(pypi::download_file))
+        .route("/pypi/upstream/{*path}", get(pypi::download_upstream_file))
         .route("/pypi/legacy/api/pypi", get(pypi::simple_index))
         .route("/pypi/legacy/api/pypi/{package}/", get(pypi::package_index))
         .route(
