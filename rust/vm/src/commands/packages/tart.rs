@@ -5,12 +5,14 @@ use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 use vm_core::{vm_println, vm_progress};
-use vm_packages::{COMPOSE_PROJECT, TART_BASE_NAME, TART_INSTANCE_NAME};
+use vm_packages::{COMPOSE_PROJECT, TART_INSTANCE_NAME};
+use vm_provider::tart_base;
 
+use crate::commands::base;
 use crate::error::{VmError, VmResult};
 
-use super::files::ApplianceFiles;
-use super::{process, MaintenanceTask, PackageJob};
+use super::appliance::{MaintenanceTask, PackageJob};
+use super::{files::ApplianceFiles, process};
 
 const GUEST_ROOT: &str = "/opt/vm-packages";
 const READY_TIMEOUT: Duration = Duration::from_secs(120);
@@ -90,10 +92,13 @@ pub(super) fn doctor(files: &ApplianceFiles) -> VmResult<()> {
                 )?;
             }
         }
-    } else if find_entry(TART_BASE_NAME)?.is_none() {
+    } else if find_entry(&tart_base::versioned_cache_name())?.is_none() {
         return Err(VmError::validation(
-            format!("Tart base '{TART_BASE_NAME}' is missing"),
-            Some("Run `vm system base build vibe --provider tart --guest-os linux`"),
+            format!(
+                "Tart base '{}' is missing",
+                tart_base::versioned_cache_name()
+            ),
+            Some("Run `vm packages up`; it prepares the Linux base automatically"),
         ));
     }
     vm_println!("  Tart runtime: ready");
@@ -184,15 +189,10 @@ fn ensure_instance(files: &ApplianceFiles) -> VmResult<()> {
         Some(entry) if entry.state.eq_ignore_ascii_case("running") => {}
         Some(_) => start_instance(files)?,
         None => {
-            if find_entry(TART_BASE_NAME)?.is_none() {
-                return Err(VmError::validation(
-                    format!("Tart base '{TART_BASE_NAME}' is missing"),
-                    Some("Run `vm system base build vibe --provider tart --guest-os linux`"),
-                ));
-            }
+            let base_name = base::ensure_tart_linux_base()?;
             vm_progress!("Creating dedicated package infrastructure VM...");
             process::run(
-                Command::new("tart").args(["clone", TART_BASE_NAME, TART_INSTANCE_NAME]),
+                Command::new("tart").args(["clone", &base_name, TART_INSTANCE_NAME]),
                 "clone the package infrastructure VM",
             )?;
             process::run(

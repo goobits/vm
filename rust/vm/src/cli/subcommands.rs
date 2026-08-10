@@ -4,7 +4,7 @@ use clap::{Subcommand, ValueEnum};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
 pub enum PackageInfrastructureRuntime {
-    /// Reuse the last runtime, or Docker before the first setup
+    /// Reuse the last runtime; first setup uses Tart on macOS and Docker elsewhere
     Auto,
     /// Run the appliance directly in Docker
     Docker,

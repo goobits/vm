@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 
 pub const COMPOSE_PROJECT: &str = "vm-packages";
 pub const TART_INSTANCE_NAME: &str = "vm-packages-infra";
-pub const TART_BASE_NAME: &str = "vibe-tart-linux-base";
 pub const COMPOSE_YAML: &str = include_str!("resources/compose.yaml");
 pub const GATEWAY_CONFIG: &str = include_str!("resources/Caddyfile");
 

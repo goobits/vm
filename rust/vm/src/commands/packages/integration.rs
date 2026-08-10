@@ -11,10 +11,9 @@ use crate::commands::command_context::{load_runtime_subject, project_name};
 use crate::error::{VmError, VmResult};
 
 use super::{
-    configured_state_and_client,
+    appliance::configured_state_and_client,
     files::ApplianceFiles,
-    gateway_for_provider,
-    runtime::{checkout_root, exec},
+    runtime::{checkout_root, exec, gateway_for_provider},
     submission::{run_consumer_check, run_package_check},
 };
 

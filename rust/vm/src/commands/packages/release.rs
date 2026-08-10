@@ -5,7 +5,11 @@ use vm_packages::WorkflowState;
 
 use crate::error::{VmError, VmResult};
 
-use super::{checkout, configured_state_and_client, files::ApplianceFiles, launch_job, PackageJob};
+use super::{
+    appliance::{configured_state_and_client, launch_job, PackageJob},
+    checkout,
+    files::ApplianceFiles,
+};
 
 pub(super) async fn handle(
     files: &ApplianceFiles,

@@ -12,10 +12,9 @@ use crate::commands::command_context::{
 use crate::error::{VmError, VmResult};
 
 use super::{
-    configured_state_and_client,
+    appliance::configured_state_and_client,
     files::ApplianceFiles,
-    gateway_for_provider,
-    runtime::{checkout_root, copy_private, exec, exec_in_workspace},
+    runtime::{checkout_root, copy_private, exec, exec_in_workspace, gateway_for_provider},
 };
 
 pub(super) struct CheckoutIntent {

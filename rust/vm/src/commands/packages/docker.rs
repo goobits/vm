@@ -4,8 +4,8 @@ use crate::error::VmResult;
 use vm_core::{vm_println, vm_progress};
 use vm_packages::COMPOSE_PROJECT;
 
-use super::files::ApplianceFiles;
-use super::{process, MaintenanceTask, PackageJob};
+use super::appliance::{MaintenanceTask, PackageJob};
+use super::{files::ApplianceFiles, process};
 
 pub(super) fn up(files: &ApplianceFiles, port: u16) -> VmResult<String> {
     doctor(files)?;

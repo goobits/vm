@@ -17,7 +17,7 @@ mod workflow;
 
 pub use appliance::{
     ApplianceConfig, ApplianceState, InfrastructureRuntime, COMPOSE_PROJECT, COMPOSE_YAML,
-    GATEWAY_CONFIG, TART_BASE_NAME, TART_INSTANCE_NAME,
+    GATEWAY_CONFIG, TART_INSTANCE_NAME,
 };
 pub use catalog::{PackageDefinition, RegisterPackage};
 pub use client::{InfrastructureStatus, PackageInfrastructureClient, PackageInventory};

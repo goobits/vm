@@ -36,14 +36,16 @@ artifacts. Project agents never receive Git credentials or registry storage.
 ## Start the Appliance
 
 ```bash
-vm packages up --runtime tart
+vm packages up
 vm packages doctor
 ```
 
-Use `--runtime docker` only when every consumer is Docker-based. Its gateway is
-loopback-bound and is deliberately rejected for Tart consumers. The Tart
-appliance exposes its gateway on the private VM address so both providers can
-reach it.
+On its first run, macOS selects Tart and prepares the versioned Linux base
+automatically. Later runs reuse the stored runtime. Other platforms select
+Docker. Use `--runtime docker` only when every consumer is Docker-based, or
+`--runtime tart` to switch explicitly. The Docker gateway is loopback-bound and
+is deliberately rejected for Tart consumers. The Tart appliance exposes its
+gateway on the private VM address so both providers can reach it.
 
 VM injects the gateway and a read-only token through npm, Cargo, and pip
 environment settings whenever it creates or starts a project environment.

@@ -183,7 +183,7 @@ pnpm pruning is explicit and never runs during create, start, or bootstrap.
 ## Package Infrastructure
 
 ```bash
-vm packages up [--runtime <docker|tart>]
+vm packages up [--runtime <auto|docker|tart>]
 vm packages status
 vm packages doctor
 vm packages backup

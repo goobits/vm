@@ -6,7 +6,10 @@ use vm_packages::{CreateRollout, RegisterConsumer, RolloutState};
 use crate::cli::PackageConsumerSubcommand;
 use crate::error::{VmError, VmResult};
 
-use super::{configured_state_and_client, files::ApplianceFiles, launch_job, PackageJob};
+use super::{
+    appliance::{configured_state_and_client, launch_job, PackageJob},
+    files::ApplianceFiles,
+};
 
 pub(super) async fn handle_catalog(
     files: &ApplianceFiles,

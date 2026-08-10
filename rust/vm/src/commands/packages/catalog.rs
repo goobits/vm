@@ -5,7 +5,7 @@ use vm_packages::{PackageEcosystem, RegisterPackage};
 
 use crate::error::{VmError, VmResult};
 
-use super::{configured_client, files::ApplianceFiles};
+use super::{appliance::configured_client, files::ApplianceFiles};
 
 pub(super) async fn register(
     files: &ApplianceFiles,

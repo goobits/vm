@@ -11,10 +11,9 @@ use crate::commands::command_context::{load_runtime_subject, project_name, Runti
 use crate::error::{VmError, VmResult};
 
 use super::{
-    configured_state_and_client,
+    appliance::{configured_state_and_client, launch_review},
     files::ApplianceFiles,
-    gateway_for_provider, launch_review,
-    runtime::{checkout_root, exec, exec_in_workspace},
+    runtime::{checkout_root, exec, exec_in_workspace, gateway_for_provider},
 };
 
 pub(super) async fn handle(

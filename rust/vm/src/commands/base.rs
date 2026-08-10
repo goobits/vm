@@ -14,7 +14,6 @@ const TART_BASE_BUILDER: &str = include_str!("../../scripts/build-vibe-tart-base
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct TartVibeBase {
-    name: &'static str,
     guest_os: &'static str,
 }
 
@@ -138,14 +137,8 @@ fn configured_tart_vibe_base(config: &VmConfig) -> Option<TartVibeBase> {
     };
 
     match name.as_str() {
-        tart_base::LINUX_NAME => Some(TartVibeBase {
-            name: tart_base::LINUX_NAME,
-            guest_os: "linux",
-        }),
-        tart_base::MACOS_NAME => Some(TartVibeBase {
-            name: tart_base::MACOS_NAME,
-            guest_os: "macos",
-        }),
+        tart_base::LINUX_NAME => Some(TartVibeBase { guest_os: "linux" }),
+        tart_base::MACOS_NAME => Some(TartVibeBase { guest_os: "macos" }),
         _ => None,
     }
 }
@@ -154,10 +147,19 @@ pub(super) fn ensure_configured_tart_base(config: &VmConfig) -> VmResult<()> {
     let Some(base) = configured_tart_vibe_base(config) else {
         return Ok(());
     };
+
+    ensure_tart_vibe_base(base, Some(config)).map(|_| ())
+}
+
+pub(crate) fn ensure_tart_linux_base() -> VmResult<String> {
+    ensure_tart_vibe_base(TartVibeBase { guest_os: "linux" }, None)
+}
+
+fn ensure_tart_vibe_base(base: TartVibeBase, config: Option<&VmConfig>) -> VmResult<String> {
     let local_name = base.local_name();
 
     if tart_base_exists(config, &local_name)? {
-        return Ok(());
+        return Ok(local_name);
     }
 
     if let Some(image) = base.prebuilt_image() {
@@ -168,7 +170,7 @@ pub(super) fn ensure_configured_tart_base(config: &VmConfig) -> VmResult<()> {
         );
         if clone_tart_base(config, &image, &local_name)? {
             vm_println!("Pulled Tart Linux vibe base: {}", local_name);
-            return Ok(());
+            return Ok(local_name);
         }
         vm_warning!(
             "Prebuilt Tart base '{}' is unavailable; building the Linux base locally instead.",
@@ -180,15 +182,16 @@ pub(super) fn ensure_configured_tart_base(config: &VmConfig) -> VmResult<()> {
         "Tart vibe base '{}' is missing; building it now...",
         local_name
     );
-    build_tart_base(base.guest_os, &local_name, Some(config)).map_err(|error| {
+    build_tart_base(base.guest_os, &local_name, config).map_err(|error| {
         VmError::validation(
             format!("Could not prepare Tart vibe base '{local_name}': {error}"),
             Some("Run `vm system base build vibe --provider tart` to retry with full output"),
         )
-    })
+    })?;
+    Ok(local_name)
 }
 
-fn tart_base_exists(config: &VmConfig, base_name: &str) -> VmResult<bool> {
+fn tart_base_exists(config: Option<&VmConfig>, base_name: &str) -> VmResult<bool> {
     let output = tart_command(config)
         .args(["list", "--format", "json"])
         .output()
@@ -204,7 +207,7 @@ fn tart_base_exists(config: &VmConfig, base_name: &str) -> VmResult<bool> {
     tart_list_contains_base(&output.stdout, base_name)
 }
 
-fn clone_tart_base(config: &VmConfig, image: &str, base_name: &str) -> VmResult<bool> {
+fn clone_tart_base(config: Option<&VmConfig>, image: &str, base_name: &str) -> VmResult<bool> {
     let status = tart_command(config)
         .args(["clone", image, base_name])
         .status()
@@ -212,9 +215,11 @@ fn clone_tart_base(config: &VmConfig, image: &str, base_name: &str) -> VmResult<
     Ok(status.success())
 }
 
-fn tart_command(config: &VmConfig) -> Command {
+fn tart_command(config: Option<&VmConfig>) -> Command {
     let mut command = Command::new("tart");
-    apply_tart_home(&mut command, config);
+    if let Some(config) = config {
+        apply_tart_home(&mut command, config);
+    }
     command
 }
 
@@ -393,17 +398,11 @@ mod tests {
     fn configured_vibe_bases_resolve_their_guest_os() {
         assert_eq!(
             configured_tart_vibe_base(&config("tart", tart_base::MACOS_NAME)),
-            Some(TartVibeBase {
-                name: tart_base::MACOS_NAME,
-                guest_os: "macos"
-            })
+            Some(TartVibeBase { guest_os: "macos" })
         );
         assert_eq!(
             configured_tart_vibe_base(&config("tart", tart_base::LINUX_NAME)),
-            Some(TartVibeBase {
-                name: tart_base::LINUX_NAME,
-                guest_os: "linux"
-            })
+            Some(TartVibeBase { guest_os: "linux" })
         );
         assert_eq!(
             configured_tart_vibe_base(&config("tart", tart_base::LINUX_NAME))
