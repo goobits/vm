@@ -1,6 +1,6 @@
 use super::{
     Args, BaseSubcommand, Command, ConfigSubcommand, DbSubcommand, EnvironmentKind,
-    PluginSubcommand, SystemSubcommand,
+    PackageInfrastructureRuntime, PackagesSubcommand, PluginSubcommand, SystemSubcommand,
 };
 use clap::Parser;
 
@@ -174,6 +174,29 @@ fn system_base_build_parses_macos_guest_os() {
                 }
             }
         } if preset == "vibe" && provider == "tart" && guest_os == "macos"
+    ));
+}
+
+#[test]
+fn packages_up_parses_tart_appliance() {
+    assert!(matches!(
+        Args::parse_from([
+            "vm",
+            "packages",
+            "up",
+            "--runtime",
+            "tart",
+            "--port",
+            "4080",
+        ])
+        .command,
+        Command::Packages {
+            command: PackagesSubcommand::Up {
+                runtime: PackageInfrastructureRuntime::Tart,
+                port: 4080,
+                ..
+            }
+        }
     ));
 }
 

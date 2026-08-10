@@ -1,6 +1,45 @@
 use std::path::PathBuf;
 
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
+pub enum PackageInfrastructureRuntime {
+    /// Reuse the last runtime, or Docker before the first setup
+    Auto,
+    /// Run the appliance directly in Docker
+    Docker,
+    /// Run Docker Compose inside a dedicated Linux Tart VM
+    Tart,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum PackagesSubcommand {
+    /// Create or update the shared package-infrastructure appliance
+    Up {
+        #[arg(long, value_enum, default_value = "auto")]
+        runtime: PackageInfrastructureRuntime,
+        #[arg(long, default_value = "3080")]
+        port: u16,
+        /// Override the immutable registry service image
+        #[arg(long)]
+        registry_image: Option<String>,
+    },
+    /// Stop the appliance while preserving all named volumes
+    Down {
+        #[arg(long, value_enum, default_value = "auto")]
+        runtime: PackageInfrastructureRuntime,
+    },
+    /// Show the appliance runtime and gateway health
+    Status {
+        #[arg(long, value_enum, default_value = "auto")]
+        runtime: PackageInfrastructureRuntime,
+    },
+    /// Validate the runtime, appliance definition, and gateway
+    Doctor {
+        #[arg(long, value_enum, default_value = "auto")]
+        runtime: PackageInfrastructureRuntime,
+    },
+}
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum ConfigSubcommand {

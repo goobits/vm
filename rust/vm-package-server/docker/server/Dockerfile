@@ -1,43 +1,31 @@
-# ---- Builder Stage ----
-FROM rust:1.78 as builder
+# Build with the Rust workspace as context:
+# docker build -f vm-package-server/docker/server/Dockerfile .
+FROM rust:1.97-bookworm AS builder
 
-WORKDIR /usr/src/goobits-pkg-server
+WORKDIR /source
 COPY . .
+RUN cargo build --locked --release \
+      --package vm-package-server \
+      --features standalone-binary \
+      --bin pkg-server && \
+    install -m 0755 target/release/pkg-server /usr/local/bin/pkg-server
 
-# Build the release binary with optimizations
-RUN cargo build --release && \
-    cp target/release/pkg-server /usr/local/bin/pkg-server
+FROM debian:bookworm-slim
 
-# ---- Final Stage ----
-FROM debian:bullseye-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && \
+    rm -rf /var/lib/apt/lists/* && \
+    groupadd --gid 10001 packages && \
+    useradd --uid 10001 --gid packages --create-home packages && \
+    install -d -o packages -g packages \
+      /data/npm /data/cargo /data/pypi /data/cache /data/metadata
 
-# Install necessary runtime dependencies
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy the binary from the builder stage
 COPY --from=builder /usr/local/bin/pkg-server /usr/local/bin/pkg-server
 
-# Create a non-root user
-RUN useradd --create-home appuser
-
-# Set up data directory with proper permissions
-WORKDIR /home/appuser
-RUN mkdir -p data && chown -R appuser:appuser /home/appuser
-
-USER appuser
-
-# Expose the default port
+USER 10001:10001
+WORKDIR /data
 EXPOSE 3080
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=6 \
+  CMD curl --fail --silent http://127.0.0.1:3080/health || exit 1
 
-# Health check to ensure server is running
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:3080/api/status || exit 1
-
-# Define the entrypoint
 ENTRYPOINT ["pkg-server"]
-
-# Container networking needs an external bind and therefore PKG_SERVER_AUTH_TOKEN.
-CMD ["start", "--host", "0.0.0.0", "--port", "3080", "--data", "./data"]
+CMD ["start", "--host", "0.0.0.0", "--port", "3080", "--data", "/data"]

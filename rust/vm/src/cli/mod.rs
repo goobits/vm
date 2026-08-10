@@ -188,6 +188,11 @@ pub enum Command {
         #[arg(long, value_name = "PATH")]
         build: Option<PathBuf>,
     },
+    /// Manage the shared package-infrastructure appliance
+    Packages {
+        #[command(subcommand)]
+        command: PackagesSubcommand,
+    },
     /// Manage defaults, providers, and profiles
     Config {
         #[command(subcommand)]
