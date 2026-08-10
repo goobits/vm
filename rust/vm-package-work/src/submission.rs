@@ -69,6 +69,7 @@ impl Store {
             validation: None,
             review: None,
             integration: None,
+            release_id: None,
             created_at: now,
             updated_at: now,
         };
@@ -406,7 +407,7 @@ impl Store {
     }
 }
 
-fn transition_records(
+pub(crate) fn transition_records(
     database: &mut crate::store::Database,
     submission_id: &str,
     next: WorkflowState,
@@ -426,7 +427,10 @@ fn transition_records(
         )));
     }
     let checkout_id = submission.checkout_id.clone();
-    let commit = Some(submission.submitted_commit.clone());
+    let commit = Some(submission.integration.as_ref().map_or_else(
+        || submission.submitted_commit.clone(),
+        |integration| integration.integration_commit.clone(),
+    ));
     let now = Utc::now();
     let workflow_receipt = receipt(
         database,

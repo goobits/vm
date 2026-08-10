@@ -4,6 +4,7 @@ mod docker;
 mod files;
 mod integration;
 mod process;
+mod release;
 mod runtime;
 mod submission;
 mod tart;
@@ -80,8 +81,8 @@ pub(super) async fn handle(
             runtime,
             port,
             registry_image,
-            review_image,
-        } => up(&files, runtime, port, registry_image, review_image).await,
+            job_image,
+        } => up(&files, runtime, port, registry_image, job_image).await,
         PackagesSubcommand::Down { runtime } => down(&files, runtime),
         PackagesSubcommand::Status { runtime } => status(&files, runtime).await,
         PackagesSubcommand::Doctor { runtime } => doctor(&files, runtime).await,
@@ -90,7 +91,8 @@ pub(super) async fn handle(
             ecosystem,
             repository,
             branch,
-        } => catalog::register(&files, name, ecosystem, repository, branch).await,
+            ci_registry,
+        } => catalog::register(&files, name, ecosystem, repository, branch, ci_registry).await,
         PackagesSubcommand::List => catalog::list(&files).await,
         PackagesSubcommand::Checkout {
             package,
@@ -131,9 +133,16 @@ pub(super) async fn handle(
             )
             .await
         }
-        PackagesSubcommand::Auth { token_file, clear } => {
-            catalog::configure_git_auth(&files, token_file, clear)
-        }
+        PackagesSubcommand::Publish {
+            submission_id,
+            push_source,
+        } => release::handle(&files, submission_id, push_source).await,
+        PackagesSubcommand::Auth {
+            token_file,
+            ci_token_file,
+            clear,
+            clear_ci,
+        } => catalog::configure_auth(&files, token_file, ci_token_file, clear, clear_ci),
     }
 }
 
@@ -154,21 +163,50 @@ fn configured_state_and_client(
     Ok((state, client))
 }
 
-fn launch_review(
-    files: &ApplianceFiles,
-    state: &ApplianceState,
-    submission_id: &str,
-) -> VmResult<()> {
-    if state.review_image.is_empty() {
+#[derive(Debug, Clone, Copy)]
+enum PackageJob<'a> {
+    Review(&'a str),
+    Release(&'a str),
+}
+
+impl<'a> PackageJob<'a> {
+    fn service(self) -> &'static str {
+        match self {
+            Self::Review(_) => "reviewer",
+            Self::Release(_) => "releaser",
+        }
+    }
+
+    fn variable(self) -> &'static str {
+        "SUBMISSION_ID"
+    }
+
+    fn id(self) -> &'a str {
+        match self {
+            Self::Review(id) | Self::Release(id) => id,
+        }
+    }
+}
+
+fn launch_job(files: &ApplianceFiles, state: &ApplianceState, job: PackageJob<'_>) -> VmResult<()> {
+    if state.job_image.is_empty() {
         return Err(VmError::validation(
             "Package appliance state predates integration review support",
             Some("Run `vm packages up` to refresh it"),
         ));
     }
     match state.runtime {
-        InfrastructureRuntime::Docker => docker::review(files, submission_id),
-        InfrastructureRuntime::Tart => tart::review(files, submission_id),
+        InfrastructureRuntime::Docker => docker::run_job(files, job),
+        InfrastructureRuntime::Tart => tart::run_job(files, job),
     }
+}
+
+fn launch_review(
+    files: &ApplianceFiles,
+    state: &ApplianceState,
+    submission_id: &str,
+) -> VmResult<()> {
+    launch_job(files, state, PackageJob::Review(submission_id))
 }
 
 async fn up(
@@ -176,16 +214,16 @@ async fn up(
     requested: PackageInfrastructureRuntime,
     port: u16,
     registry_image: Option<String>,
-    review_image: Option<String>,
+    job_image: Option<String>,
 ) -> VmResult<()> {
     let runtime = resolve_runtime(requested, files)?;
     let image = registry_image.unwrap_or_else(default_registry_image);
-    let review_image = review_image.unwrap_or_else(default_review_image);
+    let job_image = job_image.unwrap_or_else(default_job_image);
     let bind = match runtime {
         InfrastructureRuntime::Docker => "127.0.0.1",
         InfrastructureRuntime::Tart => "0.0.0.0",
     };
-    let config = ApplianceConfig::new(bind, port, image, review_image).map_err(VmError::from)?;
+    let config = ApplianceConfig::new(bind, port, image, job_image).map_err(VmError::from)?;
     files.materialize(&config)?;
 
     let gateway_url = match runtime {
@@ -199,7 +237,7 @@ async fn up(
         gateway_url: gateway_url.clone(),
         gateway_port: port,
         registry_image: config.registry_image,
-        review_image: config.review_image,
+        job_image: config.job_image,
         controller_version: env!("CARGO_PKG_VERSION").to_string(),
     })?;
 
@@ -317,9 +355,9 @@ fn default_registry_image() -> String {
     )
 }
 
-fn default_review_image() -> String {
+fn default_job_image() -> String {
     format!(
-        "ghcr.io/goobits/vm-package-review:{}",
+        "ghcr.io/goobits/vm-package-jobs:{}",
         env!("CARGO_PKG_VERSION")
     )
 }
@@ -384,7 +422,7 @@ mod tests {
             gateway_url: "http://192.0.2.8:3080".into(),
             gateway_port: 3080,
             registry_image: "registry/image:1".into(),
-            review_image: "review/image:1".into(),
+            job_image: "jobs/image:1".into(),
             controller_version: "1".into(),
         };
         let docker = client_environment(&state, "read-token".into(), "docker").unwrap();
@@ -399,7 +437,7 @@ mod tests {
             gateway_url: "http://127.0.0.1:3080".into(),
             gateway_port: 3080,
             registry_image: "registry/image:1".into(),
-            review_image: "review/image:1".into(),
+            job_image: "jobs/image:1".into(),
             controller_version: "1".into(),
         };
         assert!(client_environment(&state, "read-token".into(), "tart").is_err());

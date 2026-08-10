@@ -10,7 +10,7 @@ use vm_packages::{COMPOSE_PROJECT, TART_BASE_NAME, TART_INSTANCE_NAME};
 use crate::error::{VmError, VmResult};
 
 use super::files::ApplianceFiles;
-use super::process;
+use super::{process, PackageJob};
 
 const GUEST_ROOT: &str = "/opt/vm-packages";
 const READY_TIMEOUT: Duration = Duration::from_secs(120);
@@ -105,13 +105,16 @@ pub(super) fn gateway_url(port: u16) -> VmResult<String> {
     Ok(format_gateway_url(&address, port))
 }
 
-pub(super) fn review(_files: &ApplianceFiles, submission_id: &str) -> VmResult<()> {
-    process::validate_job_id(submission_id)?;
+pub(super) fn run_job(_files: &ApplianceFiles, job: PackageJob<'_>) -> VmResult<()> {
+    process::validate_job_id(job.id())?;
     process::run(
         &mut guest_shell(&format!(
-            "cd {GUEST_ROOT} && sudo docker compose --project-name {COMPOSE_PROJECT} --file compose.yaml --env-file environment.env run --rm --no-deps --env SUBMISSION_ID={submission_id} reviewer"
+            "cd {GUEST_ROOT} && sudo docker compose --project-name {COMPOSE_PROJECT} --file compose.yaml --env-file environment.env run --rm --no-deps --env {}={} {}",
+            job.variable(),
+            job.id(),
+            job.service(),
         )),
-        "run the ephemeral package integration reviewer",
+        "run the ephemeral package job",
     )
 }
 
@@ -224,7 +227,9 @@ fn sync_controller_files(files: &ApplianceFiles) -> VmResult<()> {
         (files.publish_token_path(), "publish-token"),
         (files.controller_token_path(), "controller-token"),
         (files.reviewer_token_path(), "reviewer-token"),
+        (files.release_token_path(), "release-token"),
         (files.git_token_path(), "git-token"),
+        (files.ci_publish_token_path(), "ci-publish-token"),
     ] {
         let content = std::fs::read(&source).map_err(|error| {
             VmError::filesystem(

@@ -8,14 +8,14 @@ use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 use vm_packages::{
     CheckoutLease, CheckoutRecord, CreateCheckout, LeaseRecord, LeaseRequest, PackageDefinition,
-    ReceiptKind, RegisterPackage, SubmissionRecord, TransitionRequest, WorkflowReceipt,
-    WorkflowState, WorkflowTransition,
+    ReceiptKind, RegisterPackage, ReleaseRecord, SubmissionRecord, TransitionRequest,
+    WorkflowReceipt, WorkflowState, WorkflowTransition,
 };
 
 use crate::{io::atomic_write, WorkError, WorkResult};
 
 const STATE_FILE: &str = "state/workflows.json";
-const DEFAULT_LEASE_SECONDS: i64 = 30 * 60;
+const DEFAULT_LEASE_SECONDS: i64 = 8 * 60 * 60;
 const MAX_LEASE_SECONDS: i64 = 24 * 60 * 60;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,6 +39,8 @@ pub(crate) struct Database {
     pub(crate) packages: BTreeMap<String, PackageDefinition>,
     #[serde(default)]
     pub(crate) submissions: BTreeMap<String, SubmissionRecord>,
+    #[serde(default)]
+    pub(crate) releases: BTreeMap<String, ReleaseRecord>,
 }
 
 pub struct Store {
@@ -178,6 +180,7 @@ impl Store {
             if existing.ecosystem == request.ecosystem
                 && existing.repository == request.repository
                 && existing.default_branch == request.default_branch
+                && existing.ci_registry == request.ci_registry
             {
                 return Ok(existing.clone());
             }
@@ -191,6 +194,7 @@ impl Store {
             ecosystem: request.ecosystem,
             repository: request.repository,
             default_branch: request.default_branch,
+            ci_registry: request.ci_registry,
             registered_at: Utc::now(),
         };
         let mut next = current.clone();
@@ -600,6 +604,15 @@ impl Store {
             let content = pretty_json(receipt)?;
             atomic_write(path, content).await?;
         }
+        let releases = self.root.join("receipts/releases");
+        tokio::fs::create_dir_all(&releases).await?;
+        for release in database.releases.values() {
+            atomic_write(
+                releases.join(format!("{}.json", release.release_id)),
+                pretty_json(release)?,
+            )
+            .await?;
+        }
         Ok(())
     }
 }
@@ -689,6 +702,28 @@ fn validate_register(request: &RegisterPackage) -> WorkResult<()> {
     {
         return Err(WorkError::Invalid(
             "repository URL must not contain credentials, query parameters, or fragments".into(),
+        ));
+    }
+    if let Some(registry) = request.ci_registry.as_deref() {
+        validate_registry_url(registry)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_registry_url(value: &str) -> WorkResult<()> {
+    let value = value.strip_prefix("sparse+").unwrap_or(value);
+    let registry = url::Url::parse(value)
+        .map_err(|_| WorkError::Invalid("registry must be an absolute HTTP(S) URL".into()))?;
+    if !matches!(registry.scheme(), "http" | "https")
+        || registry.host_str().is_none()
+        || !registry.username().is_empty()
+        || registry.password().is_some()
+        || registry.query().is_some()
+        || registry.fragment().is_some()
+    {
+        return Err(WorkError::Invalid(
+            "registry must be an absolute HTTP(S) URL without credentials, query, or fragment"
+                .into(),
         ));
     }
     Ok(())
@@ -947,6 +982,7 @@ mod tests {
             ecosystem: PackageEcosystem::Cargo,
             repository: "https://example.com/auth.git".into(),
             default_branch: "main".into(),
+            ci_registry: None,
         };
         assert_eq!(
             store.register_package(package.clone()).await.unwrap(),
@@ -958,6 +994,7 @@ mod tests {
                 ecosystem: PackageEcosystem::Cargo,
                 repository: "https://example.com/other.git".into(),
                 default_branch: "main".into(),
+                ci_registry: None,
             })
             .await
             .is_err());

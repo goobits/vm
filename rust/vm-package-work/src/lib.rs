@@ -1,5 +1,6 @@
 mod error;
 mod io;
+mod release;
 mod server;
 mod source;
 mod store;

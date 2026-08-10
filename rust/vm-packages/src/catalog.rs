@@ -10,6 +10,8 @@ pub struct RegisterPackage {
     pub repository: String,
     #[serde(default = "default_branch")]
     pub default_branch: String,
+    #[serde(default)]
+    pub ci_registry: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -18,6 +20,8 @@ pub struct PackageDefinition {
     pub ecosystem: PackageEcosystem,
     pub repository: String,
     pub default_branch: String,
+    #[serde(default)]
+    pub ci_registry: Option<String>,
     pub registered_at: DateTime<Utc>,
 }
 

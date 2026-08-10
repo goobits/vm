@@ -78,7 +78,7 @@ pub struct LeaseRequest {
 }
 
 fn default_lease_seconds() -> i64 {
-    30 * 60
+    8 * 60 * 60
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -5,7 +5,7 @@ use vm_core::{vm_println, vm_progress};
 use vm_packages::COMPOSE_PROJECT;
 
 use super::files::ApplianceFiles;
-use super::process;
+use super::{process, PackageJob};
 
 pub(super) fn up(files: &ApplianceFiles, port: u16) -> VmResult<String> {
     doctor(files)?;
@@ -53,14 +53,14 @@ pub(super) fn doctor(files: &ApplianceFiles) -> VmResult<()> {
     Ok(())
 }
 
-pub(super) fn review(files: &ApplianceFiles, submission_id: &str) -> VmResult<()> {
-    process::validate_job_id(submission_id)?;
+pub(super) fn run_job(files: &ApplianceFiles, job: PackageJob<'_>) -> VmResult<()> {
+    process::validate_job_id(job.id())?;
     process::run(
         compose(files)
             .args(["run", "--rm", "--no-deps", "--env"])
-            .arg(format!("SUBMISSION_ID={submission_id}"))
-            .arg("reviewer"),
-        "run the ephemeral package integration reviewer",
+            .arg(format!("{}={}", job.variable(), job.id()))
+            .arg(job.service()),
+        "run the ephemeral package job",
     )
 }
 

@@ -10,6 +10,7 @@ mod client;
 mod credentials;
 mod ecosystem;
 mod environment;
+mod release;
 mod submission;
 mod workflow;
 
@@ -22,6 +23,10 @@ pub use client::{InfrastructureStatus, PackageInfrastructureClient, PackageInven
 pub use credentials::authorization_token;
 pub use ecosystem::{PackageEcosystem, ParsePackageEcosystemError};
 pub use environment::{ClientEnvironment, RegistryEndpoints};
+pub use release::{
+    BeginReleaseRequest, CompleteReleaseRequest, PublicationRecord, PublicationRequest,
+    ReleaseRecord,
+};
 pub use submission::{
     CheckOutcome, IntegrationRecord, IntegrationRequest, IntegrationReview, PublicApiDiff,
     ReviewDecision, ReviewRequest, SubmissionRecord, ValidationRequest, ValidationResult,

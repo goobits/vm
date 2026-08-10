@@ -63,20 +63,9 @@ impl SourceManager {
             .lock(&format!("checkout:{}", checkout.checkout_id))
             .await;
         let _guard = lock.lock().await;
-        let source = checkout
-            .worktree
-            .as_deref()
-            .map(PathBuf::from)
-            .ok_or_else(|| WorkError::Conflict("checkout source is not ready".into()))?;
-        let expected = self
-            .root
-            .join("agents")
-            .join(&checkout.checkout_id)
-            .join("source");
-        if source != expected || !source.is_dir() {
-            return Err(WorkError::Internal(
-                "checkout source escaped its managed directory".into(),
-            ));
+        let source = self.checkout_source(checkout)?;
+        if !source.is_dir() {
+            return Err(WorkError::Conflict("checkout source is not ready".into()));
         }
         let archive = self
             .root
@@ -705,6 +694,7 @@ mod tests {
                 ecosystem: PackageEcosystem::Cargo,
                 repository: url::Url::from_file_path(&repository).unwrap().into(),
                 default_branch: "main".into(),
+                ci_registry: None,
             })
             .await
             .unwrap();

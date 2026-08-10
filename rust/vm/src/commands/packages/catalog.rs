@@ -13,6 +13,7 @@ pub(super) async fn register(
     ecosystem: String,
     repository: String,
     default_branch: String,
+    ci_registry: Option<String>,
 ) -> VmResult<()> {
     let ecosystem = ecosystem
         .parse::<PackageEcosystem>()
@@ -23,10 +24,14 @@ pub(super) async fn register(
             ecosystem,
             repository,
             default_branch,
+            ci_registry,
         })
         .await?;
     vm_success!("Registered {} ({})", package.name, package.ecosystem);
     vm_println!("Repository: {}", package.repository);
+    if let Some(registry) = package.ci_registry {
+        vm_println!("CI registry: {registry}");
+    }
     Ok(())
 }
 
@@ -55,30 +60,47 @@ pub(super) async fn show(files: &ApplianceFiles, checkout_id: &str) -> VmResult<
     Ok(())
 }
 
-pub(super) fn configure_git_auth(
+pub(super) fn configure_auth(
     files: &ApplianceFiles,
-    token_file: Option<PathBuf>,
-    clear: bool,
+    git_token_file: Option<PathBuf>,
+    ci_token_file: Option<PathBuf>,
+    clear_git: bool,
+    clear_ci: bool,
 ) -> VmResult<()> {
-    let token = match (token_file, clear) {
-        (Some(path), false) => fs::read_to_string(&path).map_err(|error| {
-            VmError::filesystem(error, path.display().to_string(), "read Git token")
-        })?,
-        (None, true) => String::new(),
-        _ => {
-            return Err(VmError::validation(
-                "Provide --token-file or --clear",
-                None::<String>,
-            ));
-        }
-    };
-    files.set_git_token(token.trim())?;
-    let message = if clear {
-        "Package Git credential cleared"
-    } else {
-        "Package Git credential stored"
-    };
-    vm_success!("{message}");
+    if git_token_file.is_none() && ci_token_file.is_none() && !clear_git && !clear_ci {
+        return Err(VmError::validation(
+            "Provide a Git/CI token file or a clear flag",
+            None::<String>,
+        ));
+    }
+    if let Some(token) = credential(git_token_file, clear_git, "Git")? {
+        files.set_git_token(&token)?;
+        vm_success!("Package Git credential updated");
+    }
+    if let Some(token) = credential(ci_token_file, clear_ci, "CI registry")? {
+        files.set_ci_publish_token(&token)?;
+        vm_success!("Package CI registry credential updated");
+    }
     vm_println!("Run `vm packages up` to apply it to the appliance");
     Ok(())
+}
+
+fn credential(path: Option<PathBuf>, clear: bool, kind: &str) -> VmResult<Option<String>> {
+    match (path, clear) {
+        (Some(path), false) => fs::read_to_string(&path)
+            .map(|token| Some(token.trim().to_string()))
+            .map_err(|error| {
+                VmError::filesystem(
+                    error,
+                    path.display().to_string(),
+                    format!("read {kind} token"),
+                )
+            }),
+        (None, true) => Ok(Some(String::new())),
+        (None, false) => Ok(None),
+        (Some(_), true) => Err(VmError::validation(
+            format!("Cannot set and clear the {kind} token together"),
+            None::<String>,
+        )),
+    }
 }

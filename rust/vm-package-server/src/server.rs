@@ -14,7 +14,7 @@ use axum::{
     http::{header, HeaderMap, StatusCode},
     middleware,
     response::{Html, IntoResponse, Response},
-    routing::{get, put},
+    routing::{get, post, put},
     Router,
 };
 use serde::Deserialize;
@@ -179,7 +179,10 @@ fn app_router(state: AppState) -> Router {
         ));
     let writes = Router::new()
         .route("/npm/{package}", put(npm::publish_package))
-        .route("/pypi/upload", put(pypi::upload_package))
+        .route(
+            "/pypi/upload",
+            post(pypi::upload_package).put(pypi::upload_package),
+        )
         .route("/cargo/api/v1/crates/new", put(cargo::publish_crate));
     Router::new()
         .route("/health", get(health_handler))

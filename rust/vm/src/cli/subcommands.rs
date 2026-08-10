@@ -23,9 +23,9 @@ pub enum PackagesSubcommand {
         /// Override the immutable registry service image
         #[arg(long)]
         registry_image: Option<String>,
-        /// Override the immutable integration-review image
-        #[arg(long)]
-        review_image: Option<String>,
+        /// Override the immutable package review/release job image
+        #[arg(long, alias = "review-image")]
+        job_image: Option<String>,
     },
     /// Stop the appliance while preserving all named volumes
     Down {
@@ -51,6 +51,9 @@ pub enum PackagesSubcommand {
         repository: String,
         #[arg(long, default_value = "main")]
         branch: String,
+        /// CI-accessible registry endpoint used for synchronized releases
+        #[arg(long)]
+        ci_registry: Option<String>,
     },
     /// List registered shared-package repositories
     List,
@@ -83,12 +86,23 @@ pub enum PackagesSubcommand {
         #[arg(long, default_value = "rebase", value_parser = ["rebase", "merge"])]
         strategy: String,
     },
+    /// Push validated source/tag and publish immutable release artifacts
+    Publish {
+        submission_id: String,
+        /// Explicitly authorize the source commit and release tag push
+        #[arg(long)]
+        push_source: bool,
+    },
     /// Install or clear the controller's private Git token
     Auth {
-        #[arg(long, conflicts_with = "clear")]
+        #[arg(long, alias = "git-token-file", conflicts_with = "clear")]
         token_file: Option<PathBuf>,
+        #[arg(long, conflicts_with = "clear_ci")]
+        ci_token_file: Option<PathBuf>,
         #[arg(long)]
         clear: bool,
+        #[arg(long)]
+        clear_ci: bool,
     },
 }
 

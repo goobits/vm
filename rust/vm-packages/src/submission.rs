@@ -117,6 +117,8 @@ pub struct SubmissionRecord {
     pub validation: Option<ValidationResult>,
     pub review: Option<IntegrationReview>,
     pub integration: Option<IntegrationRecord>,
+    #[serde(default)]
+    pub release_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

@@ -11,7 +11,9 @@ const READ_TOKEN_FILE: &str = "read-token";
 const PUBLISH_TOKEN_FILE: &str = "publish-token";
 const CONTROLLER_TOKEN_FILE: &str = "controller-token";
 const REVIEWER_TOKEN_FILE: &str = "reviewer-token";
+const RELEASE_TOKEN_FILE: &str = "release-token";
 const GIT_TOKEN_FILE: &str = "git-token";
+const CI_PUBLISH_TOKEN_FILE: &str = "ci-publish-token";
 const STATE_FILE: &str = "state.json";
 
 #[derive(Debug, Clone)]
@@ -65,8 +67,16 @@ impl ApplianceFiles {
         self.root.join(GIT_TOKEN_FILE)
     }
 
+    pub(super) fn ci_publish_token_path(&self) -> PathBuf {
+        self.root.join(CI_PUBLISH_TOKEN_FILE)
+    }
+
     pub(super) fn reviewer_token_path(&self) -> PathBuf {
         self.root.join(REVIEWER_TOKEN_FILE)
+    }
+
+    pub(super) fn release_token_path(&self) -> PathBuf {
+        self.root.join(RELEASE_TOKEN_FILE)
     }
 
     pub(super) fn read_token(&self) -> VmResult<String> {
@@ -78,14 +88,22 @@ impl ApplianceFiles {
     }
 
     pub(super) fn set_git_token(&self, token: &str) -> VmResult<()> {
+        self.set_external_token(&self.git_token_path(), token, "Git")
+    }
+
+    pub(super) fn set_ci_publish_token(&self, token: &str) -> VmResult<()> {
+        self.set_external_token(&self.ci_publish_token_path(), token, "CI registry")
+    }
+
+    fn set_external_token(&self, path: &Path, token: &str, kind: &str) -> VmResult<()> {
         if token.contains(['\r', '\n']) {
             return Err(VmError::validation(
-                "Git token must be a single line",
+                format!("{kind} token must be a single line"),
                 Some("Pass a file containing only the token"),
             ));
         }
         self.ensure_root()?;
-        write_private(&self.git_token_path(), token.as_bytes())
+        write_private(path, token.as_bytes())
     }
 
     fn token(&self, path: &Path) -> VmResult<String> {
@@ -113,6 +131,7 @@ impl ApplianceFiles {
             self.publish_token_path(),
             self.controller_token_path(),
             self.reviewer_token_path(),
+            self.release_token_path(),
         ] {
             if !path.exists() {
                 let token = vm_core::secrets::generate_random_password(48);
@@ -121,6 +140,9 @@ impl ApplianceFiles {
         }
         if !self.git_token_path().exists() {
             write_private(&self.git_token_path(), b"")?;
+        }
+        if !self.ci_publish_token_path().exists() {
+            write_private(&self.ci_publish_token_path(), b"")?;
         }
         Ok(())
     }
@@ -215,7 +237,9 @@ mod tests {
         assert!(files.publish_token_path().is_file());
         assert!(files.controller_token_path().is_file());
         assert!(files.reviewer_token_path().is_file());
+        assert!(files.release_token_path().is_file());
         assert!(files.git_token_path().is_file());
+        assert!(files.ci_publish_token_path().is_file());
         assert_eq!(
             std::fs::read_to_string(files.publish_token_path())
                 .unwrap()

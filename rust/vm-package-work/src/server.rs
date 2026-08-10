@@ -15,9 +15,10 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio_util::io::ReaderStream;
 use vm_packages::{
-    authorization_token, CheckoutLease, CreateCheckout, IntegrationRequest, LeaseRequest,
-    PackageDefinition, RegisterPackage, ReviewRequest, SubmissionRecord, TransitionRequest,
-    ValidationRequest,
+    authorization_token, BeginReleaseRequest, CheckoutLease, CompleteReleaseRequest,
+    CreateCheckout, IntegrationRequest, LeaseRequest, PackageDefinition, PublicationRequest,
+    RegisterPackage, ReleaseRecord, ReviewRequest, SubmissionRecord, TransitionRequest,
+    ValidationRequest, WorkflowState,
 };
 
 use crate::{SourceManager, Store, WorkError, WorkResult};
@@ -29,6 +30,7 @@ struct Access {
     read_token: String,
     controller_token: String,
     reviewer_token: String,
+    release_token: String,
 }
 
 #[derive(Clone)]
@@ -43,6 +45,7 @@ pub fn router(
     read_token: impl Into<String>,
     controller_token: impl Into<String>,
     reviewer_token: impl Into<String>,
+    release_token: impl Into<String>,
 ) -> Router {
     let source = SourceManager::new(store.root());
     let state = AppState {
@@ -52,6 +55,7 @@ pub fn router(
             read_token: read_token.into(),
             controller_token: controller_token.into(),
             reviewer_token: reviewer_token.into(),
+            release_token: release_token.into(),
         },
     };
     let reads = Router::new()
@@ -62,6 +66,8 @@ pub fn router(
         .route("/v1/receipts/{receipt_id}", get(get_receipt))
         .route("/v1/submissions", get(list_submissions))
         .route("/v1/submissions/{submission_id}", get(get_submission))
+        .route("/v1/releases", get(list_releases))
+        .route("/v1/releases/{release_id}", get(get_release))
         .route(
             "/v1/checkouts/{checkout_id}/submission",
             get(get_checkout_submission),
@@ -98,6 +104,21 @@ pub fn router(
             post(record_review),
         )
         .route_layer(middleware::from_fn_with_state(state.clone(), reviewer_auth));
+    let releases = Router::new()
+        .route(
+            "/v1/submissions/{submission_id}/release",
+            post(begin_release),
+        )
+        .route(
+            "/v1/releases/{release_id}/publications",
+            post(record_publication),
+        )
+        .route("/v1/releases/{release_id}/complete", post(complete_release))
+        .route(
+            "/v1/submissions/{submission_id}/release-bundle",
+            get(download_release_bundle),
+        )
+        .route_layer(middleware::from_fn_with_state(state.clone(), release_auth));
 
     Router::new()
         .route("/health", get(health))
@@ -113,6 +134,7 @@ pub fn router(
         .merge(reads)
         .merge(writes)
         .merge(reviews)
+        .merge(releases)
         .with_state(state)
 }
 
@@ -123,21 +145,26 @@ pub async fn run(
     read_token: String,
     controller_token: String,
     reviewer_token: String,
+    release_token: String,
 ) -> WorkResult<()> {
     if read_token.trim().is_empty()
         || controller_token.trim().is_empty()
         || reviewer_token.trim().is_empty()
+        || release_token.trim().is_empty()
     {
         return Err(WorkError::Invalid(
-            "read, controller, and reviewer tokens are required".into(),
+            "read, controller, reviewer, and release tokens are required".into(),
         ));
     }
     if read_token == controller_token
         || read_token == reviewer_token
         || controller_token == reviewer_token
+        || read_token == release_token
+        || controller_token == release_token
+        || reviewer_token == release_token
     {
         return Err(WorkError::Invalid(
-            "read, controller, and reviewer tokens must be distinct".into(),
+            "read, controller, reviewer, and release tokens must be distinct".into(),
         ));
     }
     let listener = TcpListener::bind((host.as_str(), port)).await?;
@@ -145,7 +172,13 @@ pub async fn run(
     tracing::info!(host, port, "package-work service listening");
     axum::serve(
         listener,
-        router(store, read_token, controller_token, reviewer_token),
+        router(
+            store,
+            read_token,
+            controller_token,
+            reviewer_token,
+            release_token,
+        ),
     )
     .await?;
     Ok(())
@@ -204,6 +237,17 @@ async fn get_checkout_submission(
     Path(checkout_id): Path<String>,
 ) -> WorkResult<Json<SubmissionRecord>> {
     Ok(Json(state.store.checkout_submission(&checkout_id).await?))
+}
+
+async fn list_releases(State(state): State<AppState>) -> WorkResult<Json<Vec<ReleaseRecord>>> {
+    Ok(Json(state.store.releases().await))
+}
+
+async fn get_release(
+    State(state): State<AppState>,
+    Path(release_id): Path<String>,
+) -> WorkResult<Json<ReleaseRecord>> {
+    Ok(Json(state.store.release(&release_id).await?))
 }
 
 async fn create_checkout(
@@ -299,6 +343,36 @@ async fn record_review(
 ) -> WorkResult<Json<SubmissionRecord>> {
     Ok(Json(
         state.store.record_review(&submission_id, request).await?,
+    ))
+}
+
+async fn begin_release(
+    State(state): State<AppState>,
+    Path(submission_id): Path<String>,
+    Json(request): Json<BeginReleaseRequest>,
+) -> WorkResult<Json<ReleaseRecord>> {
+    Ok(Json(
+        state.store.begin_release(&submission_id, request).await?,
+    ))
+}
+
+async fn record_publication(
+    State(state): State<AppState>,
+    Path(release_id): Path<String>,
+    Json(request): Json<PublicationRequest>,
+) -> WorkResult<Json<ReleaseRecord>> {
+    Ok(Json(
+        state.store.record_publication(&release_id, request).await?,
+    ))
+}
+
+async fn complete_release(
+    State(state): State<AppState>,
+    Path(release_id): Path<String>,
+    Json(request): Json<CompleteReleaseRequest>,
+) -> WorkResult<Json<ReleaseRecord>> {
+    Ok(Json(
+        state.store.complete_release(&release_id, request).await?,
     ))
 }
 
@@ -422,6 +496,35 @@ async fn download_integration(
         .into_response())
 }
 
+async fn download_release_bundle(
+    State(state): State<AppState>,
+    Path(submission_id): Path<String>,
+) -> WorkResult<Response> {
+    let submission = state.store.submission(&submission_id).await?;
+    if !matches!(
+        submission.state,
+        WorkflowState::ReadyToRelease | WorkflowState::Publishing | WorkflowState::Published
+    ) {
+        return Err(WorkError::Conflict(
+            "submission is not ready for release".into(),
+        ));
+    }
+    let bundle = state.source.integration_bundle(&submission)?;
+    let file = tokio::fs::File::open(bundle).await?;
+    let body = Body::from_stream(ReaderStream::new(file));
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/x-git-bundle"),
+            (
+                header::CONTENT_DISPOSITION,
+                "attachment; filename=release.bundle",
+            ),
+        ],
+        body,
+    )
+        .into_response())
+}
+
 async fn read_auth(
     State(state): State<AppState>,
     request: Request,
@@ -431,8 +534,21 @@ async fn read_auth(
     if token != state.access.read_token
         && token != state.access.controller_token
         && token != state.access.reviewer_token
+        && token != state.access.release_token
     {
         return Err(WorkError::Unauthorized("invalid read credential".into()));
+    }
+    Ok(next.run(request).await)
+}
+
+async fn release_auth(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> WorkResult<Response> {
+    let token = request_token(&request)?;
+    if token != state.access.release_token && token != state.access.controller_token {
+        return Err(WorkError::Unauthorized("invalid release credential".into()));
     }
     Ok(next.run(request).await)
 }
@@ -492,7 +608,7 @@ mod tests {
     async fn health_is_public_and_workflow_access_is_scoped() {
         let directory = tempfile::tempdir().unwrap();
         let store = Arc::new(Store::open(directory.path()).await.unwrap());
-        let server = TestServer::new(router(store, "read", "controller", "reviewer"));
+        let server = TestServer::new(router(store, "read", "controller", "reviewer", "release"));
 
         assert_eq!(server.get("/health").await.status_code(), StatusCode::OK);
         assert_eq!(
@@ -518,13 +634,36 @@ mod tests {
         );
         assert_eq!(
             server
+                .get("/v1/checkouts")
+                .add_header(header::AUTHORIZATION, "Bearer release")
+                .await
+                .status_code(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            server
+                .post("/v1/packages")
+                .add_header(header::AUTHORIZATION, "Bearer release")
+                .json(&serde_json::json!({
+                    "name": "blocked",
+                    "ecosystem": "cargo",
+                    "repository": "https://example.com/blocked.git",
+                    "default_branch": "main"
+                }))
+                .await
+                .status_code(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            server
                 .post("/v1/packages")
                 .add_header(header::AUTHORIZATION, "Bearer controller")
                 .json(&serde_json::json!({
                     "name": "auth",
                     "ecosystem": "cargo",
                     "repository": "https://example.com/auth.git",
-                    "default_branch": "main"
+                    "default_branch": "main",
+                    "ci_registry": null
                 }))
                 .await
                 .status_code(),
