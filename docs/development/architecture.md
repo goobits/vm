@@ -44,6 +44,11 @@ Docker and Podman implement container mounts, named volumes, tmpfs, resource
 limits, and logging. Tart owns macOS/Linux guest provisioning and does not
 accept container-only storage settings.
 
+Host-side project detection produces one provider-neutral install plan. Docker
+Ansible provisioning and Tart guest provisioning consume that plan and the
+same embedded Node, AI-tool, home-repair, shell, and cache policies rather than
+probing or implementing them independently.
+
 Provider-independent config validation runs before lifecycle operations.
 `vm config render` is a redacted, provider-free preview and must remain safe to
 run without Docker, Podman, or Tart.

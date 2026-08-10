@@ -59,6 +59,40 @@ vm run linux as isolated --provider tart
 vm run container as db --provider podman
 ```
 
+## Linux Tart With Docker
+
+Use `vibe-tart` when you want the isolation of a full Linux VM with Docker
+Engine inside it:
+
+```bash
+vm config preset vibe-tart
+vm ssh
+```
+
+The preset selects its Linux Tart profile by default. The equivalent minimal
+provider configuration is:
+
+```yaml
+provider: tart
+tart:
+  guest_os: linux
+  disk_size: 80
+  ssh_user: admin
+  install_docker: true
+vm:
+  box: vibe-tart-linux-base
+  cpus: 8
+  memory: 16384
+```
+
+`vm ssh` creates the environment when missing. If the versioned Linux base is
+not local, `vm` pulls it into the Tart cache or builds it when the published
+image is unavailable. Docker runs directly against the Linux guest kernel, so
+Colima is not part of this path.
+
+No custom network is required. Vibe presets do not add `spacebase`; configure
+`networking` only when the project explicitly needs a named network.
+
 ## Container Storage And Bootstrap
 
 Container projects can move high-churn data off host binds and the writable
@@ -118,13 +152,21 @@ installed for every resolved Playwright version only when their fingerprint
 changes. Bootstrap does not start tests, browsers, watchers, agents, or terminal
 sessions.
 
-The root `node_modules` volume contains pnpm's primary virtual store and common
-tool caches. Package-level symlink directories in a workspace may remain on the
-source bind.
+The root `node_modules` volume contains pnpm's primary virtual store.
+Package-level symlink directories in a workspace may remain on the source bind.
+
+`vm` also gives Docker environments a persistent platform-scoped home cache
+and applies the same cache layout inside Tart. Cargo targets and Node, Go,
+Python, uv, Corepack, npm, and Playwright caches stay out of the source bind.
+Docker keeps them across container recreation; Tart keeps them on the guest
+disk. Explicit values in `environment` override these generated defaults, so a
+Tart-specific `CARGO_TARGET_DIR` is not needed.
 
 ## macOS Tart Guests With Docker
 
-Tart does not support nested virtualization for macOS guests. For Docker inside a macOS Tart guest, `vm` installs Docker CLI, Compose, Buildx, Colima, and QEMU, then writes a software-emulation helper at `/workspace/start-colima`.
+Tart does not support nested virtualization for macOS guests. For Docker inside
+a macOS Tart guest, `vm` installs Docker CLI, Compose, Buildx, Colima, and QEMU,
+then writes a software-emulation helper at `/workspace/start-colima`.
 
 ```yaml
 tart:
@@ -139,7 +181,27 @@ Start Docker in the guest with:
 docker run --rm busybox echo run-ok
 ```
 
-This uses QEMU TCG and is slower than native virtualization. For faster Docker, use a Linux Tart guest or a controlled remote Docker daemon over SSH/TLS.
+This uses QEMU TCG and is slower than native virtualization. For faster Docker,
+use a Linux Tart guest or a controlled remote Docker daemon over SSH/TLS.
+
+## AI Tool Provisioning
+
+Host sync can provision the current native Antigravity (`agy`), Claude Code,
+and Codex CLIs and retain their supported state:
+
+```yaml
+host_sync:
+  git_config: true
+  ai_tools:
+    antigravity: true
+    claude: true
+    codex: true
+```
+
+`ai_tools: true` enables all three. Provisioning records the installed state so
+unchanged tools are not refreshed on every boot. The old `gemini` key remains a
+deprecated compatibility alias for `antigravity`; new configs should use
+`antigravity`.
 
 ## Presets
 

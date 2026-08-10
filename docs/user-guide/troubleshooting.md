@@ -55,9 +55,30 @@ vm exec -- pwd
 starts it when stopped. `vm exec` starts an existing stopped environment but
 does not create one.
 
-## Docker In A macOS Tart Guest
+## Docker In Tart
 
-Tart does not support nested virtualization for macOS guests. Docker inside a macOS Tart guest uses Colima with QEMU TCG software emulation.
+The `vibe-tart` default is a Linux guest. Docker Engine runs directly inside
+that guest:
+
+```bash
+vm config profile set tart
+vm ssh
+docker version
+docker run --rm busybox echo run-ok
+```
+
+If the standard Linux base is missing, environment creation first tries the
+published versioned base and then builds it locally. Run `vm doctor` for Tart
+dependency diagnostics, or deliberately rebuild with:
+
+```bash
+vm system base build vibe --provider tart
+```
+
+The separate macOS profile is the slower fallback for macOS-only tools.
+
+Tart does not support nested virtualization for macOS guests. Docker inside a
+macOS Tart guest uses Colima with QEMU TCG software emulation.
 
 After booting the guest:
 
@@ -69,7 +90,9 @@ docker buildx version
 docker compose version
 ```
 
-If nested virtualization is unavailable, use a remote Docker daemon over SSH/TLS. Do not expose an unauthenticated Docker socket.
+For faster Docker, switch back to the Linux Tart profile or use a controlled
+remote Docker daemon over SSH/TLS. Do not expose an unauthenticated Docker
+socket.
 
 ## Port Conflicts
 

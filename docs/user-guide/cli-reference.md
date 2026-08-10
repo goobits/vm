@@ -96,9 +96,10 @@ vm logs backend --follow
 vm copy ./config.json backend:/workspace/config.json
 ```
 
-`vm shell`, `vm ssh`, and `vm exec` start an existing stopped environment and
-wait until it is ready. They never create or rebuild one. `vm logs` and
-`vm copy` do not change lifecycle state.
+`vm shell` and `vm ssh` create a missing selected environment, while all three
+commands start an existing stopped environment and wait until it is ready.
+`vm exec` never creates one. `vm logs` and `vm copy` do not change lifecycle
+state.
 
 Targeted container status reports the generated Compose path, writable-layer
 size, named-volume usage, `/tmp` usage, memory and PID peaks, mounts, logging,

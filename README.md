@@ -120,25 +120,37 @@ Container dependency volumes, bounded `/tmp`, resource limits, and log rotation
 are opt-in project settings. See the
 [configuration guide](docs/user-guide/configuration.md#container-storage-and-bootstrap).
 
-## Advanced Capability: Docker Inside macOS VMs
+## Docker Inside Tart
 
-`vm` can boot a real macOS Tart environment and run Docker workloads inside it.
+For a full VM that can run Docker, prefer the Linux Tart profile:
+
+```bash
+vm config preset vibe-tart
+vm ssh
+```
 
 ```text
 +----------------------+
 | Apple Silicon Mac    |  M3/M4 + macOS 15+
 +----------+-----------+
-           | Tart macOS guest
+           | Tart Linux guest
 +----------v-----------+
-| macOS Dev VM         |  Xcode, Homebrew, /workspace
+| Linux Dev VM         |  tools, services, /workspace
 +----------+-----------+
-           | Colima
+           | Docker Engine
 +----------v-----------+
 | Docker Workloads     |  build, compose, test
 +----------------------+
 ```
 
-That gives advanced workflows one interface for macOS tooling, Linux containers, and repeatable project environments. Docker inside macOS guests uses Colima with QEMU TCG software emulation, so it is slower than native Docker.
+Docker runs directly against the Linux guest kernel, so this path does not need
+Colima. `vm ssh` creates the Tart environment from `vm.yaml` when needed and
+starts it before connecting.
+
+The explicit macOS profile remains available for Xcode or other macOS-only
+work. Docker inside that macOS guest needs Colima and QEMU TCG software
+emulation because Tart cannot provide nested virtualization there, so it is the
+slower fallback.
 
 ## Development
 

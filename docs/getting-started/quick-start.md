@@ -20,7 +20,8 @@ vm copy ./config.json dev:/workspace/config.json
 ```
 
 With no name, these commands use the project's default environment. `vm ssh`
-and `vm exec` start it first when it already exists but is stopped.
+creates it from `vm.yaml` when missing; `vm ssh` and `vm exec` start it first
+when it already exists but is stopped.
 
 ## See What Is Running
 
