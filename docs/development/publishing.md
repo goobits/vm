@@ -35,6 +35,13 @@ After the changelog, version, and release commit are approved, create and push
 the matching `vX.Y.Z` tag. The release workflow builds each supported target,
 publishes archives and checksums, and creates the GitHub Release.
 
+Publish the matching Tart Linux base from the `Publish Tart Linux base` manual
+workflow. It requires an Apple Silicon self-hosted runner labeled
+`tart-builder`; standard GitHub-hosted macOS runners do not support nested
+virtualization. The workflow pushes both `vX.Y.Z` and `latest` to
+`ghcr.io/goobits/vm-tart-linux`. Keep that GHCR package public so first-run
+bootstrap does not require registry credentials.
+
 Do not publish the internal workspace crates independently.
 
 ## Release Verification

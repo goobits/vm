@@ -5,11 +5,10 @@ set -euo pipefail
 REBUILD_DOCKER_BASE=false
 BUILD_TART_BASE=false
 PROVIDER="${PROVIDER:-all}"
-TART_BASE_NAME="${TART_BASE_NAME:-vibe-tart-sequoia-base}"
 
 usage() {
   cat <<'EOF'
-Validate the shared Docker plus macOS-Tart vibe workflow for the current project.
+Validate the shared Docker plus Linux-Tart vibe workflow for the current project.
 
 Usage:
   ./scripts/internal/validate-vibe-providers.sh [--provider docker|tart|all] [--rebuild-docker-base] [--build-tart-base]
@@ -17,11 +16,10 @@ Usage:
 Flags:
   --provider docker|tart|all  Limit validation guidance to one provider (default: all)
   --rebuild-docker-base   Rebuild @vibe-box from Dockerfile.vibe before validation
-  --build-tart-base       Build the local macOS Tart vibe base before validation
+  --build-tart-base       Build the versioned local Linux Tart vibe base before validation
 
 Environment:
   PROVIDER                Provider focus for validation output (default: all)
-  TART_BASE_NAME          Tart base name to write into guidance (default: vibe-tart-sequoia-base)
 EOF
 }
 
@@ -70,8 +68,6 @@ require_tool() {
 
 require_tool vm
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PROJECT_DIR="$(pwd)"
 
 run_step() {
@@ -91,7 +87,7 @@ fi
 if [[ "${BUILD_TART_BASE}" == "true" ]]; then
   require_tool tart
   run_step "Building Tart vibe base" \
-    bash "${REPO_ROOT}/rust/vm/scripts/build-vibe-tart-base.sh" --name "${TART_BASE_NAME}"
+    vm system base build vibe --provider tart --guest-os linux
 fi
 
 echo
@@ -117,7 +113,7 @@ fi
 if [[ "${PROVIDER}" == "tart" || "${PROVIDER}" == "all" ]]; then
   cat <<'EOF'
   2. Tart default path
-     time vm run mac
+     time vm run linux --provider tart
 
 EOF
 fi

@@ -1,4 +1,5 @@
 use super::provider::tart_run_log_path;
+use crate::tart_base;
 use duct::cmd;
 use tracing::info;
 use vm_config::config::{BoxSpec, VmConfig};
@@ -223,17 +224,10 @@ fi"#
         }
 
         if let Some(BoxSpec::String(name)) = config.vm.as_ref().and_then(|vm| vm.get_box_spec()) {
-            if name == "vibe-tart-sequoia-base"
-                || name == "vibe-tart-base"
-                || name.contains("macos")
-            {
-                return "macos";
+            if let Some(guest_os) = tart_base::guest_os(&name) {
+                return guest_os;
             }
-            if name == "vibe-tart-linux-base"
-                || name.contains("ubuntu")
-                || name.contains("debian")
-                || name.contains("linux")
-            {
+            if name.contains("ubuntu") || name.contains("debian") || name.contains("linux") {
                 return "linux";
             }
         }

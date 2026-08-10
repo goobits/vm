@@ -18,9 +18,10 @@ vm system base build vibe --provider tart --guest-os macos
 vm system base validate vibe --provider all
 ```
 
-When `vm create` uses a standard Tart vibe base, it builds that base
-automatically the first time it is missing. Use `vm system base build` directly
-to prewarm or deliberately rebuild a base.
+When the versioned Linux vibe base is missing locally, `vm create` pulls it from
+GHCR into a versioned local cache. If that image is unavailable, `vm` builds the
+same cache locally. Use `vm system base build` directly to deliberately rebuild
+a base.
 
 Set `tart.storage_path` to place Tart bases and environments on another disk:
 

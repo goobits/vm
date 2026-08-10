@@ -147,6 +147,7 @@ pub mod context;
 pub mod progress;
 mod resource_limits;
 pub mod resources;
+pub mod tart_base;
 
 // Re-export template constants for testing
 pub use resources::THEMES_JSON;
@@ -194,10 +195,9 @@ pub enum BoxConfig {
 impl BoxConfig {
     fn looks_like_tart_image(s: &str) -> bool {
         let lower = s.to_ascii_lowercase();
-        matches!(
-            s,
-            "vibe-tart-sequoia-base" | "vibe-tart-base" | "vibe-tart-linux-base"
-        ) || lower.contains("cirruslabs/macos")
+        tart_base::guest_os(s).is_some()
+            || s.starts_with(tart_base::LINUX_REGISTRY)
+            || lower.contains("cirruslabs/macos")
     }
 
     fn looks_like_dockerfile_path(s: &str) -> bool {

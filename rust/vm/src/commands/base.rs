@@ -6,17 +6,26 @@ use vm_config::{
     config::{BoxSpec, VmConfig},
     resolve_tool_path, AppConfig,
 };
-use vm_core::vm_println;
+use vm_core::{vm_println, vm_warning};
+use vm_provider::tart_base;
 
 const DOCKER_BASE_NAME: &str = "@vibe-box";
-const TART_LINUX_BASE_NAME: &str = "vibe-tart-linux-base";
-const TART_MACOS_BASE_NAME: &str = "vibe-tart-sequoia-base";
 const TART_BASE_BUILDER: &str = include_str!("../../scripts/build-vibe-tart-base.sh");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct TartVibeBase {
     name: &'static str,
     guest_os: &'static str,
+}
+
+impl TartVibeBase {
+    fn local_name(self) -> String {
+        tart_base_local_name(self.guest_os)
+    }
+
+    fn prebuilt_image(self) -> Option<String> {
+        (self.guest_os == "linux").then(tart_base::versioned_image)
+    }
 }
 
 #[derive(Deserialize)]
@@ -63,9 +72,9 @@ fn handle_build(preset: &str, provider: &str, guest_os: &str) -> VmResult<()> {
         }
         "tart" => {
             let guest_os = resolve_tart_guest_os(guest_os)?;
-            let base_name = tart_base_name(guest_os);
+            let base_name = tart_base_local_name(guest_os);
             let config = VmConfig::load(None).ok();
-            build_tart_base(guest_os, base_name, config.as_ref())?;
+            build_tart_base(guest_os, &base_name, config.as_ref())?;
         }
         _ => unreachable!(),
     }
@@ -105,9 +114,17 @@ fn active_tart_guest_os() -> &'static str {
 
 fn tart_base_name(guest_os: &str) -> &'static str {
     if guest_os == "macos" {
-        TART_MACOS_BASE_NAME
+        tart_base::MACOS_NAME
     } else {
-        TART_LINUX_BASE_NAME
+        tart_base::LINUX_NAME
+    }
+}
+
+fn tart_base_local_name(guest_os: &str) -> String {
+    if guest_os == "linux" {
+        tart_base::versioned_cache_name()
+    } else {
+        tart_base_name(guest_os).to_string()
     }
 }
 
@@ -121,12 +138,12 @@ fn configured_tart_vibe_base(config: &VmConfig) -> Option<TartVibeBase> {
     };
 
     match name.as_str() {
-        TART_LINUX_BASE_NAME => Some(TartVibeBase {
-            name: TART_LINUX_BASE_NAME,
+        tart_base::LINUX_NAME => Some(TartVibeBase {
+            name: tart_base::LINUX_NAME,
             guest_os: "linux",
         }),
-        TART_MACOS_BASE_NAME => Some(TartVibeBase {
-            name: TART_MACOS_BASE_NAME,
+        tart_base::MACOS_NAME => Some(TartVibeBase {
+            name: tart_base::MACOS_NAME,
             guest_os: "macos",
         }),
         _ => None,
@@ -137,22 +154,42 @@ pub(super) fn ensure_configured_tart_base(config: &VmConfig) -> VmResult<()> {
     let Some(base) = configured_tart_vibe_base(config) else {
         return Ok(());
     };
+    let local_name = base.local_name();
 
-    if tart_base_exists(config, base.name)? {
+    if tart_base_exists(config, &local_name)? {
         return Ok(());
+    }
+
+    if let Some(image) = base.prebuilt_image() {
+        vm_println!(
+            "Tart vibe base '{}' is missing; pulling '{}'...",
+            local_name,
+            image
+        );
+        if clone_tart_base(config, &image, &local_name)? {
+            vm_println!("Pulled Tart Linux vibe base: {}", local_name);
+            return Ok(());
+        }
+        vm_warning!(
+            "Prebuilt Tart base '{}' is unavailable; building the Linux base locally instead.",
+            image
+        );
     }
 
     vm_println!(
         "Tart vibe base '{}' is missing; building it now...",
-        base.name
+        local_name
     );
-    build_tart_base(base.guest_os, base.name, Some(config))
+    build_tart_base(base.guest_os, &local_name, Some(config)).map_err(|error| {
+        VmError::validation(
+            format!("Could not prepare Tart vibe base '{local_name}': {error}"),
+            Some("Run `vm system base build vibe --provider tart` to retry with full output"),
+        )
+    })
 }
 
 fn tart_base_exists(config: &VmConfig, base_name: &str) -> VmResult<bool> {
-    let mut command = Command::new("tart");
-    apply_tart_home(&mut command, config);
-    let output = command
+    let output = tart_command(config)
         .args(["list", "--format", "json"])
         .output()
         .map_err(|error| VmError::general(error, "Failed to list Tart bases"))?;
@@ -165,6 +202,20 @@ fn tart_base_exists(config: &VmConfig, base_name: &str) -> VmResult<bool> {
     }
 
     tart_list_contains_base(&output.stdout, base_name)
+}
+
+fn clone_tart_base(config: &VmConfig, image: &str, base_name: &str) -> VmResult<bool> {
+    let status = tart_command(config)
+        .args(["clone", image, base_name])
+        .status()
+        .map_err(|error| VmError::general(error, format!("Failed to pull Tart base '{image}'")))?;
+    Ok(status.success())
+}
+
+fn tart_command(config: &VmConfig) -> Command {
+    let mut command = Command::new("tart");
+    apply_tart_home(&mut command, config);
+    command
 }
 
 fn tart_list_contains_base(output: &[u8], base_name: &str) -> VmResult<bool> {
@@ -294,13 +345,13 @@ fn run_command(mut command: Command, context: &str) -> VmResult<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_tart_home, configured_tart_vibe_base, resolve_tart_guest_os, tart_base_name,
-        tart_list_contains_base, TartVibeBase, TART_BASE_BUILDER, TART_LINUX_BASE_NAME,
-        TART_MACOS_BASE_NAME,
+        apply_tart_home, configured_tart_vibe_base, resolve_tart_guest_os, tart_base_local_name,
+        tart_base_name, tart_list_contains_base, TartVibeBase, TART_BASE_BUILDER,
     };
     use std::ffi::OsStr;
     use std::process::Command;
     use vm_config::config::{BoxSpec, TartConfig, VmConfig, VmSettings};
+    use vm_provider::tart_base;
 
     fn config(provider: &str, box_name: &str) -> VmConfig {
         VmConfig {
@@ -319,6 +370,11 @@ mod tests {
         assert_eq!(resolve_tart_guest_os("macos").unwrap(), "macos");
         assert_eq!(tart_base_name("linux"), "vibe-tart-linux-base");
         assert_eq!(tart_base_name("macos"), "vibe-tart-sequoia-base");
+        assert_eq!(
+            tart_base_local_name("linux"),
+            tart_base::versioned_cache_name()
+        );
+        assert_eq!(tart_base_local_name("macos"), "vibe-tart-sequoia-base");
     }
 
     #[test]
@@ -336,18 +392,33 @@ mod tests {
     #[test]
     fn configured_vibe_bases_resolve_their_guest_os() {
         assert_eq!(
-            configured_tart_vibe_base(&config("tart", TART_MACOS_BASE_NAME)),
+            configured_tart_vibe_base(&config("tart", tart_base::MACOS_NAME)),
             Some(TartVibeBase {
-                name: TART_MACOS_BASE_NAME,
+                name: tart_base::MACOS_NAME,
                 guest_os: "macos"
             })
         );
         assert_eq!(
-            configured_tart_vibe_base(&config("tart", TART_LINUX_BASE_NAME)),
+            configured_tart_vibe_base(&config("tart", tart_base::LINUX_NAME)),
             Some(TartVibeBase {
-                name: TART_LINUX_BASE_NAME,
+                name: tart_base::LINUX_NAME,
                 guest_os: "linux"
             })
+        );
+        assert_eq!(
+            configured_tart_vibe_base(&config("tart", tart_base::LINUX_NAME))
+                .and_then(TartVibeBase::prebuilt_image),
+            Some(tart_base::versioned_image())
+        );
+        assert_eq!(
+            configured_tart_vibe_base(&config("tart", tart_base::LINUX_NAME))
+                .map(TartVibeBase::local_name),
+            Some(tart_base::versioned_cache_name())
+        );
+        assert_eq!(
+            configured_tart_vibe_base(&config("tart", tart_base::MACOS_NAME))
+                .and_then(TartVibeBase::prebuilt_image),
+            None
         );
     }
 
@@ -358,7 +429,7 @@ mod tests {
             None
         );
         assert_eq!(
-            configured_tart_vibe_base(&config("docker", TART_MACOS_BASE_NAME)),
+            configured_tart_vibe_base(&config("docker", tart_base::MACOS_NAME)),
             None
         );
     }
@@ -370,8 +441,8 @@ mod tests {
             {"Name":"vm-mac","State":"stopped","Source":"local"}
         ]"#;
 
-        assert!(tart_list_contains_base(output, TART_MACOS_BASE_NAME).unwrap());
-        assert!(!tart_list_contains_base(output, TART_LINUX_BASE_NAME).unwrap());
+        assert!(tart_list_contains_base(output, tart_base::MACOS_NAME).unwrap());
+        assert!(!tart_list_contains_base(output, tart_base::LINUX_NAME).unwrap());
     }
 
     #[test]

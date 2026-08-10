@@ -7,8 +7,8 @@ use crate::{
     context::ProviderContext,
     progress::ProgressReporter,
     resource_limits::ResolvedResources,
-    BoxConfig, InstanceState, Provider, ResourceUsage, ServiceStatus, TempProvider, VmError,
-    VmStatusReport,
+    tart_base, BoxConfig, InstanceState, Provider, ResourceUsage, ServiceStatus, TempProvider,
+    VmError, VmStatusReport,
 };
 use duct::cmd;
 use serde::Deserialize;
@@ -27,8 +27,6 @@ use vm_messages::messages::MESSAGES;
 
 // Constants for Tart provider
 const DEFAULT_TART_IMAGE: &str = "ghcr.io/cirruslabs/macos-sequoia-base:latest";
-const DEFAULT_TART_VIBE_BASE: &str = "vibe-tart-sequoia-base";
-const DEFAULT_TART_LINUX_VIBE_BASE: &str = "vibe-tart-linux-base";
 
 struct CollectedMetrics {
     resources: ResourceUsage,
@@ -263,14 +261,10 @@ impl TartProvider {
         }
 
         if let Some(BoxSpec::String(name)) = config.vm.as_ref().and_then(|vm| vm.get_box_spec()) {
-            if name == DEFAULT_TART_VIBE_BASE || name.contains("macos") {
-                return true;
+            if let Some(guest_os) = tart_base::guest_os(&name) {
+                return guest_os == "macos";
             }
-            if name == DEFAULT_TART_LINUX_VIBE_BASE
-                || name.contains("ubuntu")
-                || name.contains("debian")
-                || name.contains("linux")
-            {
+            if name.contains("ubuntu") || name.contains("debian") || name.contains("linux") {
                 return false;
             }
         }
@@ -486,6 +480,9 @@ impl TartProvider {
             if let Some(box_spec) = vm_settings.get_box_spec() {
                 let box_config = BoxConfig::parse_for_tart(&box_spec)?;
                 return match box_config {
+                    BoxConfig::TartImage(image) if image == tart_base::LINUX_NAME => {
+                        Ok(tart_base::versioned_cache_name())
+                    }
                     BoxConfig::TartImage(image) => Ok(image),
                     BoxConfig::Snapshot(name) => Err(VmError::Config(format!(
                         "Use 'vm revert {}' for snapshots",
@@ -565,7 +562,7 @@ impl TartProvider {
         // Get image from config using new BoxConfig system
         let image = self.get_tart_image(config)?;
 
-        if (image == DEFAULT_TART_VIBE_BASE || image == DEFAULT_TART_LINUX_VIBE_BASE)
+        if (image == tart_base::MACOS_NAME || image == tart_base::versioned_cache_name())
             && !self.tart_image_exists(&image)?
         {
             return Err(VmError::Config(format!(
@@ -968,8 +965,27 @@ impl Provider for TartProvider {
 #[cfg(test)]
 mod tests {
     use super::TartProvider;
-    use crate::Provider;
-    use vm_config::config::{ProjectConfig, TartConfig, VmConfig};
+    use crate::{tart_base, Provider};
+    use vm_config::config::{BoxSpec, ProjectConfig, TartConfig, VmConfig, VmSettings};
+
+    #[test]
+    fn managed_linux_alias_resolves_to_the_versioned_cache() {
+        let provider = TartProvider {
+            config: VmConfig::default(),
+        };
+        let config = VmConfig {
+            vm: Some(VmSettings {
+                r#box: Some(BoxSpec::String(tart_base::LINUX_NAME.to_string())),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            provider.get_tart_image(&config).unwrap(),
+            tart_base::versioned_cache_name()
+        );
+    }
 
     #[test]
     fn tart_stop_only_runs_for_running_state() {
