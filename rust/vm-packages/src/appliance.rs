@@ -5,6 +5,7 @@ pub const COMPOSE_PROJECT: &str = "vm-packages";
 pub const TART_INSTANCE_NAME: &str = "vm-packages-infra";
 pub const TART_BASE_NAME: &str = "vibe-tart-linux-base";
 pub const COMPOSE_YAML: &str = include_str!("resources/compose.yaml");
+pub const GATEWAY_CONFIG: &str = include_str!("resources/Caddyfile");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -95,7 +96,9 @@ fn checked_image(value: String) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ApplianceConfig, ApplianceState, InfrastructureRuntime, COMPOSE_YAML};
+    use super::{
+        ApplianceConfig, ApplianceState, InfrastructureRuntime, COMPOSE_YAML, GATEWAY_CONFIG,
+    };
 
     #[test]
     fn compose_keeps_private_data_in_named_volumes() {
@@ -104,6 +107,11 @@ mod tests {
         assert!(COMPOSE_YAML.contains("registry-npm-artifacts:/data/npm"));
         assert!(COMPOSE_YAML.contains("registry-cargo-artifacts:/data/cargo"));
         assert!(COMPOSE_YAML.contains("registry-pypi-artifacts:/data/pypi"));
+        assert!(COMPOSE_YAML.contains("workflow-state:/data/state"));
+        assert!(COMPOSE_YAML.contains("workflow-receipts:/data/receipts"));
+        assert!(COMPOSE_YAML.contains("agent-temporary-data:/data/agents"));
+        assert!(COMPOSE_YAML.contains("work_controller_token"));
+        assert!(GATEWAY_CONFIG.contains("reverse_proxy work:3091"));
         assert!(!COMPOSE_YAML.contains("/var/run/docker.sock"));
         assert!(!COMPOSE_YAML.contains("/workspace"));
         assert!(!COMPOSE_YAML.contains("${HOME}"));

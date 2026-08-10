@@ -24,6 +24,7 @@ members = [
 
     # Service Layer
     "vm-package-server",
+    "vm-package-work",
     "vm-auth-proxy",
     "vm-docker-registry",
 

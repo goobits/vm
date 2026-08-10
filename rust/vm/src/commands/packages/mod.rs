@@ -167,11 +167,14 @@ async fn doctor(files: &ApplianceFiles, requested: PackageInfrastructureRuntime)
     }
 
     if let Some(state) = state {
-        if state.runtime == runtime && !gateway_is_healthy(&state.gateway_url).await {
-            return Err(VmError::validation(
-                "Package gateway is not healthy",
-                Some("Run `vm packages up` and inspect the appliance logs"),
-            ));
+        if state.runtime == runtime {
+            if !gateway_is_healthy(&state.gateway_url).await {
+                return Err(VmError::validation(
+                    "Package gateway is not healthy",
+                    Some("Run `vm packages up` and inspect the appliance logs"),
+                ));
+            }
+            workflow_client(files, &state)?.checkouts().await?;
         }
     }
     vm_success!("Package infrastructure checks passed");
@@ -230,8 +233,18 @@ async fn gateway_is_healthy(gateway_url: &str) -> bool {
         return false;
     };
     PackageInfrastructureClient::new(endpoints)
-        .is_healthy()
+        .is_fully_healthy()
         .await
+}
+
+fn workflow_client(
+    files: &ApplianceFiles,
+    state: &ApplianceState,
+) -> VmResult<PackageInfrastructureClient> {
+    let endpoints = RegistryEndpoints::new(&state.gateway_url).map_err(VmError::from)?;
+    Ok(PackageInfrastructureClient::new(endpoints)
+        .with_read_token(files.read_token()?)
+        .with_controller_token(files.controller_token()?))
 }
 
 #[cfg(test)]

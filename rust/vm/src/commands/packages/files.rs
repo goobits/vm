@@ -2,12 +2,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::error::{VmError, VmResult};
-use vm_packages::{ApplianceConfig, ApplianceState, COMPOSE_YAML};
+use vm_packages::{ApplianceConfig, ApplianceState, COMPOSE_YAML, GATEWAY_CONFIG};
 
 const COMPOSE_FILE: &str = "compose.yaml";
+const GATEWAY_FILE: &str = "Caddyfile";
 const ENVIRONMENT_FILE: &str = "environment.env";
 const READ_TOKEN_FILE: &str = "read-token";
 const PUBLISH_TOKEN_FILE: &str = "publish-token";
+const CONTROLLER_TOKEN_FILE: &str = "controller-token";
 const STATE_FILE: &str = "state.json";
 
 #[derive(Debug, Clone)]
@@ -41,6 +43,10 @@ impl ApplianceFiles {
         self.root.join(ENVIRONMENT_FILE)
     }
 
+    pub(super) fn gateway_path(&self) -> PathBuf {
+        self.root.join(GATEWAY_FILE)
+    }
+
     pub(super) fn publish_token_path(&self) -> PathBuf {
         self.root.join(PUBLISH_TOKEN_FILE)
     }
@@ -49,9 +55,20 @@ impl ApplianceFiles {
         self.root.join(READ_TOKEN_FILE)
     }
 
+    pub(super) fn controller_token_path(&self) -> PathBuf {
+        self.root.join(CONTROLLER_TOKEN_FILE)
+    }
+
     pub(super) fn read_token(&self) -> VmResult<String> {
-        let path = self.read_token_path();
-        let token = fs::read_to_string(&path).map_err(|error| {
+        self.token(&self.read_token_path())
+    }
+
+    pub(super) fn controller_token(&self) -> VmResult<String> {
+        self.token(&self.controller_token_path())
+    }
+
+    fn token(&self, path: &Path) -> VmResult<String> {
+        let token = fs::read_to_string(path).map_err(|error| {
             VmError::filesystem(
                 error,
                 path.display().to_string(),
@@ -68,8 +85,13 @@ impl ApplianceFiles {
     pub(super) fn materialize(&self, config: &ApplianceConfig) -> VmResult<()> {
         self.ensure_root()?;
         write_private(&self.compose_path(), COMPOSE_YAML.as_bytes())?;
+        write_private(&self.gateway_path(), GATEWAY_CONFIG.as_bytes())?;
         write_private(&self.environment_path(), config.environment().as_bytes())?;
-        for path in [self.read_token_path(), self.publish_token_path()] {
+        for path in [
+            self.read_token_path(),
+            self.publish_token_path(),
+            self.controller_token_path(),
+        ] {
             if !path.exists() {
                 let token = vm_core::secrets::generate_random_password(48);
                 write_private(&path, token.as_bytes())?;
@@ -102,7 +124,10 @@ impl ApplianceFiles {
     }
 
     pub(super) fn validate_definition(&self) -> VmResult<()> {
-        if COMPOSE_YAML.contains("/var/run/docker.sock") || COMPOSE_YAML.contains("/workspace") {
+        if COMPOSE_YAML.contains("/var/run/docker.sock")
+            || COMPOSE_YAML.contains("/workspace")
+            || GATEWAY_CONFIG.contains("host.docker.internal")
+        {
             return Err(VmError::validation(
                 "Package appliance definition crosses a protected host boundary",
                 Some("Registry storage and project source must remain private"),
@@ -158,9 +183,11 @@ mod tests {
         files.materialize(&config).unwrap();
 
         assert!(files.compose_path().is_file());
+        assert!(files.gateway_path().is_file());
         assert!(files.environment_path().is_file());
         assert!(files.read_token_path().is_file());
         assert!(files.publish_token_path().is_file());
+        assert!(files.controller_token_path().is_file());
         assert_eq!(
             std::fs::read_to_string(files.publish_token_path())
                 .unwrap()
@@ -168,6 +195,7 @@ mod tests {
             48
         );
         assert_eq!(files.read_token().unwrap().len(), 48);
+        assert_eq!(files.controller_token().unwrap().len(), 48);
         assert!(!files.root().join("npm").exists());
     }
 }

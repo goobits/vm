@@ -1,0 +1,9 @@
+:8080 {
+	handle_path /work/* {
+		reverse_proxy work:3091
+	}
+
+	handle {
+		reverse_proxy registry:3080
+	}
+}

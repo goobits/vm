@@ -9,29 +9,15 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use base64::Engine;
 use std::sync::Arc;
 
 use crate::{config::Config, error::AppError};
 
 fn extract_token_from_headers(headers: &HeaderMap) -> Option<String> {
-    let authorization = headers
+    headers
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
-        .map(str::trim)?;
-    if let Some(token) = authorization.strip_prefix("Bearer ") {
-        return Some(token.to_string());
-    }
-    if let Some(encoded) = authorization.strip_prefix("Basic ") {
-        let decoded = base64::engine::general_purpose::STANDARD
-            .decode(encoded)
-            .ok()?;
-        let credentials = String::from_utf8(decoded).ok()?;
-        return credentials
-            .split_once(':')
-            .map(|(_, password)| password.to_string());
-    }
-    (!authorization.is_empty()).then(|| authorization.to_string())
+        .and_then(vm_packages::authorization_token)
 }
 
 pub fn validate_read_headers(config: &Config, headers: &HeaderMap) -> Result<(), AppError> {

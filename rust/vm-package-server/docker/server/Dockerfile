@@ -7,8 +7,11 @@ COPY . .
 RUN cargo build --locked --release \
       --package vm-package-server \
       --features standalone-binary \
-      --bin pkg-server && \
-    install -m 0755 target/release/pkg-server /usr/local/bin/pkg-server
+      --bin pkg-server \
+      --package vm-package-work \
+      --bin pkg-work && \
+    install -m 0755 target/release/pkg-server /usr/local/bin/pkg-server && \
+    install -m 0755 target/release/pkg-work /usr/local/bin/pkg-work
 
 FROM debian:bookworm-slim
 
@@ -17,13 +20,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     groupadd --gid 10001 packages && \
     useradd --uid 10001 --gid packages --create-home packages && \
     install -d -o packages -g packages \
-      /data/npm /data/cargo /data/pypi /data/cache /data/metadata
+      /data/npm /data/cargo /data/pypi /data/cache /data/metadata \
+      /data/state /data/receipts /data/logs /data/agents
 
 COPY --from=builder /usr/local/bin/pkg-server /usr/local/bin/pkg-server
+COPY --from=builder /usr/local/bin/pkg-work /usr/local/bin/pkg-work
 
 USER 10001:10001
 WORKDIR /data
-EXPOSE 3080
+EXPOSE 3080 3091
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=6 \
   CMD curl --fail --silent http://127.0.0.1:3080/health || exit 1
 

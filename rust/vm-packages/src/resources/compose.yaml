@@ -4,11 +4,13 @@ services:
   gateway:
     image: caddy:2.10.2-alpine
     restart: unless-stopped
-    command: ["caddy", "reverse-proxy", "--from", ":8080", "--to", "registry:3080"]
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]
     ports:
       - "${VM_PACKAGES_BIND:?required}:${VM_PACKAGES_PORT:?required}:8080"
     depends_on:
       registry:
+        condition: service_healthy
+      work:
         condition: service_healthy
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -17,6 +19,7 @@ services:
     volumes:
       - gateway-data:/data
       - gateway-config:/config
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
     networks: [packages]
 
   registry:
@@ -48,6 +51,34 @@ services:
       - registry-metadata:/data/metadata
     networks: [packages, egress]
 
+  work:
+    image: "${VM_PACKAGES_REGISTRY_IMAGE:?required}"
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        export PKG_WORK_READ_TOKEN="$$(cat /run/secrets/work_read_token)"
+        export PKG_WORK_CONTROLLER_TOKEN="$$(cat /run/secrets/work_controller_token)"
+        exec pkg-work start --host 0.0.0.0 --port 3091 --data /data
+    secrets: [work_read_token, work_controller_token]
+    expose: ["3091"]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:3091/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - workflow-state:/data/state
+      - workflow-receipts:/data/receipts
+      - workflow-logs:/data/logs
+      - agent-temporary-data:/data/agents
+    networks: [packages]
+
 networks:
   packages:
     name: vm-packages
@@ -60,6 +91,10 @@ secrets:
     file: ./read-token
   registry_publish_token:
     file: ./publish-token
+  work_read_token:
+    file: ./read-token
+  work_controller_token:
+    file: ./controller-token
 
 volumes:
   gateway-data:
@@ -71,4 +106,5 @@ volumes:
   registry-metadata:
   workflow-state:
   workflow-receipts:
+  workflow-logs:
   agent-temporary-data:

@@ -1,0 +1,32 @@
+[package]
+name = "vm-package-work"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+name = "vm_package_work"
+path = "src/lib.rs"
+
+[[bin]]
+name = "pkg-work"
+path = "src/main.rs"
+
+[dependencies]
+axum = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+vm-core = { path = "../vm-core" }
+vm-packages = { path = "../vm-packages" }
+
+[dev-dependencies]
+axum-test = "20.1"
+tempfile = { workspace = true }

@@ -43,6 +43,7 @@ notify = { workspace = true }
 futures-util = { workspace = true }
 dirs = { workspace = true }
 vm-core = { path = "../vm-core" }
+vm-packages = { path = "../vm-packages" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

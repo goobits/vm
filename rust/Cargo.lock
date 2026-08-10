@@ -3913,6 +3913,27 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "vm-core",
+ "vm-packages",
+]
+
+[[package]]
+name = "vm-package-work"
+version = "5.0.1"
+dependencies = [
+ "axum",
+ "axum-test",
+ "chrono",
+ "clap",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "vm-core",
+ "vm-packages",
 ]
 
 [[package]]
@@ -3920,6 +3941,8 @@ name = "vm-packages"
 version = "5.0.1"
 dependencies = [
  "anyhow",
+ "base64",
+ "chrono",
  "reqwest",
  "serde",
  "serde_json",
