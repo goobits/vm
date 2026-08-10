@@ -4,19 +4,6 @@
     path: '{{ home_dir }}/.nvm/nvm.sh'
   register: nvm_present
 
-- name: Repair NVM ownership when inherited from another user
-  file:
-    path: '{{ home_dir }}/.nvm'
-    state: directory
-    owner: '{{ project_user }}'
-    group: '{{ project_user_group }}'
-    mode: '0755'
-    recurse: yes
-  become: yes
-  when:
-    - nvm_present.stat.exists
-    - nvm_present.stat.pw_name | default('') != project_user
-
 - name: Download NVM installer
   get_url:
     url: "https://raw.githubusercontent.com/nvm-sh/nvm/{{ project_config.versions.nvm | default('v0.40.3') }}/install.sh"

@@ -19,34 +19,6 @@ impl<'a> LifecycleOperations<'a> {
         input.replace('\'', "'\"'\"'")
     }
 
-    fn ensure_shell_history_writable(
-        &self,
-        container_name: &str,
-        user_config: &UserConfig,
-    ) -> Result<()> {
-        // Resolve UID/GID inside the container rather than passing host values.
-        // Snapshot-based boxes intentionally skip the build-time UID swap, so the
-        // container's user UID can differ from the host UID (e.g. macOS host=501,
-        // snapshot developer=1000). Chowning to the host UID would lock the dir
-        // away from the actual shell user.
-        let user = &user_config.username;
-        let home = format!("/home/{user}");
-        let command = format!(
-            "uid=$(id -u {user}) && gid=$(id -g {user}) && mkdir -p {home}/.shell_history && touch {home}/.shell_history/zsh_history && chown -R \"$uid\":\"$gid\" {home}/.shell_history && chmod 700 {home}/.shell_history && chmod 600 {home}/.shell_history/zsh_history"
-        );
-
-        duct::cmd(
-            self.executable,
-            &["exec", "-u", "root", container_name, "sh", "-lc", &command],
-        )
-        .stdout_null()
-        .stderr_null()
-        .run()
-        .map_err(|e| VmError::Internal(format!("Failed to prepare shell history: {e}")))?;
-
-        Ok(())
-    }
-
     #[must_use = "SSH connection results should be handled"]
     pub fn ssh_into_container(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
         let workspace_path = self
@@ -134,7 +106,7 @@ impl<'a> LifecycleOperations<'a> {
             )));
         }
 
-        self.ensure_shell_history_writable(&container_name, &user_config)?;
+        Self::repair_home_state(self.executable, &container_name, &user_config)?;
 
         // Container is running, proceed with exec
         let result = duct::cmd(
@@ -213,6 +185,8 @@ impl<'a> LifecycleOperations<'a> {
             .unwrap_or(DEFAULT_SHELL);
         let workspace_escaped = Self::shell_escape_single_quotes(workspace_path);
         let worktree_repair = shell_session::worktree_repair_script(workspace_path);
+
+        Self::repair_home_state(self.executable, &target_container, &user_config)?;
 
         let mut args: Vec<String> = vec![
             "exec".to_string(),

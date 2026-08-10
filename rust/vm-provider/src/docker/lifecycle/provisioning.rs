@@ -29,130 +29,35 @@ impl CoreProgressParser for AnsibleParserAdapter {
 }
 
 impl<'a> LifecycleOperations<'a> {
-    fn home_ownership_fix_script(user_config: &UserConfig) -> String {
-        let home_dir = format!("/home/{}", user_config.username);
-
-        // Comprehensive permission fix for all directories that may be affected
-        // by UID/GID mismatch between snapshot and current host.
-        //
-        // This is the single authoritative place for permission fixes.
-        // When adding new cache directories, add them here.
-        format!(
-            r#"
-            user_uid="$(id -u {username})"
-            user_gid="$(id -g {username})"
-
-            # Fix home directory and common dotfiles
-            chown "$user_uid:$user_gid" {home} 2>/dev/null || true
-            chown "$user_uid:$user_gid" {home}/.zshrc {home}/.bashrc {home}/.profile 2>/dev/null || true
-            chmod u+rwx,go+rx {home} 2>/dev/null || true
-            chmod u+rw,go+r {home}/.zshrc {home}/.bashrc {home}/.profile 2>/dev/null || true
-
-            # Fix NVM (Node.js version manager)
-            if [ -d {home}/.nvm ]; then
-                chown -R "$user_uid:$user_gid" {home}/.nvm 2>/dev/null || true
-                chmod -R u+rwX,go+rX {home}/.nvm 2>/dev/null || true
-            fi
-
-            # Fix Cargo/Rust
-            if [ -d {home}/.cargo ]; then
-                chown -R "$user_uid:$user_gid" {home}/.cargo 2>/dev/null || true
-            fi
-            if [ -d {home}/.rustup ]; then
-                chown -R "$user_uid:$user_gid" {home}/.rustup 2>/dev/null || true
-            fi
-
-            # Fix NPM cache
-            if [ -d {home}/.npm ]; then
-                chown -R "$user_uid:$user_gid" {home}/.npm 2>/dev/null || true
-            fi
-
-            # Fix pip/Python cache
-            if [ -d {home}/.cache ]; then
-                chown -R "$user_uid:$user_gid" {home}/.cache 2>/dev/null || true
-            fi
-
-            # Fix local binaries and packages
-            if [ -d {home}/.local ]; then
-                chown -R "$user_uid:$user_gid" {home}/.local 2>/dev/null || true
-            fi
-
-            # Fix config directory
-            if [ -d {home}/.config ]; then
-                chown -R "$user_uid:$user_gid" {home}/.config 2>/dev/null || true
-            fi
-
-            # Fix shell history
-            if [ -d {home}/.shell_history ]; then
-                chown -R "$user_uid:$user_gid" {home}/.shell_history 2>/dev/null || true
-            fi
-
-            # Ensure first-run CLI state paths exist with normal ownership.
-            # Claude Code creates a top-level ~/.claude.json file during startup;
-            # if HOME itself is owned by a host UID, Claude can launch into a blank
-            # screen while it waits on state initialization.
-            mkdir -p {home}/.local/bin {home}/.claude/projects {home}/.claude/sessions 2>/dev/null || true
-            chown -R "$user_uid:$user_gid" {home}/.local {home}/.claude 2>/dev/null || true
-            chmod u+rwx,go+rx {home}/.local {home}/.local/bin {home}/.claude {home}/.claude/projects {home}/.claude/sessions 2>/dev/null || true
-            if [ -f {home}/.claude.json ]; then
-                chown "$user_uid:$user_gid" {home}/.claude.json 2>/dev/null || true
-                chmod 600 {home}/.claude.json 2>/dev/null || true
-            fi
-
-            if [ -d {home}/.gemini ]; then
-                chown -R "$user_uid:$user_gid" {home}/.gemini 2>/dev/null || true
-            fi
-            if [ -d {home}/.codex ]; then
-                chown -R "$user_uid:$user_gid" {home}/.codex 2>/dev/null || true
-            fi
-
-            su -s /bin/sh {username} -c 'touch "$HOME/.vm-home-write-test" && rm -f "$HOME/.vm-home-write-test"' || {{
-                echo "ERROR: HOME is not writable by {username}: {home}" >&2
-                stat -c '%u %g %U %G %a %n' {home} >&2 || ls -ld {home} >&2
-                exit 1
-            }}
-
-            echo "Permissions fixed"
-        "#,
-            username = user_config.username,
-            home = home_dir,
-        )
-    }
-
-    /// Fix home directory ownership for snapshot-based containers (one-time, fast)
-    ///
-    /// Centralized permission fix-up for layered provisioning:
-    /// - Snapshots may have files owned by a different UID than the container user
-    /// - This fixes ownership of all key directories that tools need to write to
-    /// - Called once after snapshot load, before Ansible provisioning
-    ///
-    /// Directories handled:
-    /// - Home directory and common dotfiles (.zshrc, .bashrc, .profile)
-    /// - NVM installation and cache (.nvm)
-    /// - Rust/Cargo installation and cache (.cargo, .rustup)
-    /// - Python/pip cache (.cache/pip, .local)
-    /// - NPM cache (.npm)
-    /// - General config directories (.config, .cache)
-    /// - Shell history (.shell_history)
-    /// - AI CLI state directories and top-level state files (.claude, .claude.json)
-    fn fix_home_ownership(
+    /// Apply the shared, versioned guest-home repair before provisioning or use.
+    pub(super) fn repair_home_state(
         executable: &str,
         container_name: &str,
         user_config: &UserConfig,
     ) -> Result<()> {
         use std::process::Command;
 
-        let fix_cmd = Self::home_ownership_fix_script(user_config);
-
+        let home_dir = format!("/home/{}", user_config.username);
         let output = Command::new(executable)
-            .args(["exec", "-u", "root", container_name, "bash", "-c", &fix_cmd])
+            .args([
+                "exec",
+                "-u",
+                "root",
+                container_name,
+                "bash",
+                "-c",
+                crate::resources::HOME_STATE_REPAIR,
+                "vm-home-repair",
+                &home_dir,
+                &user_config.username,
+            ])
             .output()
-            .map_err(|e| VmError::Internal(format!("Failed to fix home ownership: {e}")))?;
+            .map_err(|e| VmError::Internal(format!("Failed to repair guest home state: {e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(VmError::Internal(format!(
-                "Home ownership repair failed for {}: {}",
+                "Guest home-state repair failed for {}: {}",
                 user_config.username,
                 stderr.trim()
             )));
@@ -321,10 +226,8 @@ impl<'a> LifecycleOperations<'a> {
 
         self.wait_for_container_ready(&container_name)?;
 
-        if context.is_snapshot {
-            let user_config = UserConfig::from_vm_config(self.config);
-            Self::fix_home_ownership(self.executable, &container_name, &user_config)?;
-        }
+        let user_config = UserConfig::from_vm_config(self.config);
+        Self::repair_home_state(self.executable, &container_name, &user_config)?;
 
         self.prepare_and_copy_config(&container_name)?;
 
@@ -334,26 +237,13 @@ impl<'a> LifecycleOperations<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::LifecycleOperations;
-    use crate::docker::UserConfig;
+    use crate::resources::HOME_STATE_REPAIR;
 
     #[test]
-    fn home_ownership_fix_script_repairs_claude_first_run_state_paths() {
-        let user_config = UserConfig {
-            uid: 1000,
-            gid: 1000,
-            username: "developer".to_string(),
-        };
-
-        let script = LifecycleOperations::home_ownership_fix_script(&user_config);
-
-        assert!(script.contains("user_uid=\"$(id -u developer)\""));
-        assert!(script.contains("user_gid=\"$(id -g developer)\""));
-        assert!(script.contains("chown \"$user_uid:$user_gid\" /home/developer"));
-        assert!(script.contains("/home/developer/.claude/projects"));
-        assert!(script.contains("/home/developer/.claude/sessions"));
-        assert!(script.contains("/home/developer/.claude.json"));
-        assert!(script.contains(".vm-home-write-test"));
-        assert!(script.contains("ERROR: HOME is not writable by developer"));
+    fn home_state_repair_covers_interactive_tool_state() {
+        assert!(HOME_STATE_REPAIR.contains("$home_dir/.shell_history"));
+        assert!(HOME_STATE_REPAIR.contains("$home_dir/.claude/projects"));
+        assert!(HOME_STATE_REPAIR.contains("$home_dir/.codex/sessions"));
+        assert!(HOME_STATE_REPAIR.contains("home_is_writable"));
     }
 }

@@ -6,104 +6,6 @@ use vm_config::config::VmConfig;
 use vm_core::error::Result;
 
 impl TartProvisioner {
-    fn ensure_user_home_ready(&self) -> Result<()> {
-        self.ssh_exec(
-            r#"set -e
-user_uid="$(id -u)"
-user_gid="$(id -g)"
-if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
-$SUDO chown "$user_uid:$user_gid" "$HOME" 2>/dev/null || true
-chmod u+rwx "$HOME" 2>/dev/null || true
-mkdir -p "$HOME/.local/bin" "$HOME/.claude/projects" "$HOME/.claude/sessions"
-$SUDO chown -R "$user_uid:$user_gid" "$HOME/.local" "$HOME/.claude" 2>/dev/null || true
-if [ -f "$HOME/.claude.json" ]; then
-  $SUDO chown "$user_uid:$user_gid" "$HOME/.claude.json" 2>/dev/null || true
-  chmod 600 "$HOME/.claude.json" 2>/dev/null || true
-fi
-if ! touch "$HOME/.vm-home-write-test" 2>/dev/null; then
-  echo "ERROR: HOME is not writable by $(id -un): $HOME" >&2
-  stat -f '%u %g %Su %Sg %Lp %N' "$HOME" 2>/dev/null || stat -c '%u %g %U %G %a %n' "$HOME" >&2 || ls -ld "$HOME" >&2
-  exit 1
-fi
-rm -f "$HOME/.vm-home-write-test""#,
-        )?;
-
-        Ok(())
-    }
-
-    fn prepare_json_backed_tool_home(&self, dir_name: &str) -> Result<()> {
-        let dir_name_escaped = Self::shell_escape_single_quotes(dir_name);
-        self.ssh_exec(&format!(
-            r#"set -e
-tool_home="$HOME/{dir_name}"
-mkdir -p "$tool_home"
-find "$tool_home" -type f -name '*.json' -size 0 -exec rm -f {{}} + 2>/dev/null || true
-home_uid="$(id -u)"
-home_gid="$(id -g)"
-if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
-$SUDO chown -R "$home_uid:$home_gid" "$tool_home" 2>/dev/null || true
-chmod 700 "$tool_home" 2>/dev/null || true"#,
-            dir_name = dir_name_escaped
-        ))?;
-
-        Ok(())
-    }
-
-    fn prepare_codex_home(&self) -> Result<()> {
-        self.ssh_exec(
-            r#"set -e
-codex_home="$HOME/.codex"
-home_uid="$(id -u)"
-home_gid="$(id -g)"
-if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
-$SUDO chflags -R nouchg,noschg "$codex_home" "$HOME/.zshrc" "$HOME/.bashrc" 2>/dev/null || true
-is_mounted() {
-  if [ -x /sbin/mount ]; then
-    /sbin/mount | grep -F "on $1 " >/dev/null 2>&1
-  elif command -v mount >/dev/null 2>&1; then
-    mount | grep -F "on $1 " >/dev/null 2>&1
-  else
-    return 1
-  fi
-}
-if is_mounted "$codex_home"; then
-  $SUDO umount "$codex_home"
-fi
-mkdir -p "$codex_home/bin" "$codex_home/log" "$codex_home/sessions" "$codex_home/rollout"
-touch "$codex_home/config.toml"
-$SUDO chown -R "$home_uid:$home_gid" "$codex_home" "$HOME/.zshrc" "$HOME/.bashrc" 2>/dev/null || true
-chmod u+rw "$HOME/.zshrc" "$HOME/.bashrc" 2>/dev/null || true
-chmod 700 "$codex_home" "$codex_home/bin" "$codex_home/log" "$codex_home/sessions" "$codex_home/rollout"
-chmod 600 "$codex_home/config.toml" 2>/dev/null || true
-repair_auth_json() {
-  auth_json="$codex_home/auth.json"
-  if [ ! -f "$auth_json" ]; then
-    return 0
-  fi
-  if [ ! -s "$auth_json" ]; then
-    rm -f "$auth_json"
-    return 0
-  fi
-  if command -v python3 >/dev/null 2>&1; then
-    python3 - "$auth_json" <<'PY' || rm -f "$auth_json"
-import json
-import sys
-with open(sys.argv[1], encoding="utf-8") as f:
-    json.load(f)
-PY
-  elif command -v plutil >/dev/null 2>&1; then
-    plutil -lint "$auth_json" >/dev/null 2>&1 || rm -f "$auth_json"
-  elif command -v node >/dev/null 2>&1; then
-    node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$auth_json" || rm -f "$auth_json"
-  fi
-  if [ -f "$auth_json" ]; then chmod 600 "$auth_json"; fi
-}
-repair_auth_json"#,
-        )?;
-
-        Ok(())
-    }
-
     fn host_codex_auth_json_is_valid(path: &Path) -> bool {
         let Ok(file) = std::fs::File::open(path) else {
             return false;
@@ -112,26 +14,12 @@ repair_auth_json"#,
         serde_json::from_reader::<_, serde_json::Value>(file).is_ok()
     }
 
-    pub(crate) fn ensure_codex_runtime_config(&self, config: &VmConfig) -> Result<()> {
-        let Some(ai_tools) = config
-            .host_sync
-            .as_ref()
-            .and_then(|sync| sync.ai_tools.as_ref())
-        else {
-            return Ok(());
-        };
-        if !ai_tools.is_codex_enabled() {
-            return Ok(());
-        }
-
-        self.prepare_codex_home()?;
-
+    fn sync_codex_auth(&self) -> Result<()> {
         let Some(home_dir) = resolve_home_dir() else {
             return Ok(());
         };
-        let codex_dir: PathBuf = home_dir.join(".codex");
+        let auth_json: PathBuf = home_dir.join(".codex/auth.json");
 
-        let auth_json = codex_dir.join("auth.json");
         if auth_json
             .metadata()
             .is_ok_and(|metadata| metadata.len() > 0)
@@ -148,6 +36,21 @@ repair_auth_json"#,
         Ok(())
     }
 
+    pub(crate) fn sync_codex_runtime_config(&self, config: &VmConfig) -> Result<()> {
+        let Some(ai_tools) = config
+            .host_sync
+            .as_ref()
+            .and_then(|sync| sync.ai_tools.as_ref())
+        else {
+            return Ok(());
+        };
+        if !ai_tools.is_codex_enabled() {
+            return Ok(());
+        }
+
+        self.sync_codex_auth()
+    }
+
     pub(super) fn provision_ai_tools(&self, config: &VmConfig) -> Result<()> {
         let Some(ai_tools) = config
             .host_sync
@@ -156,8 +59,6 @@ repair_auth_json"#,
         else {
             return Ok(());
         };
-
-        self.ensure_user_home_ready()?;
 
         let mut tools = Vec::new();
         if ai_tools.is_antigravity_enabled() {
@@ -186,16 +87,8 @@ bash "$INSTALLER" {}"#,
             ))?;
         }
 
-        if ai_tools.is_claude_enabled() {
-            self.prepare_json_backed_tool_home(".claude")?;
-        }
-
-        if ai_tools.is_antigravity_enabled() {
-            self.prepare_json_backed_tool_home(".gemini")?;
-        }
-
         if ai_tools.is_codex_enabled() {
-            self.ensure_codex_runtime_config(config)?;
+            self.sync_codex_auth()?;
         }
 
         Ok(())

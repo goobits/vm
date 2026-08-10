@@ -195,40 +195,6 @@
         loop: "{{ project_config.get('storage', {}).get('volumes', {}) | dict2items }}"
         become: yes
 
-      - name: Ensure project tool directories are writable
-        file:
-            path: '{{ item }}'
-            state: directory
-            owner: '{{ project_user }}'
-            group: '{{ project_user_group }}'
-            mode: '0755'
-        loop:
-            - '/home/{{ project_user }}/.local'
-            - '/home/{{ project_user }}/.local/bin'
-            - '/home/{{ project_user }}/.cache'
-            - '/home/{{ project_user }}/.config'
-            - '/home/{{ project_user }}/.npm'
-            - '/home/{{ project_user }}/.claude'
-            - '/home/{{ project_user }}/.claude/projects'
-            - '/home/{{ project_user }}/.claude/sessions'
-            - '/home/{{ project_user }}/.gemini'
-            - '/home/{{ project_user }}/.codex'
-        become: yes
-
-      - name: Check for Claude top-level state file
-        stat:
-            path: '/home/{{ project_user }}/.claude.json'
-        register: claude_top_level_state
-
-      - name: Ensure Claude top-level state file has project user ownership
-        file:
-            path: '/home/{{ project_user }}/.claude.json'
-            owner: '{{ project_user }}'
-            group: '{{ project_user_group }}'
-            mode: '0600'
-        become: yes
-        when: claude_top_level_state.stat.exists | bool
-
       - name: Verify project user home is writable
         shell: |
             set -e

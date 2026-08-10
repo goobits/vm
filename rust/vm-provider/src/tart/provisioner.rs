@@ -6,6 +6,7 @@ use vm_config::config::{BoxSpec, VmConfig};
 use vm_core::error::{Result, VmError};
 
 mod ai_tools;
+mod home_state;
 mod host;
 mod packages;
 mod services;
@@ -43,6 +44,7 @@ impl TartProvisioner {
 
         // 2. Ensure workspace share is mounted
         self.ensure_workspace_mount()?;
+        self.repair_home_state()?;
 
         // 3. Apply host sync behaviors that Tart can support cleanly
         self.sync_dotfiles(config)?;

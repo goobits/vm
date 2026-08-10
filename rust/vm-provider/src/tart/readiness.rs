@@ -61,12 +61,13 @@ impl TartProvider {
             sync_dir.to_string(),
             self.tart_home(),
         );
+        provisioner.repair_home_state()?;
         if !self.is_shell_config_ready(instance_name) {
             provisioner.apply_canonical_shell_config(&self.config)?;
             provisioner.apply_shell_overrides(&self.config)?;
         }
 
-        provisioner.ensure_codex_runtime_config(&self.config)
+        provisioner.sync_codex_runtime_config(&self.config)
     }
 
     fn is_shell_config_ready(&self, instance_name: &str) -> bool {

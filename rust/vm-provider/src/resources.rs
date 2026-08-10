@@ -17,6 +17,7 @@ pub const THEMES_JSON: &str = include_str!("resources/templates/themes.json");
 pub const CLAUDE_SETTINGS_TEMPLATE: &str =
     include_str!("resources/settings/claude-settings.json.j2");
 pub const AI_TOOLS_INSTALLER: &str = include_str!("resources/scripts/install-ai-tools.sh");
+pub(crate) const HOME_STATE_REPAIR: &str = include_str!("resources/scripts/repair-home-state.sh");
 
 /// Copy all embedded resources to the specified directory
 pub fn copy_embedded_resources(shared_dir: &Path) -> Result<()> {
@@ -66,6 +67,10 @@ pub fn copy_embedded_resources(shared_dir: &Path) -> Result<()> {
             directories[6].join("install-ai-tools.sh"),
             AI_TOOLS_INSTALLER,
         ),
+        (
+            directories[6].join("repair-home-state.sh"),
+            HOME_STATE_REPAIR,
+        ),
     ];
 
     file_operations[..]
@@ -84,7 +89,10 @@ fn write_if_changed(path: &Path, content: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{AI_TOOLS_INSTALLER, ANSIBLE_PLAYBOOK, SHELL_CONFIG_VERSION, ZSHRC_TEMPLATE};
+    use super::{
+        AI_TOOLS_INSTALLER, ANSIBLE_PLAYBOOK, HOME_STATE_REPAIR, SHELL_CONFIG_VERSION,
+        ZSHRC_TEMPLATE,
+    };
 
     #[test]
     fn ai_tools_use_one_current_runtime_installer() {
@@ -111,5 +119,16 @@ mod tests {
             1
         );
         assert!(ZSHRC_TEMPLATE.contains(&format!("VM_SHELL_CONFIG_VERSION={SHELL_CONFIG_VERSION}")));
+    }
+
+    #[test]
+    fn home_repair_is_versioned_and_mount_aware() {
+        assert!(HOME_STATE_REPAIR.contains("REPAIR_VERSION=1"));
+        assert!(HOME_STATE_REPAIR.contains("home-repair"));
+        assert!(HOME_STATE_REPAIR.contains("VM_HOME_REPAIR_FORCE"));
+        assert!(HOME_STATE_REPAIR.contains("full_repair"));
+        assert!(HOME_STATE_REPAIR.contains("state_fingerprint"));
+        assert!(HOME_STATE_REPAIR.contains("find \"$path\" -xdev"));
+        assert_eq!(ANSIBLE_PLAYBOOK.matches("repair-home-state.sh").count(), 0);
     }
 }
