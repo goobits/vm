@@ -1214,6 +1214,7 @@ dependencies = [
  "vm-logging",
  "vm-messages",
  "vm-package-server",
+ "vm-packages",
  "vm-platform",
  "vm-plugin",
  "vm-provider",
@@ -3884,23 +3885,6 @@ name = "vm-messages"
 version = "5.0.1"
 
 [[package]]
-name = "vm-package-manager"
-version = "5.0.1"
-dependencies = [
- "clap",
- "rayon",
- "regex",
- "serde_json",
- "tempfile",
- "tracing",
- "vm-config",
- "vm-core",
- "vm-messages",
- "vm-platform",
- "which",
-]
-
-[[package]]
 name = "vm-package-server"
 version = "5.0.1"
 dependencies = [
@@ -3913,11 +3897,8 @@ dependencies = [
  "bytes",
  "chrono",
  "clap",
- "colored",
- "dialoguer",
  "dirs",
  "futures-util",
- "indicatif",
  "notify",
  "once_cell",
  "regex",
@@ -3933,7 +3914,16 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "vm-core",
- "which",
+]
+
+[[package]]
+name = "vm-packages"
+version = "5.0.1"
+dependencies = [
+ "anyhow",
+ "reqwest",
+ "serde",
+ "tempfile",
 ]
 
 [[package]]

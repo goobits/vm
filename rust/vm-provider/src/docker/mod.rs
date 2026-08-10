@@ -9,7 +9,6 @@ mod compose_model;
 #[cfg(test)]
 mod build_tests;
 pub mod compose;
-pub mod host_packages;
 pub mod lifecycle;
 mod preview;
 

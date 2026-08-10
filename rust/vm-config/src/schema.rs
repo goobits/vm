@@ -231,9 +231,6 @@ fn add_terminal_and_package_fields(cache: &mut HashMap<String, SchemaType>) {
         "host_sync.ai_tools.antigravity",
         "host_sync.ai_tools.gemini",
         "host_sync.ai_tools.codex",
-        "host_sync.package_links.npm",
-        "host_sync.package_links.pip",
-        "host_sync.package_links.cargo",
         "host_sync.worktrees.enabled"
     );
     add_strings!(cache, "host_sync.worktrees.base_path");

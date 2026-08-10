@@ -104,9 +104,6 @@ services:
       - /run/user/{{ project_uid }}/pulse:/run/user/{{ project_uid }}/pulse:ro
       {% endif %}
       {% endif %}
-      # Host package mounts for development
-      {% if host_mounts %}{% for mount in host_mounts %}- {{ mount.0 }}:{{ mount.1 }}:ro
-      {% endfor %}{% endif %}
       # Container is now self-contained - no VM tool mount needed
     {% if config.services.gpu | default(value=false) or config.services.audio | default(value=false) or config.services.video | default(value=false) %}
     devices:
@@ -183,8 +180,8 @@ services:
       - DATABASE_URL=postgresql://{{ config.services.postgresql.user | default(value="postgres") }}:{{ postgresql_password | default(value="postgres") }}@postgres:5432/{{ config.services.postgresql.database | default(value=project_name ~ "_dev") }}
       - PGPASSWORD={{ postgresql_password | default(value="postgres") }}
       {% endif %}
-      # Host package environment variables
-      {% if host_env_vars %}{% for env_var in host_env_vars %}- {{ env_var.0 }}={{ env_var.1 }}
+      # Shared service environment
+      {% if service_env_vars %}{% for env_var in service_env_vars %}- {{ env_var.0 }}={{ env_var.1 }}
       {% endfor %}{% endif %}
       {% if config.environment and config.environment | length > 0 -%}
       {% for name, value in config.environment %}- {{ name }}={{ value }}

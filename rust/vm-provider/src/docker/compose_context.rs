@@ -10,16 +10,8 @@ use vm_core::{
     vm_warning,
 };
 
-use super::host_packages::{
-    detect_packages, get_package_env_vars, get_volume_mounts, HostPackageInfo, PackageManager,
-};
 use crate::user_home::resolve_home_dir;
 use crate::ProviderContext;
-
-pub(super) struct HostPackageContext {
-    pub host_mounts: Vec<(String, String)>,
-    pub host_env_vars: Vec<(String, String)>,
-}
 
 pub(super) fn ensure_ai_sync_dirs(config: &VmConfig) -> Result<()> {
     let Some(ai_sync) = config
@@ -58,54 +50,15 @@ pub(super) fn ensure_ai_sync_dirs(config: &VmConfig) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn build_host_package_context(
+pub(super) fn build_service_environment(
     config: &VmConfig,
     context: &ProviderContext,
-) -> HostPackageContext {
-    let mut host_info = HostPackageInfo::new();
-    let package_links = config
-        .host_sync
-        .as_ref()
-        .and_then(|host_sync| host_sync.package_links.as_ref());
-
-    if package_links.is_some_and(|links| links.pip) && !config.pip_packages.is_empty() {
-        let detected = detect_packages(&config.pip_packages, PackageManager::Pip);
-        host_info.pip_site_packages = detected.pip_site_packages;
-        host_info.pipx_base_dir = detected.pipx_base_dir;
-        host_info
-            .detected_packages
-            .extend(detected.detected_packages);
-    }
-    if package_links.is_some_and(|links| links.npm) && !config.npm_packages.is_empty() {
-        let detected = detect_packages(&config.npm_packages, PackageManager::Npm);
-        host_info.npm_global_dir = detected.npm_global_dir;
-        host_info.npm_local_dir = detected.npm_local_dir;
-        host_info
-            .detected_packages
-            .extend(detected.detected_packages);
-    }
-    if package_links.is_some_and(|links| links.cargo) && !config.cargo_packages.is_empty() {
-        let detected = detect_packages(&config.cargo_packages, PackageManager::Cargo);
-        host_info.cargo_registry = detected.cargo_registry;
-        host_info.cargo_bin = detected.cargo_bin;
-        host_info
-            .detected_packages
-            .extend(detected.detected_packages);
-    }
-
-    let host_mounts = get_volume_mounts(&host_info)
-        .into_iter()
-        .map(|(path, target)| (path.to_string_lossy().to_string(), target))
-        .collect();
-    let mut host_env_vars = get_package_env_vars(&host_info);
+) -> Vec<(String, String)> {
+    let mut environment = Vec::new();
     if let Some(global) = context.global_config.as_ref() {
-        append_service_environment(config, global, &mut host_env_vars);
+        append_service_environment(config, global, &mut environment);
     }
-
-    HostPackageContext {
-        host_mounts,
-        host_env_vars,
-    }
+    environment
 }
 
 fn append_service_environment(

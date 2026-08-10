@@ -59,21 +59,9 @@ fn test_registry_help_command() -> Result<()> {
 
     assert!(stdout.contains("Manage package registries"));
     assert!(stdout.contains("status"));
-    assert!(stdout.contains("add"));
-    assert!(stdout.contains("rm"));
     assert!(stdout.contains("ls"));
     assert!(stdout.contains("config"));
     assert!(stdout.contains("use"));
-
-    Ok(())
-}
-
-#[test]
-fn test_registry_status_functionality() -> Result<()> {
-    use vm_package_server::show_status;
-
-    let result = show_status("http://localhost:3080");
-    assert!(result.is_ok());
 
     Ok(())
 }
@@ -159,34 +147,6 @@ fn test_registry_auto_managed_design() -> Result<()> {
             );
         }
     }
-
-    Ok(())
-}
-
-#[test]
-fn test_registry_add_command_help() -> Result<()> {
-    let fixture = RegistryTestFixture::new()?;
-
-    let output = fixture.run_registry_command(&["add", "--help"])?;
-
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Publish a package"));
-    assert!(stdout.contains("--type"));
-
-    Ok(())
-}
-
-#[test]
-fn test_registry_remove_command_help() -> Result<()> {
-    let fixture = RegistryTestFixture::new()?;
-
-    let output = fixture.run_registry_command(&["rm", "--help"])?;
-
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Remove a package"));
-    assert!(stdout.contains("--force"));
 
     Ok(())
 }

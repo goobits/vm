@@ -214,20 +214,6 @@ pub enum RegistrySubcommand {
         #[arg(long, short = 'y')]
         yes: bool,
     },
-    /// Publish a package to the registry
-    Add {
-        #[arg(long, short = 't')]
-        r#type: Option<String>,
-        #[arg(long, short = 'y')]
-        yes: bool,
-    },
-    /// Remove a package from the registry
-    Rm {
-        #[arg(long, short = 'f')]
-        force: bool,
-        #[arg(long, short = 'y')]
-        yes: bool,
-    },
     /// List packages in the registry
     Ls {
         #[arg(long, short = 'y')]

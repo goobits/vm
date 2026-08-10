@@ -1,0 +1,19 @@
+[package]
+name = "vm-packages"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Shared package-infrastructure domain and client for VM Tool"
+
+[lib]
+name = "vm_packages"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

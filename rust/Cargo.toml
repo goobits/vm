@@ -11,7 +11,7 @@ members = [
 
     # Utility Layer
     "vm-platform",
-    "vm-package-manager",
+    "vm-packages",
 
     # Provider Layer
     "vm-provider",

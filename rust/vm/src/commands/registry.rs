@@ -22,10 +22,6 @@ pub async fn handle_registry_command(
 ) -> VmResult<()> {
     match command {
         RegistrySubcommand::Status { yes } => handle_status(*yes, &global_config).await,
-        RegistrySubcommand::Add { r#type, yes } => {
-            handle_add(r#type.as_deref(), *yes, &global_config).await
-        }
-        RegistrySubcommand::Rm { force, yes } => handle_remove(*force, *yes, &global_config).await,
         RegistrySubcommand::Ls { yes } => handle_list(*yes, &global_config).await,
         RegistrySubcommand::Config { action } => handle_config(action, &global_config).await,
         RegistrySubcommand::Use { shell, port } => {
@@ -85,61 +81,30 @@ async fn handle_status(yes: bool, global_config: &GlobalConfig) -> VmResult<()> 
 
     vm_println!("  Lifecycle: managed automatically by environments");
 
-    // Show additional package registry info
-    vm_package_server::show_status(&server_url).map_err(VmError::from)
-}
-
-/// Add package from current directory
-async fn handle_add(
-    package_type: Option<&str>,
-    yes: bool,
-    global_config: &GlobalConfig,
-) -> VmResult<()> {
-    let server_url = format!(
-        "http://localhost:{}",
-        global_config.services.package_registry.port
-    );
-
-    // Ensure server is running before attempting to add package
-    start_server_if_needed(global_config, yes).await?;
-
-    vm_progress!("Publishing package...");
-
-    vm_package_server::client_ops::add_package(&server_url, package_type).map_err(VmError::from)?;
-
-    vm_success!("Published package");
-    Ok(())
-}
-
-/// Remove package from registry
-async fn handle_remove(force: bool, yes: bool, global_config: &GlobalConfig) -> VmResult<()> {
-    let server_url = format!(
-        "http://localhost:{}",
-        global_config.services.package_registry.port
-    );
-
-    // Ensure server is running before attempting to remove package
-    start_server_if_needed(global_config, yes).await?;
-
-    vm_progress!("Removing package...");
-
-    vm_package_server::client_ops::remove_package(&server_url, force).map_err(VmError::from)?;
-
-    vm_success!("Removed package");
+    let status = package_client(global_config)?
+        .status()
+        .await
+        .map_err(VmError::from)?;
+    vm_println!("  Version: {}", status.version);
+    vm_println!("  Registries: {}", status.registries.join(", "));
     Ok(())
 }
 
 /// List packages in registry
 async fn handle_list(yes: bool, global_config: &GlobalConfig) -> VmResult<()> {
-    let server_url = format!(
-        "http://localhost:{}",
-        global_config.services.package_registry.port
-    );
-
     // Ensure server is running for complete package listing
     start_server_if_needed(global_config, yes).await?;
 
-    vm_package_server::client_ops::list_packages(&server_url).map_err(VmError::from)?;
+    let packages = package_client(global_config)?
+        .packages()
+        .await
+        .map_err(VmError::from)?;
+    for (ecosystem, names) in packages {
+        vm_println!("{ecosystem} ({}):", names.len());
+        for name in names {
+            vm_println!("  {name}");
+        }
+    }
 
     Ok(())
 }
@@ -235,46 +200,43 @@ async fn handle_use(shell: Option<&str>, port: u16, global_config: &GlobalConfig
 
 /// Check if the package registry server is running
 async fn check_server_running(global_config: &GlobalConfig) -> bool {
-    let server_url = format!(
-        "http://localhost:{}",
-        global_config.services.package_registry.port
-    );
-    check_server_running_with_url(&server_url).await
+    match package_client(global_config) {
+        Ok(client) => client.is_healthy().await,
+        Err(_) => false,
+    }
 }
 
 /// Check if the package registry server is running at a specific URL
 async fn check_server_running_with_url(base_url: &str) -> bool {
-    let health_url = format!("{base_url}/health");
-    match reqwest::get(&health_url).await {
-        Ok(response) => response.status().is_success(),
+    match vm_packages::RegistryEndpoints::new(base_url) {
+        Ok(endpoints) => {
+            vm_packages::PackageInfrastructureClient::new(endpoints)
+                .is_healthy()
+                .await
+        }
         Err(_) => false,
     }
 }
 
 /// Get the version of the running server
 async fn get_server_version(base_url: &str) -> VmResult<String> {
-    let status_url = format!("{base_url}/api/status");
-    let response = reqwest::get(&status_url)
+    let endpoints = vm_packages::RegistryEndpoints::new(base_url).map_err(VmError::from)?;
+    vm_packages::PackageInfrastructureClient::new(endpoints)
+        .status()
         .await
-        .map_err(|e| VmError::general(e, "Failed to get server status"))?;
+        .map(|status| status.version)
+        .map_err(VmError::from)
+}
 
-    if !response.status().is_success() {
-        return Err(VmError::from(anyhow::anyhow!(
-            "Server returned error status"
-        )));
-    }
-
-    let json: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|e| VmError::general(e, "Failed to parse server status"))?;
-
-    let version = json["version"]
-        .as_str()
-        .ok_or_else(|| VmError::from(anyhow::anyhow!("Version not found in response")))?
-        .to_string();
-
-    Ok(version)
+fn package_client(
+    global_config: &GlobalConfig,
+) -> VmResult<vm_packages::PackageInfrastructureClient> {
+    let endpoints = vm_packages::RegistryEndpoints::new(format!(
+        "http://localhost:{}",
+        global_config.services.package_registry.port
+    ))
+    .map_err(VmError::from)?;
+    Ok(vm_packages::PackageInfrastructureClient::new(endpoints))
 }
 
 /// Gracefully shutdown the server

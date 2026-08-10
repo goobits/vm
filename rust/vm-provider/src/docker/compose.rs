@@ -9,7 +9,7 @@ use vm_core::error::{Result, VmError};
 use super::artifacts::{compose_path, secure_write_if_changed};
 use super::build::BuildOperations;
 use super::compose_context::{
-    build_host_package_context, configure_ssh_agent, configure_worktrees, ensure_ai_sync_dirs,
+    build_service_environment, configure_ssh_agent, configure_worktrees, ensure_ai_sync_dirs,
     process_dotfiles,
 };
 use super::compose_model::{RenderedResources, RenderedStorage};
@@ -90,10 +90,9 @@ impl<'a> ComposeOperations<'a> {
 
         let user_config = UserConfig::from_vm_config(self.config);
 
-        // Build host package context (consolidated package detection and env setup)
-        let mut pkg_context = build_host_package_context(self.config, context);
+        let mut service_environment = build_service_environment(self.config, context);
         if mode == RenderMode::Preview {
-            for (_, value) in &mut pkg_context.host_env_vars {
+            for (_, value) in &mut service_environment {
                 *value = "<redacted>".to_string();
             }
         }
@@ -161,8 +160,7 @@ impl<'a> ComposeOperations<'a> {
                 .unwrap_or_else(|| format!("{final_project_name}:latest")),
         );
         tera_context.insert("is_macos", &cfg!(target_os = "macos"));
-        tera_context.insert("host_mounts", &pkg_context.host_mounts);
-        tera_context.insert("host_env_vars", &pkg_context.host_env_vars);
+        tera_context.insert("service_env_vars", &service_environment);
         tera_context.insert("extra_mounts", &extra_mounts.unwrap_or(&[]));
 
         // AI sync flags for template

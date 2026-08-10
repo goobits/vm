@@ -923,10 +923,6 @@ pub struct HostSyncConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ai_tools: Option<AiSyncConfig>,
 
-    /// Package linking detection and mounting
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub package_links: Option<PackageLinkingConfig>,
-
     /// Git worktrees support
     #[serde(skip_serializing_if = "Option::is_none")]
     pub worktrees: Option<WorktreesConfig>,
@@ -951,17 +947,6 @@ pub struct TartConfig {
     pub install_docker: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub storage_path: Option<String>,
-}
-
-/// Package linking and development workflow configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct PackageLinkingConfig {
-    #[serde(default)]
-    pub npm: bool,
-    #[serde(default)]
-    pub pip: bool,
-    #[serde(default)]
-    pub cargo: bool,
 }
 
 /// AI tool synchronization configuration.

@@ -38,25 +38,6 @@ pub struct ServiceMessages {
     pub installer_sccache_enabled: &'static str,
 
     // ============================================================================
-    // Package Management
-    // ============================================================================
-    pub pkg_linked_package: &'static str,
-    pub pkg_installing_local_cargo: &'static str,
-    pub pkg_linking_npm: &'static str,
-    pub pkg_pipx_detected: &'static str,
-    pub pkg_python_editable: &'static str,
-    pub pkg_installing_editable: &'static str,
-    pub pkg_pipx_not_available: &'static str,
-    pub pkg_no_bin_directory: &'static str,
-    pub pkg_creating_wrappers: &'static str,
-    pub pkg_wrapper_created: &'static str,
-    pub pkg_restart_shell: &'static str,
-    pub pkg_no_linked_packages: &'static str,
-    pub pkg_linked_packages_header: &'static str,
-    pub pkg_manager_linked: &'static str,
-    pub pkg_manager_not_linked: &'static str,
-
-    // ============================================================================
     // Provider Operations
     // ============================================================================
     pub provider_tart_created_success: &'static str,
@@ -185,26 +166,9 @@ pub const SERVICE_MESSAGES: ServiceMessages = ServiceMessages {
     installer_help_hint: "💡 For more information, run: vm --help",
     installer_path_already_configured: "✅ {path} is already in your PATH.",
     installer_path_not_configured: "⚠️ {path} is not in your PATH",
-    installer_manual_path_hint: "💡 Or run: vm-package-manager link",
+    installer_manual_path_hint: "💡 Add this line to your shell profile:",
     installer_build_time_hint: "   This may take a few minutes on first build...",
     installer_sccache_enabled: "   Using sccache for faster builds",
-
-    // Package Management
-    pkg_linked_package: "🔗 Found linked local package: {name}",
-    pkg_installing_local_cargo: "  -> Installing local cargo package from: {path}",
-    pkg_linking_npm: "  -> Linking local npm package from: {path}",
-    pkg_pipx_detected: "  -> Detected as a pipx environment",
-    pkg_python_editable: "  -> Detected as a Python project, installing in editable mode",
-    pkg_installing_editable: "  -> Installing as editable Python package",
-    pkg_pipx_not_available: "  -> Pipx not available, using pip",
-    pkg_no_bin_directory: "  -> No bin directory found in pipx environment",
-    pkg_creating_wrappers: "  -> Creating wrapper scripts in {path}",
-    pkg_wrapper_created: "    - Created wrapper: {name}",
-    pkg_restart_shell: "  -> Please restart your shell to use them",
-    pkg_no_linked_packages: "📦 No linked packages found",
-    pkg_linked_packages_header: "🔗 Linked packages:",
-    pkg_manager_linked: "🔗 Package '{package}' is linked for {type}",
-    pkg_manager_not_linked: "📦 Package '{package}' is not linked (would install from registry)",
 
     // Provider Operations
     provider_tart_created_success: "\n✅ Tart VM created successfully!",

@@ -36,12 +36,8 @@ thiserror = { workspace = true }
 askama = { workspace = true }
 chrono = { workspace = true }
 reqwest = { workspace = true }
-which = { workspace = true }
-indicatif = { workspace = true }
-colored = { workspace = true }
 url = { workspace = true }
 bytes = { workspace = true }
-dialoguer = { workspace = true }
 once_cell = { workspace = true }
 notify = { workspace = true }
 futures-util = { workspace = true }
