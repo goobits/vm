@@ -7,10 +7,10 @@ use vm_config::config::VmConfig;
 use vm_core::error::{Result, VmError};
 
 impl TartProvisioner {
-    pub(super) fn ensure_host_sync_mounts(&self, config: &VmConfig) -> Result<()> {
+    pub(super) fn host_sync_mount_command(&self, config: &VmConfig) -> Option<String> {
         let mounts = collect_host_sync_mounts(config);
         if mounts.is_empty() {
-            return Ok(());
+            return None;
         }
 
         let mut commands = Vec::new();
@@ -19,8 +19,7 @@ impl TartProvisioner {
             commands.push(Self::virtiofs_mount_command(&mount.tag, &guest_path));
         }
 
-        self.ssh_exec(&commands.join("\n"))?;
-        Ok(())
+        Some(commands.join("\n"))
     }
 
     pub(super) fn sync_dotfiles(&self, config: &VmConfig) -> Result<()> {
@@ -179,18 +178,18 @@ chmod {mode} "$HOME/{target}""#,
         Ok(())
     }
 
-    pub(super) fn apply_git_config(&self, config: &VmConfig) -> Result<()> {
+    pub(super) fn git_config_command(&self, config: &VmConfig) -> Option<String> {
         if !config
             .host_sync
             .as_ref()
             .map(|sync| sync.git_config)
             .unwrap_or(true)
         {
-            return Ok(());
+            return None;
         }
 
         let Some(git_config) = &config.git_config else {
-            return Ok(());
+            return None;
         };
 
         let mut commands = Vec::new();
@@ -226,19 +225,14 @@ chmod {mode} "$HOME/{target}""#,
         }
         if let Some(content) = &git_config.core_excludesfile_content {
             commands.push(format!(
-                "cat > \"$HOME/.gitignore_global\" <<'EOF'\n{}\nEOF",
-                content
+                "printf '%s' {} > \"$HOME/.gitignore_global\"",
+                crate::shell_session::quote_posix_argument(content)
             ));
             commands.push(
                 "git config --global core.excludesfile \"$HOME/.gitignore_global\"".to_string(),
             );
         }
 
-        if commands.is_empty() {
-            return Ok(());
-        }
-
-        self.ssh_exec(&commands.join("\n"))?;
-        Ok(())
+        (!commands.is_empty()).then(|| commands.join("\n"))
     }
 }

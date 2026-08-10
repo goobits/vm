@@ -63,8 +63,7 @@ impl TartProvider {
         );
         provisioner.repair_home_state()?;
         if !self.is_shell_config_ready(instance_name) {
-            provisioner.apply_canonical_shell_config(&self.config)?;
-            provisioner.apply_shell_overrides(&self.config)?;
+            provisioner.apply_shell_config(&self.config)?;
         }
 
         provisioner.sync_codex_runtime_config(&self.config)

@@ -4,7 +4,12 @@ use vm_core::error::Result;
 impl TartProvisioner {
     /// Migrate obsolete mounts once, then apply the provider-neutral home repair.
     pub(crate) fn repair_home_state(&self) -> Result<()> {
-        self.ssh_exec(&format!(
+        self.ssh_exec(&self.home_state_repair_command())?;
+        Ok(())
+    }
+
+    pub(super) fn home_state_repair_command(&self) -> String {
+        format!(
             r#"set -euo pipefail
 legacy_marker="$HOME/.vm/state/tart-codex-mount-v1"
 legacy_migrated=0
@@ -42,9 +47,7 @@ if [ "$legacy_migrated" = 1 ]; then
   touch "$legacy_marker"
 fi"#,
             crate::resources::HOME_STATE_REPAIR
-        ))?;
-
-        Ok(())
+        )
     }
 }
 

@@ -51,14 +51,11 @@ impl TartProvisioner {
         self.sync_codex_auth()
     }
 
-    pub(super) fn provision_ai_tools(&self, config: &VmConfig) -> Result<()> {
-        let Some(ai_tools) = config
+    pub(super) fn ai_tools_install_command(&self, config: &VmConfig) -> Option<String> {
+        let ai_tools = config
             .host_sync
             .as_ref()
-            .and_then(|sync| sync.ai_tools.as_ref())
-        else {
-            return Ok(());
-        };
+            .and_then(|sync| sync.ai_tools.as_ref())?;
 
         let mut tools = Vec::new();
         if ai_tools.is_antigravity_enabled() {
@@ -71,8 +68,8 @@ impl TartProvisioner {
             tools.push("codex");
         }
 
-        if !tools.is_empty() {
-            self.ssh_exec(&format!(
+        (!tools.is_empty()).then(|| {
+            format!(
                 r#"set -euo pipefail
 export PATH="{}"
 INSTALLER="$(mktemp)"
@@ -84,14 +81,8 @@ bash "$INSTALLER" {}"#,
                 Self::user_bin_path(config),
                 crate::resources::AI_TOOLS_INSTALLER,
                 tools.join(" ")
-            ))?;
-        }
-
-        if ai_tools.is_codex_enabled() {
-            self.sync_codex_auth()?;
-        }
-
-        Ok(())
+            )
+        })
     }
 }
 

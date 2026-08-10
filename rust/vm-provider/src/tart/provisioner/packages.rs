@@ -1,89 +1,116 @@
-use super::TartProvisioner;
+use super::{GuestCommand, TartProvisioner};
 use crate::project_plan::{NodeToolchainPlan, PrimaryRuntime, ProjectPlan};
 use tracing::{info, warn};
 use vm_config::config::VmConfig;
-use vm_core::error::Result;
 use vm_core::vm_warning;
 
 impl TartProvisioner {
-    pub(super) fn provision_generic_packages(&self, config: &VmConfig) -> Result<()> {
+    pub(super) fn guest_software_commands(
+        &self,
+        config: &VmConfig,
+        project_plan: &ProjectPlan,
+    ) -> Vec<GuestCommand> {
+        let runtime = project_plan.primary_runtime();
+        info!("Detected framework: {}", runtime.as_str());
+        let mut commands = Vec::new();
+
         if !config.apt_packages.is_empty() {
             let packages = Self::shell_quote_packages(&config.apt_packages);
-            if self.is_macos_guest(config) {
-                self.ensure_homebrew()?;
-                self.ssh_exec(&format!(
-                    "{}\nbrew install {}",
-                    Self::macos_brew_preamble(),
-                    packages
-                ))?;
+            let command = if self.is_macos_guest(config) {
+                format!("{}\nbrew install {packages}", Self::homebrew_preamble())
             } else {
-                self.ssh_exec(&format!(
-                    "sudo apt-get update && sudo apt-get install -y {}",
-                    packages
-                ))?;
-            }
+                format!("sudo apt-get update && sudo apt-get install -y {packages}")
+            };
+            commands.push(("generic system packages", command));
         }
 
+        if let Some(node) = project_plan.installs.node.as_ref() {
+            commands.push(("Node.js toolchain", Self::node_toolchain_command(node)));
+        }
         if !config.npm_packages.is_empty() {
-            let packages = Self::shell_quote_packages(&config.npm_packages);
-            self.ssh_exec(&format!(
-                r#"export PATH="{}"
+            commands.push((
+                "global npm packages",
+                format!(
+                    r#"export PATH="{}"
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 npm install -g {}"#,
-                Self::user_bin_path(config),
-                packages
-            ))?;
+                    Self::user_bin_path(config),
+                    Self::shell_quote_packages(&config.npm_packages)
+                ),
+            ));
         }
 
-        if !config.pip_packages.is_empty() {
-            self.ensure_python_runtime(config)?;
-            self.ensure_python_package_tooling(config)?;
-            let packages = Self::shell_quote_packages(&config.pip_packages);
-            self.ssh_exec(&format!(
-                r#"export PATH="{}"
-python3 -m pip install --user {} {}"#,
-                Self::user_bin_path(config),
-                if self.is_macos_guest(config) {
-                    ""
-                } else {
-                    "--break-system-packages"
-                },
-                packages
-            ))?;
+        if !config.pip_packages.is_empty() || runtime == PrimaryRuntime::Python {
+            commands.push((
+                "Python runtime and packages",
+                self.python_runtime_command(config),
+            ));
         }
 
-        if !config.cargo_packages.is_empty() {
-            self.ensure_rust_runtime()?;
-            let packages = Self::shell_quote_packages(&config.cargo_packages);
-            self.ssh_exec(&format!(
-                r#"export PATH="$HOME/.cargo/bin:$PATH"
-cargo install {}"#,
-                packages
-            ))?;
+        if !config.cargo_packages.is_empty() || runtime == PrimaryRuntime::Rust {
+            commands.push((
+                "Rust runtime and packages",
+                Self::rust_runtime_command(config),
+            ));
         }
 
-        Ok(())
+        if let Some(command) = self.ai_tools_install_command(config) {
+            commands.push(("AI CLI tools", command));
+        }
+        if let Some(command) = self.docker_install_command(config) {
+            commands.push(("Docker runtime", command));
+        }
+
+        match runtime {
+            PrimaryRuntime::Node => {
+                if let Some(command) = self.node_bootstrap_command(project_plan) {
+                    commands.push(("Node.js project dependencies", command));
+                }
+            }
+            PrimaryRuntime::Python => commands.push((
+                "Python project dependencies",
+                self.python_project_command(config),
+            )),
+            PrimaryRuntime::Ruby => commands.push((
+                "Ruby project dependencies",
+                self.ruby_project_command(config),
+            )),
+            PrimaryRuntime::Rust => commands.push((
+                "Rust project dependencies",
+                Self::rust_project_command(&self.project_dir),
+            )),
+            PrimaryRuntime::Go => {
+                commands.push(("Go project dependencies", self.go_project_command(config)))
+            }
+            PrimaryRuntime::Unknown => warn!("Unknown framework, skipping project dependencies"),
+        }
+
+        if let Some(command) = self.database_command(config) {
+            commands.push(("database services", command));
+        }
+
+        commands
     }
 
-    pub(super) fn install_docker_if_requested(&self, config: &VmConfig) -> Result<()> {
+    fn docker_install_command(&self, config: &VmConfig) -> Option<String> {
         if !config
             .tart
             .as_ref()
             .and_then(|tart| tart.install_docker)
             .unwrap_or(false)
         {
-            return Ok(());
+            return None;
         }
 
         if self.is_macos_guest(config) {
             vm_warning!(
                 "Docker in a macOS Tart guest uses Colima with QEMU software emulation and will be much slower. Prefer the Linux Tart profile for Docker workloads."
             );
-            return self.install_macos_docker_tools();
+            return Some(self.macos_docker_tools_command());
         }
 
-        self.ssh_exec(
+        Some(
             r#"if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | sh
   if command -v sudo >/dev/null 2>&1; then
@@ -95,17 +122,14 @@ if command -v systemctl >/dev/null 2>&1; then
 elif command -v service >/dev/null 2>&1; then
   sudo service docker start >/dev/null 2>&1 || true
 fi
-docker info >/dev/null 2>&1 || sudo docker info >/dev/null 2>&1"#,
-        )?;
-
-        Ok(())
+docker info >/dev/null 2>&1 || sudo docker info >/dev/null 2>&1"#
+                .to_string(),
+        )
     }
 
-    fn install_macos_docker_tools(&self) -> Result<()> {
-        self.ensure_homebrew()?;
-
+    fn macos_docker_tools_command(&self) -> String {
         let workspace = Self::shell_escape_single_quotes(&self.project_dir);
-        self.ssh_exec(&format!(
+        format!(
             r#"{brew}
 brew install docker docker-compose docker-buildx colima qemu
 
@@ -172,41 +196,9 @@ QEMU_SYSTEM_AARCH64="$(dirname "$0")/qemu-system-aarch64-tcg" \
 SH
 chmod +x '{workspace}/start-colima'
 "#,
-            brew = Self::macos_brew_preamble(),
+            brew = Self::homebrew_preamble(),
             workspace = workspace
-        ))?;
-
-        Ok(())
-    }
-
-    pub(super) fn provision_framework_dependencies(
-        &self,
-        config: &VmConfig,
-        project_plan: &ProjectPlan,
-    ) -> Result<()> {
-        let runtime = project_plan.primary_runtime();
-        info!("Detected framework: {}", runtime.as_str());
-
-        match runtime {
-            PrimaryRuntime::Node => self.bootstrap_node_project(project_plan)?,
-            PrimaryRuntime::Python => self.provision_python(config)?,
-            PrimaryRuntime::Ruby => self.provision_ruby(config)?,
-            PrimaryRuntime::Rust => self.provision_rust()?,
-            PrimaryRuntime::Go => self.provision_go(config)?,
-            PrimaryRuntime::Unknown => warn!("Unknown framework, skipping"),
-        }
-
-        self.provision_databases(config)?;
-        Ok(())
-    }
-
-    pub(super) fn provision_node_toolchain(&self, project_plan: &ProjectPlan) -> Result<()> {
-        let Some(node) = project_plan.installs.node.as_ref() else {
-            return Ok(());
-        };
-
-        self.ssh_exec(&Self::node_toolchain_command(node))?;
-        Ok(())
+        )
     }
 
     fn node_toolchain_command(node: &NodeToolchainPlan) -> String {
@@ -231,21 +223,20 @@ bash "$installer""#,
         )
     }
 
-    fn bootstrap_node_project(&self, project_plan: &ProjectPlan) -> Result<()> {
+    fn node_bootstrap_command(&self, project_plan: &ProjectPlan) -> Option<String> {
         let manager = project_plan
             .installs
             .node_dependencies
             .map_or("", |manager| manager.as_str());
         let browsers = project_plan.installs.playwright_browsers.join(" ");
         if manager.is_empty() && browsers.is_empty() {
-            return Ok(());
+            return None;
         }
 
-        info!("Bootstrapping locked Node.js dependencies");
         let project_dir = Self::shell_escape_single_quotes(&self.project_dir);
         let manager = Self::shell_escape_single_quotes(manager);
         let browsers = Self::shell_escape_single_quotes(&browsers);
-        self.ssh_exec(&format!(
+        Some(format!(
             r#"set -euo pipefail
 export VM_PROJECT_PATH='{project_dir}'
 export VM_NODE_DEPENDENCY_MANAGER='{manager}'
@@ -258,138 +249,140 @@ cat > "$bootstrap" <<'VM_NODE_BOOTSTRAP'
 VM_NODE_BOOTSTRAP
 bash "$bootstrap""#,
             crate::resources::NODE_BOOTSTRAP
-        ))?;
-        Ok(())
+        ))
     }
 
-    /// Provisions Python using pyenv.
-    /// Note: This uses `curl | bash` for pyenv installation, which is a trade-off for convenience
-    /// over a more secure, but complex, installation method.
-    fn provision_python(&self, config: &VmConfig) -> Result<()> {
-        info!("Installing Python dependencies");
-        self.ensure_python_runtime(config)?;
-        self.ensure_python_package_tooling(config)?;
-        self.ssh_exec(&format!(
-            r#"if [ -f {}/requirements.txt ]; then
-  cd {}
+    fn python_runtime_command(&self, config: &VmConfig) -> String {
+        let python_version = config
+            .versions
+            .as_ref()
+            .and_then(|versions| versions.python.as_deref())
+            .unwrap_or("3.11");
+        let python_version = Self::shell_escape_single_quotes(python_version);
+        let tooling = if self.is_macos_guest(config) {
+            format!(
+                "{}\nif ! command -v pipx >/dev/null 2>&1; then brew install pipx; fi",
+                Self::homebrew_preamble()
+            )
+        } else {
+            r#"if ! command -v pipx >/dev/null 2>&1; then
+  sudo apt-get update
+  sudo apt-get install -y pipx python3-pip python3-venv
+fi"#
+            .to_string()
+        };
+        let packages = if config.pip_packages.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "python3 -m pip install --user {} {}",
+                if self.is_macos_guest(config) {
+                    ""
+                } else {
+                    "--break-system-packages"
+                },
+                Self::shell_quote_packages(&config.pip_packages)
+            )
+        };
+        format!(
+            r#"export PATH="$HOME/.pyenv/bin:{}"
+if ! command -v pyenv >/dev/null 2>&1; then
+  curl -fsSL https://pyenv.run | bash
+fi
+eval "$(pyenv init -)"
+pyenv install -s '{python_version}'
+pyenv global '{python_version}'
+{tooling}
+export PATH="{}"
+pipx ensurepath >/dev/null 2>&1 || true
+{packages}"#,
+            Self::user_bin_path(config),
+            Self::user_bin_path(config)
+        )
+    }
+
+    fn python_project_command(&self, config: &VmConfig) -> String {
+        let project = Self::shell_escape_single_quotes(&self.project_dir);
+        format!(
+            r#"export PATH="$HOME/.pyenv/bin:{}"
+eval "$(pyenv init -)"
+if [ -f '{project}/requirements.txt' ]; then
+  cd '{project}'
   if [ ! -d .venv ]; then
     python3 -m venv .venv
   fi
   . .venv/bin/activate
   pip install -r requirements.txt
 fi"#,
-            self.project_dir, self.project_dir
-        ))?;
-        Ok(())
-    }
-
-    fn ensure_python_runtime(&self, config: &VmConfig) -> Result<()> {
-        let python_version = config
-            .versions
-            .as_ref()
-            .and_then(|versions| versions.python.as_deref())
-            .unwrap_or("3.11");
-
-        let install_script = format!(
-            r#"
-            if ! command -v pyenv &> /dev/null; then
-                curl https://pyenv.run | bash
-                export PATH="$HOME/.pyenv/bin:$PATH"
-                eval "$(pyenv init -)"
-            fi
-
-            pyenv install -s {}
-            pyenv global {}
-        "#,
-            python_version, python_version
-        );
-
-        self.ssh_exec(&install_script)?;
-        Ok(())
-    }
-
-    fn ensure_python_package_tooling(&self, config: &VmConfig) -> Result<()> {
-        self.ssh_exec(&format!(
-            r#"if ! command -v pipx >/dev/null 2>&1; then
-  {}
-fi
-export PATH="{}"
-pipx ensurepath >/dev/null 2>&1 || true"#,
-            if self.is_macos_guest(config) {
-                format!("{}\nbrew install pipx", Self::macos_brew_preamble())
-            } else {
-                "sudo apt-get update && sudo apt-get install -y pipx python3-pip python3-venv"
-                    .to_string()
-            },
             Self::user_bin_path(config)
-        ))?;
-        Ok(())
+        )
     }
 
-    fn provision_ruby(&self, config: &VmConfig) -> Result<()> {
-        info!("Installing Ruby dependencies");
-        self.ssh_exec(&format!(
+    fn ruby_project_command(&self, config: &VmConfig) -> String {
+        let project = Self::shell_escape_single_quotes(&self.project_dir);
+        format!(
             r#"{}
-if [ -f {}/Gemfile ]; then
+if [ -f '{project}/Gemfile' ]; then
   if ! command -v bundle >/dev/null 2>&1; then gem install bundler; fi
-  cd {} && bundle install
+  cd '{project}' && bundle install
 fi"#,
             if self.is_macos_guest(config) {
                 format!(
                     "{}\nif ! command -v ruby >/dev/null 2>&1; then brew install ruby; fi",
-                    Self::macos_brew_preamble()
+                    Self::homebrew_preamble()
                 )
             } else {
                 "sudo apt-get update && sudo apt-get install -y ruby-full build-essential zlib1g-dev"
                     .to_string()
-            },
-            self.project_dir,
-            self.project_dir
-        ))?;
-        Ok(())
+            }
+        )
     }
 
-    fn provision_rust(&self) -> Result<()> {
-        info!("Installing Rust dependencies");
-        self.ensure_rust_runtime()?;
-        self.ssh_exec(&format!(
-            r#"export PATH="$HOME/.cargo/bin:$PATH"
-if [ -f {}/Cargo.toml ]; then
-  cd {} && cargo fetch
-fi"#,
-            self.project_dir, self.project_dir
-        ))?;
-        Ok(())
-    }
-
-    fn provision_go(&self, config: &VmConfig) -> Result<()> {
-        info!("Installing Go dependencies");
-        self.ssh_exec(&format!(
-            r#"if ! command -v go >/dev/null 2>&1; then
-  {}
-fi
-if [ -f {}/go.mod ]; then
-  cd {} && go mod download
-fi"#,
-            if self.is_macos_guest(config) {
-                format!("{}\nbrew install go", Self::macos_brew_preamble())
-            } else {
-                "sudo apt-get update && sudo apt-get install -y golang-go".to_string()
-            },
-            self.project_dir,
-            self.project_dir
-        ))?;
-        Ok(())
-    }
-
-    fn ensure_rust_runtime(&self) -> Result<()> {
-        self.ssh_exec(
+    fn rust_runtime_command(config: &VmConfig) -> String {
+        let packages = if config.cargo_packages.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "cargo install {}",
+                Self::shell_quote_packages(&config.cargo_packages)
+            )
+        };
+        format!(
             r#"if [ ! -x "$HOME/.cargo/bin/cargo" ]; then
   curl https://sh.rustup.rs -sSf | sh -s -- -y
 fi
 export PATH="$HOME/.cargo/bin:$PATH"
-rustup default stable"#,
-        )?;
-        Ok(())
+if ! rustup show active-toolchain 2>/dev/null | grep -q '^stable-'; then
+  rustup default stable
+fi
+{packages}"#
+        )
+    }
+
+    fn rust_project_command(project_dir: &str) -> String {
+        let project = Self::shell_escape_single_quotes(project_dir);
+        format!(
+            r#"export PATH="$HOME/.cargo/bin:$PATH"
+if [ -f '{project}/Cargo.toml' ]; then
+  cd '{project}' && cargo fetch
+fi"#
+        )
+    }
+
+    fn go_project_command(&self, config: &VmConfig) -> String {
+        let project = Self::shell_escape_single_quotes(&self.project_dir);
+        format!(
+            r#"if ! command -v go >/dev/null 2>&1; then
+  {}
+fi
+if [ -f '{project}/go.mod' ]; then
+  cd '{project}' && go mod download
+fi"#,
+            if self.is_macos_guest(config) {
+                format!("{}\nbrew install go", Self::homebrew_preamble())
+            } else {
+                "sudo apt-get update && sudo apt-get install -y golang-go".to_string()
+            }
+        )
     }
 }

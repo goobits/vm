@@ -18,6 +18,8 @@ pub struct TartProvisioner {
     tart_home: Option<String>,
 }
 
+pub(super) type GuestCommand = (&'static str, String);
+
 impl TartProvisioner {
     pub fn new(instance_name: String, project_dir: String, tart_home: Option<String>) -> Self {
         Self {
@@ -42,36 +44,35 @@ impl TartProvisioner {
         // 1. Wait for VM to be ready
         self.wait_for_ssh()?;
 
-        // 2. Ensure workspace share is mounted
-        self.ensure_workspace_mount()?;
-        self.repair_home_state()?;
+        // 2. Mount the workspace and repair guest state in one SSH batch.
+        self.ssh_exec_batch(vec![
+            (
+                "workspace mount",
+                Self::virtiofs_mount_command("workspace", &self.project_dir),
+            ),
+            ("guest home repair", self.home_state_repair_command()),
+        ])?;
 
         // 3. Apply host sync behaviors that Tart can support cleanly
         self.sync_dotfiles(config)?;
         self.sync_ssh_config(config)?;
 
-        // 4. Apply runtime configuration that should behave the same across providers
-        self.apply_git_config(config)?;
-        self.apply_canonical_shell_config(config)?;
-        self.apply_shell_overrides(config)?;
-
-        // 5. Honor the shared runtime plan and generic package lists from vm.yaml
-        self.provision_node_toolchain(project_plan)?;
-        self.provision_generic_packages(config)?;
-        self.provision_ai_tools(config)?;
-        self.install_docker_if_requested(config)?;
+        // 4. Apply runtime configuration and install software in one SSH batch.
+        let mut setup = self.guest_configuration_commands(config)?;
+        setup.extend(self.guest_software_commands(config, project_plan));
+        self.ssh_exec_batch(setup)?;
+        self.sync_codex_runtime_config(config)?;
         // Mount AI config after CLI installation so installers do not write into
         // host-synced config directories such as ~/.claude.
-        self.ensure_host_sync_mounts(config)?;
-
-        // 6. Install project dependencies from the shared host plan
-        self.provision_framework_dependencies(config, project_plan)?;
-
-        // 7. Run custom provision scripts if present
-        self.run_custom_provision_scripts(config)?;
-
-        // 8. Start services
-        self.start_services(config)?;
+        let mut finalization = Vec::new();
+        if let Some(mounts) = self.host_sync_mount_command(config) {
+            finalization.push(("host sync mounts", mounts));
+        }
+        finalization.push((
+            "custom project provisioning",
+            self.custom_provision_command(),
+        ));
+        self.ssh_exec_batch(finalization)?;
 
         info!("Provisioning completed successfully");
         Ok(())
@@ -199,6 +200,28 @@ fi"#
         Ok(output)
     }
 
+    fn render_command_batch(commands: &[GuestCommand]) -> Option<String> {
+        let commands = commands
+            .iter()
+            .filter(|(_, command)| !command.trim().is_empty())
+            .map(|(label, command)| {
+                format!(
+                    "printf '%s\\n' 'VM_PROVISION_STEP={label}' >&2\n(\n{}\n)",
+                    command.trim()
+                )
+            })
+            .collect::<Vec<_>>();
+
+        (!commands.is_empty()).then(|| format!("set -eo pipefail\n{}", commands.join("\n")))
+    }
+
+    fn ssh_exec_batch(&self, commands: Vec<GuestCommand>) -> Result<()> {
+        let Some(command) = Self::render_command_batch(&commands) else {
+            return Ok(());
+        };
+        self.ssh_exec(&command).map(|_| ())
+    }
+
     fn is_macos_guest(&self, config: &VmConfig) -> bool {
         Self::guest_os(config) == "macos"
     }
@@ -247,19 +270,6 @@ fi"#
         "macos"
     }
 
-    fn ensure_homebrew(&self) -> Result<()> {
-        self.ssh_exec(
-            r#"if [ -x /opt/homebrew/bin/brew ]; then
-  eval "$(/opt/homebrew/bin/brew shellenv)"
-fi
-if ! command -v brew >/dev/null 2>&1; then
-  echo "Homebrew is required for macOS Tart provisioning" >&2
-  exit 1
-fi"#,
-        )?;
-        Ok(())
-    }
-
     fn user_bin_path(config: &VmConfig) -> &'static str {
         if Self::guest_os(config) == "macos" {
             "/opt/homebrew/bin:$HOME/.local/bin:$PATH"
@@ -268,9 +278,13 @@ fi"#,
         }
     }
 
-    fn macos_brew_preamble() -> &'static str {
+    fn homebrew_preamble() -> &'static str {
         r#"if [ -x /opt/homebrew/bin/brew ]; then
   eval "$(/opt/homebrew/bin/brew shellenv)"
+fi
+if ! command -v brew >/dev/null 2>&1; then
+  echo "Homebrew is required for macOS Tart provisioning" >&2
+  exit 1
 fi"#
     }
 }
@@ -278,8 +292,13 @@ fi"#
 #[cfg(test)]
 mod tests {
     use super::TartProvisioner;
+    use crate::project_plan::ProjectPlan;
     use indexmap::IndexMap;
-    use vm_config::config::{BoxSpec, ProjectConfig, TerminalConfig, VmConfig, VmSettings};
+    #[cfg(unix)]
+    use std::process::Command;
+    use vm_config::config::{
+        BoxSpec, ProjectConfig, ServiceConfig, TartConfig, TerminalConfig, VmConfig, VmSettings,
+    };
 
     #[test]
     fn host_shell_applies_tart_home() {
@@ -322,6 +341,17 @@ mod tests {
     }
 
     #[test]
+    fn shell_configuration_has_one_owner_and_removes_stale_overrides() {
+        let config = VmConfig::default();
+
+        let command = TartProvisioner::shell_config_command(&config, "/workspace").unwrap();
+
+        assert_eq!(command.matches("touch \"$HOME/.bashrc\"").count(), 1);
+        assert!(command.contains("rm -f \"$HOME/.vm_shell_overrides\""));
+        assert!(command.contains("VM_SHELL_CONFIG_VERSION=4"));
+    }
+
+    #[test]
     fn package_names_are_shell_quoted() {
         let packages = vec![
             "safe".to_string(),
@@ -333,6 +363,123 @@ mod tests {
             TartProvisioner::shell_quote_packages(&packages),
             "'safe' 'pkg; touch /tmp/injected' 'it'\"'\"'s'"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn guest_command_batches_are_labeled_and_fail_fast() {
+        let batch = TartProvisioner::render_command_batch(&[
+            ("failing step", "exit 7".to_string()),
+            ("skipped step", "printf should-not-run".to_string()),
+        ])
+        .unwrap();
+        let output = Command::new("/bin/bash")
+            .args(["-c", &batch])
+            .output()
+            .unwrap();
+
+        assert_eq!(output.status.code(), Some(7));
+        assert!(output.stdout.is_empty());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("VM_PROVISION_STEP=failing step"));
+        assert!(!stderr.contains("VM_PROVISION_STEP=skipped step"));
+    }
+
+    #[test]
+    fn linux_databases_share_one_package_transaction() {
+        let provisioner =
+            TartProvisioner::new("vm-linux".to_string(), "/workspace".to_string(), None);
+        let mut config = VmConfig {
+            os: Some("linux".to_string()),
+            ..Default::default()
+        };
+        for service in ["postgresql", "redis"] {
+            config.services.insert(
+                service.to_string(),
+                ServiceConfig {
+                    enabled: true,
+                    ..Default::default()
+                },
+            );
+        }
+
+        let command = provisioner.database_command(&config).unwrap();
+
+        assert_eq!(command.matches("apt-get update").count(), 1);
+        assert!(command.contains("postgresql postgresql-contrib redis-server"));
+        assert!(command.contains("systemctl enable --now postgresql"));
+        assert!(command.contains("systemctl enable --now redis-server"));
+    }
+
+    #[test]
+    fn tart_setup_uses_one_ordered_guest_batch() {
+        let project = tempfile::tempdir().unwrap();
+        std::fs::write(project.path().join("package.json"), "{}\n").unwrap();
+        std::fs::write(project.path().join("package-lock.json"), "{}\n").unwrap();
+        let provisioner =
+            TartProvisioner::new("vm-linux".to_string(), "/workspace".to_string(), None);
+        let mut config = VmConfig {
+            os: Some("linux".to_string()),
+            tart: Some(TartConfig {
+                install_docker: Some(true),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        config.services.insert(
+            "postgresql".to_string(),
+            ServiceConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+        let plan = ProjectPlan::detect(project.path(), &config);
+
+        let mut commands = provisioner.guest_configuration_commands(&config).unwrap();
+        commands.extend(provisioner.guest_software_commands(&config, &plan));
+        let labels = commands.iter().map(|(label, _)| *label).collect::<Vec<_>>();
+
+        assert_eq!(
+            labels,
+            [
+                "shell configuration",
+                "Node.js toolchain",
+                "Docker runtime",
+                "Node.js project dependencies",
+                "database services",
+            ]
+        );
+        let batch = TartProvisioner::render_command_batch(&commands).unwrap();
+        assert_eq!(batch.matches("VM_PROVISION_STEP=").count(), labels.len());
+        #[cfg(unix)]
+        {
+            assert!(Command::new("/bin/bash")
+                .args(["-n", "-c", &batch])
+                .status()
+                .unwrap()
+                .success());
+
+            config.os = Some("macos".to_string());
+            let mut macos_commands = provisioner.guest_configuration_commands(&config).unwrap();
+            macos_commands.extend(provisioner.guest_software_commands(&config, &plan));
+            let macos_batch = TartProvisioner::render_command_batch(&macos_commands).unwrap();
+            assert!(Command::new("/bin/bash")
+                .args(["-n", "-c", &macos_batch])
+                .status()
+                .unwrap()
+                .success());
+        }
+    }
+
+    #[test]
+    fn custom_provision_paths_are_shell_quoted() {
+        let provisioner =
+            TartProvisioner::new("vm-linux".to_string(), "/work/it's here".to_string(), None);
+
+        let command = provisioner.custom_provision_command();
+
+        assert!(command.contains("'/work/it'\"'\"'s here/provision.sh'"));
+        assert!(command.contains("cd '/work/it'\"'\"'s here'"));
     }
 
     #[test]

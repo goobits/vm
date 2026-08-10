@@ -1,4 +1,4 @@
-use super::TartProvisioner;
+use super::{GuestCommand, TartProvisioner};
 use crate::{THEMES_JSON, ZSHRC_TEMPLATE};
 use serde_json::json;
 use tera::{Context, Tera};
@@ -17,43 +17,52 @@ impl TartProvisioner {
         chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
     }
 
-    pub(crate) fn apply_shell_overrides(&self, config: &VmConfig) -> Result<()> {
-        let Some(overrides) = Self::render_shell_overrides(config) else {
-            return Ok(());
-        };
-
-        let script = format!(
-            r#"cat > "$HOME/.vm_shell_overrides" <<'EOF'
-{overrides}
-EOF
-touch "$HOME/.bashrc"
-if ! grep -Fq '. "$HOME/.vm_shell_overrides"' "$HOME/.bashrc"; then
-  printf '\n[ -f "$HOME/.vm_shell_overrides" ] && . "$HOME/.vm_shell_overrides"\n' >> "$HOME/.bashrc"
-fi"#
-        );
-
-        self.ssh_exec(&script)?;
-        Ok(())
+    pub(super) fn guest_configuration_commands(
+        &self,
+        config: &VmConfig,
+    ) -> Result<Vec<GuestCommand>> {
+        let mut commands = Vec::new();
+        if let Some(git_config) = self.git_config_command(config) {
+            commands.push(("git configuration", git_config));
+        }
+        commands.push((
+            "shell configuration",
+            Self::shell_config_command(config, &self.project_dir)?,
+        ));
+        Ok(commands)
     }
 
-    pub(crate) fn apply_canonical_shell_config(&self, config: &VmConfig) -> Result<()> {
-        let rendered = Self::render_canonical_zshrc(config, &self.project_dir)?;
+    pub(crate) fn apply_shell_config(&self, config: &VmConfig) -> Result<()> {
+        self.ssh_exec_batch(vec![(
+            "shell configuration",
+            Self::shell_config_command(config, &self.project_dir)?,
+        )])
+    }
 
-        self.ssh_exec(&format!(
-            r#"cat > "$HOME/.zshrc" <<'EOF'
-{}
-EOF
+    pub(super) fn shell_config_command(config: &VmConfig, project_dir: &str) -> Result<String> {
+        let rendered = Self::render_canonical_zshrc(config, project_dir)?;
+        let rendered = crate::shell_session::quote_posix_argument(&rendered);
+        let overrides = Self::render_shell_overrides(config).map_or_else(
+            || "rm -f \"$HOME/.vm_shell_overrides\"".to_string(),
+            |overrides| {
+                format!(
+                    "printf '%s\\n' {} > \"$HOME/.vm_shell_overrides\"",
+                    crate::shell_session::quote_posix_argument(&overrides)
+                )
+            },
+        );
+
+        Ok(format!(
+            r#"printf '%s\n' {rendered} > "$HOME/.zshrc"
+{overrides}
 touch "$HOME/.bashrc"
 if ! grep -Fq '. "$HOME/.vm_shell_overrides"' "$HOME/.bashrc"; then
   printf '\n[ -f "$HOME/.vm_shell_overrides" ] && . "$HOME/.vm_shell_overrides"\n' >> "$HOME/.bashrc"
 fi
 if command -v chsh >/dev/null 2>&1 && command -v zsh >/dev/null 2>&1; then
   chsh -s "$(command -v zsh)" "$USER" >/dev/null 2>&1 || true
-fi"#,
-            rendered
-        ))?;
-
-        Ok(())
+fi"#
+        ))
     }
 
     pub(crate) fn render_shell_overrides(config: &VmConfig) -> Option<String> {

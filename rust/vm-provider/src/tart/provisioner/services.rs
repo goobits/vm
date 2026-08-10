@@ -1,135 +1,86 @@
 use super::TartProvisioner;
 use tracing::info;
 use vm_config::config::VmConfig;
-use vm_core::error::Result;
 
 impl TartProvisioner {
-    /// Provisions selected databases using the guest's native package tooling.
-    pub(super) fn provision_databases(&self, config: &VmConfig) -> Result<()> {
-        if self.is_macos_guest(config) {
-            self.ensure_homebrew()?;
-        }
-
-        // Check if postgres service is enabled
-        if config
+    pub(super) fn database_command(&self, config: &VmConfig) -> Option<String> {
+        let postgresql = config
             .services
             .get("postgresql")
             .or_else(|| config.services.get("postgres"))
             .map(|s| s.enabled)
-            .unwrap_or(false)
-        {
-            self.install_postgresql()?;
-        }
-
-        // Check if redis service is enabled
-        if config
+            .unwrap_or(false);
+        let redis = config
             .services
             .get("redis")
             .map(|s| s.enabled)
-            .unwrap_or(false)
-        {
-            self.install_redis()?;
-        }
-
-        // Check if mongodb service is enabled
-        if config
+            .unwrap_or(false);
+        let mongodb = config
             .services
             .get("mongodb")
             .map(|s| s.enabled)
-            .unwrap_or(false)
-        {
-            self.install_mongodb()?;
+            .unwrap_or(false);
+        if !postgresql && !redis && !mongodb {
+            return None;
         }
 
-        Ok(())
-    }
-
-    fn install_postgresql(&self) -> Result<()> {
-        info!("Installing PostgreSQL");
-        self.ssh_exec(
-            r#"
-            if [ -x /opt/homebrew/bin/brew ]; then eval "$(/opt/homebrew/bin/brew shellenv)"; fi
-            if command -v brew >/dev/null 2>&1; then
-              brew install postgresql
-              brew services start postgresql || true
-            else
-              sudo apt-get update
-              sudo apt-get install -y postgresql postgresql-contrib
-              sudo systemctl enable postgresql
-              sudo systemctl start postgresql
-            fi
-        "#,
-        )?;
-        Ok(())
-    }
-
-    fn install_redis(&self) -> Result<()> {
-        info!("Installing Redis");
-        self.ssh_exec(
-            r#"
-            if [ -x /opt/homebrew/bin/brew ]; then eval "$(/opt/homebrew/bin/brew shellenv)"; fi
-            if command -v brew >/dev/null 2>&1; then
-              brew install redis
-              brew services start redis || true
-            else
-              sudo apt-get update
-              sudo apt-get install -y redis-server
-              sudo systemctl enable redis-server
-              sudo systemctl start redis-server
-            fi
-        "#,
-        )?;
-        Ok(())
-    }
-
-    fn install_mongodb(&self) -> Result<()> {
-        info!("Installing MongoDB");
-        self.ssh_exec(
-            r#"
-            if [ -x /opt/homebrew/bin/brew ]; then eval "$(/opt/homebrew/bin/brew shellenv)"; fi
-            if command -v brew >/dev/null 2>&1; then
-              brew tap mongodb/brew || true
-              brew install mongodb-community || true
-              brew services start mongodb-community || true
-            else
-              sudo apt-get update
-              sudo apt-get install -y mongodb
-              sudo systemctl enable mongodb
-              sudo systemctl start mongodb
-            fi
-        "#,
-        )?;
-        Ok(())
-    }
-
-    pub(super) fn run_custom_provision_scripts(&self, _config: &VmConfig) -> Result<()> {
-        let script_path = format!("{}/provision.sh", self.project_dir);
-        let check_script = format!(
-            r#"
-            if [ -f {} ]; then
-                echo "found"
-            fi
-        "#,
-            script_path
-        );
-
-        let output = self.ssh_exec(&check_script)?;
-
-        if output.trim() == "found" {
-            info!("Running custom provision script");
-            self.ssh_exec(&format!("cd {} && bash provision.sh", self.project_dir))?;
+        if postgresql {
+            info!("Installing PostgreSQL");
+        }
+        if redis {
+            info!("Installing Redis");
+        }
+        if mongodb {
+            info!("Installing MongoDB");
         }
 
-        Ok(())
+        let mut commands = Vec::new();
+        if self.is_macos_guest(config) {
+            commands.push(Self::homebrew_preamble().to_string());
+            if postgresql {
+                commands.push("brew install postgresql".to_string());
+                commands.push("brew services start postgresql || true".to_string());
+            }
+            if redis {
+                commands.push("brew install redis".to_string());
+                commands.push("brew services start redis || true".to_string());
+            }
+            if mongodb {
+                commands.push("brew tap mongodb/brew || true".to_string());
+                commands.push("brew install mongodb-community || true".to_string());
+                commands.push("brew services start mongodb-community || true".to_string());
+            }
+        } else {
+            let mut packages = Vec::new();
+            if postgresql {
+                packages.extend(["postgresql", "postgresql-contrib"]);
+            }
+            if redis {
+                packages.push("redis-server");
+            }
+            if mongodb {
+                packages.push("mongodb");
+            }
+            commands.push(format!(
+                "sudo apt-get update && sudo apt-get install -y {}",
+                packages.join(" ")
+            ));
+            if postgresql {
+                commands.push("sudo systemctl enable --now postgresql".to_string());
+            }
+            if redis {
+                commands.push("sudo systemctl enable --now redis-server".to_string());
+            }
+            if mongodb {
+                commands.push("sudo systemctl enable --now mongodb".to_string());
+            }
+        }
+
+        Some(commands.join("\n"))
     }
 
-    /// Ensures all configured services are started.
-    /// Note: This is currently a no-op because the database installation scripts
-    /// (`install_postgresql`, etc.) already enable and start the services via `systemctl`.
-    /// This method is kept for clarity and future use.
-    pub(super) fn start_services(&self, _config: &VmConfig) -> Result<()> {
-        info!("Starting configured services");
-        // Services are started by systemctl in their respective install functions.
-        Ok(())
+    pub(super) fn custom_provision_command(&self) -> String {
+        let project = Self::shell_escape_single_quotes(&self.project_dir);
+        format!("if [ -f '{project}/provision.sh' ]; then cd '{project}' && bash provision.sh; fi")
     }
 }
