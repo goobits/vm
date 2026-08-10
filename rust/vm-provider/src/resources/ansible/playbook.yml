@@ -124,17 +124,13 @@
 
       - name: Load shared project plan
         set_fact:
-            project_facts: "{{ project_config.get('_vm_project_plan', {}).get('facts', {}) }}"
             project_installs: "{{ project_config.get('_vm_project_plan', {}).get('installs', {}) }}"
 
       - name: Set project bootstrap metadata
         set_fact:
-            package_json_exists: "{{ project_facts.get('package_json', false) | bool }}"
-            pnpm_lock_exists: "{{ project_facts.get('pnpm_lock', false) | bool }}"
-            npm_lock_exists: "{{ project_facts.get('npm_lock', false) | bool }}"
+            node_toolchain: "{{ project_installs.get('node', {}) | default({}, true) }}"
             node_dependency_manager: "{{ project_installs.get('node_dependencies', '') | default('', true) }}"
-            nodejs_required: "{{ project_installs.get('node_runtime', nodejs_required) | bool }}"
-            bootstrap_dependencies_enabled: "{{ project_config.get('bootstrap', {}).get('dependencies', true) | bool }}"
+            nodejs_required: "{{ ((project_installs.get('node') is not none) or nodejs_required) | bool }}"
             playwright_browsers: "{{ project_installs.get('playwright_browsers', project_config.get('bootstrap', {}).get('playwright', {}).get('browsers', [])) }}"
 
       # User creation pre-task
@@ -456,7 +452,16 @@
             - service_item.value.port is not none
 
       - name: Reconcile configured Node.js toolchain
-        include_tasks: tasks/node-toolchain.yml
+        command: /bin/bash /app/shared/scripts/install-node-toolchain.sh
+        environment:
+            HOME: '{{ home_dir }}'
+            VM_NODE_VERSION: "{{ node_toolchain.get('node', project_config.versions.node | default('22')) }}"
+            VM_NVM_VERSION: "{{ node_toolchain.get('nvm', project_config.versions.nvm | default('v0.40.3')) }}"
+            VM_NPM_VERSION: "{{ node_toolchain.get('npm', project_config.versions.npm | default('')) }}"
+            VM_PNPM_VERSION: "{{ node_toolchain.get('pnpm', project_config.versions.pnpm | default('10.12.3')) }}"
+        become_user: '{{ project_user }}'
+        register: node_toolchain_install
+        changed_when: "'VM_NODE_TOOLCHAIN_CHANGED=1' in node_toolchain_install.stdout"
         when: nodejs_required
 
       # Change default shell to zsh (skip if pre-provisioned in snapshot)
@@ -778,11 +783,32 @@
             - project_config.services.redis.enabled | default(false)
 
 
-      - name: Bootstrap project dependencies and browsers
-        include_tasks: tasks/bootstrap-node.yml
-        when:
-            - config_file_stat.stat.exists
-            - package_json_exists
+      - name: Ensure Playwright browser cache ownership
+        file:
+            path: '{{ home_dir }}/.cache/ms-playwright'
+            state: directory
+            owner: '{{ project_uid }}'
+            group: '{{ project_gid }}'
+            mode: '0755'
+        become: yes
+        when: playwright_browsers | length > 0
+
+      - name: Bootstrap locked Node dependencies and browsers
+        command: /bin/bash /app/shared/scripts/bootstrap-node.sh
+        environment:
+            HOME: '{{ home_dir }}'
+            VM_PROJECT_PATH: '{{ project_path }}'
+            VM_NODE_DEPENDENCY_MANAGER: '{{ node_dependency_manager }}'
+            VM_PLAYWRIGHT_BROWSERS: '{{ playwright_browsers | join(" ") }}'
+            PLAYWRIGHT_BROWSERS_PATH: '{{ home_dir }}/.cache/ms-playwright'
+        become_user: '{{ project_user }}'
+        async: 1800
+        poll: 30
+        register: node_bootstrap
+        changed_when: >-
+            'VM_BOOTSTRAP_DEPENDENCIES_CHANGED=1' in node_bootstrap.stdout or
+            'VM_BOOTSTRAP_BROWSERS_CHANGED=1' in node_bootstrap.stdout
+        when: node_dependency_manager | length > 0 or playwright_browsers | length > 0
 
       # Git configuration
       - name: Configure Git user name for snapshot-based boxes

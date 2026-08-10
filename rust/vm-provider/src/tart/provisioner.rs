@@ -55,7 +55,8 @@ impl TartProvisioner {
         self.apply_canonical_shell_config(config)?;
         self.apply_shell_overrides(config)?;
 
-        // 5. Honor generic package lists from vm.yaml before framework-specific setup
+        // 5. Honor the shared runtime plan and generic package lists from vm.yaml
+        self.provision_node_toolchain(project_plan)?;
         self.provision_generic_packages(config)?;
         self.provision_ai_tools(config)?;
         self.install_docker_if_requested(config)?;

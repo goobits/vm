@@ -12,6 +12,16 @@ pub(crate) enum NodePackageManager {
     Npm,
 }
 
+impl NodePackageManager {
+    #[cfg(feature = "tart")]
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pnpm => "pnpm",
+            Self::Npm => "npm",
+        }
+    }
+}
+
 #[cfg(feature = "tart")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PrimaryRuntime {
@@ -38,8 +48,36 @@ impl PrimaryRuntime {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct NodeToolchainPlan {
+    pub(crate) node: String,
+    pub(crate) nvm: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) npm: Option<String>,
+    pub(crate) pnpm: String,
+}
+
+impl NodeToolchainPlan {
+    pub(crate) fn resolve(config: &VmConfig) -> Self {
+        let versions = config.versions.as_ref();
+        Self {
+            node: versions
+                .and_then(|versions| versions.node.clone())
+                .unwrap_or_else(|| "22".to_string()),
+            nvm: versions
+                .and_then(|versions| versions.nvm.clone())
+                .unwrap_or_else(|| "v0.40.3".to_string()),
+            npm: versions.and_then(|versions| versions.npm.clone()),
+            pnpm: versions
+                .and_then(|versions| versions.pnpm.clone())
+                .unwrap_or_else(|| "10.12.3".to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct InstallPlan {
-    pub(crate) node_runtime: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) node: Option<NodeToolchainPlan>,
     pub(crate) node_dependencies: Option<NodePackageManager>,
     pub(crate) playwright_browsers: Vec<String>,
 }
@@ -76,11 +114,15 @@ impl ProjectPlan {
             .as_ref()
             .map(|bootstrap| bootstrap.playwright.browsers.clone())
             .unwrap_or_default();
+        if !facts.package_json {
+            playwright_browsers.clear();
+        }
         playwright_browsers.sort();
         playwright_browsers.dedup();
 
+        let node_required = facts.package_json || !config.npm_packages.is_empty();
         let installs = InstallPlan {
-            node_runtime: facts.package_json || !config.npm_packages.is_empty(),
+            node: node_required.then(|| NodeToolchainPlan::resolve(config)),
             node_dependencies,
             playwright_browsers,
         };
@@ -144,6 +186,9 @@ mod tests {
         assert_eq!(plan.installs.playwright_browsers, ["chromium", "webkit"]);
         let json = serde_json::to_value(plan).unwrap();
         assert_eq!(json["version"], 1);
+        assert_eq!(json["installs"]["node"]["node"], "22");
+        assert_eq!(json["installs"]["node"]["nvm"], "v0.40.3");
+        assert_eq!(json["installs"]["node"]["pnpm"], "10.12.3");
         assert_eq!(json["installs"]["node_dependencies"], "pnpm");
     }
 
@@ -162,7 +207,28 @@ mod tests {
 
         let plan = ProjectPlan::detect(project.path(), &config);
 
-        assert!(plan.installs.node_runtime);
+        assert!(plan.installs.node.is_some());
         assert_eq!(plan.installs.node_dependencies, None);
+    }
+
+    #[test]
+    fn non_node_projects_do_not_schedule_node_or_browser_work() {
+        let project = tempfile::tempdir().unwrap();
+        std::fs::write(project.path().join("pyproject.toml"), "").unwrap();
+        let config = VmConfig {
+            bootstrap: Some(BootstrapConfig {
+                playwright: PlaywrightBootstrapConfig {
+                    browsers: vec!["chromium".to_string()],
+                },
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let plan = ProjectPlan::detect(project.path(), &config);
+
+        assert!(plan.installs.node.is_none());
+        assert!(plan.installs.node_dependencies.is_none());
+        assert!(plan.installs.playwright_browsers.is_empty());
     }
 }

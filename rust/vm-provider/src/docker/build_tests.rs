@@ -43,6 +43,16 @@ fn test_gather_build_args_host_integration() {
     assert!(args
         .iter()
         .any(|arg| arg == "--build-arg=TZ=America/New_York"));
+    assert!(args.iter().any(|arg| arg == "--build-arg=NODE_VERSION=22"));
+    assert!(args
+        .iter()
+        .any(|arg| arg == "--build-arg=NVM_VERSION=v0.40.3"));
+    assert!(args
+        .iter()
+        .any(|arg| arg == "--build-arg=PNPM_VERSION=10.12.3"));
+    assert!(include_str!("Dockerfile.j2").contains(
+        "source=shared/scripts/install-node-toolchain.sh,target=/tmp/install-node-toolchain.sh"
+    ));
 }
 
 #[test]

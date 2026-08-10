@@ -1,5 +1,5 @@
 use super::TartProvisioner;
-use crate::project_plan::{PrimaryRuntime, ProjectPlan};
+use crate::project_plan::{NodeToolchainPlan, PrimaryRuntime, ProjectPlan};
 use tracing::{info, warn};
 use vm_config::config::VmConfig;
 use vm_core::error::Result;
@@ -25,7 +25,6 @@ impl TartProvisioner {
         }
 
         if !config.npm_packages.is_empty() {
-            self.ensure_nodejs_runtime(config)?;
             let packages = Self::shell_quote_packages(&config.npm_packages);
             self.ssh_exec(&format!(
                 r#"export PATH="{}"
@@ -189,7 +188,7 @@ chmod +x '{workspace}/start-colima'
         info!("Detected framework: {}", runtime.as_str());
 
         match runtime {
-            PrimaryRuntime::Node => self.provision_nodejs(config)?,
+            PrimaryRuntime::Node => self.bootstrap_node_project(project_plan)?,
             PrimaryRuntime::Python => self.provision_python(config)?,
             PrimaryRuntime::Ruby => self.provision_ruby(config)?,
             PrimaryRuntime::Rust => self.provision_rust()?,
@@ -201,50 +200,64 @@ chmod +x '{workspace}/start-colima'
         Ok(())
     }
 
-    fn ensure_nodejs_runtime(&self, config: &VmConfig) -> Result<()> {
-        let node_version = config
-            .versions
-            .as_ref()
-            .and_then(|versions| versions.node.as_deref())
-            .unwrap_or("20");
-        let nvm_version = config
-            .versions
-            .as_ref()
-            .and_then(|versions| versions.nvm.as_deref())
-            .unwrap_or("v0.40.3");
+    pub(super) fn provision_node_toolchain(&self, project_plan: &ProjectPlan) -> Result<()> {
+        let Some(node) = project_plan.installs.node.as_ref() else {
+            return Ok(());
+        };
 
-        let install_script = format!(
-            r#"
-            export NVM_DIR="$HOME/.nvm"
-            if [ ! -s "$NVM_DIR/nvm.sh" ]; then
-                curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/{}/install.sh | bash
-            fi
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            nvm install {}
-            nvm alias default {}
-            nvm use {}
-        "#,
-            nvm_version, node_version, node_version, node_version
-        );
-
-        self.ssh_exec(&install_script)?;
+        self.ssh_exec(&Self::node_toolchain_command(node))?;
         Ok(())
     }
 
-    /// Provisions Node.js using nvm.
-    /// Note: This uses `curl | bash` for nvm installation, which is a trade-off for convenience
-    /// over a more secure, but complex, installation method.
-    fn provision_nodejs(&self, config: &VmConfig) -> Result<()> {
-        info!("Installing Node.js dependencies");
-        self.ensure_nodejs_runtime(config)?;
+    fn node_toolchain_command(node: &NodeToolchainPlan) -> String {
+        let node_version = Self::shell_escape_single_quotes(&node.node);
+        let nvm_version = Self::shell_escape_single_quotes(&node.nvm);
+        let npm_version = Self::shell_escape_single_quotes(node.npm.as_deref().unwrap_or(""));
+        let pnpm_version = Self::shell_escape_single_quotes(&node.pnpm);
+
+        format!(
+            r#"set -euo pipefail
+export VM_NODE_VERSION='{node_version}'
+export VM_NVM_VERSION='{nvm_version}'
+export VM_NPM_VERSION='{npm_version}'
+export VM_PNPM_VERSION='{pnpm_version}'
+installer="$(mktemp)"
+trap 'rm -f "$installer"' EXIT
+cat > "$installer" <<'VM_NODE_TOOLCHAIN'
+{}
+VM_NODE_TOOLCHAIN
+bash "$installer""#,
+            crate::resources::NODE_TOOLCHAIN_INSTALLER
+        )
+    }
+
+    fn bootstrap_node_project(&self, project_plan: &ProjectPlan) -> Result<()> {
+        let manager = project_plan
+            .installs
+            .node_dependencies
+            .map_or("", |manager| manager.as_str());
+        let browsers = project_plan.installs.playwright_browsers.join(" ");
+        if manager.is_empty() && browsers.is_empty() {
+            return Ok(());
+        }
+
+        info!("Bootstrapping locked Node.js dependencies");
+        let project_dir = Self::shell_escape_single_quotes(&self.project_dir);
+        let manager = Self::shell_escape_single_quotes(manager);
+        let browsers = Self::shell_escape_single_quotes(&browsers);
         self.ssh_exec(&format!(
-            r#"export PATH="{}"
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-if [ -f {}/package.json ]; then cd {} && npm install; fi"#,
-            Self::user_bin_path(config),
-            self.project_dir,
-            self.project_dir
+            r#"set -euo pipefail
+export VM_PROJECT_PATH='{project_dir}'
+export VM_NODE_DEPENDENCY_MANAGER='{manager}'
+export VM_PLAYWRIGHT_BROWSERS='{browsers}'
+export PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright"
+bootstrap="$(mktemp)"
+trap 'rm -f "$bootstrap"' EXIT
+cat > "$bootstrap" <<'VM_NODE_BOOTSTRAP'
+{}
+VM_NODE_BOOTSTRAP
+bash "$bootstrap""#,
+            crate::resources::NODE_BOOTSTRAP
         ))?;
         Ok(())
     }

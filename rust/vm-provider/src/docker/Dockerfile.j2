@@ -8,6 +8,7 @@ ARG PROJECT_UID=1000
 ARG PROJECT_GID=1000
 ARG NODE_VERSION=22
 ARG NVM_VERSION=v0.40.3
+ARG NPM_VERSION
 ARG PNPM_VERSION=10.12.3
 ARG RUST_VERSION=stable
 
@@ -133,13 +134,18 @@ RUN if id -u ${PROJECT_USER} >/dev/null 2>&1; then \
     fi
 
 # --- Language Runtimes & Package Managers ---
-# Install NVM with proper permissions
-# Note: install -d runs as root and creates directory with specified ownership
-# This handles snapshots where /home/developer may have different UID/GID
+# Reuse the same idempotent Node installer at image build and runtime.
 RUN --mount=type=cache,target=/home/${PROJECT_USER}/.nvm/.cache,uid=${PROJECT_UID},gid=${PROJECT_GID} \
+    --mount=type=bind,source=shared/scripts/install-node-toolchain.sh,target=/tmp/install-node-toolchain.sh,readonly \
     mkdir -p /home/${PROJECT_USER}/.nvm && \
     chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}/.nvm && \
-    su - ${PROJECT_USER} -c 'if [ ! -s "$HOME/.nvm/nvm.sh" ]; then curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/'${NVM_VERSION}'/install.sh" | bash; fi && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && (nvm list | grep -q "v'${NODE_VERSION}'" || nvm install '${NODE_VERSION}') && nvm use '${NODE_VERSION}' && nvm alias default '${NODE_VERSION}' && corepack enable && corepack prepare pnpm@'${PNPM_VERSION}' --activate'
+    sudo -u ${PROJECT_USER} env \
+      HOME=/home/${PROJECT_USER} \
+      VM_NODE_VERSION="${NODE_VERSION}" \
+      VM_NVM_VERSION="${NVM_VERSION}" \
+      VM_NPM_VERSION="${NPM_VERSION}" \
+      VM_PNPM_VERSION="${PNPM_VERSION}" \
+      bash /tmp/install-node-toolchain.sh
 
 # --- Git Configuration ---
 USER ${PROJECT_USER}

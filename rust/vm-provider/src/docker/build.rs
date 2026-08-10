@@ -14,8 +14,8 @@ use vm_core::{vm_dbg, vm_info};
 
 // Internal imports
 use super::{DockerOps, UserConfig};
-use crate::resources;
 use crate::BoxConfig;
+use crate::{project_plan::NodeToolchainPlan, resources};
 use vm_config::config::VmConfig;
 use vm_snapshot::{SnapshotManager, SnapshotScope};
 
@@ -507,17 +507,13 @@ CMD ["tail", "-f", "/dev/null"]
 
         args.push(format!("--build-arg=BASE_PREPROVISIONED={}", is_snapshot));
 
-        // Add version build args
-        if let Some(versions) = &self.config.versions {
-            if let Some(node) = &versions.node {
-                args.push(format!("--build-arg=NODE_VERSION={node}"));
-            }
-            if let Some(nvm) = &versions.nvm {
-                args.push(format!("--build-arg=NVM_VERSION={nvm}"));
-            }
-            if let Some(pnpm) = &versions.pnpm {
-                args.push(format!("--build-arg=PNPM_VERSION={pnpm}"));
-            }
+        // Resolve Node defaults once for build-time and runtime provisioning.
+        let node = NodeToolchainPlan::resolve(self.config);
+        args.push(format!("--build-arg=NODE_VERSION={}", node.node));
+        args.push(format!("--build-arg=NVM_VERSION={}", node.nvm));
+        args.push(format!("--build-arg=PNPM_VERSION={}", node.pnpm));
+        if let Some(npm) = node.npm {
+            args.push(format!("--build-arg=NPM_VERSION={npm}"));
         }
 
         // Add package list build args
