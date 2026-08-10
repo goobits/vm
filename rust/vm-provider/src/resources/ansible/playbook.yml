@@ -515,7 +515,8 @@
             executable: /bin/bash
         become_user: '{{ project_user }}'
         when: antigravity_sync_enabled or claude_sync_enabled or codex_sync_enabled
-        changed_when: true
+        register: ai_tools_install
+        changed_when: "'VM_AI_TOOL_CHANGED=' in ai_tools_install.stdout"
 
       - name: Install container pipx packages
         shell: |

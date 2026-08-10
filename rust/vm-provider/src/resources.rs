@@ -100,8 +100,22 @@ mod tests {
         assert!(AI_TOOLS_INSTALLER.contains("https://claude.ai/install.sh"));
         assert!(AI_TOOLS_INSTALLER.contains("https://chatgpt.com/codex/install.sh"));
         assert!(!AI_TOOLS_INSTALLER.contains("npm install -g"));
+        assert!(AI_TOOLS_INSTALLER.contains("INSTALLER_STATE_VERSION=1"));
+        assert!(AI_TOOLS_INSTALLER.contains("VM_AI_TOOLS_FORCE"));
+        assert!(AI_TOOLS_INSTALLER.contains("VM_AI_TOOL_CURRENT="));
+        assert!(AI_TOOLS_INSTALLER.contains("VM_AI_TOOL_CHANGED="));
+        assert!(AI_TOOLS_INSTALLER.contains("shell_arg=stable"));
+        assert_eq!(
+            AI_TOOLS_INSTALLER
+                .matches("refresh_scope=automatic")
+                .count(),
+            2
+        );
+        assert!(AI_TOOLS_INSTALLER.contains("refresh_scope=\"$refresh_key\""));
         assert_eq!(ANSIBLE_PLAYBOOK.matches("install-ai-tools.sh").count(), 1);
         assert!(!ANSIBLE_PLAYBOOK.contains("@google/gemini-cli@latest"));
+        assert!(ANSIBLE_PLAYBOOK
+            .contains("changed_when: \"'VM_AI_TOOL_CHANGED=' in ai_tools_install.stdout\""));
     }
 
     #[test]
