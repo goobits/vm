@@ -117,7 +117,6 @@ exceptions = [
     # Workspace crates (private/unpublished)
     { allow = ["MIT"], crate = "vm-auth-proxy" },
     { allow = ["MIT"], crate = "vm-core" },
-    { allow = ["MIT"], crate = "vm-docker-registry" },
     { allow = ["MIT"], crate = "vm-package-server" },
 ]
 
@@ -147,11 +146,6 @@ license-files = []
 
 [[licenses.clarify]]
 crate = "vm-core"
-expression = "MIT"
-license-files = []
-
-[[licenses.clarify]]
-crate = "vm-docker-registry"
 expression = "MIT"
 license-files = []
 

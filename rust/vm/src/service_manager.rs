@@ -28,8 +28,8 @@ use tracing::{debug, info, warn};
 
 use crate::error::VmError;
 use crate::services::{
-    auth_proxy::AuthProxyService, docker_registry::DockerRegistryService, mongodb::MongodbService,
-    mysql::MysqlService, postgresql::PostgresqlService, redis::RedisService, ManagedService,
+    auth_proxy::AuthProxyService, mongodb::MongodbService, mysql::MysqlService,
+    postgresql::PostgresqlService, redis::RedisService, ManagedService,
 };
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::{vm_progress, vm_success, vm_warning};
@@ -74,10 +74,6 @@ impl ServiceManager {
         services.insert(
             "auth_proxy".to_string(),
             Arc::new(AuthProxyService::new(shutdown_handles.clone())),
-        );
-        services.insert(
-            "docker_registry".to_string(),
-            Arc::new(DockerRegistryService),
         );
         services.insert("postgresql".to_string(), Arc::new(PostgresqlService));
         services.insert("redis".to_string(), Arc::new(RedisService));
@@ -134,7 +130,6 @@ impl ServiceManager {
                 "mongodb" => global_config.services.mongodb.enabled,
                 "mysql" => global_config.services.mysql.enabled,
                 "auth_proxy" => global_config.services.auth_proxy.enabled,
-                "docker_registry" => global_config.services.docker_registry.enabled,
                 _ => false,
             }
         };
@@ -142,9 +137,6 @@ impl ServiceManager {
         // Check which services should be started (vm.yaml OR global config)
         if is_service_enabled("auth_proxy") {
             services_to_start.push("auth_proxy");
-        }
-        if is_service_enabled("docker_registry") {
-            services_to_start.push("docker_registry");
         }
         if is_service_enabled("postgresql") {
             services_to_start.push("postgresql");
@@ -447,8 +439,14 @@ impl ServiceManager {
         let content = std::fs::read_to_string(&self.state_file)
             .context("Failed to read service state file")?;
 
-        let loaded_state: HashMap<String, ServiceState> =
+        let mut loaded_state: HashMap<String, ServiceState> =
             serde_json::from_str(&content).context("Failed to parse service state file")?;
+        let services = self
+            .services
+            .lock()
+            .map_err(|error| anyhow::anyhow!("Services mutex was poisoned: {error}"))?;
+        loaded_state.retain(|name, _| services.contains_key(name));
+        drop(services);
 
         {
             let mut state_guard = self.state.lock().map_err(|e| {

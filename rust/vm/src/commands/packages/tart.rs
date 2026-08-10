@@ -143,7 +143,7 @@ pub(super) fn maintenance(files: &ApplianceFiles, task: MaintenanceTask<'_>) -> 
 
     if task.requires_pause() {
         process::run(
-            &mut compose_command("stop gateway registry work"),
+            &mut compose_command("stop gateway oci-cache registry work"),
             "pause the Tart package appliance",
         )?;
     }

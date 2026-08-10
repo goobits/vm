@@ -87,8 +87,16 @@ impl PackageInfrastructureClient {
             .is_ok_and(|response| response.status().is_success())
     }
 
+    pub async fn is_oci_healthy(&self) -> bool {
+        self.http
+            .get(self.endpoints.oci())
+            .send()
+            .await
+            .is_ok_and(|response| response.status().is_success())
+    }
+
     pub async fn is_fully_healthy(&self) -> bool {
-        self.is_healthy().await && self.is_work_healthy().await
+        self.is_healthy().await && self.is_work_healthy().await && self.is_oci_healthy().await
     }
 
     pub async fn status(&self) -> Result<InfrastructureStatus> {

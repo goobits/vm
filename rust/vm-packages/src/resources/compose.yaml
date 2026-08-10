@@ -8,6 +8,8 @@ services:
     ports:
       - "${VM_PACKAGES_BIND:?required}:${VM_PACKAGES_PORT:?required}:8080"
     depends_on:
+      oci-cache:
+        condition: service_healthy
       registry:
         condition: service_healthy
       work:
@@ -20,6 +22,28 @@ services:
       - gateway-config:/config
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
     networks: [packages]
+
+  oci-cache:
+    image: registry:3.1.1
+    restart: unless-stopped
+    environment:
+      OTEL_TRACES_EXPORTER: none
+      REGISTRY_PROXY_REMOTEURL: https://registry-1.docker.io
+      REGISTRY_PROXY_TTL: 168h
+    expose: ["5000"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:5000/v2/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp"]
+    volumes:
+      - registry-oci-cache:/var/lib/registry
+    networks: [packages, egress]
 
   registry:
     image: "${VM_PACKAGES_REGISTRY_IMAGE:?required}"
@@ -174,7 +198,7 @@ services:
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
-        datasets="gateway_data gateway_config npm cargo pypi tools cache metadata state receipts logs agents rollouts sources"
+        datasets="gateway_data gateway_config oci npm cargo pypi tools cache metadata state receipts logs agents rollouts sources"
         valid_id() {
           test -n "$${BACKUP_ID}" &&
           test "$${#BACKUP_ID}" -le 160 &&
@@ -235,6 +259,7 @@ services:
       - infrastructure-backups:/backups
       - gateway-data:/volumes/gateway_data
       - gateway-config:/volumes/gateway_config
+      - registry-oci-cache:/volumes/oci
       - registry-npm-artifacts:/volumes/npm
       - registry-cargo-artifacts:/volumes/cargo
       - registry-pypi-artifacts:/volumes/pypi
@@ -290,6 +315,7 @@ secrets:
 volumes:
   gateway-data:
   gateway-config:
+  registry-oci-cache:
   registry-npm-artifacts:
   registry-cargo-artifacts:
   registry-pypi-artifacts:

@@ -28,7 +28,6 @@ Goobits VM is built using a **layered architecture** designed around the princip
 | Application | `vm-installer` | Self-installation flow for distributing the CLI | `cargo run -p vm-installer -- --help` |
 | Service | `vm-package-server` | Local multi-registry artifact service | `cargo test -p vm-package-server` / `cargo run -p vm-package-server -- --help` |
 | Service | `vm-auth-proxy` | Authentication proxy that fronts API/services | `cargo run -p vm-auth-proxy -- --help` |
-| Service | `vm-docker-registry` | Auto-managed Docker registry cache | `cargo test -p vm-docker-registry` |
 | Utility | `vm-package-manager` | Unified installer for npm/pip/cargo tooling | `cargo run -p vm-package-manager -- --help` |
 | Utility | `vm-platform` | OS detection, system integration, resource probing | `cargo test -p vm-platform` |
 | Tooling | `version-sync` | Keeps version numbers aligned across manifests | `cargo run -p version-sync -- check` |
@@ -158,17 +157,6 @@ import/export entry points
 
 **Key Exports**: Auth proxy server, middleware, session management
 
-#### vm-docker-registry
-**Role**: Local Docker registry service for VM images.
-
-**Responsibilities**:
-- Local Docker image registry
-- Image storage and retrieval
-- Registry API implementation
-- Integration with Docker provider
-
-**Key Exports**: Docker registry implementation, image management
-
 ### Utility Layer
 
 #### vm-platform
@@ -219,9 +207,6 @@ graph TD
     H --> C
     I[vm-auth-proxy] --> A
     I --> C
-    J[vm-docker-registry] --> A
-    J --> C
-
     %% Application layer
     L[vm] --> A
     L --> B
@@ -232,7 +217,6 @@ graph TD
     L --> G
     L --> H
     L --> I
-    L --> J
 
     %% Installer
     M[vm-installer] --> A

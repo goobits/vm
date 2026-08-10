@@ -16,8 +16,6 @@ properties:
     type: object
     description: "Global services configuration"
     properties:
-      docker_registry:
-        $ref: "#/definitions/DockerRegistrySettings"
       auth_proxy:
         $ref: "#/definitions/AuthProxySettings"
     additionalProperties: false
@@ -89,54 +87,6 @@ properties:
 additionalProperties: true
 
 definitions:
-  DockerRegistrySettings:
-    type: object
-    description: "Docker registry cache configuration"
-    properties:
-      enabled:
-        type: boolean
-        default: false
-        description: "Whether the registry is enabled"
-      port:
-        type: integer
-        minimum: 1024
-        maximum: 65535
-        default: 5000
-        description: "Port for the registry"
-      max_cache_size_gb:
-        type: integer
-        minimum: 1
-        maximum: 1024
-        default: 5
-        description: "Maximum cache size in GB"
-      max_image_age_days:
-        type: integer
-        minimum: 1
-        maximum: 365
-        default: 30
-        description: "Maximum age of cached images in days"
-      cleanup_interval_hours:
-        type: integer
-        minimum: 1
-        maximum: 168
-        default: 1
-        description: "Cleanup interval in hours"
-      enable_lru_eviction:
-        type: boolean
-        default: true
-        description: "Enable LRU eviction when cache is full"
-      enable_auto_restart:
-        type: boolean
-        default: true
-        description: "Auto-restart on failure"
-      health_check_interval_minutes:
-        type: integer
-        minimum: 1
-        maximum: 1440
-        default: 15
-        description: "Health check interval in minutes"
-    additionalProperties: false
-
   AuthProxySettings:
     type: object
     description: "Authentication proxy configuration"
@@ -175,17 +125,12 @@ definitions:
 examples:
   - # Minimal configuration
     services:
-      docker_registry:
+      auth_proxy:
         enabled: true
 
   - # Full configuration
     $schema: "https://vm-tool.org/schemas/global.schema.yaml"
     services:
-      docker_registry:
-        enabled: true
-        max_cache_size_gb: 20
-        max_image_age_days: 90
-        cleanup_interval_hours: 4
       auth_proxy:
         enabled: true
         port: 3090

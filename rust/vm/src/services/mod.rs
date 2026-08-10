@@ -8,7 +8,6 @@ use anyhow::Result;
 use vm_config::GlobalConfig;
 
 pub mod auth_proxy;
-pub mod docker_registry;
 pub mod mongodb;
 pub mod mysql;
 pub mod postgresql;

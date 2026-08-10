@@ -23,7 +23,7 @@ fn test_backup_settings_is_default() {
 fn test_global_services_is_default() {
     let mut services = GlobalServices::default();
     assert!(services.is_default());
-    services.docker_registry.enabled = true;
+    services.auth_proxy.enabled = true;
     assert!(!services.is_default());
 }
 
@@ -54,14 +54,6 @@ fn test_mongodb_settings_is_default() {
 #[test]
 fn test_mysql_settings_is_default() {
     let mut settings = MySqlSettings::default();
-    assert!(settings.is_default());
-    settings.enabled = true;
-    assert!(!settings.is_default());
-}
-
-#[test]
-fn test_docker_registry_settings_is_default() {
-    let mut settings = DockerRegistrySettings::default();
     assert!(settings.is_default());
     settings.enabled = true;
     assert!(!settings.is_default());

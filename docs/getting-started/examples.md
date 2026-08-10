@@ -137,18 +137,9 @@ services:
 
 ### Docker Image Caching
 
-Speeds up `docker pull` by 10-100x after first cache. Enable globally for all VMs:
-
-```yaml
-# ~/.vm/config.yaml
-services:
-  docker_registry:
-    enabled: true  # Auto-managed cache, zero maintenance
-    max_cache_size_gb: 10           # Optional: customize settings
-    max_image_age_days: 30          # Optional: retention policy
-```
-
-*See also*: [Shared Services](../user-guide/shared-services.md) for Docker registry configuration
+`vm packages up` includes a private OCI pull-through cache. Linux Tart guests
+with managed Docker use it automatically; it is appliance infrastructure, not
+a per-project or global-config service. See [Package Infrastructure](../user-guide/package-infrastructure.md).
 
 ## Configuration Tips
 

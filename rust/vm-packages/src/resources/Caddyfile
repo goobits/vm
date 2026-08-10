@@ -3,6 +3,11 @@
 		reverse_proxy work:3091
 	}
 
+	@oci path /v2 /v2/*
+	handle @oci {
+		reverse_proxy oci-cache:5000
+	}
+
 	handle {
 		reverse_proxy registry:3080
 	}

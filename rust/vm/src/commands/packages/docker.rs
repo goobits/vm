@@ -69,7 +69,7 @@ pub(super) fn maintenance(files: &ApplianceFiles, task: MaintenanceTask<'_>) -> 
     let was_running = task.requires_pause() && status(files)? == "running";
     if task.requires_pause() {
         process::run(
-            compose(files).args(["stop", "gateway", "registry", "work"]),
+            compose(files).args(["stop", "gateway", "oci-cache", "registry", "work"]),
             "pause the Docker package appliance",
         )?;
     }

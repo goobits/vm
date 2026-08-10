@@ -40,6 +40,10 @@ impl RegistryEndpoints {
     pub fn api(&self) -> String {
         format!("{}/api", self.gateway())
     }
+
+    pub fn oci(&self) -> String {
+        format!("{}/v2/", self.gateway())
+    }
 }
 
 /// Provider-neutral environment injected into Docker and Tart guests.
@@ -82,6 +86,7 @@ impl ClientEnvironment {
                 "CARGO_REGISTRY_GLOBAL_CREDENTIAL_PROVIDERS".into(),
                 "cargo:token".into(),
             ),
+            ("VM_OCI_MIRROR".into(), self.endpoints.gateway().into()),
         ]
     }
 
@@ -114,9 +119,10 @@ mod tests {
         );
         let environment = ClientEnvironment::new(endpoints, "read secret").unwrap();
         let variables = environment.variables();
-        assert_eq!(variables.len(), 7);
+        assert_eq!(variables.len(), 8);
         assert!(variables[0].1.contains("reader:read%20secret@"));
         assert_eq!(variables[3].1, "read secret");
+        assert_eq!(variables[7].1, "https://packages.internal");
     }
 
     #[test]

@@ -249,22 +249,6 @@ fn add_terminal_and_package_fields(cache: &mut HashMap<String, SchemaType>) {
 fn build_global_schema_cache() -> HashMap<String, SchemaType> {
     let mut cache = HashMap::new();
 
-    // Docker registry service
-    add_booleans!(
-        cache,
-        "services.docker_registry.enabled",
-        "services.docker_registry.enable_lru_eviction",
-        "services.docker_registry.enable_auto_restart"
-    );
-    add_integers!(
-        cache,
-        "services.docker_registry.port",
-        "services.docker_registry.max_cache_size_gb",
-        "services.docker_registry.max_image_age_days",
-        "services.docker_registry.cleanup_interval_hours",
-        "services.docker_registry.health_check_interval_minutes"
-    );
-
     // Auth proxy service
     add_booleans!(cache, "services.auth_proxy.enabled");
     add_integers!(

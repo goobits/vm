@@ -1,9 +1,7 @@
 //! Global configuration for VM tool-wide settings
 //!
 //! This module defines the structure for the global ~/.vm/config.yaml file,
-//! which contains settings that apply to all VMs on the system, such as
-//! shared services (Docker registry, auth proxy, package registry) and
-//! user-wide defaults.
+//! which contains shared services and user-wide defaults.
 
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -125,10 +123,6 @@ impl SnapshotSettings {
 /// Global services that serve all VMs on the system
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GlobalServices {
-    /// Docker registry cache configuration
-    #[serde(default, skip_serializing_if = "DockerRegistrySettings::is_default")]
-    pub docker_registry: DockerRegistrySettings,
-
     /// Authentication proxy configuration
     #[serde(default, skip_serializing_if = "AuthProxySettings::is_default")]
     pub auth_proxy: AuthProxySettings,
@@ -153,8 +147,7 @@ pub struct GlobalServices {
 impl GlobalServices {
     /// Check if all services are at default settings
     pub fn is_default(&self) -> bool {
-        self.docker_registry.is_default()
-            && self.auth_proxy.is_default()
+        self.auth_proxy.is_default()
             && self.postgresql.is_default()
             && self.redis.is_default()
             && self.mongodb.is_default()
@@ -314,64 +307,6 @@ impl MySqlSettings {
     }
 }
 
-/// Docker registry cache settings
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DockerRegistrySettings {
-    /// Whether the registry is enabled
-    #[serde(default)]
-    pub enabled: bool,
-
-    /// Port for the registry (default: 5000)
-    #[serde(default = "default_docker_registry_port")]
-    pub port: u16,
-
-    /// Maximum cache size in GB
-    #[serde(default = "default_cache_size")]
-    pub max_cache_size_gb: u64,
-
-    /// Maximum age of cached images in days
-    #[serde(default = "default_image_age")]
-    pub max_image_age_days: u32,
-
-    /// Cleanup interval in hours
-    #[serde(default = "default_cleanup_interval")]
-    pub cleanup_interval_hours: u32,
-
-    /// Enable LRU eviction when cache is full
-    #[serde(default = "default_true")]
-    pub enable_lru_eviction: bool,
-
-    /// Auto-restart on failure
-    #[serde(default = "default_true")]
-    pub enable_auto_restart: bool,
-
-    /// Health check interval in minutes
-    #[serde(default = "default_health_check_interval")]
-    pub health_check_interval_minutes: u32,
-}
-
-impl Default for DockerRegistrySettings {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            port: default_docker_registry_port(),
-            max_cache_size_gb: default_cache_size(),
-            max_image_age_days: default_image_age(),
-            cleanup_interval_hours: default_cleanup_interval(),
-            enable_lru_eviction: true,
-            enable_auto_restart: true,
-            health_check_interval_minutes: default_health_check_interval(),
-        }
-    }
-}
-
-impl DockerRegistrySettings {
-    /// Check if settings are at defaults
-    pub fn is_default(&self) -> bool {
-        !self.enabled
-    }
-}
-
 /// Authentication proxy settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthProxySettings {
@@ -514,10 +449,6 @@ fn default_worktrees_enabled() -> bool {
 }
 
 // Default value functions for serde
-fn default_docker_registry_port() -> u16 {
-    5000
-}
-
 fn default_auth_proxy_port() -> u16 {
     3090
 }
@@ -568,22 +499,6 @@ fn default_mysql_version() -> String {
 
 fn default_mysql_data_dir() -> String {
     "~/.vm/data/mysql".to_string()
-}
-
-fn default_cache_size() -> u64 {
-    5
-}
-
-fn default_image_age() -> u32 {
-    30
-}
-
-fn default_cleanup_interval() -> u32 {
-    1
-}
-
-fn default_health_check_interval() -> u32 {
-    15
 }
 
 fn default_token_expiry() -> u32 {

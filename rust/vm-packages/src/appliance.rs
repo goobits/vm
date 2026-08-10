@@ -121,6 +121,7 @@ mod tests {
         assert!(COMPOSE_YAML.contains("registry-cargo-artifacts:/data/cargo/crates"));
         assert!(COMPOSE_YAML.contains("registry-pypi-artifacts:/data/pypi/packages"));
         assert!(COMPOSE_YAML.contains("registry-tool-artifacts:/data/tools/artifacts"));
+        assert!(COMPOSE_YAML.contains("registry-oci-cache:/var/lib/registry"));
         assert!(COMPOSE_YAML.contains("workflow-state:/data/state"));
         assert!(COMPOSE_YAML.contains("workflow-receipts:/data/receipts"));
         assert!(COMPOSE_YAML.contains("agent-temporary-data:/data/agents"));
@@ -139,6 +140,7 @@ mod tests {
         assert!(COMPOSE_YAML.contains("profiles: [jobs]"));
         assert!(COMPOSE_YAML.contains("profiles: [maintenance]"));
         assert!(GATEWAY_CONFIG.contains("reverse_proxy work:3091"));
+        assert!(GATEWAY_CONFIG.contains("reverse_proxy oci-cache:5000"));
         assert!(!COMPOSE_YAML.contains("/var/run/docker.sock"));
         assert!(!COMPOSE_YAML.contains("/workspace"));
         assert!(!COMPOSE_YAML.contains("${HOME}"));

@@ -66,19 +66,6 @@ impl ServiceRegistry {
             },
         );
 
-        // Docker Registry Service
-        services.insert(
-            "docker_registry".to_string(),
-            ServiceDefinition {
-                name: "docker_registry".to_string(),
-                display_name: "Docker Registry".to_string(),
-                port: 5000,
-                health_endpoint: "/v2/".to_string(),
-                description: "Docker image caching and pull-through proxy".to_string(),
-                supports_graceful_shutdown: true,
-            },
-        );
-
         let mut registry = Self { services };
 
         // Load plugin services (non-fatal if plugins unavailable)
@@ -158,8 +145,7 @@ impl ServiceRegistry {
     /// Get service names that should be enabled based on VM configuration
     #[allow(dead_code)]
     pub fn get_enabled_services(&self, _config: &vm_config::config::VmConfig) -> Vec<String> {
-        // Global services (auth_proxy and docker_registry) are now
-        // configured in GlobalConfig and are not checked here.
+        // Global services are configured in GlobalConfig and are not checked here.
         Vec::new()
     }
 
@@ -250,7 +236,6 @@ mod tests {
         let registry = ServiceRegistry::new();
 
         assert!(registry.is_service_defined("auth_proxy"));
-        assert!(registry.is_service_defined("docker_registry"));
         assert!(!registry.is_service_defined("unknown_service"));
     }
 
@@ -259,7 +244,6 @@ mod tests {
         let registry = ServiceRegistry::new();
 
         assert_eq!(registry.get_service_port("auth_proxy"), Some(3090));
-        assert_eq!(registry.get_service_port("docker_registry"), Some(5000));
         assert_eq!(registry.get_service_port("unknown"), None);
     }
 

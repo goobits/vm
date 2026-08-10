@@ -27,7 +27,6 @@ members = [
     "vm-package-work",
     "vm-package-jobs",
     "vm-auth-proxy",
-    "vm-docker-registry",
 
     # Tooling
     "version-sync",

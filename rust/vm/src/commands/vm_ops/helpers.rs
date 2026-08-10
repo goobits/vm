@@ -16,7 +16,6 @@ use vm_provider::Provider;
 pub(super) fn has_enabled_services(config: &VmConfig, global: &GlobalConfig) -> bool {
     config.services.values().any(|service| service.enabled)
         || global.services.auth_proxy.enabled
-        || global.services.docker_registry.enabled
         || global.services.postgresql.enabled
         || global.services.redis.enabled
         || global.services.mongodb.enabled

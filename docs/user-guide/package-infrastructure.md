@@ -18,6 +18,7 @@ Dedicated Linux Tart VM
   Docker Compose package appliance
     + gateway         one private URL
     + registry        npm + Cargo + PyPI + tool artifacts + cache/proxy
+    + OCI cache       Docker Hub pull-through cache
     + work service    workflow state, Git mirrors, receipts
     + ephemeral jobs  review, release, rollout, maintenance
     + named volumes   artifacts, caches, state, receipts, worktrees
@@ -49,9 +50,17 @@ is deliberately rejected for Tart consumers. The Tart appliance exposes its
 gateway on the private VM address so both providers can reach it.
 
 VM injects the gateway and a read-only token through npm, Cargo, and pip
-environment settings whenever it creates or starts a project environment.
+environment settings whenever it creates or starts a project environment. It
+also exports `VM_OCI_MIRROR`; Linux Tart guests with managed Docker activate
+that mirror in Docker Engine automatically.
 Projects keep ordinary versioned dependencies; no local/remote branch belongs
 in application code.
+
+The OCI cache shares the private gateway's `/v2/` route but has its own named
+volume. It accepts pulls only; Distribution proxy mode rejects pushes. VM never
+rewrites the Mac Docker daemon. Docker-hosted projects may opt their external
+daemon into the exported mirror, while Tart's nested Linux daemon is configured
+inside the guest.
 
 ## Register Sources and Consumers
 
@@ -184,9 +193,10 @@ vm packages backups
 vm packages restore <backup-id>
 ```
 
-Backup and restore pause the registry and work services, archive every data
-volume separately, and verify SHA-256 manifests before restore. Restores are
-retryable after interruption. `vm packages down` preserves every volume.
+Backup and restore pause the registry, OCI cache, and work services, archive
+every data volume separately, and verify SHA-256 manifests before restore.
+Restores are retryable after interruption. `vm packages down` preserves every
+volume.
 
 These are local operational backups; export the Docker or Tart storage through
 your infrastructure backup system to protect against physical disk loss.

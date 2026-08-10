@@ -108,21 +108,65 @@ npm install -g {}"#,
             return Some(self.macos_docker_tools_command());
         }
 
-        Some(
+        let mirror = config
+            .environment
+            .get("VM_OCI_MIRROR")
+            .map(|value| {
+                let value = quote_posix_argument(value);
+                format!(
+                    r#"if command -v python3 >/dev/null 2>&1; then
+  sudo python3 - {value} <<'PY'
+import json
+import os
+import pathlib
+import sys
+
+path = pathlib.Path("/etc/docker/daemon.json")
+content = path.read_text().strip() if path.exists() else ""
+config = json.loads(content) if content else {{}}
+mirrors = config.setdefault("registry-mirrors", [])
+if not isinstance(mirrors, list):
+    raise SystemExit("/etc/docker/daemon.json registry-mirrors must be a list")
+if sys.argv[1] not in mirrors:
+    mirrors.append(sys.argv[1])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".json.vm-tmp")
+    temporary.write_text(json.dumps(config, indent=2) + "\n")
+    os.chmod(temporary, 0o644)
+    os.replace(temporary, path)
+PY
+else
+  printf '%s\n' 'python3 is unavailable; skipping Docker registry mirror activation' >&2
+fi"#
+                )
+            })
+            .unwrap_or_default();
+        let restart = (!mirror.is_empty())
+            .then_some(
+                r#"if command -v systemctl >/dev/null 2>&1; then
+  sudo systemctl restart docker >/dev/null 2>&1
+elif command -v service >/dev/null 2>&1; then
+  sudo service docker restart >/dev/null 2>&1
+fi"#,
+            )
+            .unwrap_or_default();
+
+        Some(format!(
             r#"if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | sh
   if command -v sudo >/dev/null 2>&1; then
     sudo usermod -aG docker "$USER" || true
   fi
 fi
+{mirror}
 if command -v systemctl >/dev/null 2>&1; then
   sudo systemctl enable --now docker >/dev/null 2>&1 || true
 elif command -v service >/dev/null 2>&1; then
   sudo service docker start >/dev/null 2>&1 || true
 fi
+{restart}
 docker info >/dev/null 2>&1 || sudo docker info >/dev/null 2>&1"#
-                .to_string(),
-        )
+        ))
     }
 
     fn macos_docker_tools_command(&self) -> String {
@@ -401,5 +445,42 @@ fi"#,
                 "sudo apt-get update && sudo apt-get install -y golang-go".to_string()
             }
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vm_config::config::TartConfig;
+
+    #[test]
+    fn linux_docker_activates_the_managed_oci_mirror() {
+        let provisioner =
+            TartProvisioner::new("vm-linux".to_string(), "/workspace".to_string(), None);
+        let mut config = VmConfig {
+            os: Some("linux".to_string()),
+            tart: Some(TartConfig {
+                install_docker: Some(true),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        config.environment.insert(
+            "VM_OCI_MIRROR".into(),
+            "http://packages.internal:3080".into(),
+        );
+
+        let command = provisioner.docker_install_command(&config).unwrap();
+
+        assert!(command.contains("registry-mirrors"));
+        assert!(command.contains("http://packages.internal:3080"));
+        assert!(command.contains("os.replace"));
+        assert!(command.contains("restart docker"));
+        #[cfg(unix)]
+        assert!(std::process::Command::new("/bin/bash")
+            .args(["-n", "-c", &command])
+            .status()
+            .unwrap()
+            .success());
     }
 }
