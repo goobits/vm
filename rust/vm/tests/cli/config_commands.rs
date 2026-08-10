@@ -513,7 +513,7 @@ provider: docker
     }
 
     #[test]
-    fn test_use_provider_updates_provider_and_default_profile() -> Result<()> {
+    fn test_profile_set_selects_effective_provider() -> Result<()> {
         let fixture = CliTestFixture::new()?;
 
         fs::write(
@@ -530,38 +530,26 @@ profiles:
 "#,
         )?;
 
-        let output = fixture.run_vm_command(&["use", "tart"])?;
+        let output = fixture.run_vm_command(&["config", "profile", "set", "tart"])?;
         assert!(
             output.status.success(),
-            "Failed to switch provider: {}",
+            "Failed to select profile: {}",
             String::from_utf8_lossy(&output.stderr)
         );
 
         let config_content = fixture.read_file("vm.yaml")?;
-        assert!(config_content.contains("provider: tart"));
+        assert!(config_content.contains("\nprovider: docker\n"));
         assert!(config_content.contains("default_profile: tart"));
 
-        Ok(())
-    }
-
-    #[test]
-    fn test_use_provider_requires_matching_profile_for_tart() -> Result<()> {
-        let fixture = CliTestFixture::new()?;
-
-        fs::write(
-            fixture.test_dir.join("vm.yaml"),
-            r#"version: "2.0"
-preset: vibe
-provider: docker
-"#,
-        )?;
-
-        let output = fixture.run_vm_command(&["use", "tart"])?;
-        assert!(!output.status.success());
-
-        let stderr = String::from_utf8(output.stderr)?;
-        assert!(stderr.contains("Cannot switch to provider 'tart'"));
-        assert!(stderr.contains("vm config preset vibe-tart"));
+        let output = fixture.run_vm_command(&["config", "show"])?;
+        assert!(
+            output.status.success(),
+            "Failed to show selected profile: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8(output.stdout)?;
+        assert!(stdout.contains("provider: tart"));
+        assert!(stdout.contains("default_profile: tart"));
 
         Ok(())
     }
@@ -575,7 +563,7 @@ provider: docker
         assert!(!output.status.success());
 
         let stderr = String::from_utf8(output.stderr)?;
-        assert!(stderr.contains("Field 'memory' not found") || stderr.contains("No vm.yaml found"));
+        assert!(stderr.contains("No vm.yaml configuration found"));
 
         // Test unsetting from non-existent config
         let output = fixture.run_vm_command(&["config", "unset", "vm.memory"])?;
