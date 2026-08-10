@@ -362,6 +362,16 @@ fn preserve_user_customizations(
         has_customizations = true;
     }
 
+    if !original.mounts.is_empty() {
+        minimal.mounts = merged.mounts.clone();
+        has_customizations = true;
+    }
+
+    if !crate::config::ToolsConfig::is_empty(&original.tools) {
+        minimal.tools = merged.tools.clone();
+        has_customizations = true;
+    }
+
     if original.bootstrap.is_some() {
         minimal.bootstrap = merged.bootstrap.clone();
         has_customizations = true;
@@ -443,6 +453,12 @@ fn print_customization_warning(original: &VmConfig) {
     if !original.storage.is_empty() {
         vm_println!("   - storage policy");
     }
+    if !original.mounts.is_empty() {
+        vm_println!("   - mounts");
+    }
+    if !crate::config::ToolsConfig::is_empty(&original.tools) {
+        vm_println!("   - tools");
+    }
     if original.bootstrap.is_some() {
         vm_println!("   - project bootstrap policy");
     }
@@ -485,7 +501,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn preset_rewrite_preserves_storage_and_bootstrap_policy() {
+    fn preset_rewrite_preserves_storage_bootstrap_mounts_and_tools() {
         let original: VmConfig = serde_yaml_ng::from_str(
             r#"
 storage:
@@ -495,6 +511,12 @@ storage:
 bootstrap:
   playwright:
     browsers: [chromium]
+mounts:
+  - source: ../shared
+    target: /shared
+    access: read_only
+tools:
+  codex: {}
 "#,
         )
         .unwrap();
@@ -508,5 +530,7 @@ bootstrap:
         ));
         assert!(minimal.storage.volumes.contains_key("node_modules"));
         assert_eq!(minimal.bootstrap.unwrap().playwright.browsers, ["chromium"]);
+        assert_eq!(minimal.mounts.len(), 1);
+        assert!(minimal.tools.entries.contains_key("codex"));
     }
 }

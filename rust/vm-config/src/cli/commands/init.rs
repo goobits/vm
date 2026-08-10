@@ -348,6 +348,12 @@ pub(crate) fn build_minimal_box_config(
     if let Some(networking) = preset_config.networking {
         config.networking = Some(networking);
     }
+    if !preset_config.mounts.is_empty() {
+        config.mounts = preset_config.mounts;
+    }
+    if !crate::config::ToolsConfig::is_empty(&preset_config.tools) {
+        config.tools = preset_config.tools;
+    }
     if !preset_config.aliases.is_empty() {
         config.aliases = preset_config.aliases;
     }
@@ -465,25 +471,15 @@ fn apply_service_configurations(
     services_to_configure: Vec<String>,
 ) -> Result<()> {
     for service in services_to_configure {
-        let service_config = if let Some(default_config) = embedded_service_config(&service) {
-            crate::yaml::CoreOperations::parse_yaml_with_diagnostics(
-                default_config,
-                &format!("embedded service config for {}", service),
-            )?
-        } else {
-            let service_path =
-                crate::paths::resolve_tool_path(format!("configs/services/{service}.yaml"));
-            if !service_path.exists() {
-                error!("Unknown service: {}", service);
-                error!("Available built-in services: postgresql, redis, mongodb, docker");
-                return Err(VmError::Config(
-                    "Service configuration not found".to_string(),
-                ));
-            }
-            VmConfig::from_file(&service_path).map_err(|e| {
-                VmError::Config(format!("Failed to load service config: {service}: {e}"))
-            })?
-        };
+        let default_config = embedded_service_config(&service).ok_or_else(|| {
+            error!("Unknown service: {}", service);
+            error!("Available built-in services: postgresql, redis, mongodb, docker");
+            VmError::Config("Service configuration not found".to_string())
+        })?;
+        let service_config: VmConfig = crate::yaml::CoreOperations::parse_yaml_with_diagnostics(
+            default_config,
+            &format!("embedded service config for {service}"),
+        )?;
 
         // Extract only the specific service we want to enable from the service config
         if let Some(specific_service_config) = service_config.services.get(&service) {

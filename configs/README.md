@@ -13,14 +13,11 @@ Available presets:
 - `base` - Minimal base configuration
 - `vibe-tart` - Tart preset with a Linux guest capable of running Docker inside Tart, plus an explicit, slower macOS fallback profile
 
-### `languages/`
-Language-specific package manager configurations (npm, pip, cargo).
-
 ### `os_defaults/`
 Operating system-specific default configurations.
 
-### `services/`
-Service definition templates (PostgreSQL, Redis, MongoDB, Docker).
+Service definitions have one canonical owner under
+`rust/vm-config/resources/services/` and are embedded from there.
 
 ### `schema/`
 JSON Schema definitions for configuration validation.
@@ -33,7 +30,7 @@ For user-facing configuration examples, see the `/examples/` directory in the pr
 
 | Directory | Purpose | Audience | Embedded |
 |-----------|---------|----------|----------|
-| `configs/` | Production templates with all options | Developers | ✅ Yes |
+| `configs/` | Defaults, presets, schema, and OS policy | Developers | ✅ Yes |
 | `examples/` | Simplified user documentation | End users | ❌ No |
 
 ## Modifying Configurations

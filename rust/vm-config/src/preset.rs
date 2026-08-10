@@ -185,6 +185,18 @@ impl PresetDetector {
                 .as_ref()
                 .and_then(|v| serde_yaml_ng::from_value(v.clone()).ok());
 
+            let mounts = content
+                .mounts
+                .as_ref()
+                .and_then(|value| serde_yaml_ng::from_value(value.clone()).ok())
+                .unwrap_or_default();
+
+            let tools = content
+                .tools
+                .as_ref()
+                .and_then(|value| serde_yaml_ng::from_value(value.clone()).ok())
+                .unwrap_or_default();
+
             let config = VmConfig {
                 apt_packages: content.packages,
                 npm_packages: content.npm_packages,
@@ -197,6 +209,8 @@ impl PresetDetector {
                 networking,
                 host_sync,
                 terminal,
+                mounts,
+                tools,
                 ..Default::default()
             };
 

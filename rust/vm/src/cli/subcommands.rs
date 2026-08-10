@@ -168,6 +168,20 @@ pub enum PackagesSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum ToolsSubcommand {
+    /// Register one trusted tool source with package infrastructure
+    Register {
+        name: String,
+        #[arg(long)]
+        repository: String,
+        #[arg(long, default_value = "main")]
+        branch: String,
+        #[arg(long, default_value = "binary", value_parser = ["binary", "collection"])]
+        kind: String,
+    },
+    /// List registered tool sources
+    List,
+    /// Show one registered tool and its published releases
+    Show { name: String },
     /// Refresh the appliance-generated tool catalog cache
     Refresh {
         #[arg(long, hide = true)]

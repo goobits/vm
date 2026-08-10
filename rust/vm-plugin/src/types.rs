@@ -78,6 +78,12 @@ pub struct PresetContent {
 
     #[serde(default)]
     pub terminal: Option<serde_yaml_ng::Value>,
+
+    #[serde(default)]
+    pub mounts: Option<serde_yaml_ng::Value>,
+
+    #[serde(default)]
+    pub tools: Option<serde_yaml_ng::Value>,
 }
 
 /// Service content (stored in service.yaml)
@@ -216,6 +222,13 @@ host_sync:
 terminal:
   shell: /bin/zsh
   theme: dracula
+mounts:
+  - source: ../shared
+    target: /shared
+    access: read_only
+tools:
+  updates: prompt
+  codex: {}
 "#;
         let content: PresetContent = serde_yaml_ng::from_str(yaml)
             .expect("should deserialize preset content with new fields");
@@ -223,6 +236,8 @@ terminal:
         assert!(content.networking.is_some());
         assert!(content.host_sync.is_some());
         assert!(content.terminal.is_some());
+        assert!(content.mounts.is_some());
+        assert!(content.tools.is_some());
 
         // Verify networking structure
         let networking = content.networking.unwrap();

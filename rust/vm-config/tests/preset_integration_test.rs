@@ -109,6 +109,8 @@ networking:
 host_sync:
   git_config: true
   ai_tools: true
+tools:
+  codex: {}
 aliases:
   gs: git status
 "#;
@@ -242,9 +244,10 @@ fn test_init_with_box_preset() -> Result<()> {
         }
     }
 
-    // Copy networking, host_sync, aliases from preset
+    // Copy networking, host_sync, tools, and aliases from preset
     config.networking = vibe_config.networking;
     config.host_sync = vibe_config.host_sync;
+    config.tools = vibe_config.tools;
     config.aliases = vibe_config.aliases;
 
     // Write vm.yaml
@@ -263,6 +266,7 @@ fn test_init_with_box_preset() -> Result<()> {
         Some(BoxSpec::String(s)) => assert_eq!(s, "@vibe-box", "vm.box should reference @vibe-box"),
         _ => panic!("vm.box should be a string reference"),
     }
+    assert!(saved_config.tools.entries.contains_key("codex"));
 
     // 2. networking.networks should contain 'spacebase'
     assert!(
@@ -901,10 +905,16 @@ fn test_vibe_tart_preset_uses_linux_tart_by_default() -> Result<()> {
         .host_sync
         .as_ref()
         .and_then(|sync| sync.ai_tools.as_ref())
-        .expect("vibe-tart should provision current AI tools at runtime");
+        .expect("vibe-tart should sync supported AI state");
     assert!(ai_tools.is_antigravity_enabled());
     assert!(ai_tools.is_claude_enabled());
     assert!(ai_tools.is_codex_enabled());
+    for name in ["antigravity", "claude", "codex", "agent-skills"] {
+        assert!(
+            vibe_tart.tools.entries.contains_key(name),
+            "vibe-tart should select {name} through managed tools"
+        );
+    }
     assert!(vibe_tart.npm_packages.is_empty());
 
     Ok(())

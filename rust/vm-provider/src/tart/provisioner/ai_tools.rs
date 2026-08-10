@@ -50,40 +50,6 @@ impl TartProvisioner {
 
         self.sync_codex_auth()
     }
-
-    pub(super) fn ai_tools_install_command(&self, config: &VmConfig) -> Option<String> {
-        let ai_tools = config
-            .host_sync
-            .as_ref()
-            .and_then(|sync| sync.ai_tools.as_ref())?;
-
-        let mut tools = Vec::new();
-        if ai_tools.is_antigravity_enabled() {
-            tools.push("antigravity");
-        }
-        if ai_tools.is_claude_enabled() {
-            tools.push("claude");
-        }
-        if ai_tools.is_codex_enabled() {
-            tools.push("codex");
-        }
-
-        (!tools.is_empty()).then(|| {
-            format!(
-                r#"set -euo pipefail
-export PATH="{}"
-INSTALLER="$(mktemp)"
-trap 'rm -f "$INSTALLER"' EXIT
-cat > "$INSTALLER" <<'VM_AI_TOOLS_INSTALLER'
-{}
-VM_AI_TOOLS_INSTALLER
-bash "$INSTALLER" {}"#,
-                Self::user_bin_path(config),
-                crate::resources::AI_TOOLS_INSTALLER,
-                tools.join(" ")
-            )
-        })
-    }
 }
 
 #[cfg(test)]

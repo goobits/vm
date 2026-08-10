@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use vm_config::config::VmConfig;
 use vm_core::{vm_hint, vm_println, vm_success};
+use vm_packages::{RegisterTool, ToolKind};
 use vm_provider::Provider;
 
 use crate::cli::ToolsSubcommand;
@@ -24,6 +25,64 @@ pub(super) async fn handle(
     profile: Option<String>,
 ) -> VmResult<()> {
     match command {
+        ToolsSubcommand::Register {
+            name,
+            repository,
+            branch,
+            kind,
+        } => {
+            let kind = match kind.as_str() {
+                "binary" => ToolKind::Binary,
+                "collection" => ToolKind::Collection,
+                _ => unreachable!("clap validates tool kinds"),
+            };
+            let definition = tooling::client()?
+                .register_tool(&RegisterTool {
+                    name,
+                    kind,
+                    repository,
+                    default_branch: branch,
+                })
+                .await?;
+            vm_success!("Registered tool '{}'", definition.name);
+            Ok(())
+        }
+        ToolsSubcommand::List => {
+            let definitions = tooling::client()?.tools().await?;
+            if definitions.is_empty() {
+                vm_println!("No tools are registered");
+            } else {
+                for definition in definitions {
+                    vm_println!(
+                        "{}\t{}\t{}",
+                        definition.name,
+                        kind_name(definition.kind),
+                        definition.repository
+                    );
+                }
+            }
+            Ok(())
+        }
+        ToolsSubcommand::Show { name } => {
+            let inventory = tooling::client()?.tool(&name).await?;
+            vm_println!(
+                "{} ({})\n  source: {}\n  branch: {}",
+                inventory.definition.name,
+                kind_name(inventory.definition.kind),
+                inventory.definition.repository,
+                inventory.definition.default_branch
+            );
+            for artifact in inventory.artifacts {
+                artifact.validate().map_err(VmError::from)?;
+                vm_println!(
+                    "  {} {} {}",
+                    artifact.version,
+                    artifact.target,
+                    &artifact.artifact_digest[..12]
+                );
+            }
+            Ok(())
+        }
         ToolsSubcommand::Refresh { quiet } => {
             let config = vm_config::AppConfig::load(config_path, profile, None)?.vm;
             match tooling::refresh(&config).await? {
@@ -66,6 +125,13 @@ pub(super) async fn handle(
                 },
             )
         }
+    }
+}
+
+fn kind_name(kind: ToolKind) -> &'static str {
+    match kind {
+        ToolKind::Binary => "binary",
+        ToolKind::Collection => "collection",
     }
 }
 

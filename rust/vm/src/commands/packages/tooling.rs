@@ -5,7 +5,8 @@ use futures::future::join_all;
 use serde::Serialize;
 use vm_config::config::VmConfig;
 use vm_packages::{
-    validate_tool_name, validate_tool_target, validate_tool_version, ToolArtifactRecord, ToolIndex,
+    validate_tool_name, validate_tool_target, validate_tool_version, PackageInfrastructureClient,
+    ToolArtifactRecord, ToolIndex,
 };
 
 use crate::error::{VmError, VmResult};
@@ -185,6 +186,11 @@ pub(in crate::commands) fn gateway(provider: &str) -> VmResult<String> {
     let files = ApplianceFiles::discover()?;
     let (state, _) = configured_state_and_client(&files)?;
     gateway_for_provider(&state, provider)
+}
+
+pub(in crate::commands) fn client() -> VmResult<PackageInfrastructureClient> {
+    let files = ApplianceFiles::discover()?;
+    super::appliance::configured_client(&files)
 }
 
 fn index_cache_name(target: &str) -> String {

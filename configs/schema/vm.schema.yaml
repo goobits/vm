@@ -603,9 +603,7 @@ properties:
   aliases:
     type: object
     description: Custom shell aliases
-    default:
-      yoclaude: claude --dangerously-skip-permissions
-      yocodex: codex --dangerously-bypass-approvals-and-sandbox
+    default: {}
     additionalProperties:
       type: string
     examples:
@@ -622,7 +620,7 @@ properties:
         DEBUG: "true"
   host_sync:
     type: object
-    description: Host-to-VM synchronization configuration for git, SSH, dotfiles, AI tools, package links, and worktrees
+    description: Host-to-VM synchronization configuration for git, SSH, dotfiles, supported AI state, and worktrees
     properties:
       git_config:
         type: boolean
@@ -645,9 +643,9 @@ properties:
       ai_tools:
         oneOf:
           - type: boolean
-            description: "Simple mode: true enables all AI tools, false disables all"
+            description: "Simple mode: true syncs all supported AI state, false syncs none"
           - type: object
-            description: "Granular mode: control each AI tool individually"
+            description: "Granular mode: control each supported AI state directory individually"
             properties:
               claude:
                 type: boolean

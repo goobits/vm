@@ -60,7 +60,7 @@ aliases: {}
 # Environment Variables (empty by default)
 environment: {}
 
-# Host Synchronization (minimal defaults)
+# Host synchronization only; managed executables belong under tools.
 host_sync:
   git_config: true
   ai_tools: false

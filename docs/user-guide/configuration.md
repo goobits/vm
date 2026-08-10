@@ -208,10 +208,31 @@ docker run --rm busybox echo run-ok
 This uses QEMU TCG and is slower than native virtualization. For faster Docker,
 use a Linux Tart guest or a controlled remote Docker daemon over SSH/TLS.
 
-## AI Tool Provisioning
+## Managed Tools And AI State
 
-Host sync can provision the current native Antigravity (`agy`), Claude Code,
-and Codex CLIs and retain their supported state:
+Tools are immutable releases served by package infrastructure and activated
+inside each Docker container or Tart VM:
+
+```yaml
+tools:
+  updates: prompt
+  antigravity: {}       # omitted version tracks latest
+  claude: {}
+  codex:
+    version: 1.4.2      # semantic version pins exactly
+  agent-skills:
+    updates: auto       # the whole collection updates atomically
+```
+
+`updates` can be `prompt`, `auto`, or `off`, with an optional override per
+tool. `vm start` never contacts package infrastructure or waits for tool
+updates. An interactive `vm shell`/`vm ssh` uses only a fresh local catalog,
+refreshes that catalog in the background, and starts selected guest downloads
+without delaying the shell. Use `vm tools update` when the command should wait,
+or `vm tools update --background` to return immediately.
+
+Host sync is separate: it retains supported CLI state and credentials but does
+not install executables:
 
 ```yaml
 host_sync:
@@ -222,10 +243,10 @@ host_sync:
     codex: true
 ```
 
-`ai_tools: true` enables all three. Provisioning records the installed state so
-unchanged tools are not refreshed on every boot. The old `gemini` key remains a
+`ai_tools: true` syncs all three state areas. The old `gemini` key remains a
 deprecated compatibility alias for `antigravity`; new configs should use
-`antigravity`.
+`antigravity`. Executables are never downloaded directly by project
+provisioning.
 
 ## Presets
 

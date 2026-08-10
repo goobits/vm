@@ -335,6 +335,34 @@ fn package_inventory_and_rollout_commands_parse() {
 #[test]
 fn tool_refresh_status_and_batch_update_commands_parse() {
     assert!(matches!(
+        Args::parse_from([
+            "vm",
+            "tools",
+            "register",
+            "agent-skills",
+            "--kind",
+            "collection",
+            "--repository",
+            "https://example.com/agent-skills.git",
+        ])
+        .command,
+        Command::Tools {
+            command: ToolsSubcommand::Register { name, kind, .. }
+        } if name == "agent-skills" && kind == "collection"
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "tools", "list"]).command,
+        Command::Tools {
+            command: ToolsSubcommand::List
+        }
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "tools", "show", "codex"]).command,
+        Command::Tools {
+            command: ToolsSubcommand::Show { name }
+        } if name == "codex"
+    ));
+    assert!(matches!(
         Args::parse_from(["vm", "tools", "refresh"]).command,
         Command::Tools {
             command: ToolsSubcommand::Refresh { quiet: false }

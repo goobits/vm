@@ -503,25 +503,6 @@
         until: apt_packages_install is succeeded
 
 
-      # Install current AI CLIs even when the base snapshot is stale.
-      - name: Install enabled AI CLI tools
-        shell: |
-            set -euo pipefail
-            export HOME="/home/{{ project_user }}"
-            export PATH="$HOME/.local/bin:$PATH"
-
-            tools=()
-            [[ "{{ antigravity_sync_enabled | bool | lower }}" == true ]] && tools+=(antigravity)
-            [[ "{{ claude_sync_enabled | bool | lower }}" == true ]] && tools+=(claude)
-            [[ "{{ codex_sync_enabled | bool | lower }}" == true ]] && tools+=(codex)
-            bash /app/shared/scripts/install-ai-tools.sh "${tools[@]}"
-        args:
-            executable: /bin/bash
-        become_user: '{{ project_user }}'
-        when: antigravity_sync_enabled or claude_sync_enabled or codex_sync_enabled
-        register: ai_tools_install
-        changed_when: "'VM_AI_TOOL_CHANGED=' in ai_tools_install.stdout"
-
       - name: Install container pipx packages
         shell: |
             set -euo pipefail

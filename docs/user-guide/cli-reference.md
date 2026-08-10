@@ -205,6 +205,20 @@ vm packages rollout <package>@<version> --to <consumer>
 See [Package Infrastructure](package-infrastructure.md) for the provider
 boundary, registration, credentials, release workflow, and recovery model.
 
+## Managed Tools
+
+```bash
+vm tools register <name> --kind <binary|collection> --repository <url>
+vm tools list
+vm tools show <name>
+vm tools refresh
+vm tools status [environment]
+vm tools update [environment] [--all] [--background]
+```
+
+Tool sources and immutable releases live in package infrastructure. `status`
+reads one guest; `update` creates or starts that guest when necessary.
+
 ## Plugins
 
 ```bash

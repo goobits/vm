@@ -14,7 +14,6 @@ pub(crate) const SHELL_CONFIG_VERSION: &str = "5";
 pub const THEMES_JSON: &str = include_str!("resources/templates/themes.json");
 pub const CLAUDE_SETTINGS_TEMPLATE: &str =
     include_str!("resources/settings/claude-settings.json.j2");
-pub const AI_TOOLS_INSTALLER: &str = include_str!("resources/scripts/install-ai-tools.sh");
 pub(crate) const NODE_BOOTSTRAP: &str = include_str!("resources/scripts/bootstrap-node.sh");
 pub(crate) const NODE_TOOLCHAIN_INSTALLER: &str =
     include_str!("resources/scripts/install-node-toolchain.sh");
@@ -56,10 +55,6 @@ pub fn copy_embedded_resources(shared_dir: &Path) -> Result<()> {
             directories[5].join("settings.json.j2"),
             CLAUDE_SETTINGS_TEMPLATE,
         ),
-        (
-            directories[6].join("install-ai-tools.sh"),
-            AI_TOOLS_INSTALLER,
-        ),
         (directories[6].join("bootstrap-node.sh"), NODE_BOOTSTRAP),
         (
             directories[6].join("install-node-toolchain.sh"),
@@ -88,8 +83,8 @@ fn write_if_changed(path: &Path, content: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AI_TOOLS_INSTALLER, ANSIBLE_PLAYBOOK, HOME_STATE_REPAIR, NODE_BOOTSTRAP,
-        NODE_TOOLCHAIN_INSTALLER, SHELL_CONFIG_VERSION, ZSHRC_TEMPLATE,
+        ANSIBLE_PLAYBOOK, HOME_STATE_REPAIR, NODE_BOOTSTRAP, NODE_TOOLCHAIN_INSTALLER,
+        SHELL_CONFIG_VERSION, ZSHRC_TEMPLATE,
     };
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
@@ -103,31 +98,13 @@ mod tests {
     }
 
     #[test]
-    fn ai_tools_use_one_current_runtime_installer() {
-        assert!(AI_TOOLS_INSTALLER.contains("https://antigravity.google/cli/install.sh"));
-        assert!(AI_TOOLS_INSTALLER.contains("https://claude.ai/install.sh"));
-        assert!(AI_TOOLS_INSTALLER.contains("https://chatgpt.com/codex/install.sh"));
-        assert!(!AI_TOOLS_INSTALLER.contains("npm install -g"));
-        assert!(AI_TOOLS_INSTALLER.contains("INSTALLER_STATE_VERSION=1"));
-        assert!(AI_TOOLS_INSTALLER.contains("VM_AI_TOOLS_FORCE"));
-        assert!(AI_TOOLS_INSTALLER.contains("VM_AI_TOOL_CURRENT="));
-        assert!(AI_TOOLS_INSTALLER.contains("VM_AI_TOOL_CHANGED="));
-        assert!(AI_TOOLS_INSTALLER.contains("shell_arg=stable"));
-        assert_eq!(
-            AI_TOOLS_INSTALLER
-                .matches("refresh_scope=automatic")
-                .count(),
-            2
-        );
-        assert!(AI_TOOLS_INSTALLER.contains("refresh_scope=\"$refresh_key\""));
-        assert_eq!(ANSIBLE_PLAYBOOK.matches("install-ai-tools.sh").count(), 1);
-        assert!(!ANSIBLE_PLAYBOOK.contains("@google/gemini-cli@latest"));
-        assert!(ANSIBLE_PLAYBOOK
-            .contains("changed_when: \"'VM_AI_TOOL_CHANGED=' in ai_tools_install.stdout\""));
+    fn provisioning_does_not_install_managed_tools_directly() {
+        assert!(!ANSIBLE_PLAYBOOK.contains("install-ai-tools"));
+        assert!(!ANSIBLE_PLAYBOOK.contains("@google/gemini-cli"));
     }
 
     #[test]
-    fn ai_tool_path_precedes_shell_wrapper_detection() {
+    fn managed_tool_path_precedes_shell_wrapper_detection() {
         let path = ZSHRC_TEMPLATE
             .find("export PATH=\"$HOME/.local/bin:$PATH\"")
             .unwrap();

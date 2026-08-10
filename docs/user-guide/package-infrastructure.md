@@ -1,6 +1,7 @@
 # Package Infrastructure
 
-VM manages one private package appliance for npm, Cargo, and Python. Package
+VM manages one private package appliance for npm, Cargo, Python, and immutable
+guest tools/collections. Package
 source work, validation, review, release, and rollout run in project
 environments or ephemeral appliance containers—not as native Mac processes.
 
@@ -16,7 +17,7 @@ Mac
 Dedicated Linux Tart VM
   Docker Compose package appliance
     + gateway         one private URL
-    + registry        npm + Cargo + PyPI + artifact cache/proxy
+    + registry        npm + Cargo + PyPI + tool artifacts + cache/proxy
     + work service    workflow state, Git mirrors, receipts
     + ephemeral jobs  review, release, rollout, maintenance
     + named volumes   artifacts, caches, state, receipts, worktrees
@@ -88,6 +89,38 @@ it does not copy, mount, build, or publish the local source.
 
 Supported ecosystems are `npm`, `cargo`, and `python`. A package has one
 canonical repository and immutable published versions.
+
+## Register And Consume Tools
+
+Tool definitions use the same private appliance but remain separate from
+language-package protocols:
+
+```bash
+vm tools register codex \
+  --kind binary \
+  --repository https://github.com/example/codex.git
+vm tools register agent-skills \
+  --kind collection \
+  --repository https://github.com/example/agent-skills.git
+vm tools list
+vm tools show agent-skills
+```
+
+Trusted infrastructure release jobs publish target-specific, immutable
+archives and receipts; project agents cannot publish them. Projects select
+versions through the one-level `tools:` map in `vm.yaml`. A collection such as
+`agent-skills` is one atomic version, even when it activates into several agent
+directories.
+
+```bash
+vm tools refresh
+vm tools status [environment]
+vm tools update [environment]
+vm tools update [environment] --all --background
+```
+
+Omitted versions track the latest release. Explicit semantic versions remain
+pinned. Normal startup never waits for the registry or an update check.
 
 ## Develop and Release a Package
 

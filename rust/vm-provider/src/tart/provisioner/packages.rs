@@ -56,9 +56,6 @@ npm install -g {}"#,
             ));
         }
 
-        if let Some(command) = self.ai_tools_install_command(config) {
-            commands.push(("AI CLI tools", command));
-        }
         if let Some(command) = self.docker_install_command(config) {
             commands.push(("Docker runtime", command));
         }
