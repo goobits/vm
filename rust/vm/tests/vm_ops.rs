@@ -3,7 +3,6 @@
 mod vm_ops {
     // Test modules
     pub mod create_destroy_tests;
-    pub mod feature_tests;
     pub mod interaction_tests;
     pub mod lifecycle_integration_tests;
     pub mod multi_instance_tests;

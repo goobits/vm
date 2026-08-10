@@ -41,7 +41,6 @@ vm-provider = { path = "../vm-provider" }
 vm-temp = { path = "../vm-temp" }
 vm-snapshot = { path = "../vm-snapshot" }
 vm-packages = { path = "../vm-packages" }
-vm-package-server = { path = "../vm-package-server" }
 vm-auth-proxy = { path = "../vm-auth-proxy" }
 vm-docker-registry = { path = "../vm-docker-registry" }
 futures = "0.3.32"

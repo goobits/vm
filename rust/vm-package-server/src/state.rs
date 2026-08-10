@@ -42,6 +42,8 @@ use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use axum::http::{header, uri::Authority, HeaderMap};
+
 /// Application state containing shared configuration and resources.
 ///
 /// This struct holds the core runtime state that needs to be shared across
@@ -75,6 +77,25 @@ pub struct AppState {
     pub npm_registry: NpmRegistry,
     /// PyPI registry implementation
     pub pypi_registry: PypiRegistry,
+}
+
+impl AppState {
+    /// Resolve the externally visible request origin without trusting arbitrary text.
+    pub fn public_base_url(&self, headers: &HeaderMap) -> String {
+        let Some(authority) = headers
+            .get(header::HOST)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<Authority>().ok())
+        else {
+            return self.server_addr.clone();
+        };
+        let scheme = headers
+            .get("x-forwarded-proto")
+            .and_then(|value| value.to_str().ok())
+            .filter(|scheme| matches!(*scheme, "http" | "https"))
+            .unwrap_or("http");
+        format!("{scheme}://{authority}")
+    }
 }
 
 /// Standardized success response for API consistency.

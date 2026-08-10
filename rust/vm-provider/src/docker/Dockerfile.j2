@@ -198,19 +198,6 @@ RUN mkdir -p /etc/profile.d && \
 #!/bin/sh
 if [ -z "${VM_SHELL_RUNTIME_READY:-}" ]; then
     export VM_WORKTREES='{{ worktrees_base_dir }}'
-    if [ -n "$VM_CARGO_REGISTRY_HOST" ] && [ -n "$VM_CARGO_REGISTRY_PORT" ]; then
-        mkdir -p "$HOME/.cargo"
-        cat > "$HOME/.cargo/config.toml" << EOCARGO
-[source.crates-io]
-replace-with = "vm-registry"
-
-[source.vm-registry]
-registry = "sparse+http://${VM_CARGO_REGISTRY_HOST}:${VM_CARGO_REGISTRY_PORT}/cargo/"
-
-[net]
-retry = 2
-EOCARGO
-    fi
     export VM_SHELL_RUNTIME_READY=1
 fi
 EOF

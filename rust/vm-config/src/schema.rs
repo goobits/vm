@@ -265,14 +265,6 @@ fn build_global_schema_cache() -> HashMap<String, SchemaType> {
         "services.auth_proxy.token_expiry_hours"
     );
 
-    // Package registry service
-    add_booleans!(cache, "services.package_registry.enabled");
-    add_integers!(
-        cache,
-        "services.package_registry.port",
-        "services.package_registry.max_storage_gb"
-    );
-
     // Defaults
     add_strings!(
         cache,

@@ -209,7 +209,8 @@ fn sync_controller_files(files: &ApplianceFiles) -> VmResult<()> {
     for (source, name) in [
         (files.compose_path(), "compose.yaml"),
         (files.environment_path(), "environment.env"),
-        (files.token_path(), "publish-token"),
+        (files.read_token_path(), "read-token"),
+        (files.publish_token_path(), "publish-token"),
     ] {
         let content = std::fs::read(&source).map_err(|error| {
             VmError::filesystem(

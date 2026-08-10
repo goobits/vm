@@ -11,7 +11,6 @@ pub mod auth_proxy;
 pub mod docker_registry;
 pub mod mongodb;
 pub mod mysql;
-pub mod package_registry;
 pub mod postgresql;
 pub mod redis;
 

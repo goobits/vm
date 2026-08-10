@@ -79,19 +79,6 @@ impl ServiceRegistry {
             },
         );
 
-        // Package Registry Service
-        services.insert(
-            "package_registry".to_string(),
-            ServiceDefinition {
-                name: "package_registry".to_string(),
-                display_name: "Package Registry".to_string(),
-                port: 3080,
-                health_endpoint: "/health".to_string(),
-                description: "Private package registry for npm, pip, and cargo".to_string(),
-                supports_graceful_shutdown: true,
-            },
-        );
-
         let mut registry = Self { services };
 
         // Load plugin services (non-fatal if plugins unavailable)
@@ -171,7 +158,7 @@ impl ServiceRegistry {
     /// Get service names that should be enabled based on VM configuration
     #[allow(dead_code)]
     pub fn get_enabled_services(&self, _config: &vm_config::config::VmConfig) -> Vec<String> {
-        // Global services (auth_proxy, docker_registry, package_registry) are now
+        // Global services (auth_proxy and docker_registry) are now
         // configured in GlobalConfig and are not checked here.
         Vec::new()
     }
@@ -264,7 +251,6 @@ mod tests {
 
         assert!(registry.is_service_defined("auth_proxy"));
         assert!(registry.is_service_defined("docker_registry"));
-        assert!(registry.is_service_defined("package_registry"));
         assert!(!registry.is_service_defined("unknown_service"));
     }
 
@@ -274,7 +260,6 @@ mod tests {
 
         assert_eq!(registry.get_service_port("auth_proxy"), Some(3090));
         assert_eq!(registry.get_service_port("docker_registry"), Some(5000));
-        assert_eq!(registry.get_service_port("package_registry"), Some(3080));
         assert_eq!(registry.get_service_port("unknown"), None);
     }
 

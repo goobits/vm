@@ -9,35 +9,63 @@ use axum::{
     middleware::Next,
     response::Response,
 };
+use base64::Engine;
 use std::sync::Arc;
 
 use crate::{config::Config, error::AppError};
 
-fn extract_bearer_token_from_headers(headers: &HeaderMap) -> Option<String> {
-    headers
+fn extract_token_from_headers(headers: &HeaderMap) -> Option<String> {
+    let authorization = headers
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer ").map(|token| token.to_string()))
+        .map(str::trim)?;
+    if let Some(token) = authorization.strip_prefix("Bearer ") {
+        return Some(token.to_string());
+    }
+    if let Some(encoded) = authorization.strip_prefix("Basic ") {
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .ok()?;
+        let credentials = String::from_utf8(decoded).ok()?;
+        return credentials
+            .split_once(':')
+            .map(|(_, password)| password.to_string());
+    }
+    (!authorization.is_empty()).then(|| authorization.to_string())
 }
 
-pub fn validate_auth_headers(config: &Config, headers: &HeaderMap) -> Result<(), AppError> {
+pub fn validate_read_headers(config: &Config, headers: &HeaderMap) -> Result<(), AppError> {
+    validate_headers(config, headers, true)
+}
+
+pub fn validate_publish_headers(config: &Config, headers: &HeaderMap) -> Result<(), AppError> {
+    validate_headers(config, headers, false)
+}
+
+fn validate_headers(
+    config: &Config,
+    headers: &HeaderMap,
+    allow_read_key: bool,
+) -> Result<(), AppError> {
     if !config.security.require_authentication {
         return Ok(());
     }
 
-    let token = extract_bearer_token_from_headers(headers).ok_or_else(|| {
+    let token = extract_token_from_headers(headers).ok_or_else(|| {
         AppError::Unauthorized("Missing or invalid Authorization header".to_string())
     })?;
 
-    if !config.security.api_keys.contains(&token) {
+    let is_publisher =
+        config.security.publish_keys.contains(&token) || config.security.api_keys.contains(&token);
+    let is_reader = allow_read_key && config.security.read_keys.contains(&token);
+    if !is_publisher && !is_reader {
         return Err(AppError::Unauthorized("Invalid API key".to_string()));
     }
 
     Ok(())
 }
 
-/// Middleware to validate authentication for upload endpoints
-pub async fn auth_middleware(
+pub async fn read_auth_middleware(
     State(config): State<Arc<Config>>,
     req: Request,
     next: Next,
@@ -47,7 +75,7 @@ pub async fn auth_middleware(
         return Ok(next.run(req).await);
     }
 
-    validate_auth_headers(&config, req.headers())?;
+    validate_read_headers(&config, req.headers())?;
 
     // Token is valid, proceed with request
     Ok(next.run(req).await)
@@ -55,7 +83,10 @@ pub async fn auth_middleware(
 
 /// Check if authentication is required based on config
 pub fn is_auth_required(config: &Config) -> bool {
-    config.security.require_authentication && !config.security.api_keys.is_empty()
+    config.security.require_authentication
+        && (!config.security.read_keys.is_empty()
+            || !config.security.publish_keys.is_empty()
+            || !config.security.api_keys.is_empty())
 }
 
 #[cfg(test)]
@@ -65,7 +96,8 @@ mod tests {
     fn auth_config() -> Config {
         let mut config = Config::default();
         config.security.require_authentication = true;
-        config.security.api_keys = vec!["secret-token".to_string()];
+        config.security.read_keys = vec!["read-token".to_string()];
+        config.security.publish_keys = vec!["publish-token".to_string()];
         config
     }
 
@@ -74,7 +106,7 @@ mod tests {
         let config = Config::default();
         let headers = HeaderMap::new();
 
-        assert!(validate_auth_headers(&config, &headers).is_ok());
+        assert!(validate_read_headers(&config, &headers).is_ok());
     }
 
     #[test]
@@ -82,18 +114,39 @@ mod tests {
         let config = auth_config();
         let mut headers = HeaderMap::new();
 
-        assert!(validate_auth_headers(&config, &headers).is_err());
+        assert!(validate_read_headers(&config, &headers).is_err());
 
         headers.insert(
             header::AUTHORIZATION,
             "Bearer wrong-token".parse().expect("valid header"),
         );
-        assert!(validate_auth_headers(&config, &headers).is_err());
+        assert!(validate_read_headers(&config, &headers).is_err());
 
         headers.insert(
             header::AUTHORIZATION,
-            "Bearer secret-token".parse().expect("valid header"),
+            "Bearer read-token".parse().expect("valid header"),
         );
-        assert!(validate_auth_headers(&config, &headers).is_ok());
+        assert!(validate_read_headers(&config, &headers).is_ok());
+        assert!(validate_publish_headers(&config, &headers).is_err());
+    }
+
+    #[test]
+    fn basic_and_raw_tokens_support_package_manager_protocols() {
+        let config = auth_config();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            "Basic cmVhZGVyOnJlYWQtdG9rZW4="
+                .parse()
+                .expect("valid header"),
+        );
+        assert!(validate_read_headers(&config, &headers).is_ok());
+
+        headers.insert(
+            header::AUTHORIZATION,
+            "publish-token".parse().expect("valid header"),
+        );
+        assert!(validate_publish_headers(&config, &headers).is_ok());
+        assert!(validate_read_headers(&config, &headers).is_ok());
     }
 }

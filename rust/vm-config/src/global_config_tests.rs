@@ -76,14 +76,6 @@ fn test_auth_proxy_settings_is_default() {
 }
 
 #[test]
-fn test_package_registry_settings_is_default() {
-    let mut settings = PackageRegistrySettings::default();
-    assert!(settings.is_default());
-    settings.enabled = true;
-    assert!(!settings.is_default());
-}
-
-#[test]
 fn test_global_defaults_is_default() {
     let mut defaults = GlobalDefaults::default();
     assert!(defaults.is_default());

@@ -19,6 +19,7 @@ pub struct InfrastructureStatus {
 pub struct PackageInfrastructureClient {
     http: reqwest::Client,
     endpoints: RegistryEndpoints,
+    read_token: Option<String>,
 }
 
 impl PackageInfrastructureClient {
@@ -26,7 +27,13 @@ impl PackageInfrastructureClient {
         Self {
             http: reqwest::Client::new(),
             endpoints,
+            read_token: None,
         }
+    }
+
+    pub fn with_read_token(mut self, token: impl Into<String>) -> Self {
+        self.read_token = Some(token.into());
+        self
     }
 
     pub async fn is_healthy(&self) -> bool {
@@ -47,8 +54,11 @@ impl PackageInfrastructureClient {
 
     async fn get_json<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T> {
         let url = format!("{}/{}", self.endpoints.gateway(), path);
-        self.http
-            .get(&url)
+        let mut request = self.http.get(&url);
+        if let Some(token) = &self.read_token {
+            request = request.bearer_auth(token);
+        }
+        request
             .send()
             .await
             .with_context(|| format!("failed to connect to package infrastructure at {url}"))?

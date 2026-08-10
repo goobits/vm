@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use super::environment::resolve_environment;
-use super::vm_ops;
+use super::{packages, vm_ops};
 use crate::error::{VmError, VmResult};
 use vm_config::{config::VmConfig, AppConfig, GlobalConfig};
 use vm_core::vm_progress;
@@ -22,7 +22,8 @@ pub(super) fn load_provider_context(
     provider_override: Option<String>,
 ) -> VmResult<(Box<dyn Provider>, VmConfig, GlobalConfig)> {
     let app_config = AppConfig::load(config_path, profile, provider_override)?;
-    let config = app_config.vm;
+    let mut config = app_config.vm;
+    packages::apply_client_environment(&mut config)?;
     let global_config = app_config.global;
     let provider = get_provider(config.clone()).map_err(VmError::from)?;
     Ok((provider, config, global_config))

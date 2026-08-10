@@ -492,13 +492,9 @@ mod tests {
     use super::*;
     use crate::docker::compose_model::container_architecture;
     use tempfile::TempDir;
-    use vm_config::{
-        config::{
-            ContainerLoggingConfig, CpuLimit, MemoryLimit, ProjectConfig, StorageConfig,
-            TmpfsMountConfig, VmConfig, VmSettings, VolumeMountConfig, VolumeRetention,
-            VolumeScope,
-        },
-        global_config::GlobalConfig,
+    use vm_config::config::{
+        ContainerLoggingConfig, CpuLimit, MemoryLimit, ProjectConfig, StorageConfig,
+        TmpfsMountConfig, VmConfig, VmSettings, VolumeMountConfig, VolumeRetention, VolumeScope,
     };
 
     fn setup_test_env() -> (TempDir, PathBuf, PathBuf) {
@@ -912,54 +908,5 @@ host_sync:
                 "127.0.0.1:55432:5432".to_string()
             )]
         );
-    }
-
-    #[test]
-    fn rewrites_compose_when_registry_context_changes() {
-        let temp_dir = TempDir::new().unwrap();
-        let temp_path = temp_dir.path().to_path_buf();
-        let project_dir = temp_dir.path().to_path_buf();
-
-        let mut vm_config = VmConfig::default();
-        vm_config.project = Some(vm_config::config::ProjectConfig {
-            name: Some("test-project".to_string()),
-            ..Default::default()
-        });
-
-        let context_without_registry = ProviderContext::default();
-        let compose_ops = ComposeOperations::new(&vm_config, &temp_path, &project_dir, "docker");
-        let build_context = temp_path.join("build_context");
-        std::fs::create_dir_all(&build_context).unwrap();
-
-        let compose_path = compose_ops
-            .write_docker_compose(&build_context, &context_without_registry)
-            .unwrap();
-
-        let initial_content = std::fs::read_to_string(&compose_path).unwrap();
-        assert!(!initial_content.contains("NPM_CONFIG_REGISTRY="));
-        assert!(!initial_content.contains("VM_CARGO_REGISTRY_HOST="));
-
-        let mut global_config = GlobalConfig::default();
-        global_config.services.package_registry.enabled = true;
-        global_config.services.package_registry.port = 3080;
-        let context_with_registry = ProviderContext::default().with_config(global_config);
-        compose_ops
-            .write_docker_compose(&build_context, &context_with_registry)
-            .unwrap();
-        let updated_content = std::fs::read_to_string(&compose_path).unwrap();
-
-        let host = vm_platform::platform::get_host_gateway();
-        assert!(updated_content.contains(&format!("NPM_CONFIG_REGISTRY=http://{host}:3080/npm/")));
-        assert!(updated_content.contains(&format!("VM_CARGO_REGISTRY_HOST={host}")));
-        assert!(updated_content.contains("VM_CARGO_REGISTRY_PORT=3080"));
-        assert!(updated_content.contains(&format!("PIP_INDEX_URL=http://{host}:3080/pypi/simple/")));
-        assert_ne!(initial_content, updated_content);
-
-        compose_ops
-            .write_docker_compose(&build_context, &context_without_registry)
-            .unwrap();
-        let disabled_content = std::fs::read_to_string(&compose_path).unwrap();
-        assert!(!disabled_content.contains("NPM_CONFIG_REGISTRY="));
-        assert!(!disabled_content.contains("VM_CARGO_REGISTRY_HOST="));
     }
 }

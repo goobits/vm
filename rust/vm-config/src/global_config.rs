@@ -133,10 +133,6 @@ pub struct GlobalServices {
     #[serde(default, skip_serializing_if = "AuthProxySettings::is_default")]
     pub auth_proxy: AuthProxySettings,
 
-    /// Package registry configuration
-    #[serde(default, skip_serializing_if = "PackageRegistrySettings::is_default")]
-    pub package_registry: PackageRegistrySettings,
-
     /// PostgreSQL service configuration
     #[serde(default, skip_serializing_if = "PostgresSettings::is_default")]
     pub postgresql: PostgresSettings,
@@ -159,7 +155,6 @@ impl GlobalServices {
     pub fn is_default(&self) -> bool {
         self.docker_registry.is_default()
             && self.auth_proxy.is_default()
-            && self.package_registry.is_default()
             && self.postgresql.is_default()
             && self.redis.is_default()
             && self.mongodb.is_default()
@@ -410,39 +405,6 @@ impl AuthProxySettings {
     }
 }
 
-/// Package registry settings
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PackageRegistrySettings {
-    /// Whether the package registry is enabled
-    #[serde(default)]
-    pub enabled: bool,
-
-    /// Port for the package registry (default: 3080)
-    #[serde(default = "default_package_registry_port")]
-    pub port: u16,
-
-    /// Maximum storage size in GB
-    #[serde(default = "default_package_storage")]
-    pub max_storage_gb: u64,
-}
-
-impl Default for PackageRegistrySettings {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            port: default_package_registry_port(),
-            max_storage_gb: default_package_storage(),
-        }
-    }
-}
-
-impl PackageRegistrySettings {
-    /// Check if settings are at defaults
-    pub fn is_default(&self) -> bool {
-        !self.enabled
-    }
-}
-
 /// Global default values for VM configurations
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GlobalDefaults {
@@ -560,10 +522,6 @@ fn default_auth_proxy_port() -> u16 {
     3090
 }
 
-fn default_package_registry_port() -> u16 {
-    3080
-}
-
 fn default_postgres_port() -> u16 {
     5432
 }
@@ -630,10 +588,6 @@ fn default_health_check_interval() -> u32 {
 
 fn default_token_expiry() -> u32 {
     24
-}
-
-fn default_package_storage() -> u64 {
-    10
 }
 
 fn default_true() -> bool {

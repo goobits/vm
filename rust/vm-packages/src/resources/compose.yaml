@@ -27,9 +27,10 @@ services:
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
-        export PKG_SERVER_AUTH_TOKEN="$$(cat /run/secrets/registry_publish_token)"
+        export PKG_SERVER_READ_TOKEN="$$(cat /run/secrets/registry_read_token)"
+        export PKG_SERVER_PUBLISH_TOKEN="$$(cat /run/secrets/registry_publish_token)"
         exec pkg-server start --host 0.0.0.0 --port 3080 --data /data
-    secrets: [registry_publish_token]
+    secrets: [registry_read_token, registry_publish_token]
     expose: ["3080"]
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:3080/health"]
@@ -55,6 +56,8 @@ networks:
     name: vm-packages-egress
 
 secrets:
+  registry_read_token:
+    file: ./read-token
   registry_publish_token:
     file: ./publish-token
 

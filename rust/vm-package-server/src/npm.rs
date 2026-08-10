@@ -21,6 +21,49 @@ fn validate_package(package: &str) -> AppResult<String> {
         .map_err(|error| AppError::BadRequest(format!("Invalid npm package name: {error}")))
 }
 
+async fn merge_metadata(path: &Path, incoming: &Value) -> AppResult<Value> {
+    let incoming_versions = incoming["versions"].as_object().ok_or_else(|| {
+        AppError::BadRequest("npm publish payload must contain versions".to_string())
+    })?;
+    if incoming_versions.is_empty() {
+        return Err(AppError::BadRequest(
+            "npm publish payload must contain one version".to_string(),
+        ));
+    }
+    for version in incoming_versions.keys() {
+        validation::validate_version(version)
+            .map_err(|error| AppError::BadRequest(format!("Invalid npm version: {error}")))?;
+    }
+
+    let Ok(existing) = storage::read_file_string(path).await else {
+        return Ok(incoming.clone());
+    };
+    let mut merged: Value = serde_json::from_str(&existing)?;
+    let versions = merged["versions"].as_object_mut().ok_or_else(|| {
+        AppError::InternalError("stored npm metadata has no versions object".to_string())
+    })?;
+    for (version, metadata) in incoming_versions {
+        match versions.get(version) {
+            Some(existing) if existing == metadata => {}
+            Some(_) => {
+                return Err(AppError::Conflict(format!(
+                    "npm package version '{version}' is already published"
+                )))
+            }
+            None => {
+                versions.insert(version.clone(), metadata.clone());
+            }
+        }
+    }
+    if let Some(incoming_tags) = incoming["dist-tags"].as_object() {
+        let tags = merged["dist-tags"].as_object_mut().ok_or_else(|| {
+            AppError::InternalError("stored npm metadata has no dist-tags object".to_string())
+        })?;
+        tags.extend(incoming_tags.clone());
+    }
+    Ok(merged)
+}
+
 pub(crate) fn metadata_path(data_dir: &Path, package: &str) -> AppResult<PathBuf> {
     let package = validate_package(package)?;
     let file_name = format!("{}.json", package.replace('/', "%2F"));
@@ -69,9 +112,10 @@ pub(crate) fn package_name_from_metadata_file(file_name: &str) -> Option<String>
 pub async fn package_metadata(
     AxumPath(package): AxumPath<String>,
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
 ) -> AppResult<Json<Value>> {
     debug!(package = %package, "Incoming npm metadata request");
-    let host = &state.server_addr;
+    let host = state.public_base_url(&headers);
     let metadata_path = metadata_path(&state.data_dir, &package)?;
 
     info!(package = %package, "Fetching npm package metadata");
@@ -87,7 +131,7 @@ pub async fn package_metadata(
                         if let Some(tarball) = dist["tarball"].as_str() {
                             // Replace the host in the tarball URL
                             if let Some(path) = tarball.split("/npm/").nth(1) {
-                                dist["tarball"] = json!(format!("{}/npm/{}", host, path));
+                                dist["tarball"] = json!(format!("{host}/npm/{path}"));
                             }
                         }
                     }
@@ -105,7 +149,7 @@ pub async fn package_metadata(
             // Update tarball URLs to point to our server for transparent proxying
             let updated_metadata = state
                 .upstream_client
-                .update_npm_tarball_urls(upstream_metadata, host);
+                .update_npm_tarball_urls(upstream_metadata, &host);
             Ok(Json(updated_metadata))
         }
         Err(_) => {
@@ -241,8 +285,13 @@ pub async fn publish_package(
     headers: HeaderMap,
     Json(mut payload): Json<Value>,
 ) -> AppResult<Json<SuccessResponse>> {
-    crate::auth::validate_auth_headers(&state.config, &headers)?;
+    crate::auth::validate_publish_headers(&state.config, &headers)?;
     let metadata_path = metadata_path(&state.data_dir, &package)?;
+    if payload["name"].as_str() != Some(package.as_str()) {
+        return Err(AppError::BadRequest(
+            "npm route package and payload name must match".to_string(),
+        ));
+    }
 
     debug!(package = %package, "Incoming npm publish request");
     info!(package = %package, "Publishing npm package");
@@ -294,10 +343,6 @@ pub async fn publish_package(
             // Use centralized validation for decoded tarball size
             FileStreamValidator::validate_package_upload(&tarball_data, filename, "NPM")?;
 
-            // Save tarball
-            let tarball_path = state.data_dir.join("npm/tarballs").join(filename);
-            storage::save_file(tarball_path, &tarball_data).await?;
-
             // Calculate SHA1 hash for metadata
             let shasum = sha1_hash(&tarball_data);
 
@@ -316,8 +361,15 @@ pub async fn publish_package(
                 obj.remove("_attachments");
             }
 
+            let _publish_guard = storage::publish_guard().await;
+            let merged = merge_metadata(&metadata_path, &payload).await?;
+
+            // Commit the immutable artifact before its discoverable metadata.
+            let tarball_path = state.data_dir.join("npm/tarballs").join(filename);
+            storage::save_immutable(tarball_path, &tarball_data).await?;
+
             // Save metadata
-            let metadata_str = serde_json::to_string_pretty(&payload)?;
+            let metadata_str = serde_json::to_string_pretty(&merged)?;
             storage::save_file(metadata_path, metadata_str.as_bytes()).await?;
 
             info!(package = %package, filename = %filename, size = tarball_data.len(), "npm package published successfully");
@@ -640,11 +692,11 @@ mod tests {
         assert_eq!(response.status_code(), StatusCode::OK);
         let body: Value = response.json();
 
-        // Verify the tarball URL uses static server_addr now
+        // Reverse-proxied package URLs use the validated public request authority.
         let tarball_url = body["versions"]["1.0.0"]["dist"]["tarball"]
             .as_str()
             .expect("tarball URL should be a string");
-        assert!(tarball_url.contains("localhost:8080"));
+        assert!(tarball_url.contains("example.com:3000"));
     }
 
     #[tokio::test]

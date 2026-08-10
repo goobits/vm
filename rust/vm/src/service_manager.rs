@@ -29,8 +29,7 @@ use tracing::{debug, info, warn};
 use crate::error::VmError;
 use crate::services::{
     auth_proxy::AuthProxyService, docker_registry::DockerRegistryService, mongodb::MongodbService,
-    mysql::MysqlService, package_registry::PackageRegistryService, postgresql::PostgresqlService,
-    redis::RedisService, ManagedService,
+    mysql::MysqlService, postgresql::PostgresqlService, redis::RedisService, ManagedService,
 };
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::{vm_progress, vm_success, vm_warning};
@@ -79,10 +78,6 @@ impl ServiceManager {
         services.insert(
             "docker_registry".to_string(),
             Arc::new(DockerRegistryService),
-        );
-        services.insert(
-            "package_registry".to_string(),
-            Arc::new(PackageRegistryService::new(shutdown_handles.clone())),
         );
         services.insert("postgresql".to_string(), Arc::new(PostgresqlService));
         services.insert("redis".to_string(), Arc::new(RedisService));
@@ -140,7 +135,6 @@ impl ServiceManager {
                 "mysql" => global_config.services.mysql.enabled,
                 "auth_proxy" => global_config.services.auth_proxy.enabled,
                 "docker_registry" => global_config.services.docker_registry.enabled,
-                "package_registry" => global_config.services.package_registry.enabled,
                 _ => false,
             }
         };
@@ -151,9 +145,6 @@ impl ServiceManager {
         }
         if is_service_enabled("docker_registry") {
             services_to_start.push("docker_registry");
-        }
-        if is_service_enabled("package_registry") {
-            services_to_start.push("package_registry");
         }
         if is_service_enabled("postgresql") {
             services_to_start.push("postgresql");

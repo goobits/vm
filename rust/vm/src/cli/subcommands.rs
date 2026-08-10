@@ -247,49 +247,6 @@ pub enum DbSubcommand {
 }
 
 #[derive(Debug, Clone, Subcommand)]
-pub enum RegistrySubcommand {
-    /// Check registry server status
-    Status {
-        #[arg(long, short = 'y')]
-        yes: bool,
-    },
-    /// List packages in the registry
-    Ls {
-        #[arg(long, short = 'y')]
-        yes: bool,
-    },
-    /// Manage registry settings
-    Config {
-        #[command(subcommand)]
-        action: RegistryConfigAction,
-    },
-    /// Get shell configuration for using the registry
-    Use {
-        #[arg(long)]
-        shell: Option<String>,
-        #[arg(long, default_value = "3080")]
-        port: u16,
-    },
-    /// Start registry server
-    #[command(hide = true)]
-    Serve {
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
-        #[arg(long, default_value = "3080")]
-        port: u16,
-        #[arg(long)]
-        data: PathBuf,
-    },
-}
-
-#[derive(Debug, Clone, Subcommand)]
-pub enum RegistryConfigAction {
-    Show,
-    Get { key: String },
-    Set { key: String, value: String },
-}
-
-#[derive(Debug, Clone, Subcommand)]
 pub enum BaseSubcommand {
     /// Build a provider-native base artifact for a preset
     Build {
@@ -327,11 +284,6 @@ pub enum SystemSubcommand {
         keep_config: bool,
         #[arg(long, short = 'y')]
         yes: bool,
-    },
-    /// Manage package registries
-    Registry {
-        #[command(subcommand)]
-        command: RegistrySubcommand,
     },
     /// Build and validate provider-native base environments
     Base {

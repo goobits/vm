@@ -7,15 +7,56 @@ use std::time::Duration;
 
 use crate::cli::{PackageInfrastructureRuntime, PackagesSubcommand};
 use crate::error::{VmError, VmResult};
+use vm_config::config::VmConfig;
 use vm_core::{vm_println, vm_success};
 use vm_packages::{
-    ApplianceConfig, ApplianceState, InfrastructureRuntime, PackageInfrastructureClient,
-    RegistryEndpoints,
+    ApplianceConfig, ApplianceState, ClientEnvironment, InfrastructureRuntime,
+    PackageInfrastructureClient, RegistryEndpoints,
 };
 
 use files::ApplianceFiles;
 
 const HEALTH_ATTEMPTS: usize = 30;
+
+pub(super) fn apply_client_environment(config: &mut VmConfig) -> VmResult<()> {
+    let files = ApplianceFiles::discover()?;
+    let Some(state) = files.read_state()? else {
+        return Ok(());
+    };
+    let provider = config.provider.as_deref().unwrap_or("docker");
+    let client = client_environment(&state, files.read_token()?, provider)?;
+    apply_environment(config, &client);
+    Ok(())
+}
+
+fn apply_environment(config: &mut VmConfig, client: &ClientEnvironment) {
+    for (key, value) in client.variables() {
+        config.environment.insert(key, value);
+    }
+}
+
+fn client_environment(
+    state: &ApplianceState,
+    read_token: String,
+    provider: &str,
+) -> VmResult<ClientEnvironment> {
+    let gateway = match (state.runtime, provider) {
+        (InfrastructureRuntime::Docker, "tart") => {
+            return Err(VmError::validation(
+                "A Docker-hosted package appliance is not reachable from Tart guests",
+                Some("Run `vm packages up --runtime tart` so every environment can reach it"),
+            ));
+        }
+        (InfrastructureRuntime::Docker, "docker" | "podman") => format!(
+            "http://{}:{}",
+            vm_platform::platform::get_host_gateway(),
+            state.gateway_port
+        ),
+        _ => state.gateway_url.clone(),
+    };
+    let endpoints = RegistryEndpoints::new(gateway).map_err(VmError::from)?;
+    ClientEnvironment::new(endpoints, read_token).map_err(VmError::from)
+}
 
 pub(super) async fn handle(command: PackagesSubcommand) -> VmResult<()> {
     let files = ApplianceFiles::discover()?;
@@ -195,9 +236,10 @@ async fn gateway_is_healthy(gateway_url: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{default_registry_image, map_runtime};
+    use super::{apply_environment, client_environment, default_registry_image, map_runtime};
     use crate::cli::PackageInfrastructureRuntime;
-    use vm_packages::InfrastructureRuntime;
+    use vm_config::config::VmConfig;
+    use vm_packages::{ApplianceState, InfrastructureRuntime};
 
     #[test]
     fn explicit_runtime_mapping_is_stable() {
@@ -211,5 +253,51 @@ mod tests {
     #[test]
     fn default_image_is_versioned() {
         assert!(default_registry_image().ends_with(env!("CARGO_PKG_VERSION")));
+    }
+
+    #[test]
+    fn tart_appliance_has_one_provider_neutral_client_shape() {
+        let state = ApplianceState {
+            runtime: InfrastructureRuntime::Tart,
+            gateway_url: "http://192.0.2.8:3080".into(),
+            gateway_port: 3080,
+            registry_image: "registry/image:1".into(),
+            controller_version: "1".into(),
+        };
+        let docker = client_environment(&state, "read-token".into(), "docker").unwrap();
+        let tart = client_environment(&state, "read-token".into(), "tart").unwrap();
+        assert_eq!(docker.variables(), tart.variables());
+    }
+
+    #[test]
+    fn tart_guests_reject_a_loopback_only_docker_appliance() {
+        let state = ApplianceState {
+            runtime: InfrastructureRuntime::Docker,
+            gateway_url: "http://127.0.0.1:3080".into(),
+            gateway_port: 3080,
+            registry_image: "registry/image:1".into(),
+            controller_version: "1".into(),
+        };
+        assert!(client_environment(&state, "read-token".into(), "tart").is_err());
+    }
+
+    #[test]
+    fn managed_package_settings_override_project_redirects() {
+        let endpoints =
+            vm_packages::RegistryEndpoints::new("http://packages.internal:3080").unwrap();
+        let client = vm_packages::ClientEnvironment::new(endpoints, "read-token").unwrap();
+        let mut config = VmConfig::default();
+        config.environment.insert(
+            "NPM_CONFIG_REGISTRY".into(),
+            "https://untrusted.invalid".into(),
+        );
+
+        apply_environment(&mut config, &client);
+
+        assert!(config.environment["NPM_CONFIG_REGISTRY"].contains("packages.internal"));
+        assert_eq!(
+            config.environment["CARGO_SOURCE_CRATES_IO_REPLACE_WITH"],
+            "vm"
+        );
     }
 }

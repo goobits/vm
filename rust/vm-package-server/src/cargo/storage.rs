@@ -27,7 +27,7 @@ pub async fn save_crate_file(
 
     let crate_path = data_dir.join("cargo/crates").join(&filename);
 
-    storage::save_file(&crate_path, data).await?;
+    storage::save_immutable(&crate_path, data).await?;
 
     Ok(crate_path)
 }

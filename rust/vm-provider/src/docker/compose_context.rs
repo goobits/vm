@@ -67,26 +67,6 @@ fn append_service_environment(
     environment: &mut Vec<(String, String)>,
 ) {
     let host = vm_platform::platform::get_host_gateway();
-    if global.services.package_registry.enabled {
-        let port = global.services.package_registry.port;
-        environment.extend([
-            (
-                "NPM_CONFIG_REGISTRY".to_string(),
-                format!("http://{host}:{port}/npm/"),
-            ),
-            (
-                "PIP_INDEX_URL".to_string(),
-                format!("http://{host}:{port}/pypi/simple/"),
-            ),
-            (
-                "PIP_EXTRA_INDEX_URL".to_string(),
-                "https://pypi.org/simple/".to_string(),
-            ),
-            ("PIP_TRUSTED_HOST".to_string(), host.to_string()),
-            ("VM_CARGO_REGISTRY_HOST".to_string(), host.to_string()),
-            ("VM_CARGO_REGISTRY_PORT".to_string(), port.to_string()),
-        ]);
-    }
     if global.services.postgresql.enabled {
         let port = global.services.postgresql.port;
         let database = config

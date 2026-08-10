@@ -216,9 +216,10 @@ mod cargo_tests {
         let body: serde_json::Value = response.json();
 
         let dl_url = body["dl"].as_str().expect("dl should be a string");
-        assert!(dl_url.contains("localhost:8080")); // Uses static server_addr now
+        assert!(dl_url.contains("example.com:3000"));
         assert!(dl_url.contains("{crate}"));
         assert!(dl_url.contains("{version}"));
+        assert_eq!(body["auth-required"], false);
     }
 
     #[tokio::test]

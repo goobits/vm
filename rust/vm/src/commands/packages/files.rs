@@ -6,6 +6,7 @@ use vm_packages::{ApplianceConfig, ApplianceState, COMPOSE_YAML};
 
 const COMPOSE_FILE: &str = "compose.yaml";
 const ENVIRONMENT_FILE: &str = "environment.env";
+const READ_TOKEN_FILE: &str = "read-token";
 const PUBLISH_TOKEN_FILE: &str = "publish-token";
 const STATE_FILE: &str = "state.json";
 
@@ -40,8 +41,24 @@ impl ApplianceFiles {
         self.root.join(ENVIRONMENT_FILE)
     }
 
-    pub(super) fn token_path(&self) -> PathBuf {
+    pub(super) fn publish_token_path(&self) -> PathBuf {
         self.root.join(PUBLISH_TOKEN_FILE)
+    }
+
+    pub(super) fn read_token_path(&self) -> PathBuf {
+        self.root.join(READ_TOKEN_FILE)
+    }
+
+    pub(super) fn read_token(&self) -> VmResult<String> {
+        let path = self.read_token_path();
+        let token = fs::read_to_string(&path).map_err(|error| {
+            VmError::filesystem(
+                error,
+                path.display().to_string(),
+                "read package infrastructure client credential",
+            )
+        })?;
+        Ok(token.trim().to_string())
     }
 
     pub(super) fn tart_log_path(&self) -> PathBuf {
@@ -52,9 +69,11 @@ impl ApplianceFiles {
         self.ensure_root()?;
         write_private(&self.compose_path(), COMPOSE_YAML.as_bytes())?;
         write_private(&self.environment_path(), config.environment().as_bytes())?;
-        if !self.token_path().exists() {
-            let token = vm_core::secrets::generate_random_password(48);
-            write_private(&self.token_path(), token.as_bytes())?;
+        for path in [self.read_token_path(), self.publish_token_path()] {
+            if !path.exists() {
+                let token = vm_core::secrets::generate_random_password(48);
+                write_private(&path, token.as_bytes())?;
+            }
         }
         Ok(())
     }
@@ -140,11 +159,15 @@ mod tests {
 
         assert!(files.compose_path().is_file());
         assert!(files.environment_path().is_file());
-        assert!(files.token_path().is_file());
+        assert!(files.read_token_path().is_file());
+        assert!(files.publish_token_path().is_file());
         assert_eq!(
-            std::fs::read_to_string(files.token_path()).unwrap().len(),
+            std::fs::read_to_string(files.publish_token_path())
+                .unwrap()
+                .len(),
             48
         );
+        assert_eq!(files.read_token().unwrap().len(), 48);
         assert!(!files.root().join("npm").exists());
     }
 }

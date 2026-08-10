@@ -1213,7 +1213,6 @@ dependencies = [
  "vm-docker-registry",
  "vm-logging",
  "vm-messages",
- "vm-package-server",
  "vm-packages",
  "vm-platform",
  "vm-plugin",
@@ -3926,6 +3925,7 @@ dependencies = [
  "serde_json",
  "serde_yaml_ng",
  "tempfile",
+ "url",
 ]
 
 [[package]]

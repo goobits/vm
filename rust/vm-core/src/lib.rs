@@ -3,7 +3,6 @@ pub mod error;
 pub mod file_system;
 pub mod message;
 pub mod output_macros;
-pub mod project;
 pub mod prompts;
 pub mod secrets;
 pub mod system_check;

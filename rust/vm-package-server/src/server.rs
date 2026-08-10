@@ -12,8 +12,9 @@ use anyhow::Result;
 use axum::{
     extract::{Query, State},
     http::{header, HeaderMap, StatusCode},
+    middleware,
     response::{Html, IntoResponse, Response},
-    routing::{get, post, put},
+    routing::{get, put},
     Router,
 };
 use serde::Deserialize;
@@ -85,8 +86,15 @@ async fn run_server_internal(
     // Create required components for AppState
     let upstream_config = UpstreamConfig::default();
     let upstream_client = Arc::new(UpstreamClient::new(upstream_config)?);
-    let auth_token = std::env::var("PKG_SERVER_AUTH_TOKEN").ok();
-    let config = Arc::new(configure_security(&host, auth_token.as_deref())?);
+    let read_token = std::env::var("PKG_SERVER_READ_TOKEN").ok();
+    let publish_token = std::env::var("PKG_SERVER_PUBLISH_TOKEN")
+        .ok()
+        .or_else(|| std::env::var("PKG_SERVER_AUTH_TOKEN").ok());
+    let config = Arc::new(configure_security(
+        &host,
+        read_token.as_deref(),
+        publish_token.as_deref(),
+    )?);
     let server_addr = format!("http://{host}:{port}");
 
     let state = AppState {
@@ -98,40 +106,7 @@ async fn run_server_internal(
         pypi_registry: PypiRegistry::new(),
     };
 
-    let app = Router::new()
-        .route("/", get(index_handler))
-        .route("/status", get(status_handler))
-        .route("/api/status", get(status_handler))
-        .route("/setup.sh", get(setup_script_handler))
-        .route("/health", get(health_handler))
-        .route("/api/packages", get(list_packages_handler))
-        .route("/shutdown", post(shutdown_handler))
-        .route("/npm/{package}", put(npm::publish_package))
-        .route("/npm/{package}/-/{filename}", get(npm::download_tarball))
-        .route("/npm/{package}", get(npm::package_metadata))
-        .route("/pypi/simple/{package}/", get(pypi::package_index))
-        .route("/pypi/packages/{filename}", get(pypi::download_file))
-        .route("/pypi/legacy/api/pypi", get(pypi::simple_index))
-        .route("/pypi/legacy/api/pypi/{package}/", get(pypi::package_index))
-        .route(
-            "/pypi/legacy/api/pypi/{package}/{version}",
-            get(pypi::package_index),
-        )
-        .route("/pypi/upload", put(pypi::upload_package))
-        .route("/cargo/api/v1/crates/new", put(cargo::publish_crate))
-        .route(
-            "/cargo/api/v1/crates/{crate}/{version}/download",
-            get(cargo::download_crate),
-        )
-        .route(
-            "/cargo/api/v1/crates/{crate}",
-            get(cargo::get_crate_versions_api),
-        )
-        .route(
-            "/cargo/api/v1/crates/{crate}/{version}",
-            get(cargo::download_crate),
-        )
-        .with_state(Arc::new(state));
+    let app = app_router(state);
 
     let addr: SocketAddr = format!("{host}:{port}").parse().map_err(|e| {
         error!(host = %host, port = %port, error = %e, "Invalid socket address");
@@ -144,58 +119,94 @@ async fn run_server_internal(
     })?;
 
     info!("✅ Server is running on http://{}:{}", host, port);
-    info!("🌐 Server is accessible at:");
-    info!("   Local:      http://localhost:{}", port);
-    info!("   Network:    http://<your-ip>:{}", port);
-    info!("");
-    info!("🔧 Configure other machines:");
-    info!("   curl http://<your-ip>:{}/setup.sh | bash", port);
-    info!("");
-    info!("📋 Quick commands:");
-    info!("   Status:     curl http://localhost:{}/status", port);
-    info!("   Health:     curl http://localhost:{}/health", port);
-    info!("   Setup:      curl http://localhost:{}/setup.sh", port);
     info!("Server listening on {}", addr);
 
     match shutdown_receiver {
         Some(shutdown_rx) => {
-            // Use graceful shutdown when shutdown receiver is provided
             axum::serve(listener, app)
                 .with_graceful_shutdown(async {
                     shutdown_rx.await.ok();
                     info!("Received shutdown signal, stopping server gracefully");
                 })
                 .await
-                .map_err(|e| {
-                    error!(error = %e, "Server error");
-                    anyhow::anyhow!("Server error: {e}")
-                })?;
+                .map_err(|e| anyhow::anyhow!("Server error: {e}"))?;
         }
         None => {
-            // Original behavior - run indefinitely
-            axum::serve(listener, app).await.map_err(|e| {
-                error!(error = %e, "Server error");
-                anyhow::anyhow!("Server error: {e}")
-            })?;
+            axum::serve(listener, app)
+                .await
+                .map_err(|e| anyhow::anyhow!("Server error: {e}"))?;
         }
     }
 
     Ok(())
 }
 
-fn configure_security(host: &str, auth_token: Option<&str>) -> Result<Config> {
-    let mut config = Config::default();
-    let auth_token = auth_token.filter(|token| !token.trim().is_empty());
+fn app_router(state: AppState) -> Router {
+    let config = state.config.clone();
+    let reads = Router::new()
+        .route("/", get(index_handler))
+        .route("/status", get(status_handler))
+        .route("/api/status", get(status_handler))
+        .route("/setup.sh", get(setup_script_handler))
+        .route("/api/packages", get(list_packages_handler))
+        .route("/npm/{package}/-/{filename}", get(npm::download_tarball))
+        .route("/npm/{package}", get(npm::package_metadata))
+        .route("/pypi/simple/", get(pypi::simple_index))
+        .route("/pypi/simple/{package}/", get(pypi::package_index))
+        .route("/pypi/packages/{filename}", get(pypi::download_file))
+        .route("/pypi/legacy/api/pypi", get(pypi::simple_index))
+        .route("/pypi/legacy/api/pypi/{package}/", get(pypi::package_index))
+        .route(
+            "/pypi/legacy/api/pypi/{package}/{version}",
+            get(pypi::package_index),
+        )
+        .route("/cargo/index/{*path}", get(cargo::sparse_index))
+        .route(
+            "/cargo/api/v1/crates/{crate}/{version}/download",
+            get(cargo::download_crate),
+        )
+        .route(
+            "/cargo/api/v1/crates/{crate}",
+            get(cargo::get_crate_versions_api),
+        )
+        .route(
+            "/cargo/api/v1/crates/{crate}/{version}",
+            get(cargo::download_crate),
+        )
+        .route_layer(middleware::from_fn_with_state(
+            config.clone(),
+            crate::auth::read_auth_middleware,
+        ));
+    let writes = Router::new()
+        .route("/npm/{package}", put(npm::publish_package))
+        .route("/pypi/upload", put(pypi::upload_package))
+        .route("/cargo/api/v1/crates/new", put(cargo::publish_crate));
+    Router::new()
+        .route("/health", get(health_handler))
+        .merge(reads)
+        .merge(writes)
+        .with_state(Arc::new(state))
+}
 
-    if !is_loopback_host(host) && auth_token.is_none() {
+fn configure_security(
+    host: &str,
+    read_token: Option<&str>,
+    publish_token: Option<&str>,
+) -> Result<Config> {
+    let mut config = Config::default();
+    let read_token = read_token.filter(|token| !token.trim().is_empty());
+    let publish_token = publish_token.filter(|token| !token.trim().is_empty());
+
+    if !is_loopback_host(host) && (read_token.is_none() || publish_token.is_none()) {
         anyhow::bail!(
-            "Refusing to bind package server to non-loopback host '{host}' without PKG_SERVER_AUTH_TOKEN"
+            "Refusing to bind package server to non-loopback host '{host}' without separate read and publish tokens"
         );
     }
 
-    if let Some(token) = auth_token {
+    if read_token.is_some() || publish_token.is_some() {
         config.security.require_authentication = true;
-        config.security.api_keys = vec![token.to_string()];
+        config.security.read_keys = read_token.map(str::to_string).into_iter().collect();
+        config.security.publish_keys = publish_token.map(str::to_string).into_iter().collect();
     }
 
     Ok(config)
@@ -211,20 +222,71 @@ fn is_loopback_host(host: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum_test::TestServer;
 
     #[test]
     fn loopback_bind_does_not_require_authentication() {
-        let config = configure_security("127.0.0.1", None).unwrap();
+        let config = configure_security("127.0.0.1", None, None).unwrap();
         assert!(!config.security.require_authentication);
     }
 
     #[test]
     fn remote_bind_requires_and_enables_authentication() {
-        assert!(configure_security("0.0.0.0", None).is_err());
+        assert!(configure_security("0.0.0.0", None, None).is_err());
+        assert!(configure_security("0.0.0.0", Some("read"), None).is_err());
 
-        let config = configure_security("0.0.0.0", Some("secret-token")).unwrap();
+        let config = configure_security("0.0.0.0", Some("read"), Some("publish")).unwrap();
         assert!(config.security.require_authentication);
-        assert_eq!(config.security.api_keys, ["secret-token"]);
+        assert_eq!(config.security.read_keys, ["read"]);
+        assert_eq!(config.security.publish_keys, ["publish"]);
+    }
+
+    #[tokio::test]
+    async fn router_separates_health_read_and_publish_access() {
+        let directory = tempfile::tempdir().unwrap();
+        let config =
+            Arc::new(configure_security("0.0.0.0", Some("read"), Some("publish")).unwrap());
+        let state = AppState {
+            data_dir: directory.path().to_path_buf(),
+            server_addr: "http://127.0.0.1:3080".into(),
+            upstream_client: Arc::new(UpstreamClient::disabled()),
+            config,
+            npm_registry: NpmRegistry::new(),
+            pypi_registry: PypiRegistry::new(),
+        };
+        let server = TestServer::new(app_router(state));
+
+        assert_eq!(server.get("/health").await.status_code(), StatusCode::OK);
+        assert_eq!(
+            server.get("/api/status").await.status_code(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            server
+                .get("/api/status")
+                .add_header(header::AUTHORIZATION, "Bearer read")
+                .await
+                .status_code(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            server
+                .put("/npm/example")
+                .add_header(header::AUTHORIZATION, "Bearer read")
+                .json(&serde_json::json!({"name": "example"}))
+                .await
+                .status_code(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            server
+                .put("/npm/example")
+                .add_header(header::AUTHORIZATION, "Bearer publish")
+                .json(&serde_json::json!({"name": "example"}))
+                .await
+                .status_code(),
+            StatusCode::BAD_REQUEST
+        );
     }
 }
 
@@ -326,21 +388,6 @@ async fn list_packages_handler(State(state): State<Arc<AppState>>) -> impl IntoR
             (StatusCode::INTERNAL_SERVER_ERROR, headers, error_response)
         }
     }
-}
-
-async fn shutdown_handler() -> impl IntoResponse {
-    info!("Shutdown endpoint called");
-    let response = r#"{"status": "shutdown_initiated"}"#;
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        header::CONTENT_TYPE,
-        "application/json"
-            .parse()
-            .expect("static header value is valid"),
-    );
-
-    (StatusCode::OK, headers, response)
 }
 
 #[derive(Deserialize)]

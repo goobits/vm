@@ -39,7 +39,8 @@ fn handle_validate_command(config_path: Option<PathBuf>, profile: Option<String>
 /// Handle the `vm config show` command.
 fn handle_show_command(config_path: Option<PathBuf>, profile: Option<String>) -> VmResult<()> {
     let app_config = load_selected_config(config_path, profile)?;
-    let config = app_config.vm;
+    let mut config = app_config.vm;
+    super::packages::apply_client_environment(&mut config)?;
 
     if let Some(source) = &config.source_path {
         vm_println!("Config source: {}", source.display());

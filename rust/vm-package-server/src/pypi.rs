@@ -107,8 +107,6 @@ pub async fn package_index(
     info!(package = %package, "Generating PyPI package index");
     let normalized_package = normalize_pypi_name(&package);
     let pypi_dir = state.data_dir.join("pypi/packages");
-    let host = &state.server_addr;
-
     let mut files = Vec::new();
 
     for path in list_package_files(&pypi_dir).await? {
@@ -162,7 +160,7 @@ pub async fn package_index(
 
     for (filename, hash) in files {
         html.push_str(&format!(
-            r#"    <a href="{host}/pypi/packages/{filename}#sha256={hash}">{filename}</a><br/>"#
+            r#"    <a href="../../packages/{filename}#sha256={hash}">{filename}</a><br/>"#
         ));
     }
 
@@ -257,7 +255,7 @@ pub async fn upload_package(
     headers: HeaderMap,
     mut multipart: Multipart,
 ) -> AppResult<axum::Json<SuccessResponse>> {
-    crate::auth::validate_auth_headers(&state.config, &headers)?;
+    crate::auth::validate_publish_headers(&state.config, &headers)?;
 
     info!("Processing PyPI package upload");
     let pypi_dir = state.data_dir.join("pypi/packages");
@@ -316,10 +314,11 @@ pub async fn upload_package(
 
             // Calculate hash once during upload
             let hash = sha256_hash(&data);
+            let _publish_guard = storage::publish_guard().await;
 
-            // Save the file using storage utility
+            // Immutable release files accept exact retries but never replacement.
             let file_path = pypi_dir.join(&filename);
-            storage::save_file(&file_path, &data).await?;
+            storage::save_immutable(&file_path, &data).await?;
 
             // Save the hash to a .meta file
             let meta_path = file_path.with_extension(format!(
@@ -329,7 +328,7 @@ pub async fn upload_package(
                     .and_then(|ext| ext.to_str())
                     .unwrap_or("")
             ));
-            storage::save_file(meta_path, hash.as_bytes()).await?;
+            storage::save_immutable(meta_path, hash.as_bytes()).await?;
 
             info!(filename = %filename, size = data.len(), "PyPI package uploaded successfully");
             return Ok(axum::Json(SuccessResponse {

@@ -114,21 +114,3 @@ fn every_public_command_has_clean_help() {
         assert!(stderr.is_empty(), "{command}: {stderr}");
     }
 }
-
-#[test]
-fn registry_config_set_persists_the_global_value() {
-    let temp_dir = TempDir::new().unwrap();
-    let output = run(
-        &temp_dir,
-        &["system", "registry", "config", "set", "port", "4080"],
-    );
-    let stderr = String::from_utf8(output.stderr).unwrap();
-
-    assert!(output.status.success(), "{stderr}");
-    let contents = fs::read_to_string(temp_dir.path().join(".vm/config.yaml")).unwrap();
-    let config: serde_yaml_ng::Value = serde_yaml_ng::from_str(&contents).unwrap();
-    assert_eq!(
-        config["services"]["package_registry"]["port"].as_u64(),
-        Some(4080)
-    );
-}

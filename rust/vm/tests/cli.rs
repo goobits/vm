@@ -4,5 +4,4 @@
 #[path = "cli"]
 mod cli {
     pub mod config_commands;
-    pub mod registry_commands;
 }

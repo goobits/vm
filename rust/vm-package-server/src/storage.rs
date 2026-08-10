@@ -2,7 +2,54 @@ use crate::error::{AppError, AppResult};
 use crate::validation_utils::FileStreamValidator;
 use std::path::Path;
 use tokio::fs;
+use tokio::io::AsyncWriteExt;
+use tokio::sync::{Mutex, MutexGuard};
 use tracing::{debug, info, warn};
+
+static PUBLISH_LOCK: Mutex<()> = Mutex::const_new(());
+
+/// Serialize release commits so multi-file registry metadata remains deterministic.
+pub async fn publish_guard() -> MutexGuard<'static, ()> {
+    PUBLISH_LOCK.lock().await
+}
+
+/// Create an immutable artifact, accepting an exact retry and rejecting replacement.
+pub async fn save_immutable<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C) -> AppResult<()> {
+    let path = path.as_ref();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).await?;
+    }
+    let content = content.as_ref();
+    let opened = fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(path)
+        .await;
+    match opened {
+        Ok(mut file) => {
+            if let Err(error) = file.write_all(content).await {
+                drop(file);
+                let _ = fs::remove_file(path).await;
+                return Err(error.into());
+            }
+            file.sync_all().await?;
+            Ok(())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            if fs::read(path).await? == content {
+                Ok(())
+            } else {
+                Err(AppError::Conflict(format!(
+                    "immutable artifact '{}' already exists with different content",
+                    path.file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("package")
+                )))
+            }
+        }
+        Err(error) => Err(error.into()),
+    }
+}
 
 /// Save file content to the specified path atomically
 pub async fn save_file<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C) -> AppResult<()> {
@@ -14,11 +61,15 @@ pub async fn save_file<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C) -> A
         debug!(parent = %parent.display(), "Created parent directory");
     }
 
-    let content = content.as_ref();
-    fs::write(path, content).await?;
+    let content = content.as_ref().to_vec();
+    let content_len = content.len();
+    let owned_path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || vm_core::file_system::atomic_write(&owned_path, &content))
+        .await
+        .map_err(|error| AppError::InternalError(format!("atomic write task failed: {error}")))??;
     info!(
         path = %path.display(),
-        size = content.len(),
+        size = content_len,
         "File saved successfully"
     );
     Ok(())
@@ -88,11 +139,29 @@ pub async fn append_to_file<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C)
     new_content.push_str(content_str);
     new_content.push('\n');
 
-    fs::write(path, new_content).await?;
+    save_file(path, new_content.as_bytes()).await?;
     info!(
         path = %path.display(),
         appended_size = content.len(),
         "Content appended to file successfully"
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::save_immutable;
+
+    #[tokio::test]
+    async fn immutable_artifacts_allow_exact_retries_only() {
+        let directory = tempfile::tempdir().unwrap();
+        let artifact = directory.path().join("auth-1.0.0.tgz");
+
+        save_immutable(&artifact, b"first").await.unwrap();
+        save_immutable(&artifact, b"first").await.unwrap();
+        let error = save_immutable(&artifact, b"changed").await.unwrap_err();
+
+        assert!(matches!(error, crate::AppError::Conflict(_)));
+        assert_eq!(tokio::fs::read(artifact).await.unwrap(), b"first");
+    }
 }

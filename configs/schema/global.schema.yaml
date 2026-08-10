@@ -20,8 +20,6 @@ properties:
         $ref: "#/definitions/DockerRegistrySettings"
       auth_proxy:
         $ref: "#/definitions/AuthProxySettings"
-      package_registry:
-        $ref: "#/definitions/PackageRegistrySettings"
     additionalProperties: false
 
   defaults:
@@ -161,28 +159,6 @@ definitions:
         description: "Token expiry in hours"
     additionalProperties: false
 
-  PackageRegistrySettings:
-    type: object
-    description: "Package registry configuration"
-    properties:
-      enabled:
-        type: boolean
-        default: false
-        description: "Whether the package registry is enabled"
-      port:
-        type: integer
-        minimum: 1024
-        maximum: 65535
-        default: 3080
-        description: "Port for the package registry"
-      max_storage_gb:
-        type: integer
-        minimum: 1
-        maximum: 1024
-        default: 10
-        description: "Maximum storage size in GB"
-    additionalProperties: false
-
   TerminalConfig:
     type: object
     description: "Terminal configuration"
@@ -214,10 +190,6 @@ examples:
         enabled: true
         port: 3090
         token_expiry_hours: 48
-      package_registry:
-        enabled: true
-        port: 3080
-        max_storage_gb: 15
     defaults:
       provider: docker
       memory: 4096

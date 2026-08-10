@@ -6,6 +6,7 @@
 use crate::{storage, validation, AppError, AppResult, AppState};
 use axum::{
     extract::{Path as AxumPath, State},
+    http::HeaderMap,
     response::{IntoResponse, Response},
 };
 use serde_json::json;
@@ -81,6 +82,23 @@ pub async fn update_crate_index(
     let index_file_path = data_dir.join("cargo/index").join(&index_path_str);
     debug!(index_path = %index_file_path.display(), "Updating Cargo index");
 
+    if let Ok(existing) = storage::read_file_string(&index_file_path).await {
+        for entry in existing
+            .lines()
+            .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        {
+            if entry["vers"].as_str() == Some(metadata.version.as_str()) {
+                if entry["cksum"].as_str() == Some(checksum) {
+                    return Ok(());
+                }
+                return Err(AppError::Conflict(format!(
+                    "crate '{}@{}' is already published",
+                    metadata.name, metadata.version
+                )));
+            }
+        }
+    }
+
     // Append to index file using storage utility
     let index_line = serde_json::to_string(&index_entry)?;
     storage::append_to_file(index_file_path, &index_line).await?;
@@ -150,10 +168,11 @@ pub async fn index_file(
 pub async fn sparse_index(
     AxumPath(path): AxumPath<String>,
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
 ) -> AppResult<Response> {
     // Handle config.json separately
     if path == "config.json" {
-        return super::config(State(state))
+        return super::config(State(state), headers)
             .await
             .map(|json| json.into_response());
     }

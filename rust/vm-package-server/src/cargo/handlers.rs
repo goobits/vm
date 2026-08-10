@@ -133,13 +133,17 @@ pub async fn get_recent_crates(state: &AppState, limit: usize) -> AppResult<Vec<
 }
 
 /// Returns Cargo registry configuration required for client setup.
-pub async fn config(State(state): State<Arc<AppState>>) -> AppResult<Json<Value>> {
+pub async fn config(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> AppResult<Json<Value>> {
     debug!("Incoming Cargo config request");
-    let host = &state.server_addr;
+    let host = state.public_base_url(&headers);
 
     Ok(Json(json!({
         "dl": format!("{}/cargo/api/v1/crates/{{crate}}/{{version}}/download", host),
-        "api": format!("{}/cargo", host)
+        "api": format!("{}/cargo", host),
+        "auth-required": state.config.security.require_authentication
     })))
 }
 
@@ -199,13 +203,14 @@ pub async fn publish_crate(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> AppResult<Json<SuccessResponse>> {
-    crate::auth::validate_auth_headers(&state.config, &headers)?;
+    crate::auth::validate_publish_headers(&state.config, &headers)?;
 
     debug!(payload_size = body.len(), "Incoming Cargo publish request");
     info!("Processing Cargo crate publish");
 
     // Parse and validate the upload payload
     let (metadata, crate_data) = parse_crate_upload(body)?;
+    let _publish_guard = storage::publish_guard().await;
 
     info!(crate_name = %metadata.name, version = %metadata.version, "Publishing Cargo crate");
 

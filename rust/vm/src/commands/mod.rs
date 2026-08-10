@@ -22,7 +22,6 @@ mod maintenance;
 mod packages;
 pub mod plugin;
 pub mod plugin_new;
-pub mod registry;
 mod run;
 pub mod secrets;
 mod state;

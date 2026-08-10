@@ -72,6 +72,7 @@ pub enum ErrorCode {
     UploadError,     // For file upload issues
     InternalError,   // For server-side errors
     AuthError,       // For authentication issues
+    Conflict,        // For immutable release conflicts
 }
 
 impl ErrorCode {
@@ -82,6 +83,7 @@ impl ErrorCode {
             ErrorCode::UploadError => "upload_error",
             ErrorCode::InternalError => "internal_error",
             ErrorCode::AuthError => "auth_error",
+            ErrorCode::Conflict => "conflict",
         }
     }
 
@@ -92,6 +94,7 @@ impl ErrorCode {
             ErrorCode::UploadError => StatusCode::PAYLOAD_TOO_LARGE,
             ErrorCode::InternalError => StatusCode::INTERNAL_SERVER_ERROR,
             ErrorCode::AuthError => StatusCode::UNAUTHORIZED,
+            ErrorCode::Conflict => StatusCode::CONFLICT,
         }
     }
 }
@@ -129,6 +132,9 @@ pub enum AppError {
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
 
+    #[error("Conflict: {0}")]
+    Conflict(String),
+
     #[error("Not implemented: {0}")]
     NotImplemented(String),
 
@@ -149,6 +155,7 @@ impl AppError {
             AppError::UploadError(_) => ErrorCode::UploadError,
             AppError::InternalError(_) => ErrorCode::InternalError,
             AppError::Unauthorized(_) => ErrorCode::AuthError,
+            AppError::Conflict(_) => ErrorCode::Conflict,
             AppError::NotImplemented(_) => ErrorCode::InternalError,
             AppError::Io(_) | AppError::Anyhow(_) => ErrorCode::InternalError,
         }
