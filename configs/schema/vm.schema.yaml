@@ -49,6 +49,13 @@ properties:
         type: string
         default: /workspace
         description: Path where project files are mounted inside the VM/container
+      workspace_access:
+        type: string
+        enum:
+          - read_only
+          - read_write
+        default: read_write
+        description: Access granted to the default project-directory mount
       env_template_path:
         type: string
         description: Path to .env template file (relative to project root). If set, copies to .env on provision.
@@ -56,6 +63,29 @@ properties:
         type: string
         default: "*backup*.sql.gz"
         description: Glob pattern for database backup files to auto-restore on provision
+  mounts:
+    type: array
+    description: Additional host directories mounted into the VM or container
+    items:
+      type: object
+      required:
+        - source
+        - target
+      properties:
+        source:
+          type: string
+          description: Host directory, relative to vm.yaml or absolute
+        target:
+          type: string
+          pattern: ^/.*
+          description: Absolute path inside the guest
+        access:
+          type: string
+          enum:
+            - read_only
+            - read_write
+          default: read_write
+      additionalProperties: false
   vm:
     type: object
     description: Virtual machine/container settings

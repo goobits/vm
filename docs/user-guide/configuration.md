@@ -93,6 +93,30 @@ Colima is not part of this path.
 No custom network is required. Vibe presets do not add `spacebase`; configure
 `networking` only when the project explicitly needs a named network.
 
+## Project Mounts
+
+The directory containing `vm.yaml` is mounted read-write at
+`project.workspace_path` by default. Change only its access with
+`workspace_access`, and add any number of explicit mounts at the top level:
+
+```yaml
+project:
+  workspace_path: /workspace
+  workspace_access: read_only
+
+mounts:
+  - source: ../shared-auth
+    target: /packages/auth
+    access: read_only
+  - source: ../shared-ui
+    target: /packages/ui
+    access: read_write
+```
+
+Relative sources resolve from `vm.yaml`. Docker and Tart enforce the same access
+values. Read-only Node workspaces keep `node_modules` writable in guest-managed
+storage; language caches and Rust build output remain outside the source mount.
+
 ## Container Storage And Bootstrap
 
 Container projects can move high-churn data off host binds and the writable

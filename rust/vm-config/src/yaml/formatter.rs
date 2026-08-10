@@ -22,6 +22,7 @@ const FIELD_ORDER: &[&str] = &[
     // 4. VM Resources
     "vm",
     "storage",
+    "mounts",
     // 5. Runtime Versions
     "versions",
     // 6. Project Bootstrap

@@ -6,6 +6,7 @@ name: {{ project_name }}
 services:
   {{ project_name }}-dev:
     container_name: {{ project_name }}-dev
+    working_dir: {{ workspace_path }}
     build:
       context: {{ build_context_dir }}
       dockerfile: Dockerfile.generated
@@ -31,7 +32,7 @@ services:
       - postgres
     {%- endif %}
     volumes:
-      - {{ project_dir }}:/workspace:rw
+      - {{ project_dir }}:{{ workspace_path }}:{{ workspace_access }}
       {% if ssh_auth_sock %}
       # SSH agent forwarding (read-only for security)
       - {{ ssh_auth_sock }}:/ssh-agent:ro
@@ -48,12 +49,12 @@ services:
       {% endif %}
       {% if worktrees_base_dir %}
       # Git worktrees base directory (mounted at identical absolute path)
-      - {{ worktrees_base_dir }}:{{ worktrees_base_dir }}:rw
+      - {{ worktrees_base_dir }}:{{ worktrees_base_dir }}:{{ workspace_access }}
       {% endif %}
       {% if worktrees %}
       # Git worktrees (fallback: individual worktree mounts)
       {% for worktree in worktrees %}
-      - {{ worktree.0 }}:/workspace/{{ worktree.1 }}:rw
+      - {{ worktree.0 }}:{{ workspace_path }}/{{ worktree.1 }}:{{ workspace_access }}
       {% endfor %}
       {% endif %}
       # Shell history persistence (survives container recreation)

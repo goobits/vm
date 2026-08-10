@@ -43,7 +43,7 @@ impl TartProvider {
             sync_dir.to_string(),
             self.tart_home(),
         )
-        .ensure_workspace_mount()
+        .ensure_workspace_mount(&self.config)
         .map_err(|e| {
             VmError::Provider(format!(
                 "Tart workspace mount is not ready at '{sync_dir}'. This VM may be partially provisioned or was started without the workspace share. Recreate it with `vm remove <name> --force && vm run mac as <name>`. Mount error: {e}"

@@ -1,16 +1,8 @@
-use super::{provider::tart_run_log_path, provisioner::TartProvisioner, TartProvider};
+use super::{mounts::TartDirShare, provider::tart_run_log_path, TartProvider};
 use crate::{TempProvider, TempVmState, VmError};
-use std::path::PathBuf;
 use std::time::Duration;
 use tracing::info;
 use vm_core::error::Result;
-
-#[derive(Clone, Debug)]
-pub(super) struct TartDirShare {
-    pub(super) tag: String,
-    pub(super) host_path: PathBuf,
-    pub(super) guest_path: Option<PathBuf>,
-}
 
 impl TartProvider {
     fn temp_dir_shares(state: &TempVmState) -> Vec<TartDirShare> {
@@ -18,52 +10,8 @@ impl TartProvider {
             .mounts
             .iter()
             .enumerate()
-            .map(|(index, mount)| TartDirShare {
-                tag: format!("vmtemp{index}"),
-                host_path: mount.source.clone(),
-                guest_path: Some(mount.target.clone()),
-            })
+            .map(|(index, mount)| TartDirShare::from_mount(format!("vmtemp{index}"), mount.clone()))
             .collect()
-    }
-
-    fn persist_tart_dir_shares(&self, vm_name: &str, shares: &[TartDirShare]) -> Result<()> {
-        for share in shares {
-            let dir_arg = format!("{}:tag={}", share.host_path.display(), share.tag);
-            info!("Adding Tart directory share: {}", dir_arg);
-            self.tart_expr(&["set", vm_name, "--dir", &dir_arg])
-                .run()
-                .map_err(|e| {
-                    VmError::Provider(format!("Failed to add Tart directory share: {}", e))
-                })?;
-        }
-
-        Ok(())
-    }
-
-    pub(super) fn mount_tart_dir_shares_in_guest(
-        &self,
-        vm_name: &str,
-        shares: &[TartDirShare],
-    ) -> Result<()> {
-        let mut commands = Vec::new();
-        for share in shares {
-            let Some(guest_path) = share.guest_path.as_ref() else {
-                continue;
-            };
-            commands.push(TartProvisioner::virtiofs_mount_command(
-                &share.tag,
-                &guest_path.display().to_string(),
-            ));
-        }
-
-        if commands.is_empty() {
-            return Ok(());
-        }
-
-        self.tart_expr(&["exec", vm_name, "sh", "-c", &commands.join("\n")])
-            .run()
-            .map(|_| ())
-            .map_err(|e| VmError::Provider(format!("Failed to mount temp directories: {}", e)))
     }
 }
 

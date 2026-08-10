@@ -6,7 +6,7 @@ use crate::{
 };
 use duct::cmd;
 use tracing::info;
-use vm_config::config::{BoxSpec, VmConfig};
+use vm_config::config::{BoxSpec, MountAccess, VmConfig};
 use vm_core::error::{Result, VmError};
 
 mod ai_tools;
@@ -50,10 +50,7 @@ impl TartProvisioner {
 
         // 2. Mount the workspace and repair guest state in one SSH batch.
         self.ssh_exec_batch(vec![
-            (
-                "workspace mount",
-                Self::virtiofs_mount_command("workspace", &self.project_dir),
-            ),
+            ("workspace mount", self.workspace_mount_command(config)),
             ("guest home repair", self.home_state_repair_command()),
         ])?;
 
@@ -180,12 +177,47 @@ fi"#
         )
     }
 
-    pub(crate) fn ensure_workspace_mount(&self) -> Result<()> {
-        self.ssh_exec(&Self::virtiofs_mount_command(
-            "workspace",
-            &self.project_dir,
-        ))
-        .map(|_| ())
+    fn workspace_mount_command(&self, config: &VmConfig) -> String {
+        let read_only = config
+            .project
+            .as_ref()
+            .is_some_and(|project| project.workspace_access == MountAccess::ReadOnly);
+        if !read_only || self.is_macos_guest(config) {
+            return Self::virtiofs_mount_command("workspace", &self.project_dir);
+        }
+
+        let source = "/mnt/vm-workspace-source";
+        let source_mount = Self::virtiofs_mount_command("workspace", source);
+        let target = quote_posix_argument(&self.project_dir);
+        format!(
+            r#"{source_mount}
+target={target}
+state="$HOME/.local/share/vm/workspace-overlay"
+mkdir -p "$state/upper" "$state/work"
+if ! is_mounted "$target"; then
+  if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
+  $SUDO mkdir -p "$target"
+  $SUDO mount -t overlay vm-workspace \
+    -o "lowerdir={source},upperdir=$state/upper,workdir=$state/work" "$target"
+fi
+if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
+$SUDO mkdir -p "$target/node_modules"
+$SUDO chown "$(id -u):$(id -g)" "$target/node_modules"
+find {source} -mindepth 1 -maxdepth 1 ! -name node_modules -print0 |
+while IFS= read -r -d '' entry; do
+  destination="$target/${{entry##*/}}"
+  if ! is_mounted "$destination"; then
+    $SUDO mount --bind "$entry" "$destination"
+    $SUDO mount -o remount,bind,ro "$destination"
+  fi
+done
+$SUDO chmod 0555 "$target""#
+        )
+    }
+
+    pub(crate) fn ensure_workspace_mount(&self, config: &VmConfig) -> Result<()> {
+        self.ssh_exec(&self.workspace_mount_command(config))
+            .map(|_| ())
     }
 
     fn ssh_exec(&self, command: &str) -> Result<String> {
@@ -492,6 +524,27 @@ mod tests {
         let home_command = TartProvisioner::virtiofs_mount_command("config", "$HOME/.config");
         assert!(home_command.contains("target=\"$HOME\"/'.config';"));
         assert!(!home_command.contains("target='$HOME"));
+    }
+
+    #[test]
+    fn read_only_linux_workspace_uses_guest_dependency_overlay() {
+        let provisioner = TartProvisioner::new("demo".to_string(), "/workspace".to_string(), None);
+        let config: VmConfig = serde_yaml_ng::from_str(
+            "provider: tart\nos: linux\nproject:\n  name: demo\n  workspace_access: read_only\n",
+        )
+        .unwrap();
+
+        let command = provisioner.workspace_mount_command(&config);
+
+        assert!(command.contains("lowerdir=/mnt/vm-workspace-source"));
+        assert!(command.contains("$target/node_modules"));
+        assert!(command.contains("remount,bind,ro"));
+        #[cfg(unix)]
+        assert!(std::process::Command::new("/bin/bash")
+            .args(["-n", "-c", &command])
+            .status()
+            .unwrap()
+            .success());
     }
 
     #[test]

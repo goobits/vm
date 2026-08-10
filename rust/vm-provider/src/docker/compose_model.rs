@@ -1,5 +1,5 @@
 use serde::Serialize;
-use vm_config::config::{VmConfig, VolumeRetention, VolumeScope};
+use vm_config::config::{MountAccess, VmConfig, VolumeRetention, VolumeScope};
 use vm_core::error::Result;
 
 use crate::resource_limits::ResolvedResources;
@@ -53,7 +53,7 @@ impl RenderedStorage {
         instance_project: &str,
         tool_cache_target: &str,
     ) -> Self {
-        let mounts = config
+        let mut mounts = config
             .storage
             .volumes
             .iter()
@@ -74,6 +74,29 @@ impl RenderedStorage {
                 }
             })
             .collect::<Vec<_>>();
+        let workspace = config
+            .project
+            .as_ref()
+            .and_then(|project| project.workspace_path.as_deref())
+            .unwrap_or("/workspace");
+        let workspace_read_only = config
+            .project
+            .as_ref()
+            .is_some_and(|project| project.workspace_access == MountAccess::ReadOnly);
+        let dependency_target = format!("{}/node_modules", workspace.trim_end_matches('/'));
+        if workspace_read_only
+            && !mounts
+                .iter()
+                .any(|mount| mount.target.as_deref() == Some(&dependency_target))
+        {
+            mounts.push(RenderedVolume {
+                alias: "workspace_node_modules".to_string(),
+                name: stable_volume_name(instance_project, "workspace_node_modules"),
+                target: Some(dependency_target),
+                nocopy: true,
+                retention: VolumeRetention::Keep.as_label(),
+            });
+        }
         let mut named_volumes = mounts.clone();
         named_volumes.push(builtin_volume(instance_project, "shell_history"));
         let tool_cache_target = (!config

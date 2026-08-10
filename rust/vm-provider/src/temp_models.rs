@@ -1,41 +1,11 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use vm_config::config::mounts::{resolve_mount_source, validate_mount_target};
+use vm_config::config::MountConfig;
 use vm_core::error::{Result, VmError};
 
-/// Mount permission levels for temp VM mounts
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum MountPermission {
-    #[serde(rename = "ro")]
-    ReadOnly,
-    #[serde(rename = "rw")]
-    #[default]
-    ReadWrite,
-}
-
-impl std::fmt::Display for MountPermission {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            MountPermission::ReadOnly => write!(f, "ro"),
-            MountPermission::ReadWrite => write!(f, "rw"),
-        }
-    }
-}
-
-impl std::str::FromStr for MountPermission {
-    type Err = VmError;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        match s {
-            "ro" => Ok(MountPermission::ReadOnly),
-            "rw" => Ok(MountPermission::ReadWrite),
-            _ => Err(VmError::Internal(format!(
-                "Invalid permission '{s}'. Use 'ro' or 'rw'"
-            ))),
-        }
-    }
-}
+pub use vm_config::config::MountAccess as MountPermission;
 
 /// Represents a single mount point in a temp VM
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -45,7 +15,18 @@ pub struct Mount {
     /// Target path inside the VM
     pub target: PathBuf,
     /// Mount permissions
+    #[serde(serialize_with = "serialize_mount_permission")]
     pub permissions: MountPermission,
+}
+
+fn serialize_mount_permission<S>(
+    permission: &MountPermission,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(permission.as_mode())
 }
 
 impl Mount {
@@ -74,6 +55,15 @@ impl Mount {
             target,
             permissions,
         }
+    }
+
+    /// Resolve a declarative mount relative to the project configuration.
+    pub fn from_config(config: &MountConfig, project_dir: &Path) -> Result<Self> {
+        Ok(Self::with_target(
+            config.resolved_source(project_dir)?,
+            config.target.clone(),
+            config.access,
+        ))
     }
 
     /// Get the mount string for provider use (source:target:permissions)
@@ -255,39 +245,10 @@ impl TempVmState {
     }
 
     fn canonical_mount_source(source: &Path) -> Result<PathBuf> {
-        // Check if source exists
-        if !source.exists() {
-            return Err(VmError::Config(format!(
-                "Mount source does not exist: {}",
-                source.display()
-            )));
-        }
-
-        // Check if source is a directory
-        if !source.is_dir() {
-            return Err(VmError::Config(format!(
-                "Mount source is not a directory: {}",
-                source.display()
-            )));
-        }
-
-        let canonical_source = source.canonicalize().map_err(|e| {
-            VmError::Config(format!(
-                "Failed to resolve mount source '{}': {}",
-                source.display(),
-                e
-            ))
+        let current_dir = std::env::current_dir().map_err(|error| {
+            VmError::Internal(format!("Failed to determine current directory: {error}"))
         })?;
-
-        // Security check: prevent mounting dangerous system directories
-        if Self::is_dangerous_mount_path(&canonical_source) {
-            return Err(VmError::Config(format!(
-                "Dangerous mount path not allowed: {}",
-                canonical_source.display()
-            )));
-        }
-
-        Ok(canonical_source)
+        resolve_mount_source(source, &current_dir)
     }
 
     fn normalize_mount_lookup(source: &Path) -> PathBuf {
@@ -298,110 +259,13 @@ impl TempVmState {
 
     /// Validate a target path for mounting
     fn validate_target_path(target: &Path) -> Result<()> {
-        // Target should be absolute and under /workspace or /tmp
-        if !target.is_absolute() {
-            return Err(VmError::Config(format!(
-                "Invalid target path: {}",
-                target.display()
-            )));
-        }
-
-        // Check if target is under allowed directories
-        let allowed_prefixes = ["/workspace", "/tmp", "/home"];
-        let target_str = target.to_string_lossy();
-
-        if !allowed_prefixes
-            .iter()
-            .any(|prefix| target_str.starts_with(prefix))
-        {
-            return Err(VmError::Config(format!(
-                "Invalid target path: {}",
-                target.display()
-            )));
-        }
-
-        Ok(())
-    }
-
-    /// Check if a path is dangerous to mount (system directories)
-    fn is_dangerous_mount_path(path: &Path) -> bool {
-        let allowed_private_var_paths = ["/private/var/folders", "/private/var/tmp"];
-        if allowed_private_var_paths
-            .iter()
-            .any(|allowed| path.starts_with(Path::new(allowed)))
-        {
-            return false;
-        }
-
-        let dangerous_paths = [
-            "/",
-            "/etc",
-            "/usr",
-            "/var",
-            "/bin",
-            "/sbin",
-            "/boot",
-            "/sys",
-            "/proc",
-            "/dev",
-            "/root",
-            // macOS canonicalizes several system paths through /private.
-            "/private/etc",
-            "/private/var",
-        ];
-
-        // Check exact matches and if path starts with dangerous paths
-        for dangerous in &dangerous_paths {
-            let dangerous_path = Path::new(dangerous);
-            if path == dangerous_path {
-                return true;
-            }
-            // For non-root paths, check if it's a subdirectory of dangerous paths
-            if *dangerous != "/" && path.starts_with(dangerous_path) {
-                return true;
-            }
-        }
-
-        false
+        validate_mount_target(target)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_dangerous_path_detection() {
-        assert!(TempVmState::is_dangerous_mount_path(Path::new("/")));
-        assert!(TempVmState::is_dangerous_mount_path(Path::new("/etc")));
-        assert!(TempVmState::is_dangerous_mount_path(Path::new(
-            "/etc/nginx"
-        )));
-        assert!(TempVmState::is_dangerous_mount_path(Path::new("/usr/bin")));
-        assert!(TempVmState::is_dangerous_mount_path(Path::new(
-            "/private/etc"
-        )));
-        assert!(TempVmState::is_dangerous_mount_path(Path::new(
-            "/private/var/db"
-        )));
-
-        assert!(!TempVmState::is_dangerous_mount_path(Path::new(
-            "/home/user"
-        )));
-        assert!(!TempVmState::is_dangerous_mount_path(Path::new("/tmp")));
-        assert!(!TempVmState::is_dangerous_mount_path(Path::new(
-            "/private/tmp"
-        )));
-        assert!(!TempVmState::is_dangerous_mount_path(Path::new(
-            "/private/var/folders/example"
-        )));
-        assert!(!TempVmState::is_dangerous_mount_path(Path::new(
-            "/private/var/tmp/example"
-        )));
-        assert!(!TempVmState::is_dangerous_mount_path(Path::new(
-            "/workspace"
-        )));
-    }
 
     #[test]
     fn test_target_path_validation() {

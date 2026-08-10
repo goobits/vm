@@ -1,4 +1,7 @@
-use crate::config::{BoxSpec, VmConfig};
+use crate::config::{
+    mounts::{resolve_mount_source, validate_mount_target},
+    BoxSpec, VmConfig,
+};
 use std::collections::HashSet;
 use std::net::TcpListener;
 use std::path::PathBuf;
@@ -89,6 +92,7 @@ impl ConfigValidator {
         self.validate_networking()?;
         self.validate_runtime()?;
         self.validate_bootstrap()?;
+        self.validate_mounts()?;
         self.validate_storage()?;
         Ok(())
     }
@@ -165,11 +169,7 @@ impl ConfigValidator {
             }
 
             if let Some(path) = &project.workspace_path {
-                if !path.starts_with('/') {
-                    return Err(vm_core::error::VmError::Config(format!(
-                        "Workspace path must be absolute: {path}"
-                    )));
-                }
+                validate_mount_target(std::path::Path::new(path))?;
             }
         }
 
@@ -393,7 +393,19 @@ impl ConfigValidator {
             .as_ref()
             .and_then(|vm| vm.user.as_deref())
             .unwrap_or("developer");
+        let workspace = self
+            .config
+            .project
+            .as_ref()
+            .and_then(|project| project.workspace_path.as_deref())
+            .unwrap_or("/workspace");
         let mut targets = HashSet::from([format!("/home/{username}/.shell_history")]);
+        targets.extend(
+            self.config
+                .mounts
+                .iter()
+                .map(|mount| mount.target.display().to_string()),
+        );
         if self
             .config
             .services
@@ -413,11 +425,12 @@ impl ConfigValidator {
                     "Storage volume name '{name}' is reserved by the VM tool"
                 )));
             }
-            validate_mount_target(&volume.target)?;
-            if volume.target == "/workspace" {
+            validate_mount_target(std::path::Path::new(&volume.target))?;
+            if volume.target == workspace {
                 return Err(VmError::Config(
-                    "A named volume cannot replace the /workspace source bind; use a nested target"
-                        .to_string(),
+                    format!(
+                        "A named volume cannot replace the {workspace} source bind; use a nested target"
+                    ),
                 ));
             }
             if !targets.insert(volume.target.clone()) {
@@ -429,7 +442,7 @@ impl ConfigValidator {
         }
 
         for tmpfs in &self.config.storage.tmpfs {
-            validate_mount_target(&tmpfs.target)?;
+            validate_mount_target(std::path::Path::new(&tmpfs.target))?;
             if !targets.insert(tmpfs.target.clone()) {
                 return Err(VmError::Config(format!(
                     "Duplicate storage target: {}",
@@ -455,6 +468,48 @@ impl ConfigValidator {
             }
         }
 
+        Ok(())
+    }
+
+    fn validate_mounts(&self) -> Result<()> {
+        let workspace = self
+            .config
+            .project
+            .as_ref()
+            .and_then(|project| project.workspace_path.as_deref())
+            .unwrap_or("/workspace");
+        let mut targets = HashSet::from([workspace.to_string()]);
+        let mut sources = HashSet::new();
+        let project_dir = self
+            .config
+            .source_path
+            .as_deref()
+            .and_then(|path| {
+                if path.is_dir() {
+                    Some(path)
+                } else {
+                    path.parent()
+                }
+            })
+            .map(PathBuf::from)
+            .unwrap_or(std::env::current_dir().map_err(|error| {
+                VmError::Internal(format!("Failed to determine current directory: {error}"))
+            })?);
+
+        for mount in &self.config.mounts {
+            validate_mount_target(&mount.target)?;
+            let source = resolve_mount_source(&mount.source, &project_dir)?;
+            if !sources.insert(source.clone()) {
+                return Err(VmError::Config(format!(
+                    "Duplicate mount source: {}",
+                    source.display()
+                )));
+            }
+            let target = mount.target.display().to_string();
+            if !targets.insert(target.clone()) {
+                return Err(VmError::Config(format!("Duplicate mount target: {target}")));
+            }
+        }
         Ok(())
     }
 
@@ -490,24 +545,6 @@ fn valid_storage_name(name: &str) -> bool {
             .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
 }
 
-fn validate_mount_target(target: &str) -> Result<()> {
-    let path = std::path::Path::new(target);
-    if !path.is_absolute()
-        || target == "/"
-        || target.ends_with('/')
-        || target.contains("//")
-        || target.contains("/../")
-        || target.ends_with("/..")
-        || target.contains("/./")
-        || target.ends_with("/.")
-    {
-        return Err(VmError::Config(format!(
-            "Storage target '{target}' must be a normalized absolute path below /"
-        )));
-    }
-    Ok(())
-}
-
 fn valid_size_string(value: &str) -> bool {
     let value = value.trim();
     if value.len() < 2 {
@@ -538,6 +575,7 @@ mod tests {
                     .to_string_lossy()
                     .to_string(),
             ),
+            workspace_access: Default::default(),
             backup_pattern: None,
             env_template_path: None,
         });
@@ -697,6 +735,40 @@ mod tests {
             .validate()
             .unwrap_err();
         assert!(error.to_string().contains("normalized absolute path"));
+    }
+
+    #[test]
+    fn validates_relative_multi_mounts_and_rejects_target_collisions() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("auth")).unwrap();
+        std::fs::create_dir(root.path().join("ui")).unwrap();
+        let mut config: VmConfig = serde_yaml_ng::from_str(
+            r#"
+provider: docker
+project:
+  name: test
+  workspace_path: /source
+  workspace_access: read_only
+mounts:
+  - source: auth
+    target: /packages/auth
+    access: read_only
+  - source: ui
+    target: /packages/ui
+"#,
+        )
+        .unwrap();
+        config.source_path = Some(root.path().join("vm.yaml"));
+
+        assert!(ConfigValidator::new(config.clone(), PathBuf::new(), true)
+            .validate()
+            .is_ok());
+
+        config.mounts[1].target = std::path::PathBuf::from("/packages/auth");
+        let error = ConfigValidator::new(config, PathBuf::new(), true)
+            .validate()
+            .unwrap_err();
+        assert!(error.to_string().contains("Duplicate mount target"));
     }
 
     #[test]

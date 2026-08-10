@@ -12,6 +12,9 @@ use vm_core::error::Result;
 use crate::detector::git::GitConfig;
 use crate::ports::PortMapping;
 
+pub mod mounts;
+pub use mounts::{MountAccess, MountConfig};
+
 // Helper function to deserialize version field that accepts both strings and numbers
 fn deserialize_option_string_or_number<'de, D>(
     deserializer: D,
@@ -130,6 +133,10 @@ pub struct VmConfig {
 
     #[serde(default, skip_serializing_if = "StorageConfig::is_empty")]
     pub storage: StorageConfig,
+
+    /// Additional host directories mounted into the guest.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mounts: Vec<MountConfig>,
 
     // 5. Runtime Versions
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -288,6 +295,8 @@ pub struct ProjectConfig {
     pub hostname: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace_path: Option<String>,
+    #[serde(default, skip_serializing_if = "MountAccess::is_read_write")]
+    pub workspace_access: MountAccess,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub backup_pattern: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -131,6 +131,22 @@ impl<'a> ComposeOperations<'a> {
             &tool_cache_target,
         );
         let resources = RenderedResources::resolve(&final_config)?;
+        let workspace_path = final_config
+            .project
+            .as_ref()
+            .and_then(|project| project.workspace_path.as_deref())
+            .unwrap_or("/workspace");
+        let workspace_access = final_config
+            .project
+            .as_ref()
+            .map(|project| project.workspace_access)
+            .unwrap_or_default();
+        let mut rendered_mounts = final_config
+            .mounts
+            .iter()
+            .map(|mount| Mount::from_config(mount, self.project_dir))
+            .collect::<Result<Vec<_>>>()?;
+        rendered_mounts.extend(extra_mounts.unwrap_or(&[]).iter().cloned());
 
         let mut tera_context = TeraContext::new();
         tera_context.insert("config", &final_config);
@@ -143,6 +159,8 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("guest_cache_env", &guest_cache_env);
         tera_context.insert("resources", &resources);
         tera_context.insert("project_dir", &project_dir_str);
+        tera_context.insert("workspace_path", workspace_path);
+        tera_context.insert("workspace_access", workspace_access.as_mode());
         tera_context.insert("build_context_dir", &build_context_str);
         tera_context.insert("project_uid", &user_config.uid.to_string());
         tera_context.insert("project_gid", &user_config.gid.to_string());
@@ -161,7 +179,7 @@ impl<'a> ComposeOperations<'a> {
         );
         tera_context.insert("is_macos", &cfg!(target_os = "macos"));
         tera_context.insert("service_env_vars", &service_environment);
-        tera_context.insert("extra_mounts", &extra_mounts.unwrap_or(&[]));
+        tera_context.insert("extra_mounts", &rendered_mounts);
 
         // AI sync flags for template
         if let Some(ai_sync) = &self
@@ -854,6 +872,58 @@ services:
         assert!(preview.contains("API_TOKEN=<redacted>"));
         assert!(preview.contains("DATABASE_URL=<redacted>"));
         assert!(preview.contains("<host-path>:/workspace:rw"));
+    }
+
+    #[test]
+    fn renders_configured_mounts_and_read_only_workspace_at_the_real_target() {
+        let (_temp_dir, project_dir, generated_dir) = setup_test_env();
+        std::fs::create_dir(project_dir.join("shared")).unwrap();
+        let config: VmConfig = serde_yaml_ng::from_str(
+            r#"
+provider: docker
+project:
+  name: mounted-project
+  workspace_path: /source
+  workspace_access: read_only
+mounts:
+  - source: shared
+    target: /packages/shared
+    access: read_only
+host_sync:
+  worktrees:
+    enabled: false
+"#,
+        )
+        .unwrap();
+        let compose = ComposeOperations::new(&config, &generated_dir, &project_dir, "docker");
+
+        let rendered = compose
+            .render_docker_compose(&project_dir, &ProviderContext::default())
+            .unwrap();
+        let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(&rendered).unwrap();
+        let dev = &yaml["services"]["mounted-project-dev"];
+        assert_eq!(dev["working_dir"].as_str(), Some("/source"));
+        let mounts = dev["volumes"].as_sequence().unwrap();
+        assert!(mounts
+            .iter()
+            .filter_map(|mount| mount.as_str())
+            .any(|mount| { mount == format!("{}:/source:ro", project_dir.display()) }));
+        assert!(mounts
+            .iter()
+            .filter_map(|mount| mount.as_str())
+            .any(|mount| {
+                mount
+                    == format!(
+                        "{}:/packages/shared:ro",
+                        project_dir.join("shared").canonicalize().unwrap().display()
+                    )
+            }));
+        let dependency_mount = mounts
+            .iter()
+            .filter_map(serde_yaml_ng::Value::as_mapping)
+            .find(|mount| mount["source"] == "workspace_node_modules")
+            .unwrap();
+        assert_eq!(dependency_mount["target"], "/source/node_modules");
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use super::{
     command::TartCommand, host_sync::collect_host_sync_mounts, instance::TartInstanceManager,
-    provisioner::TartProvisioner, temp::TartDirShare,
+    mounts::TartDirShare, provisioner::TartProvisioner,
 };
 use crate::{
     common::instance::{extract_project_name, InstanceInfo, InstanceResolver},
@@ -143,7 +143,7 @@ impl TartProvider {
         self.parse_metrics_json(&output)
     }
 
-    fn host_workspace_path(&self) -> Result<PathBuf> {
+    pub(super) fn host_workspace_path(&self) -> Result<PathBuf> {
         if let Some(source) = &self.config.source_path {
             let resolved = if source.is_absolute() {
                 source.clone()
@@ -284,12 +284,27 @@ impl TartProvider {
         let host_path = self.host_workspace_path()?;
         let raw_log_path = tart_run_log_path(vm_name);
         info!("Tart run log for '{}': {}", vm_name, raw_log_path);
-        let mut dir_args = vec![format!("{}:tag=workspace", host_path.display())];
+        let workspace_access = self
+            .config
+            .project
+            .as_ref()
+            .map(|project| project.workspace_access)
+            .unwrap_or_default();
+        let workspace = TartDirShare {
+            tag: "workspace".to_string(),
+            host_path,
+            guest_path: Some(PathBuf::from(self.effective_sync_directory())),
+            access: workspace_access,
+        };
+        let mut dir_args = vec![workspace.tart_argument()];
         for mount in collect_host_sync_mounts(&self.config) {
             dir_args.push(format!("{}:tag={}", mount.host_path.display(), mount.tag));
         }
+        for share in self.configured_dir_shares()? {
+            dir_args.push(share.tart_argument());
+        }
         for share in extra_dir_shares {
-            dir_args.push(format!("{}:tag={}", share.host_path.display(), share.tag));
+            dir_args.push(share.tart_argument());
         }
 
         let cmd = self.build_run_command(vm_name, &raw_log_path, &dir_args);
@@ -650,10 +665,12 @@ impl TartProvider {
         }
         ProgressReporter::task(&main_phase, "Initial provisioning complete.");
 
-        if !extra_dir_shares.is_empty() {
-            ProgressReporter::task(&main_phase, "Mounting temporary directories...");
-            self.mount_tart_dir_shares_in_guest(vm_name, extra_dir_shares)?;
-            ProgressReporter::task(&main_phase, "Temporary directories mounted.");
+        let mut guest_shares = self.configured_dir_shares()?;
+        guest_shares.extend_from_slice(extra_dir_shares);
+        if !guest_shares.is_empty() {
+            ProgressReporter::task(&main_phase, "Mounting shared directories...");
+            self.mount_tart_dir_shares_in_guest(vm_name, &guest_shares)?;
+            ProgressReporter::task(&main_phase, "Shared directories mounted.");
         }
 
         ProgressReporter::finish_phase(&main_phase, "Environment ready.");
@@ -736,6 +753,7 @@ impl Provider for TartProvider {
             .unwrap_or("zsh");
         let sync_dir = self.get_sync_directory();
         self.ensure_workspace_mount_ready(&vm_name, &sync_dir)?;
+        self.ensure_configured_mounts_ready(&vm_name)?;
         self.ensure_shell_config_ready(&vm_name, &sync_dir)?;
         let sync_dir_quoted = shell_session::quote_posix_argument(&sync_dir);
         let worktree_repair = shell_session::worktree_repair_script(&sync_dir);
@@ -921,6 +939,7 @@ impl Provider for TartProvider {
 
         let project_plan = ProjectPlan::detect(&self.host_workspace_path()?, &self.config);
         provisioner.provision(&self.config, &project_plan)?;
+        self.ensure_configured_mounts_ready(&instance_name)?;
 
         info!("Configuration applied");
         Ok(())

@@ -2,7 +2,7 @@ use super::{GuestCommand, TartProvisioner};
 use crate::project_plan::{NodeToolchainPlan, PrimaryRuntime, ProjectPlan};
 use crate::shell_session::quote_posix_argument;
 use tracing::{info, warn};
-use vm_config::config::VmConfig;
+use vm_config::config::{MountAccess, VmConfig};
 use vm_core::vm_warning;
 
 impl TartProvisioner {
@@ -303,16 +303,27 @@ pipx ensurepath >/dev/null 2>&1 || true
 
     fn python_project_command(&self, config: &VmConfig) -> String {
         let project = quote_posix_argument(&self.project_dir);
+        let venv = if config
+            .project
+            .as_ref()
+            .is_some_and(|project| project.workspace_access == MountAccess::ReadOnly)
+        {
+            format!("$HOME/.local/share/vm/venvs/{}", self.instance_name)
+        } else {
+            format!("{}/.venv", self.project_dir)
+        };
+        let venv = crate::shell_session::quote_posix_home_path(&venv);
         format!(
             r#"export PATH="$HOME/.pyenv/bin:{}"
 eval "$(pyenv init -)"
 if [ -f {project}/requirements.txt ]; then
-  cd {project}
-  if [ ! -d .venv ]; then
-    python3 -m venv .venv
+  venv={venv}
+  if [ ! -d "$venv" ]; then
+    mkdir -p "$(dirname "$venv")"
+    python3 -m venv "$venv"
   fi
-  . .venv/bin/activate
-  pip install -r requirements.txt
+  . "$venv/bin/activate"
+  pip install -r {project}/requirements.txt
 fi"#,
             Self::user_bin_path(config)
         )
@@ -324,7 +335,12 @@ fi"#,
             r#"{}
 if [ -f {project}/Gemfile ]; then
   if ! command -v bundle >/dev/null 2>&1; then gem install bundler; fi
-  cd {project} && bundle install
+  bundle config set --global path "$HOME/.local/share/vm/bundle"
+  if [ -f {project}/Gemfile.lock ]; then
+    cd {project} && bundle config set --global frozen true && bundle install
+  else
+    cd {project} && bundle install
+  fi
 fi"#,
             if self.is_macos_guest(config) {
                 format!(
@@ -364,7 +380,11 @@ fi
         format!(
             r#"export PATH="$HOME/.cargo/bin:$PATH"
 if [ -f {project}/Cargo.toml ]; then
-  cd {project} && cargo fetch
+  if [ -f {project}/Cargo.lock ]; then
+    cd {project} && cargo fetch --locked
+  else
+    cd {project} && cargo fetch
+  fi
 fi"#
         )
     }
@@ -376,7 +396,7 @@ fi"#
   {}
 fi
 if [ -f {project}/go.mod ]; then
-  cd {project} && go mod download
+  cd {project} && GOFLAGS=-mod=readonly go mod download
 fi"#,
             if self.is_macos_guest(config) {
                 format!("{}\nbrew install go", Self::homebrew_preamble())

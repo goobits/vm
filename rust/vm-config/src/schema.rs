@@ -105,6 +105,7 @@ fn add_vm_schema_fields(cache: &mut HashMap<String, SchemaType>) {
         "project.name",
         "project.hostname",
         "project.workspace_path",
+        "project.workspace_access",
         "project.env_template_path",
         "project.backup_pattern"
     );
@@ -149,6 +150,12 @@ fn add_vm_schema_fields(cache: &mut HashMap<String, SchemaType>) {
         "ports._range".to_string(),
         SchemaType::Array {
             item_type: Box::new(SchemaType::Integer),
+        },
+    );
+    cache.insert(
+        "mounts".to_string(),
+        SchemaType::Array {
+            item_type: Box::new(SchemaType::Object),
         },
     );
 
@@ -384,6 +391,16 @@ fn parse_scalar_value(value: &str, schema_type: &SchemaType) -> Result<Value> {
         SchemaType::Boolean => parse_boolean(value),
         SchemaType::Integer => parse_integer(value),
         SchemaType::String => Ok(Value::String(value.to_string())),
+        SchemaType::Object => {
+            let parsed: Value = serde_yaml_ng::from_str(value).map_err(|error| {
+                VmError::Config(format!("'{value}' is not a valid object: {error}"))
+            })?;
+            if parsed.is_mapping() {
+                Ok(parsed)
+            } else {
+                Err(VmError::Config(format!("'{value}' is not a valid object")))
+            }
+        }
         SchemaType::Unknown => {
             // Try YAML parsing, fallback to string
             serde_yaml_ng::from_str(value).or_else(|_| Ok(Value::String(value.to_string())))
@@ -426,7 +443,21 @@ mod tests {
                 .unwrap();
 
         assert!(schema["properties"]["storage"].is_mapping());
+        assert!(schema["properties"]["mounts"].is_mapping());
         assert!(schema["properties"]["vm"]["properties"]["pids_limit"].is_mapping());
+    }
+
+    #[test]
+    fn parses_mount_objects_for_config_set() {
+        let value = parse_value_with_schema(
+            "mounts",
+            &["{source: ../auth, target: /packages/auth, access: read_only}".to_string()],
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(value[0]["source"], "../auth");
+        assert_eq!(value[0]["access"], "read_only");
     }
 
     #[test]

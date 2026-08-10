@@ -41,6 +41,7 @@ impl TartProvider {
 
         let sync_dir = self.get_sync_directory();
         self.ensure_workspace_mount_ready(&instance_name, &sync_dir)?;
+        self.ensure_configured_mounts_ready(&instance_name)?;
         self.ensure_shell_config_ready(&instance_name, &sync_dir)?;
 
         let shell = self
