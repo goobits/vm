@@ -86,6 +86,32 @@ properties:
             - read_write
           default: read_write
       additionalProperties: false
+  tools:
+    type: object
+    description: Immutable tools and collections activated inside the guest
+    properties:
+      updates:
+        type: string
+        enum:
+          - prompt
+          - auto
+          - off
+        default: prompt
+        description: Default update policy for selected tools
+    additionalProperties:
+      type: object
+      properties:
+        version:
+          type: string
+          description: Semantic version to pin; omitted or latest tracks the newest release
+        updates:
+          type: string
+          enum:
+            - prompt
+            - auto
+            - off
+          description: Per-tool update-policy override
+      additionalProperties: false
   vm:
     type: object
     description: Virtual machine/container settings

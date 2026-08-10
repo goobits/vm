@@ -47,6 +47,7 @@ services:
       - registry-npm-artifacts:/data/npm/tarballs
       - registry-cargo-artifacts:/data/cargo/crates
       - registry-pypi-artifacts:/data/pypi/packages
+      - registry-tool-artifacts:/data/tools/artifacts
       - registry-upstream-cache:/data/cache
     networks: [packages, egress]
 
@@ -173,7 +174,7 @@ services:
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
-        datasets="gateway_data gateway_config npm cargo pypi cache metadata state receipts logs agents rollouts sources"
+        datasets="gateway_data gateway_config npm cargo pypi tools cache metadata state receipts logs agents rollouts sources"
         valid_id() {
           test -n "$${BACKUP_ID}" &&
           test "$${#BACKUP_ID}" -le 160 &&
@@ -237,6 +238,7 @@ services:
       - registry-npm-artifacts:/volumes/npm
       - registry-cargo-artifacts:/volumes/cargo
       - registry-pypi-artifacts:/volumes/pypi
+      - registry-tool-artifacts:/volumes/tools
       - registry-upstream-cache:/volumes/cache
       - registry-metadata:/volumes/metadata
       - workflow-state:/volumes/state
@@ -291,6 +293,7 @@ volumes:
   registry-npm-artifacts:
   registry-cargo-artifacts:
   registry-pypi-artifacts:
+  registry-tool-artifacts:
   registry-upstream-cache:
   registry-metadata:
   workflow-state:

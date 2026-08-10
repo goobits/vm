@@ -158,6 +158,7 @@ fn add_vm_schema_fields(cache: &mut HashMap<String, SchemaType>) {
             item_type: Box::new(SchemaType::Object),
         },
     );
+    cache.insert("tools".to_string(), SchemaType::Object);
 
     // Tart fields
     add_strings!(
@@ -342,6 +343,13 @@ pub fn lookup_field_type(field: &str, global: bool) -> SchemaType {
         };
     }
 
+    if field.starts_with("tools.") {
+        return match field.rsplit('.').next() {
+            Some("version" | "updates") => SchemaType::String,
+            _ => SchemaType::Object,
+        };
+    }
+
     SchemaType::Unknown
 }
 
@@ -444,6 +452,7 @@ mod tests {
 
         assert!(schema["properties"]["storage"].is_mapping());
         assert!(schema["properties"]["mounts"].is_mapping());
+        assert!(schema["properties"]["tools"].is_mapping());
         assert!(schema["properties"]["vm"]["properties"]["pids_limit"].is_mapping());
     }
 
@@ -527,6 +536,19 @@ mod tests {
             lookup_field_type("storage.tmpfs", false),
             SchemaType::Object
         );
+    }
+
+    #[test]
+    fn looks_up_dynamic_tool_fields() {
+        assert_eq!(
+            lookup_field_type("tools.codex.version", false),
+            SchemaType::String
+        );
+        assert_eq!(
+            lookup_field_type("tools.agent-skills.updates", false),
+            SchemaType::String
+        );
+        assert_eq!(lookup_field_type("tools.codex", false), SchemaType::Object);
     }
 
     #[test]

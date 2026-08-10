@@ -93,6 +93,7 @@ impl ConfigValidator {
         self.validate_runtime()?;
         self.validate_bootstrap()?;
         self.validate_mounts()?;
+        self.config.tools.validate()?;
         self.validate_storage()?;
         Ok(())
     }

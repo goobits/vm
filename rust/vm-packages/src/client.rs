@@ -6,9 +6,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     BeginReleaseRequest, CheckoutLease, CheckoutRecord, CleanupRequest, CompleteReleaseRequest,
     ConsumerRecord, ConsumerUsage, CreateCheckout, CreateRollout, IntegrationRequest, LeaseRequest,
-    PackageDefinition, PackageDrift, PublicationRequest, RegisterConsumer, RegisterPackage,
-    RegistryEndpoints, ReleaseRecord, ReviewRequest, RolloutRecord, RolloutValidationRequest,
-    SubmissionRecord, TransitionRequest, ValidationRequest, WorkflowReceipt,
+    PackageDefinition, PackageDrift, PublicationRequest, PublishToolArtifact, RegisterConsumer,
+    RegisterPackage, RegisterTool, RegistryEndpoints, ReleaseRecord, ReviewRequest, RolloutRecord,
+    RolloutValidationRequest, SubmissionRecord, ToolArtifactRecord, ToolDefinition, ToolIndex,
+    ToolInventory, ToolPublicationReceipt, TransitionRequest, ValidationRequest, WorkflowReceipt,
 };
 
 pub type PackageInventory = BTreeMap<String, Vec<String>>;
@@ -113,6 +114,61 @@ impl PackageInfrastructureClient {
     pub async fn package_definition(&self, name: &str) -> Result<PackageDefinition> {
         let name = url::form_urlencoded::byte_serialize(name.as_bytes()).collect::<String>();
         self.get_work(&format!("v1/packages/{name}")).await
+    }
+
+    pub async fn register_tool(&self, request: &RegisterTool) -> Result<ToolDefinition> {
+        self.post_work("v1/tools", request).await
+    }
+
+    pub async fn tools(&self) -> Result<Vec<ToolDefinition>> {
+        self.get_work("v1/tools").await
+    }
+
+    pub async fn tool(&self, name: &str) -> Result<ToolInventory> {
+        let name = url::form_urlencoded::byte_serialize(name.as_bytes()).collect::<String>();
+        self.get_work(&format!("v1/tools/{name}")).await
+    }
+
+    pub async fn resolve_tool(
+        &self,
+        name: &str,
+        version: Option<&str>,
+        target: &str,
+    ) -> Result<ToolArtifactRecord> {
+        let name = url::form_urlencoded::byte_serialize(name.as_bytes()).collect::<String>();
+        let mut query = url::form_urlencoded::Serializer::new(String::new());
+        query.append_pair("target", target);
+        if let Some(version) = version {
+            query.append_pair("version", version);
+        }
+        self.get_work(&format!("v1/tools/{name}/resolve?{}", query.finish()))
+            .await
+    }
+
+    pub async fn tool_index(&self, target: &str) -> Result<ToolIndex> {
+        let query = url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("target", target)
+            .finish();
+        self.get_work(&format!("v1/tools/index?{query}")).await
+    }
+
+    pub async fn publish_tool_artifact(
+        &self,
+        name: &str,
+        request: &PublishToolArtifact,
+    ) -> Result<ToolArtifactRecord> {
+        let name = url::form_urlencoded::byte_serialize(name.as_bytes()).collect::<String>();
+        self.post_release(&format!("v1/tools/{name}/artifacts"), request)
+            .await
+    }
+
+    pub async fn tool_receipt(&self, receipt_id: &str) -> Result<ToolPublicationReceipt> {
+        self.get_work(&format!("v1/tool-receipts/{receipt_id}"))
+            .await
+    }
+
+    pub fn tool_artifact_url(&self, artifact: &ToolArtifactRecord) -> String {
+        format!("{}{}", self.endpoints.gateway(), artifact.artifact_path)
     }
 
     pub async fn checkouts(&self) -> Result<Vec<CheckoutRecord>> {

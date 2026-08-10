@@ -23,6 +23,7 @@ const FIELD_ORDER: &[&str] = &[
     "vm",
     "storage",
     "mounts",
+    "tools",
     // 5. Runtime Versions
     "versions",
     // 6. Project Bootstrap
@@ -102,7 +103,7 @@ fn format_field_value(field_name: &str, value: &Value) -> Result<Value> {
 fn should_format_nested(field_name: &str) -> bool {
     matches!(
         field_name,
-        "project" | "vm" | "versions" | "services" | "terminal" | "security" | "tart"
+        "project" | "vm" | "versions" | "services" | "tools" | "terminal" | "security" | "tart"
     )
 }
 

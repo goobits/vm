@@ -84,8 +84,8 @@ impl WorkCredentials {
 }
 
 #[derive(Clone)]
-struct AppState {
-    store: Arc<Store>,
+pub(crate) struct AppState {
+    pub(crate) store: Arc<Store>,
     source: SourceManager,
     access: WorkCredentials,
 }
@@ -116,6 +116,7 @@ pub fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router {
             "/v1/checkouts/{checkout_id}/submission",
             get(get_checkout_submission),
         )
+        .merge(crate::tools::read_routes())
         .route_layer(middleware::from_fn_with_state(state.clone(), read_auth));
     let writes = Router::new()
         .route("/v1/packages", post(register_package))
@@ -144,6 +145,7 @@ pub fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router {
             "/v1/submissions/{submission_id}/integration/complete",
             post(complete_integration),
         )
+        .merge(crate::tools::controller_routes())
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             controller_auth,
@@ -169,6 +171,7 @@ pub fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router {
             "/v1/submissions/{submission_id}/release-bundle",
             get(download_release_bundle),
         )
+        .merge(crate::tools::release_routes())
         .route_layer(middleware::from_fn_with_state(state.clone(), release_auth));
     let rollouts = Router::new()
         .route("/v1/rollouts/{rollout_id}/bundle", get(download_rollout))
@@ -878,6 +881,42 @@ mod tests {
                 .await
                 .status_code(),
             StatusCode::CREATED
+        );
+        assert_eq!(
+            server
+                .post("/v1/tools")
+                .add_header(header::AUTHORIZATION, "Bearer release")
+                .json(&serde_json::json!({
+                    "name": "codex",
+                    "kind": "binary",
+                    "repository": "https://example.com/codex.git",
+                    "default_branch": "main"
+                }))
+                .await
+                .status_code(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            server
+                .post("/v1/tools")
+                .add_header(header::AUTHORIZATION, "Bearer controller")
+                .json(&serde_json::json!({
+                    "name": "codex",
+                    "kind": "binary",
+                    "repository": "https://example.com/codex.git",
+                    "default_branch": "main"
+                }))
+                .await
+                .status_code(),
+            StatusCode::CREATED
+        );
+        assert_eq!(
+            server
+                .get("/v1/tools/index?target=linux-arm64")
+                .add_header(header::AUTHORIZATION, "Bearer read")
+                .await
+                .status_code(),
+            StatusCode::OK
         );
     }
 }

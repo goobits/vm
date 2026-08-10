@@ -189,6 +189,7 @@ fn app_router(state: AppState) -> Router {
         .route("/health", get(health_handler))
         .merge(reads)
         .merge(writes)
+        .merge(crate::tools::router())
         .with_state(Arc::new(state))
 }
 

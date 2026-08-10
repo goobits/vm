@@ -120,12 +120,14 @@ mod tests {
         assert!(COMPOSE_YAML.contains("registry-npm-artifacts:/data/npm/tarballs"));
         assert!(COMPOSE_YAML.contains("registry-cargo-artifacts:/data/cargo/crates"));
         assert!(COMPOSE_YAML.contains("registry-pypi-artifacts:/data/pypi/packages"));
+        assert!(COMPOSE_YAML.contains("registry-tool-artifacts:/data/tools/artifacts"));
         assert!(COMPOSE_YAML.contains("workflow-state:/data/state"));
         assert!(COMPOSE_YAML.contains("workflow-receipts:/data/receipts"));
         assert!(COMPOSE_YAML.contains("agent-temporary-data:/data/agents"));
         assert!(COMPOSE_YAML.contains("rollout-temporary-data:/data/rollouts"));
         assert!(COMPOSE_YAML.contains("source-mirrors:/data/sources"));
         assert!(COMPOSE_YAML.contains("infrastructure-backups:/backups"));
+        assert!(COMPOSE_YAML.contains("registry-tool-artifacts:/volumes/tools"));
         assert!(COMPOSE_YAML.contains("work_controller_token"));
         assert!(COMPOSE_YAML.contains("work_release_token"));
         assert!(COMPOSE_YAML.contains("work_rollout_token"));

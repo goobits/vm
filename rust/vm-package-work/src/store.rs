@@ -9,8 +9,8 @@ use tokio::sync::Mutex;
 use vm_packages::{
     validate_label, CheckoutLease, CheckoutRecord, CleanupRequest, ConsumerRecord, CreateCheckout,
     LeaseRecord, LeaseRequest, PackageDefinition, ReceiptKind, RegisterPackage, ReleaseRecord,
-    RolloutRecord, SubmissionRecord, TransitionRequest, WorkflowReceipt, WorkflowState,
-    WorkflowTransition,
+    RolloutRecord, SubmissionRecord, ToolArtifactRecord, ToolDefinition, ToolPublicationReceipt,
+    TransitionRequest, WorkflowReceipt, WorkflowState, WorkflowTransition,
 };
 
 use crate::submission::transition_records;
@@ -47,6 +47,12 @@ pub(crate) struct Database {
     pub(crate) consumers: BTreeMap<String, ConsumerRecord>,
     #[serde(default)]
     pub(crate) rollouts: BTreeMap<String, RolloutRecord>,
+    #[serde(default)]
+    pub(crate) tools: BTreeMap<String, ToolDefinition>,
+    #[serde(default)]
+    pub(crate) tool_artifacts: BTreeMap<String, ToolArtifactRecord>,
+    #[serde(default)]
+    pub(crate) tool_receipts: BTreeMap<String, ToolPublicationReceipt>,
 }
 
 pub struct Store {
@@ -701,6 +707,15 @@ impl Store {
             atomic_write(
                 rollouts.join(format!("{}.json", rollout.rollout_id)),
                 pretty_json(rollout)?,
+            )
+            .await?;
+        }
+        let tools = self.root.join("receipts/tools");
+        tokio::fs::create_dir_all(&tools).await?;
+        for receipt in database.tool_receipts.values() {
+            atomic_write(
+                tools.join(format!("{}.json", receipt.receipt_id)),
+                pretty_json(receipt)?,
             )
             .await?;
         }

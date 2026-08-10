@@ -14,6 +14,8 @@ use crate::ports::PortMapping;
 
 pub mod mounts;
 pub use mounts::{MountAccess, MountConfig};
+pub mod tools;
+pub use tools::{ToolConfig, ToolUpdatePolicy, ToolsConfig};
 
 // Helper function to deserialize version field that accepts both strings and numbers
 fn deserialize_option_string_or_number<'de, D>(
@@ -137,6 +139,10 @@ pub struct VmConfig {
     /// Additional host directories mounted into the guest.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mounts: Vec<MountConfig>,
+
+    /// Immutable tools and collections activated inside the guest.
+    #[serde(default, skip_serializing_if = "ToolsConfig::is_empty")]
+    pub tools: ToolsConfig,
 
     // 5. Runtime Versions
     #[serde(skip_serializing_if = "Option::is_none")]

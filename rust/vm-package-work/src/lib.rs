@@ -6,6 +6,7 @@ mod server;
 mod source;
 mod store;
 mod submission;
+mod tools;
 
 pub use error::{WorkError, WorkResult};
 pub use server::{router, run, WorkCredentials};

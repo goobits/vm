@@ -42,6 +42,7 @@ pub mod registry;
 pub mod server;
 pub mod state;
 pub mod storage;
+mod tools;
 pub mod types;
 pub mod ui;
 pub mod upstream;
