@@ -189,6 +189,9 @@ vm packages doctor
 vm packages backup
 vm packages backups
 vm packages restore <backup-id>
+vm packages register <name> --ecosystem <npm|cargo|python> --repository <url>
+vm packages register <path>... [--recursive]
+vm packages list
 vm packages checkout <package> --agent <agent> --task <task>
 vm packages submit <checkout-id>
 vm packages cancel <checkout-id>

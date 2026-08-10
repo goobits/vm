@@ -1,11 +1,12 @@
 use chrono::Utc;
 use vm_packages::{
-    IntegrationRecord, IntegrationReview, ReceiptKind, ReviewDecision, ReviewRequest,
-    SubmissionRecord, ValidationRequest, ValidationResult, WorkflowState, WorkflowTransition,
+    validate_label, IntegrationRecord, IntegrationReview, ReceiptKind, ReviewDecision,
+    ReviewRequest, SubmissionRecord, ValidationRequest, ValidationResult, WorkflowState,
+    WorkflowTransition,
 };
 
 use crate::store::{
-    ensure_fingerprint, operation_fingerprint, receipt, validate_idempotency_key, validate_label,
+    ensure_fingerprint, operation_fingerprint, receipt, validate_idempotency_key,
     IdempotencyRecord, ReceiptInput,
 };
 use crate::{Store, WorkError, WorkResult};

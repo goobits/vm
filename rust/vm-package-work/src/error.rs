@@ -45,3 +45,9 @@ impl From<serde_json::Error> for WorkError {
         Self::Internal(error.to_string())
     }
 }
+
+impl From<vm_packages::PackageValidationError> for WorkError {
+    fn from(error: vm_packages::PackageValidationError) -> Self {
+        Self::Invalid(error.to_string())
+    }
+}

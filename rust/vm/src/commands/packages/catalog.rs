@@ -5,32 +5,70 @@ use vm_packages::{PackageEcosystem, RegisterPackage};
 
 use crate::error::{VmError, VmResult};
 
-use super::{appliance::configured_client, files::ApplianceFiles};
+use super::{appliance::configured_client, discovery, files::ApplianceFiles};
 
-pub(super) async fn register(
-    files: &ApplianceFiles,
-    name: String,
-    ecosystem: String,
-    repository: String,
-    default_branch: String,
-    ci_registry: Option<String>,
-) -> VmResult<()> {
-    let ecosystem = ecosystem
-        .parse::<PackageEcosystem>()
+pub(super) struct RegistrationIntent {
+    pub(super) targets: Vec<String>,
+    pub(super) ecosystem: Option<String>,
+    pub(super) repository: Option<String>,
+    pub(super) branch: Option<String>,
+    pub(super) ci_registry: Option<String>,
+    pub(super) recursive: bool,
+}
+
+pub(super) async fn register(files: &ApplianceFiles, intent: RegistrationIntent) -> VmResult<()> {
+    let ecosystem = intent
+        .ecosystem
+        .as_deref()
+        .map(str::parse::<PackageEcosystem>)
+        .transpose()
         .map_err(|error| VmError::validation(error.to_string(), None::<String>))?;
-    let package = configured_client(files)?
-        .register_package(&RegisterPackage {
-            name,
+    let requests = if let Some(repository) = intent.repository {
+        if intent.recursive || intent.targets.len() != 1 {
+            return Err(VmError::validation(
+                "Explicit registration accepts exactly one package name and cannot be recursive",
+                None::<String>,
+            ));
+        }
+        let ecosystem = ecosystem.ok_or_else(|| {
+            VmError::validation(
+                "Explicit registration requires --ecosystem",
+                Some("Use npm, cargo, or python"),
+            )
+        })?;
+        let request = RegisterPackage {
+            name: intent
+                .targets
+                .into_iter()
+                .next()
+                .expect("one target checked"),
             ecosystem,
             repository,
-            default_branch,
-            ci_registry,
-        })
-        .await?;
-    vm_success!("Registered {} ({})", package.name, package.ecosystem);
-    vm_println!("Repository: {}", package.repository);
-    if let Some(registry) = package.ci_registry {
-        vm_println!("CI registry: {registry}");
+            default_branch: intent.branch.unwrap_or_else(|| "main".into()),
+            ci_registry: intent.ci_registry,
+        };
+        request
+            .validate()
+            .map_err(|error| VmError::validation(error.to_string(), None::<String>))?;
+        vec![request]
+    } else {
+        discovery::discover(
+            &intent.targets,
+            intent.recursive,
+            ecosystem,
+            intent.branch.as_deref(),
+            intent.ci_registry.as_deref(),
+        )?
+    };
+
+    let client = configured_client(files)?;
+    for request in requests {
+        let package = client.register_package(&request).await?;
+        vm_success!("Registered {} ({})", package.name, package.ecosystem);
+        vm_println!("Repository: {}", package.repository);
+        if let Some(registry) = package.ci_registry {
+            vm_println!("CI registry: {registry}");
+        }
     }
     Ok(())
 }

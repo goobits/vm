@@ -75,18 +75,25 @@ pub enum PackagesSubcommand {
         #[arg(long, value_enum, default_value = "auto")]
         runtime: PackageInfrastructureRuntime,
     },
-    /// Register one canonical shared-package repository
+    /// Register canonical repositories explicitly or discover them from local paths
     Register {
-        name: String,
+        /// One explicit package name, or one or more package repository paths
+        #[arg(required = true, value_name = "NAME_OR_PATH")]
+        targets: Vec<String>,
         #[arg(long, value_parser = ["npm", "cargo", "python"])]
-        ecosystem: String,
+        ecosystem: Option<String>,
+        /// Canonical repository URL; omit to infer each path's origin remote
         #[arg(long)]
-        repository: String,
-        #[arg(long, default_value = "main")]
-        branch: String,
+        repository: Option<String>,
+        /// Override the inferred default branch
+        #[arg(long)]
+        branch: Option<String>,
         /// CI-accessible registry endpoint used for synchronized releases
         #[arg(long)]
         ci_registry: Option<String>,
+        /// Discover Git repositories below each supplied directory
+        #[arg(long)]
+        recursive: bool,
     },
     /// List registered shared-package repositories
     List,

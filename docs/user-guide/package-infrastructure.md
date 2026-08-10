@@ -67,6 +67,9 @@ service or release job that needs them.
 Register each package repository and each consumer inventory:
 
 ```bash
+vm packages register ./packages/*
+vm packages register ./packages --recursive
+
 vm packages register auth \
   --ecosystem cargo \
   --repository https://github.com/example/auth.git \
@@ -76,6 +79,12 @@ vm packages consumer register project-a \
   --repository https://github.com/example/project-a.git \
   --dependency auth@1.4.2
 ```
+
+Path registration detects `package.json`, `Cargo.toml`, or `pyproject.toml`,
+then reads each repository's `origin` and default branch. Every supplied path
+must be a Git repository root. Use `--ecosystem` when a repository intentionally
+contains more than one supported manifest. Discovery only registers metadata;
+it does not copy, mount, build, or publish the local source.
 
 Supported ecosystems are `npm`, `cargo`, and `python`. A package has one
 canonical repository and immutable published versions.

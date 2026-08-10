@@ -3,8 +3,12 @@
 //! This module provides functionality for detecting and parsing Git configuration
 //! from the host system.
 
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use git2::{Config, Repository};
 use serde::{Deserialize, Serialize};
-use vm_core::error::Result;
+use vm_core::error::{Result, VmError};
 
 /// Represents the Git configuration extracted from the host.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -17,8 +21,12 @@ pub struct GitConfig {
     pub core_excludesfile_content: Option<String>,
 }
 
-use git2::Config;
-use std::fs;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepositoryFacts {
+    pub root: PathBuf,
+    pub origin_url: String,
+    pub default_branch: Option<String>,
+}
 
 /// Detects and parses the Git configuration from the host system.
 pub fn detect_git_config() -> Result<GitConfig> {
@@ -48,4 +56,89 @@ pub fn detect_git_config() -> Result<GitConfig> {
     }
 
     Ok(config)
+}
+
+/// Detect the canonical root, origin, and default branch of one Git worktree.
+pub fn detect_repository(path: &Path) -> Result<RepositoryFacts> {
+    let repository = Repository::discover(path).map_err(|error| {
+        VmError::validation(
+            format!("{} is not inside a Git repository: {error}", path.display()),
+            None::<String>,
+        )
+    })?;
+    let root = repository.workdir().ok_or_else(|| {
+        VmError::validation(
+            format!("{} is a bare Git repository", path.display()),
+            None::<String>,
+        )
+    })?;
+    let root = fs::canonicalize(root)?;
+    let origin = repository.find_remote("origin").map_err(|_| {
+        VmError::validation(
+            format!("Git repository {} has no origin remote", root.display()),
+            None::<String>,
+        )
+    })?;
+    let origin_url = origin
+        .url()
+        .ok()
+        .filter(|url| !url.trim().is_empty())
+        .ok_or_else(|| {
+            VmError::validation(
+                format!("Git repository {} has an empty origin URL", root.display()),
+                None::<String>,
+            )
+        })?;
+
+    Ok(RepositoryFacts {
+        root,
+        origin_url: origin_url.to_string(),
+        default_branch: default_branch(&repository),
+    })
+}
+
+fn default_branch(repository: &Repository) -> Option<String> {
+    if let Ok(reference) = repository.find_reference("refs/remotes/origin/HEAD") {
+        if let Ok(Some(target)) = reference.symbolic_target() {
+            if let Some(branch) = target.strip_prefix("refs/remotes/origin/") {
+                return Some(branch.to_string());
+            }
+        }
+    }
+
+    repository
+        .head()
+        .ok()
+        .and_then(|head| head.shorthand().ok().map(str::to_string))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::detect_repository;
+    use git2::Repository;
+
+    #[test]
+    fn detects_worktree_root_origin_and_remote_default_branch() {
+        let directory = tempfile::tempdir().unwrap();
+        let repository = Repository::init(directory.path()).unwrap();
+        repository
+            .remote("origin", "https://example.com/shared/auth.git")
+            .unwrap();
+        repository
+            .reference_symbolic(
+                "refs/remotes/origin/HEAD",
+                "refs/remotes/origin/main",
+                true,
+                "test default branch",
+            )
+            .unwrap();
+        let nested = directory.path().join("nested");
+        std::fs::create_dir(&nested).unwrap();
+
+        let facts = detect_repository(&nested).unwrap();
+
+        assert_eq!(facts.root, directory.path().canonicalize().unwrap());
+        assert_eq!(facts.origin_url, "https://example.com/shared/auth.git");
+        assert_eq!(facts.default_branch.as_deref(), Some("main"));
+    }
 }

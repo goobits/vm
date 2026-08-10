@@ -7,9 +7,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 use vm_packages::{
-    CheckoutLease, CheckoutRecord, CleanupRequest, ConsumerRecord, CreateCheckout, LeaseRecord,
-    LeaseRequest, PackageDefinition, ReceiptKind, RegisterPackage, ReleaseRecord, RolloutRecord,
-    SubmissionRecord, TransitionRequest, WorkflowReceipt, WorkflowState, WorkflowTransition,
+    validate_label, CheckoutLease, CheckoutRecord, CleanupRequest, ConsumerRecord, CreateCheckout,
+    LeaseRecord, LeaseRequest, PackageDefinition, ReceiptKind, RegisterPackage, ReleaseRecord,
+    RolloutRecord, SubmissionRecord, TransitionRequest, WorkflowReceipt, WorkflowState,
+    WorkflowTransition,
 };
 
 use crate::submission::transition_records;
@@ -179,7 +180,7 @@ impl Store {
         &self,
         request: RegisterPackage,
     ) -> WorkResult<PackageDefinition> {
-        validate_register(&request)?;
+        request.validate()?;
         let mut current = self.database.lock().await;
         if let Some(existing) = current.packages.get(&request.name) {
             if existing.ecosystem == request.ecosystem
@@ -873,52 +874,6 @@ fn validate_create(request: &CreateCheckout) -> WorkResult<()> {
     validate_idempotency_key(&request.idempotency_key)
 }
 
-fn validate_register(request: &RegisterPackage) -> WorkResult<()> {
-    validate_label("package", &request.name)?;
-    validate_label("default branch", &request.default_branch)?;
-    validate_repository_url(&request.repository)?;
-    if let Some(registry) = request.ci_registry.as_deref() {
-        validate_registry_url(registry)?;
-    }
-    Ok(())
-}
-
-pub(crate) fn validate_repository_url(value: &str) -> WorkResult<()> {
-    let repository = url::Url::parse(value)
-        .map_err(|_| WorkError::Invalid("repository must be an absolute URL".into()))?;
-    if !matches!(repository.scheme(), "https" | "ssh" | "file")
-        || repository.password().is_some()
-        || (repository.scheme() == "https" && !repository.username().is_empty())
-        || repository.query().is_some()
-        || repository.fragment().is_some()
-    {
-        return Err(WorkError::Invalid(
-            "repository URL must use https, ssh, or an appliance-local file URL without embedded credentials, query, or fragment"
-                .into(),
-        ));
-    }
-    Ok(())
-}
-
-pub(crate) fn validate_registry_url(value: &str) -> WorkResult<()> {
-    let value = value.strip_prefix("sparse+").unwrap_or(value);
-    let registry = url::Url::parse(value)
-        .map_err(|_| WorkError::Invalid("registry must be an absolute HTTP(S) URL".into()))?;
-    if !matches!(registry.scheme(), "http" | "https")
-        || registry.host_str().is_none()
-        || !registry.username().is_empty()
-        || registry.password().is_some()
-        || registry.query().is_some()
-        || registry.fragment().is_some()
-    {
-        return Err(WorkError::Invalid(
-            "registry must be an absolute HTTP(S) URL without credentials, query, or fragment"
-                .into(),
-        ));
-    }
-    Ok(())
-}
-
 fn validate_lease_request(request: &LeaseRequest) -> WorkResult<()> {
     validate_label("lease holder", &request.holder)?;
     if request.lease_token.trim().is_empty() {
@@ -940,21 +895,6 @@ fn validate_transition(request: &TransitionRequest) -> WorkResult<()> {
         ));
     }
     validate_idempotency_key(&request.idempotency_key)
-}
-
-pub(crate) fn validate_label(field: &str, value: &str) -> WorkResult<()> {
-    let valid = !value.is_empty()
-        && value.len() <= 128
-        && !value.contains("..")
-        && !value.starts_with('/')
-        && value.chars().all(|character| {
-            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | '/' | '@')
-        });
-    if valid {
-        Ok(())
-    } else {
-        Err(WorkError::Invalid(format!("invalid {field}")))
-    }
 }
 
 pub(crate) fn validate_idempotency_key(key: &str) -> WorkResult<()> {

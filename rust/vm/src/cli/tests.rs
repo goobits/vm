@@ -201,6 +201,53 @@ fn packages_up_parses_tart_appliance() {
 }
 
 #[test]
+fn package_registration_parses_explicit_and_discovery_modes() {
+    assert!(matches!(
+        Args::parse_from([
+            "vm",
+            "packages",
+            "register",
+            "auth",
+            "--ecosystem",
+            "cargo",
+            "--repository",
+            "https://example.com/auth.git",
+        ])
+        .command,
+        Command::Packages {
+            command: PackagesSubcommand::Register {
+                targets,
+                ecosystem: Some(ecosystem),
+                repository: Some(repository),
+                recursive: false,
+                ..
+            }
+        } if targets == ["auth"]
+            && ecosystem == "cargo"
+            && repository == "https://example.com/auth.git"
+    ));
+    assert!(matches!(
+        Args::parse_from([
+            "vm",
+            "packages",
+            "register",
+            "./packages/auth",
+            "./packages/ui",
+            "--recursive",
+        ])
+        .command,
+        Command::Packages {
+            command: PackagesSubcommand::Register {
+                targets,
+                repository: None,
+                recursive: true,
+                ..
+            }
+        } if targets == ["./packages/auth", "./packages/ui"]
+    ));
+}
+
+#[test]
 fn package_checkout_parses_isolated_work_request() {
     assert!(matches!(
         Args::parse_from([

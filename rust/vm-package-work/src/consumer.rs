@@ -1,12 +1,12 @@
 use chrono::Utc;
 use vm_packages::{
-    ConsumerRecord, ConsumerUsage, CreateRollout, PackageDrift, RegisterConsumer, RolloutRecord,
-    RolloutState, RolloutTransition, RolloutValidationRequest, WorkflowState,
+    validate_label, validate_repository_url, ConsumerRecord, ConsumerUsage, CreateRollout,
+    PackageDrift, RegisterConsumer, RolloutRecord, RolloutState, RolloutTransition,
+    RolloutValidationRequest, WorkflowState,
 };
 
 use crate::store::{
-    ensure_fingerprint, next_id, operation_fingerprint, validate_idempotency_key, validate_label,
-    validate_repository_url, IdempotencyRecord,
+    ensure_fingerprint, next_id, operation_fingerprint, validate_idempotency_key, IdempotencyRecord,
 };
 use crate::{Store, WorkError, WorkResult};
 

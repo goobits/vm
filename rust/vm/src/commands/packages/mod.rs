@@ -2,6 +2,7 @@ mod appliance;
 mod catalog;
 mod checkout;
 mod consumer;
+mod discovery;
 mod docker;
 mod files;
 mod integration;
@@ -52,12 +53,26 @@ pub(super) async fn handle(
             appliance::restore(&files, runtime, &backup_id)
         }
         PackagesSubcommand::Register {
-            name,
+            targets,
             ecosystem,
             repository,
             branch,
             ci_registry,
-        } => catalog::register(&files, name, ecosystem, repository, branch, ci_registry).await,
+            recursive,
+        } => {
+            catalog::register(
+                &files,
+                catalog::RegistrationIntent {
+                    targets,
+                    ecosystem,
+                    repository,
+                    branch,
+                    ci_registry,
+                    recursive,
+                },
+            )
+            .await
+        }
         PackagesSubcommand::List => catalog::list(&files).await,
         PackagesSubcommand::Consumer { command } => consumer::handle_catalog(&files, command).await,
         PackagesSubcommand::Consumers { package } => {
