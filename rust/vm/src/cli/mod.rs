@@ -193,6 +193,11 @@ pub enum Command {
         #[command(subcommand)]
         command: PackagesSubcommand,
     },
+    /// Manage immutable tools activated inside project environments
+    Tools {
+        #[command(subcommand)]
+        command: ToolsSubcommand,
+    },
     /// Manage defaults, providers, and profiles
     Config {
         #[command(subcommand)]

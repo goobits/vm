@@ -21,7 +21,7 @@ const READY_ATTEMPTS: usize = 120;
 const READY_INTERVAL: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum StartOutcome {
+pub(in crate::commands) enum StartOutcome {
     AlreadyRunning,
     Started,
 }
@@ -79,7 +79,7 @@ async fn wait_until_ready(
 /// Start an existing environment when needed, then wait until it accepts commands.
 ///
 /// This function never creates, rebuilds, or removes an environment.
-pub(super) async fn ensure_running(
+pub(in crate::commands) async fn ensure_running(
     provider: &dyn Provider,
     container: Option<&str>,
     config: &VmConfig,

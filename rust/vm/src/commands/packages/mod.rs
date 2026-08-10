@@ -11,6 +11,7 @@ mod release;
 mod runtime;
 mod submission;
 mod tart;
+pub(in crate::commands) mod tooling;
 
 use std::path::PathBuf;
 
@@ -43,7 +44,13 @@ pub(super) async fn handle(
             port,
             registry_image,
             job_image,
-        } => appliance::up(&files, runtime, port, registry_image, job_image).await,
+        } => {
+            appliance::up(&files, runtime, port, registry_image, job_image).await?;
+            if let Ok(config) = vm_config::AppConfig::load(config_path, profile, None) {
+                let _ = tooling::refresh(&config.vm).await;
+            }
+            Ok(())
+        }
         PackagesSubcommand::Down { runtime } => appliance::down(&files, runtime),
         PackagesSubcommand::Status { runtime } => appliance::status(&files, runtime).await,
         PackagesSubcommand::Doctor { runtime } => appliance::doctor(&files, runtime).await,

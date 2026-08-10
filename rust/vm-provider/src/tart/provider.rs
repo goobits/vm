@@ -679,6 +679,32 @@ impl TartProvider {
         info!("{}", MESSAGES.service.provider_tart_connect_hint);
         Ok(())
     }
+
+    fn guest_exec_args(&self, container: Option<&str>, cmd: &[String]) -> Result<Vec<String>> {
+        let vm_name = self.vm_name_with_instance(container)?;
+        let shell = self
+            .config
+            .terminal
+            .as_ref()
+            .and_then(|terminal| terminal.shell.as_deref())
+            .unwrap_or("zsh");
+        let sync_dir = self.get_sync_directory();
+        self.ensure_workspace_mount_ready(&vm_name, &sync_dir)?;
+        self.ensure_configured_mounts_ready(&vm_name)?;
+        self.ensure_shell_config_ready(&vm_name, &sync_dir)?;
+        let sync_dir_quoted = shell_session::quote_posix_argument(&sync_dir);
+        let worktree_repair = shell_session::worktree_repair_script(&sync_dir);
+        let mut args = vec![
+            "exec".to_string(),
+            vm_name,
+            shell.to_string(),
+            "-ilc".to_string(),
+            format!("{worktree_repair}\ncd {sync_dir_quoted} && exec \"$@\""),
+            "vm-exec".to_string(),
+        ];
+        args.extend(cmd.iter().cloned());
+        Ok(args)
+    }
 }
 
 impl Provider for TartProvider {
@@ -744,31 +770,21 @@ impl Provider for TartProvider {
     }
 
     fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()> {
-        let vm_name = self.vm_name_with_instance(container)?;
-        let shell = self
-            .config
-            .terminal
-            .as_ref()
-            .and_then(|t| t.shell.as_deref())
-            .unwrap_or("zsh");
-        let sync_dir = self.get_sync_directory();
-        self.ensure_workspace_mount_ready(&vm_name, &sync_dir)?;
-        self.ensure_configured_mounts_ready(&vm_name)?;
-        self.ensure_shell_config_ready(&vm_name, &sync_dir)?;
-        let sync_dir_quoted = shell_session::quote_posix_argument(&sync_dir);
-        let worktree_repair = shell_session::worktree_repair_script(&sync_dir);
-
-        let mut args: Vec<String> = vec![
-            "exec".to_string(),
-            vm_name,
-            shell.to_string(),
-            "-ilc".to_string(),
-            format!("{worktree_repair}\ncd {sync_dir_quoted} && exec \"$@\""),
-            "vm-exec".to_string(),
-        ];
-        args.extend(cmd.iter().cloned());
+        let args = self.guest_exec_args(container, cmd)?;
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
         self.stream_tart_command_visible(&arg_refs)
+    }
+
+    fn exec_output(&self, container: Option<&str>, cmd: &[String]) -> Result<String> {
+        let args = self.guest_exec_args(container, cmd)?;
+        self.tart_expr(&args)
+            .stderr_capture()
+            .read()
+            .map_err(|error| {
+                VmError::Provider(format!(
+                    "Failed to capture Tart guest command output: {error}"
+                ))
+            })
     }
 
     fn logs(&self, container: Option<&str>) -> Result<()> {

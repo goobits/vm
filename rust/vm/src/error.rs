@@ -122,6 +122,18 @@ impl From<std::io::Error> for VmError {
     }
 }
 
+impl From<serde_json::Error> for VmError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::with_source("Invalid package infrastructure metadata", error)
+    }
+}
+
+impl From<vm_packages::PackageValidationError> for VmError {
+    fn from(error: vm_packages::PackageValidationError) -> Self {
+        Self::validation(error.to_string(), None::<String>)
+    }
+}
+
 impl From<vm_core::error::VmError> for VmError {
     fn from(error: vm_core::error::VmError) -> Self {
         Self::message(error.to_string())

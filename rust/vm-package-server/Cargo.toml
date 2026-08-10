@@ -48,6 +48,8 @@ bytes = { workspace = true }
 once_cell = { workspace = true }
 notify = { workspace = true }
 futures-util = { workspace = true }
+flate2 = { workspace = true }
+tar = { workspace = true }
 dirs = { workspace = true }
 vm-core = { path = "../vm-core" }
 vm-packages = { path = "../vm-packages" }

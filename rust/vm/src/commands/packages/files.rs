@@ -17,6 +17,7 @@ const GIT_TOKEN_FILE: &str = "git-token";
 const CI_PUBLISH_TOKEN_FILE: &str = "ci-publish-token";
 const STATE_FILE: &str = "state.json";
 const MAINTENANCE_LOCK_FILE: &str = "maintenance.lock";
+const TOOL_CACHE_LOCK_FILE: &str = "tool-cache.lock";
 
 #[derive(Debug, Clone)]
 pub(super) struct ApplianceFiles {
@@ -160,6 +161,62 @@ impl ApplianceFiles {
             )
         })?;
         Ok(file)
+    }
+
+    pub(super) fn acquire_tool_cache_lock(&self) -> VmResult<Option<File>> {
+        use fs2::FileExt;
+
+        self.ensure_root()?;
+        let path = self.root.join(TOOL_CACHE_LOCK_FILE);
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&path)
+            .map_err(|error| {
+                VmError::filesystem(
+                    error,
+                    path.display().to_string(),
+                    "open tool catalog cache lock",
+                )
+            })?;
+        set_mode(&path, 0o600)?;
+        match file.try_lock_exclusive() {
+            Ok(()) => Ok(Some(file)),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
+            Err(error) => Err(VmError::from(error)),
+        }
+    }
+
+    pub(super) fn read_tool_cache(
+        &self,
+        name: &str,
+        max_age: std::time::Duration,
+    ) -> VmResult<Option<Vec<u8>>> {
+        let path = self.root.join("tool-cache").join(name);
+        let metadata = match fs::metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(VmError::from(error)),
+        };
+        let fresh = metadata
+            .modified()
+            .ok()
+            .and_then(|modified| modified.elapsed().ok())
+            .is_some_and(|age| age <= max_age);
+        if !fresh {
+            return Ok(None);
+        }
+        fs::read(&path).map(Some).map_err(VmError::from)
+    }
+
+    pub(super) fn write_tool_cache(&self, name: &str, content: &[u8]) -> VmResult<()> {
+        let path = self.root.join("tool-cache").join(name);
+        let parent = path.parent().expect("tool cache path has a parent");
+        fs::create_dir_all(parent).map_err(VmError::from)?;
+        set_mode(parent, 0o700)?;
+        write_private(&path, content)
     }
 
     fn lock_file(&self) -> VmResult<File> {

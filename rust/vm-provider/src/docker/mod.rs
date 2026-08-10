@@ -245,6 +245,11 @@ impl Provider for DockerProvider {
         lifecycle.exec_in_container(container, cmd)
     }
 
+    fn exec_output(&self, container: Option<&str>, cmd: &[String]) -> Result<String> {
+        self.lifecycle_ops()
+            .exec_in_container_output(container, cmd)
+    }
+
     fn logs(&self, container: Option<&str>) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
         lifecycle.show_logs(container)

@@ -59,41 +59,13 @@ pub struct PublishToolArtifact {
 
 impl PublishToolArtifact {
     pub fn validate(&self) -> Result<(), PackageValidationError> {
-        validate_version(&self.version)?;
-        validate_tool_target(&self.target)?;
-        validate_sha256(&self.artifact_digest)?;
-        if self.size_bytes == 0 {
-            return Err(PackageValidationError::new(
-                "tool artifact size must be greater than zero",
-            ));
-        }
-        if self.links.is_empty() {
-            return Err(PackageValidationError::new(
-                "tool artifact must define at least one activation link",
-            ));
-        }
-        if self.links.len() > 64 {
-            return Err(PackageValidationError::new(
-                "tool artifact cannot define more than 64 activation links",
-            ));
-        }
-        for (destination, source) in &self.links {
-            validate_relative_path("activation destination", destination)?;
-            validate_activation_destination(destination)?;
-            validate_relative_path("artifact source", source)?;
-        }
-        let destinations = self.links.keys().map(Path::new).collect::<Vec<_>>();
-        for (index, destination) in destinations.iter().enumerate() {
-            if destinations
-                .iter()
-                .skip(index + 1)
-                .any(|other| destination.starts_with(other) || other.starts_with(destination))
-            {
-                return Err(PackageValidationError::new(
-                    "tool activation destinations cannot overlap",
-                ));
-            }
-        }
+        validate_artifact_fields(
+            &self.version,
+            &self.target,
+            &self.artifact_digest,
+            self.size_bytes,
+            &self.links,
+        )?;
         validate_git_commit(&self.source_commit)?;
         validate_label("release tag", &self.tag)?;
         validate_label("actor", &self.actor)?;
@@ -123,6 +95,35 @@ pub struct ToolArtifactRecord {
 impl ToolArtifactRecord {
     pub fn artifact_key(&self) -> String {
         artifact_key(&self.tool, &self.version, &self.target)
+    }
+
+    /// Validate metadata loaded from a registry index or controller cache.
+    pub fn validate(&self) -> Result<(), PackageValidationError> {
+        validate_tool_name(&self.tool)?;
+        validate_artifact_fields(
+            &self.version,
+            &self.target,
+            &self.artifact_digest,
+            self.size_bytes,
+            &self.links,
+        )?;
+        validate_repository_url(&self.source_repository)?;
+        validate_git_commit(&self.source_commit)?;
+        validate_label("release tag", &self.tag)?;
+        validate_label("actor", &self.actor)?;
+        validate_label("receipt ID", &self.receipt_id)?;
+        let expected_path = tool_artifact_path(
+            &self.tool,
+            &self.version,
+            &self.target,
+            &self.artifact_digest,
+        );
+        if self.artifact_path != expected_path {
+            return Err(PackageValidationError::new(
+                "tool artifact path does not match its immutable identity",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -208,6 +209,51 @@ pub fn validate_sha256(value: &str) -> Result<(), PackageValidationError> {
 
 pub fn validate_version(value: &str) -> Result<Version, PackageValidationError> {
     Version::parse(value).map_err(|_| PackageValidationError::new("tool version must be semantic"))
+}
+
+fn validate_artifact_fields(
+    version: &str,
+    target: &str,
+    digest: &str,
+    size_bytes: u64,
+    links: &BTreeMap<String, String>,
+) -> Result<(), PackageValidationError> {
+    validate_version(version)?;
+    validate_tool_target(target)?;
+    validate_sha256(digest)?;
+    if size_bytes == 0 {
+        return Err(PackageValidationError::new(
+            "tool artifact size must be greater than zero",
+        ));
+    }
+    if links.is_empty() {
+        return Err(PackageValidationError::new(
+            "tool artifact must define at least one activation link",
+        ));
+    }
+    if links.len() > 64 {
+        return Err(PackageValidationError::new(
+            "tool artifact cannot define more than 64 activation links",
+        ));
+    }
+    for (destination, source) in links {
+        validate_relative_path("activation destination", destination)?;
+        validate_activation_destination(destination)?;
+        validate_relative_path("artifact source", source)?;
+    }
+    let destinations = links.keys().map(Path::new).collect::<Vec<_>>();
+    for (index, destination) in destinations.iter().enumerate() {
+        if destinations
+            .iter()
+            .skip(index + 1)
+            .any(|other| destination.starts_with(other) || other.starts_with(destination))
+        {
+            return Err(PackageValidationError::new(
+                "tool activation destinations cannot overlap",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_git_commit(value: &str) -> Result<(), PackageValidationError> {
@@ -302,5 +348,36 @@ mod tests {
 
         request.links = BTreeMap::from([(".ssh/authorized_keys".into(), "key".into())]);
         assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn artifact_records_validate_their_immutable_path() {
+        let request = publication();
+        let mut record = ToolArtifactRecord {
+            tool: "codex".into(),
+            kind: ToolKind::Binary,
+            version: request.version,
+            target: request.target,
+            artifact_digest: request.artifact_digest,
+            size_bytes: request.size_bytes,
+            links: request.links,
+            source_repository: "https://example.com/codex.git".into(),
+            source_commit: request.source_commit,
+            tag: request.tag,
+            artifact_path: String::new(),
+            actor: request.actor,
+            published_at: Utc::now(),
+            receipt_id: "tool-receipt-00000001".into(),
+        };
+        record.artifact_path = tool_artifact_path(
+            &record.tool,
+            &record.version,
+            &record.target,
+            &record.artifact_digest,
+        );
+        record.validate().unwrap();
+
+        record.artifact_path = "/tools/artifacts/other.tar.gz".into();
+        assert!(record.validate().is_err());
     }
 }

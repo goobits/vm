@@ -8,13 +8,13 @@ description = "Snapshot management for Goobits VM"
 
 [dependencies]
 chrono = { workspace = true }
-flate2 = "1.1"
+flate2 = { workspace = true }
 futures = "0.3"
 num_cpus = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tar = "0.4"
+tar = { workspace = true }
 tempfile = "3"
 thiserror = { workspace = true }
 tokio = { workspace = true }

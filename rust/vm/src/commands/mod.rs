@@ -27,6 +27,7 @@ pub mod secrets;
 mod state;
 mod status;
 mod system;
+mod tools;
 pub mod tunnel;
 pub mod uninstall;
 pub mod update;
@@ -300,6 +301,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             .await
         }
         Command::Packages { command } => packages::handle(command, args.config, args.profile).await,
+        Command::Tools { command } => tools::handle(command, args.config, args.profile).await,
         Command::Tunnel { command } => handle_tunnel_command(command, args.config, args.profile),
         Command::GetSyncDirectory => {
             let (provider, _, _) = load_provider_context(args.config, args.profile, None)?;
@@ -414,6 +416,7 @@ fn dry_run_description(command: &Command) -> String {
         Command::Revert { .. } => "restore an environment snapshot".to_string(),
         Command::Package { environment, .. } => format!("package {}", target(environment)),
         Command::Packages { .. } => "manage package infrastructure".to_string(),
+        Command::Tools { .. } => "manage guest tools".to_string(),
         Command::Config { .. } => "run a configuration operation".to_string(),
         Command::Tunnel { .. } => "run a tunnel operation".to_string(),
         Command::Doctor { .. } => "run diagnostics or requested maintenance".to_string(),

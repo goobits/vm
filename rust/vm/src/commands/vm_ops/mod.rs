@@ -23,6 +23,7 @@ pub(super) use create::resolve_or_create_target;
 pub use destroy::handle_destroy;
 pub use helpers::handle_get_sync_directory;
 pub use interaction::{handle_copy, handle_exec, handle_logs, handle_ssh};
+pub(in crate::commands) use lifecycle::ensure_running;
 pub use lifecycle::{handle_restart, handle_start, handle_stop};
 
 pub use fleet::handle_fleet_command;

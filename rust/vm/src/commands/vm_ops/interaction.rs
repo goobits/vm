@@ -53,6 +53,7 @@ pub async fn handle_ssh(
         "Connecting to VM"
     );
     ensure_running(provider.as_ref(), container, &config, &global_config, true).await?;
+    crate::commands::tools::before_shell(provider.as_ref(), vm_name, &config);
     vm_progress!("Connecting to '{vm_name}'...");
     provider
         .ssh(container, &relative_path)

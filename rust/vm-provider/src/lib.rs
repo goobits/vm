@@ -377,6 +377,13 @@ pub trait Provider {
     /// Execute a command inside the VM.
     fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()>;
 
+    /// Execute a command and return its standard output without opening a TTY.
+    fn exec_output(&self, _container: Option<&str>, _cmd: &[String]) -> Result<String> {
+        Err(VmError::Provider(
+            "This provider does not support captured command output".into(),
+        ))
+    }
+
     /// Get the logs of the VM.
     fn logs(&self, container: Option<&str>) -> Result<()>;
 

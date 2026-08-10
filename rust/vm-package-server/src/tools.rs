@@ -20,6 +20,8 @@ use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
 const MAX_TOOL_ARTIFACT_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_TOOL_UNPACKED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+const MAX_TOOL_ARCHIVE_ENTRIES: usize = 100_000;
 
 #[derive(Debug, Deserialize)]
 struct ArtifactPath {
@@ -181,6 +183,7 @@ async fn save_stream_immutable(
             "tool artifact digest mismatch: expected {expected_digest}, received {actual_digest}"
         )));
     }
+    validate_tool_archive(temporary_file_path(&temporary_path)).await?;
 
     let temporary_file: &FsPath = temporary_path.as_ref();
     match tokio::fs::hard_link(temporary_file, &destination).await {
@@ -198,6 +201,97 @@ async fn save_stream_immutable(
         }
         Err(error) => Err(error.into()),
     }
+}
+
+fn temporary_file_path(path: &tempfile::TempPath) -> PathBuf {
+    let path: &FsPath = path.as_ref();
+    path.to_path_buf()
+}
+
+async fn validate_tool_archive(path: PathBuf) -> AppResult<()> {
+    tokio::task::spawn_blocking(move || validate_tool_archive_sync(&path))
+        .await
+        .map_err(|error| AppError::InternalError(format!("archive validation failed: {error}")))?
+}
+
+fn validate_tool_archive_sync(path: &FsPath) -> AppResult<()> {
+    use std::path::Component;
+
+    let file = std::fs::File::open(path)?;
+    let decoder = flate2::read::GzDecoder::new(file);
+    let mut archive = tar::Archive::new(decoder);
+    let mut count = 0_usize;
+    let mut unpacked = 0_u64;
+    for entry in archive
+        .entries()
+        .map_err(|error| AppError::BadRequest(format!("invalid tool archive: {error}")))?
+    {
+        let entry = entry
+            .map_err(|error| AppError::BadRequest(format!("invalid tool archive: {error}")))?;
+        count += 1;
+        if count > MAX_TOOL_ARCHIVE_ENTRIES {
+            return Err(AppError::BadRequest(format!(
+                "tool archive exceeds {MAX_TOOL_ARCHIVE_ENTRIES} entries"
+            )));
+        }
+        unpacked = unpacked
+            .checked_add(entry.size())
+            .ok_or_else(|| AppError::BadRequest("tool archive is too large".into()))?;
+        if unpacked > MAX_TOOL_UNPACKED_BYTES {
+            return Err(AppError::BadRequest(format!(
+                "tool archive exceeds the {MAX_TOOL_UNPACKED_BYTES} byte unpacked limit"
+            )));
+        }
+
+        let entry_path = entry
+            .path()
+            .map_err(|error| AppError::BadRequest(format!("invalid archive path: {error}")))?;
+        if entry_path.as_os_str().is_empty()
+            || entry_path.is_absolute()
+            || entry_path.components().any(|component| {
+                matches!(
+                    component,
+                    Component::ParentDir | Component::RootDir | Component::Prefix(_)
+                )
+            })
+        {
+            return Err(AppError::BadRequest(format!(
+                "unsafe tool archive path: {}",
+                entry_path.display()
+            )));
+        }
+
+        let kind = entry.header().entry_type();
+        if !(kind.is_file() || kind.is_dir() || kind.is_symlink() || kind.is_hard_link()) {
+            return Err(AppError::BadRequest(
+                "tool archives may contain only files, directories, and safe links".into(),
+            ));
+        }
+        if kind.is_symlink() || kind.is_hard_link() {
+            let link = entry
+                .link_name()
+                .map_err(|error| AppError::BadRequest(format!("invalid archive link: {error}")))?
+                .ok_or_else(|| AppError::BadRequest("archive link has no target".into()))?;
+            if link.as_os_str().is_empty()
+                || link.is_absolute()
+                || link.components().any(|component| {
+                    matches!(
+                        component,
+                        Component::ParentDir | Component::RootDir | Component::Prefix(_)
+                    )
+                })
+            {
+                return Err(AppError::BadRequest(format!(
+                    "unsafe tool archive link: {}",
+                    link.display()
+                )));
+            }
+        }
+    }
+    if count == 0 {
+        return Err(AppError::BadRequest("tool archive cannot be empty".into()));
+    }
+    Ok(())
 }
 
 async fn sha256_file(path: &FsPath) -> AppResult<(String, u64)> {
@@ -232,6 +326,7 @@ fn encode_digest(digest: impl AsRef<[u8]>) -> String {
 mod tests {
     use super::*;
     use axum_test::TestServer;
+    use std::io::Write;
     use vm_packages::tool_artifact_path;
 
     use crate::config::Config;
@@ -253,23 +348,64 @@ mod tests {
         })
     }
 
+    fn archive() -> Vec<u8> {
+        let mut encoded = Vec::new();
+        {
+            let gzip = flate2::write::GzEncoder::new(&mut encoded, flate2::Compression::default());
+            let mut archive = tar::Builder::new(gzip);
+            let content = b"one whole skills repository";
+            let mut header = tar::Header::new_gnu();
+            header.set_size(content.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            archive
+                .append_data(&mut header, "skills/example/SKILL.md", &content[..])
+                .unwrap();
+            archive.finish().unwrap();
+        }
+        encoded
+    }
+
+    fn archive_with_link(target: &str) -> Vec<u8> {
+        let mut encoded = Vec::new();
+        {
+            let gzip = flate2::write::GzEncoder::new(&mut encoded, flate2::Compression::default());
+            let mut archive = tar::Builder::new(gzip);
+            let mut header = tar::Header::new_gnu();
+            header.set_entry_type(tar::EntryType::Symlink);
+            header.set_size(0);
+            header.set_mode(0o777);
+            header.set_link_name(target).unwrap();
+            header.set_cksum();
+            archive
+                .append_data(&mut header, "skills/link", std::io::empty())
+                .unwrap();
+            archive.finish().unwrap();
+        }
+        encoded
+    }
+
     #[tokio::test]
     async fn artifact_upload_is_authenticated_verified_immutable_and_streamed_back() {
         let directory = tempfile::tempdir().unwrap();
-        let content: &[u8] = b"one whole skills repository";
-        let digest = encode_digest(Sha256::digest(content));
+        let content = archive();
+        let digest = encode_digest(Sha256::digest(&content));
         let path = tool_artifact_path("agent-skills", "1.0.0", "any", &digest);
         let server = TestServer::new(router().with_state(state(directory.path())));
 
         assert_eq!(
-            server.put(&path).bytes(content.into()).await.status_code(),
+            server
+                .put(&path)
+                .bytes(content.clone().into())
+                .await
+                .status_code(),
             StatusCode::UNAUTHORIZED
         );
         assert_eq!(
             server
                 .put(&path)
                 .add_header(header::AUTHORIZATION, "Bearer publish")
-                .bytes(content.into())
+                .bytes(content.clone().into())
                 .await
                 .status_code(),
             StatusCode::CREATED
@@ -278,29 +414,36 @@ mod tests {
             server
                 .put(&path)
                 .add_header(header::AUTHORIZATION, "Bearer publish")
-                .bytes(content.into())
+                .bytes(content.clone().into())
                 .await
                 .status_code(),
             StatusCode::OK
         );
-        assert_eq!(
-            server
-                .get(&path)
-                .add_header(header::AUTHORIZATION, "Bearer read")
-                .await
-                .as_bytes(),
-            content
-        );
+        let response = server
+            .get(&path)
+            .add_header(header::AUTHORIZATION, "Bearer read")
+            .await;
+        assert_eq!(response.as_bytes().as_ref(), content.as_slice());
 
         let bad_path = tool_artifact_path("agent-skills", "1.0.1", "any", &"f".repeat(64));
         assert_eq!(
             server
                 .put(&bad_path)
                 .add_header(header::AUTHORIZATION, "Bearer publish")
-                .bytes(content.into())
+                .bytes(archive().into())
                 .await
                 .status_code(),
             StatusCode::BAD_REQUEST
         );
+    }
+
+    #[test]
+    fn archive_validation_rejects_escaping_links() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        file.write_all(&archive_with_link("../outside")).unwrap();
+        assert!(matches!(
+            validate_tool_archive_sync(file.path()),
+            Err(AppError::BadRequest(_))
+        ));
     }
 }

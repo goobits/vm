@@ -167,6 +167,27 @@ pub enum PackagesSubcommand {
 }
 
 #[derive(Debug, Clone, Subcommand)]
+pub enum ToolsSubcommand {
+    /// Refresh the appliance-generated tool catalog cache
+    Refresh {
+        #[arg(long, hide = true)]
+        quiet: bool,
+    },
+    /// Show tools active inside one environment
+    Status { environment: Option<String> },
+    /// Install configured tools and apply selected updates
+    Update {
+        environment: Option<String>,
+        /// Select every available update without showing the checklist
+        #[arg(long)]
+        all: bool,
+        /// Return after starting concurrent guest downloads
+        #[arg(long)]
+        background: bool,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
 pub enum ConfigSubcommand {
     /// Validate the current configuration
     Validate,

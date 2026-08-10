@@ -1,0 +1,242 @@
+use std::collections::BTreeMap;
+
+use vm_packages::{
+    validate_sha256, validate_tool_name, validate_tool_target, validate_tool_version,
+    RegistryEndpoints, ToolArtifactRecord,
+};
+use vm_provider::Provider;
+
+use crate::error::{VmError, VmResult};
+
+const INSTALLER: &str = include_str!("guest-installer.sh");
+const LAUNCHER: &str = r#"
+set -eu
+umask 077
+root="${XDG_DATA_HOME:-$HOME/.local/share}/vm-tools"
+mkdir -p "$root"
+script="$root/installer.sh"
+temporary="$root/.installer.$$.tmp"
+printf '%s\n' "$1" > "$temporary"
+chmod 700 "$temporary"
+mv -f "$temporary" "$script"
+mode=$2
+shift 2
+if test "$mode" = background; then
+  nohup "$script" "$@" > "$root/update.log" 2>&1 </dev/null &
+else
+  exec "$script" "$@"
+fi
+"#;
+const STATE_SCRIPT: &str = r#"
+root="${XDG_DATA_HOME:-$HOME/.local/share}/vm-tools/state"
+for state in "$root"/*.state; do
+  test -f "$state" || continue
+  cat "$state"
+done
+"#;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct InstalledTool {
+    pub(super) name: String,
+    pub(super) version: String,
+    pub(super) target: String,
+    pub(super) digest: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum InstallMode {
+    Background,
+    Wait,
+}
+
+impl InstallMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Background => "background",
+            Self::Wait => "wait",
+        }
+    }
+}
+
+pub(super) fn platform_target(provider: &dyn Provider, environment: &str) -> VmResult<String> {
+    let output = provider
+        .exec_output(
+            Some(environment),
+            &["sh".into(), "-c".into(), "uname -s; uname -m".into()],
+        )
+        .map_err(VmError::from)?;
+    platform_target_from_uname(&output)
+}
+
+pub(super) fn installed(
+    provider: &dyn Provider,
+    environment: &str,
+) -> VmResult<BTreeMap<String, InstalledTool>> {
+    let output = provider
+        .exec_output(
+            Some(environment),
+            &["sh".into(), "-c".into(), STATE_SCRIPT.into()],
+        )
+        .map_err(VmError::from)?;
+    Ok(parse_installed(&output))
+}
+
+pub(super) fn install(
+    provider: &dyn Provider,
+    environment: &str,
+    artifacts: &[ToolArtifactRecord],
+    gateway: &str,
+    mode: InstallMode,
+) -> VmResult<()> {
+    if artifacts.is_empty() {
+        return Ok(());
+    }
+    let gateway = RegistryEndpoints::new(gateway).map_err(VmError::from)?;
+    let mut command = vec![
+        "sh".to_string(),
+        "-c".to_string(),
+        LAUNCHER.to_string(),
+        "vm-tool-launcher".to_string(),
+        INSTALLER.to_string(),
+        mode.as_str().to_string(),
+    ];
+    for artifact in artifacts {
+        command.push(manifest(artifact, gateway.gateway())?);
+    }
+    provider
+        .exec(Some(environment), &command)
+        .map_err(VmError::from)
+}
+
+fn manifest(artifact: &ToolArtifactRecord, gateway: &str) -> VmResult<String> {
+    artifact.validate().map_err(VmError::from)?;
+    let mut manifest = format!(
+        "{}\t{}\t{}\t{}\t{}{}",
+        artifact.tool,
+        artifact.version,
+        artifact.target,
+        artifact.artifact_digest,
+        gateway.trim_end_matches('/'),
+        artifact.artifact_path
+    );
+    for (destination, source) in &artifact.links {
+        manifest.push('\n');
+        manifest.push_str(destination);
+        manifest.push('\t');
+        manifest.push_str(source);
+    }
+    Ok(manifest)
+}
+
+fn platform_target_from_uname(output: &str) -> VmResult<String> {
+    let mut lines = output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty());
+    let system = lines.next().unwrap_or_default().to_ascii_lowercase();
+    let architecture = lines.next().unwrap_or_default().to_ascii_lowercase();
+    let os = match system.as_str() {
+        "linux" => "linux",
+        "darwin" => "darwin",
+        _ => {
+            return Err(VmError::validation(
+                format!("Unsupported guest operating system '{system}'"),
+                None::<String>,
+            ));
+        }
+    };
+    let architecture = match architecture.as_str() {
+        "arm64" | "aarch64" => "arm64",
+        "amd64" | "x86_64" => "amd64",
+        _ => {
+            return Err(VmError::validation(
+                format!("Unsupported guest architecture '{architecture}'"),
+                None::<String>,
+            ));
+        }
+    };
+    Ok(format!("{os}-{architecture}"))
+}
+
+fn parse_installed(output: &str) -> BTreeMap<String, InstalledTool> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let fields = line.split('\t').collect::<Vec<_>>();
+            if fields.len() != 4
+                || validate_tool_name(fields[0]).is_err()
+                || validate_tool_version(fields[1]).is_err()
+                || validate_tool_target(fields[2]).is_err()
+                || validate_sha256(fields[3]).is_err()
+            {
+                return None;
+            }
+            let tool = InstalledTool {
+                name: fields[0].into(),
+                version: fields[1].into(),
+                target: fields[2].into(),
+                digest: fields[3].into(),
+            };
+            Some((tool.name.clone(), tool))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use vm_packages::ToolKind;
+
+    #[test]
+    fn maps_linux_and_macos_guest_targets() {
+        assert_eq!(
+            platform_target_from_uname("Linux\naarch64\n").unwrap(),
+            "linux-arm64"
+        );
+        assert_eq!(
+            platform_target_from_uname("Darwin\narm64\n").unwrap(),
+            "darwin-arm64"
+        );
+        assert!(platform_target_from_uname("Plan9\nx86_64\n").is_err());
+    }
+
+    #[test]
+    fn parses_only_valid_guest_state_lines() {
+        let output = format!("noise\ncodex\t1.2.3\tlinux-arm64\t{}\n", "a".repeat(64));
+        let installed = parse_installed(&output);
+        assert_eq!(installed["codex"].version, "1.2.3");
+        assert_eq!(installed.len(), 1);
+    }
+
+    #[test]
+    fn manifest_keeps_a_collection_as_one_artifact() {
+        let artifact = ToolArtifactRecord {
+            tool: "agent-skills".into(),
+            kind: ToolKind::Collection,
+            version: "1.0.0".into(),
+            target: "any".into(),
+            artifact_digest: "a".repeat(64),
+            size_bytes: 1,
+            links: BTreeMap::from([
+                (".claude/skills".into(), "skills".into()),
+                (".codex/skills".into(), "skills".into()),
+            ]),
+            source_repository: "https://example.com/skills.git".into(),
+            source_commit: "b".repeat(40),
+            tag: "v1.0.0".into(),
+            artifact_path: vm_packages::tool_artifact_path(
+                "agent-skills",
+                "1.0.0",
+                "any",
+                &"a".repeat(64),
+            ),
+            actor: "release".into(),
+            published_at: Utc::now(),
+            receipt_id: "receipt-1".into(),
+        };
+        let manifest = manifest(&artifact, "http://packages.internal:3080").unwrap();
+        assert_eq!(manifest.lines().count(), 3);
+        assert!(manifest.starts_with("agent-skills\t1.0.0\tany\t"));
+    }
+}

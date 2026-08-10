@@ -1,6 +1,6 @@
 use std::io::IsTerminal;
 
-use dialoguer::{theme::ColorfulTheme, Select};
+use dialoguer::{theme::ColorfulTheme, MultiSelect, Select};
 
 /// Show a shared arrow-key yes/no selector for interactive confirmations.
 ///
@@ -33,4 +33,35 @@ pub fn select_index<T: std::fmt::Display>(
         .items(items)
         .default(default_idx)
         .interact()
+}
+
+/// Show a space-toggle checklist and return selected item indexes.
+///
+/// Non-interactive callers receive an empty selection rather than blocking.
+pub fn multi_select<T: std::fmt::Display>(
+    prompt: &str,
+    items: &[T],
+    defaults: &[bool],
+) -> Result<Vec<usize>, dialoguer::Error> {
+    if !std::io::stdin().is_terminal() || items.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    MultiSelect::with_theme(&ColorfulTheme::default())
+        .with_prompt(prompt)
+        .items(items)
+        .defaults(defaults)
+        .interact()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn non_tty_checklist_never_blocks() {
+        if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+            assert!(super::multi_select("Select", &["one"], &[true])
+                .unwrap()
+                .is_empty());
+        }
+    }
 }

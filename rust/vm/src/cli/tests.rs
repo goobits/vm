@@ -1,6 +1,7 @@
 use super::{
     Args, BaseSubcommand, Command, ConfigSubcommand, DbSubcommand, EnvironmentKind,
     PackageInfrastructureRuntime, PackagesSubcommand, PluginSubcommand, SystemSubcommand,
+    ToolsSubcommand,
 };
 use clap::Parser;
 
@@ -328,6 +329,35 @@ fn package_inventory_and_rollout_commands_parse() {
             },
             ..
         } if target == "auth@1.5.0" && consumer == "project-a"
+    ));
+}
+
+#[test]
+fn tool_refresh_status_and_batch_update_commands_parse() {
+    assert!(matches!(
+        Args::parse_from(["vm", "tools", "refresh"]).command,
+        Command::Tools {
+            command: ToolsSubcommand::Refresh { quiet: false }
+        }
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "tools", "status", "backend"]).command,
+        Command::Tools {
+            command: ToolsSubcommand::Status {
+                environment: Some(environment)
+            }
+        } if environment == "backend"
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "tools", "update", "backend", "--all", "--background"])
+            .command,
+        Command::Tools {
+            command: ToolsSubcommand::Update {
+                environment: Some(environment),
+                all: true,
+                background: true
+            }
+        } if environment == "backend"
     ));
 }
 

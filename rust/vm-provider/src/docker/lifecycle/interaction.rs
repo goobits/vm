@@ -162,6 +162,25 @@ impl<'a> LifecycleOperations<'a> {
 
     #[must_use = "command execution results should be handled"]
     pub fn exec_in_container(&self, container: Option<&str>, cmd: &[String]) -> Result<()> {
+        let args = self.container_exec_args(container, cmd)?;
+        let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        stream_command_visible(self.executable, &arg_refs)
+    }
+
+    pub fn exec_in_container_output(
+        &self,
+        container: Option<&str>,
+        cmd: &[String],
+    ) -> Result<String> {
+        let args = self.container_exec_args(container, cmd)?;
+        let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+        duct::cmd(self.executable, &arg_refs)
+            .stderr_capture()
+            .read()
+            .map_err(Into::into)
+    }
+
+    fn container_exec_args(&self, container: Option<&str>, cmd: &[String]) -> Result<Vec<String>> {
         let target_container = self.resolve_target_container(container)?;
         let workspace_path = self
             .config
@@ -200,8 +219,7 @@ impl<'a> LifecycleOperations<'a> {
             "vm-exec".to_string(),
         ];
         args.extend(cmd.iter().cloned());
-        let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        stream_command_visible(self.executable, &arg_refs)
+        Ok(args)
     }
 
     #[must_use = "log display results should be handled"]

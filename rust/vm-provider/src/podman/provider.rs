@@ -120,6 +120,10 @@ impl Provider for PodmanProvider {
         self.docker_provider.exec(container, cmd)
     }
 
+    fn exec_output(&self, container: Option<&str>, cmd: &[String]) -> Result<String> {
+        self.docker_provider.exec_output(container, cmd)
+    }
+
     fn logs(&self, container: Option<&str>) -> Result<()> {
         self.docker_provider.logs(container)
     }

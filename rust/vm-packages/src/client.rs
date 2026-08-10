@@ -136,20 +136,26 @@ impl PackageInfrastructureClient {
         target: &str,
     ) -> Result<ToolArtifactRecord> {
         let name = url::form_urlencoded::byte_serialize(name.as_bytes()).collect::<String>();
-        let mut query = url::form_urlencoded::Serializer::new(String::new());
-        query.append_pair("target", target);
-        if let Some(version) = version {
-            query.append_pair("version", version);
-        }
-        self.get_work(&format!("v1/tools/{name}/resolve?{}", query.finish()))
-            .await
+        let query = {
+            let mut query = url::form_urlencoded::Serializer::new(String::new());
+            query.append_pair("target", target);
+            if let Some(version) = version {
+                query.append_pair("version", version);
+            }
+            query.finish()
+        };
+        let path = format!("v1/tools/{name}/resolve?{query}");
+        self.get_work(&path).await
     }
 
     pub async fn tool_index(&self, target: &str) -> Result<ToolIndex> {
-        let query = url::form_urlencoded::Serializer::new(String::new())
-            .append_pair("target", target)
-            .finish();
-        self.get_work(&format!("v1/tools/index?{query}")).await
+        let query = {
+            let mut query = url::form_urlencoded::Serializer::new(String::new());
+            query.append_pair("target", target);
+            query.finish()
+        };
+        let path = format!("v1/tools/index?{query}");
+        self.get_work(&path).await
     }
 
     pub async fn publish_tool_artifact(
