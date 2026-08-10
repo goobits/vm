@@ -7,33 +7,19 @@ use crate::config::VmConfig;
 use crate::preset::PresetDetector;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 use tracing::instrument;
 use vm_core::error::Result;
-
-/// Cached preset data
-#[derive(Debug, Clone)]
-struct CachedPreset {
-    /// The parsed preset configuration
-    config: VmConfig,
-    /// Preset description (from plugin metadata)
-    #[allow(dead_code)]
-    description: Option<String>,
-    /// Timestamp when cached (for potential TTL)
-    #[allow(dead_code)]
-    cached_at: std::time::Instant,
-}
 
 /// Global preset cache
 ///
 /// Uses RwLock for concurrent read access with occasional write for cache updates.
 /// Keyed by preset name.
-static PRESET_CACHE: Lazy<Arc<RwLock<HashMap<String, CachedPreset>>>> =
-    Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
+static PRESET_CACHE: Lazy<RwLock<HashMap<String, VmConfig>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
 
 /// List of all available preset names (cached)
-static PRESET_LIST_CACHE: Lazy<Arc<RwLock<Option<Vec<String>>>>> =
-    Lazy::new(|| Arc::new(RwLock::new(None)));
+static PRESET_LIST_CACHE: Lazy<RwLock<Option<Vec<String>>>> = Lazy::new(|| RwLock::new(None));
 
 /// Load a preset with caching
 ///
@@ -45,26 +31,18 @@ pub fn load_preset_cached(detector: &PresetDetector, name: &str) -> Result<VmCon
         let cache = PRESET_CACHE.read().unwrap();
         if let Some(cached) = cache.get(name) {
             tracing::debug!("Preset '{}' found in cache", name);
-            return Ok(cached.config.clone());
+            return Ok(cached.clone());
         }
     }
 
     // Cache miss - load from detector
     tracing::debug!("Preset '{}' not in cache, loading from filesystem", name);
     let config = detector.load_preset(name)?;
-    let description = detector.get_preset_description(name);
 
     // Write to cache
     {
         let mut cache = PRESET_CACHE.write().unwrap();
-        cache.insert(
-            name.to_string(),
-            CachedPreset {
-                config: config.clone(),
-                description,
-                cached_at: std::time::Instant::now(),
-            },
-        );
+        cache.insert(name.to_string(), config.clone());
     }
 
     Ok(config)

@@ -1,5 +1,6 @@
 use super::{GuestCommand, TartProvisioner};
 use crate::guest_cache::GuestCachePolicy;
+use crate::shell_session::quote_posix_argument;
 use crate::{THEMES_JSON, ZSHRC_TEMPLATE};
 use serde_json::json;
 use tera::{Context, Tera};
@@ -42,16 +43,15 @@ impl TartProvisioner {
 
     pub(super) fn shell_config_command(config: &VmConfig, project_dir: &str) -> Result<String> {
         let rendered = Self::render_canonical_zshrc(config, project_dir)?;
-        let rendered = crate::shell_session::quote_posix_argument(&rendered);
-        let runtime_environment = crate::shell_session::quote_posix_argument(
-            &GuestCachePolicy::from_config(config).shell_exports(),
-        );
+        let rendered = quote_posix_argument(&rendered);
+        let runtime_environment =
+            quote_posix_argument(&GuestCachePolicy::from_config(config).shell_exports());
         let overrides = Self::render_shell_overrides(config).map_or_else(
             || "rm -f \"$HOME/.vm_shell_overrides\"".to_string(),
             |overrides| {
                 format!(
                     "printf '%s\\n' {} > \"$HOME/.vm_shell_overrides\"",
-                    crate::shell_session::quote_posix_argument(&overrides)
+                    quote_posix_argument(&overrides)
                 )
             },
         );
@@ -82,11 +82,7 @@ fi"#
                 continue;
             }
 
-            lines.push(format!(
-                "export {}='{}'",
-                key,
-                Self::shell_escape_single_quotes(value)
-            ));
+            lines.push(format!("export {}={}", key, quote_posix_argument(value)));
         }
 
         if lines.is_empty() {
@@ -130,7 +126,7 @@ fi"#
             .as_ref()
             .and_then(|p| p.name.clone())
             .unwrap_or_else(|| Self::default_project_name(project_path));
-        let project_path_shell = crate::shell_session::quote_posix_argument(project_path);
+        let project_path_shell = quote_posix_argument(project_path);
         let project_aliases = config
             .aliases
             .iter()

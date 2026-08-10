@@ -1,4 +1,4 @@
-use super::{provider::tart_run_log_path, TartProvider};
+use super::{provider::tart_run_log_path, provisioner::TartProvisioner, TartProvider};
 use crate::{TempProvider, TempVmState, VmError};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -50,30 +50,9 @@ impl TartProvider {
             let Some(guest_path) = share.guest_path.as_ref() else {
                 continue;
             };
-            let tag = Self::shell_escape_single_quotes(&share.tag);
-            let target = Self::shell_escape_single_quotes(&guest_path.display().to_string());
-            commands.push(format!(
-                r#"is_mounted() {{
-  if [ -x /sbin/mount ]; then
-    /sbin/mount | grep -F "on $1 " >/dev/null 2>&1
-  elif command -v mount >/dev/null 2>&1; then
-    mount | grep -F "on $1 " >/dev/null 2>&1
-  else
-    return 1
-  fi
-}}
-target='{target}';
-if [ -x /sbin/mount_virtiofs ]; then
-  mkdir -p "$target"
-  if ! is_mounted "$target"; then
-    /sbin/mount_virtiofs '{tag}' "$target"
-  fi
-else
-  if ! is_mounted "$target"; then
-    if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
-    $SUDO mkdir -p "$target" && $SUDO mount -t virtiofs '{tag}' "$target"
-  fi
-fi"#
+            commands.push(TartProvisioner::virtiofs_mount_command(
+                &share.tag,
+                &guest_path.display().to_string(),
             ));
         }
 

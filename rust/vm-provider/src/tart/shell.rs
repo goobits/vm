@@ -54,7 +54,7 @@ impl TartProvider {
         let target_path = target_path.to_string_lossy().into_owned();
 
         info!("Opening SSH session in directory: {}", target_path);
-        let target_path_escaped = Self::shell_escape_single_quotes(&target_path);
+        let target_path_quoted = shell_session::quote_posix_argument(&target_path);
 
         if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
             let user = self
@@ -75,12 +75,10 @@ impl TartProvider {
             );
         }
 
-        let shell_escaped = Self::shell_escape_single_quotes(shell);
+        let shell_quoted = shell_session::quote_posix_argument(shell);
         let worktree_repair = shell_session::worktree_repair_script(&sync_dir);
         let ssh_command = format!(
-            "{worktree_repair}\nexport VM_TARGET_DIR='{target_path}' && cd \"$VM_TARGET_DIR\" && exec '{shell}' -il",
-            target_path = target_path_escaped,
-            shell = shell_escaped
+            "{worktree_repair}\nexport VM_TARGET_DIR={target_path_quoted} && cd \"$VM_TARGET_DIR\" && exec {shell_quoted} -il"
         );
 
         let status = self

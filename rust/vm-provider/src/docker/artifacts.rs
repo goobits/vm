@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 use vm_config::config::VmConfig;
 use vm_core::error::{Result, VmError};
 
-use super::compose_model::stable_name_component;
+use crate::stable_name::stable_name_component;
 
 pub(super) fn project_artifacts_dir(config: &VmConfig, project_dir: &Path) -> Result<PathBuf> {
     let artifacts_dir = project_artifacts_location(config, project_dir)?;

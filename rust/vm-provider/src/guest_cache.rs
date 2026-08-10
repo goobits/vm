@@ -1,5 +1,7 @@
 use vm_config::config::VmConfig;
 
+use crate::stable_name::stable_name_component;
+
 #[cfg(feature = "docker")]
 pub(crate) const CACHE_ENV_CONFIG_KEY: &str = "_vm_cache_environment";
 
@@ -20,16 +22,7 @@ impl GuestCachePolicy {
     }
 
     pub(crate) fn new(project_name: &str) -> Self {
-        let project_key = project_name
-            .chars()
-            .map(|character| {
-                if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
-                    character
-                } else {
-                    '_'
-                }
-            })
-            .collect::<String>();
+        let project_key = stable_name_component(project_name);
 
         Self {
             project_key: if project_key.is_empty() {

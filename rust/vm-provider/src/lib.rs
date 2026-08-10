@@ -150,6 +150,7 @@ mod project_plan;
 mod resource_limits;
 pub mod resources;
 mod shell_session;
+mod stable_name;
 pub mod tart_base;
 
 // Re-export template constants for testing

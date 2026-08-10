@@ -3,6 +3,7 @@ use vm_config::config::{VmConfig, VolumeRetention, VolumeScope};
 use vm_core::error::Result;
 
 use crate::resource_limits::ResolvedResources;
+use crate::stable_name::stable_name_component;
 
 #[derive(Serialize)]
 pub(super) struct RenderedResources {
@@ -146,19 +147,6 @@ fn stable_volume_name(scope: &str, logical_name: &str) -> String {
         stable_name_component(scope),
         stable_name_component(logical_name)
     )
-}
-
-pub(super) fn stable_name_component(value: &str) -> String {
-    value
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
-                character
-            } else {
-                '_'
-            }
-        })
-        .collect()
 }
 
 pub(super) fn instance_name_from_container(

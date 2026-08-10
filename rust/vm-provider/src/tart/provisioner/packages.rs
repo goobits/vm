@@ -1,5 +1,6 @@
 use super::{GuestCommand, TartProvisioner};
 use crate::project_plan::{NodeToolchainPlan, PrimaryRuntime, ProjectPlan};
+use crate::shell_session::quote_posix_argument;
 use tracing::{info, warn};
 use vm_config::config::VmConfig;
 use vm_core::vm_warning;
@@ -128,7 +129,7 @@ docker info >/dev/null 2>&1 || sudo docker info >/dev/null 2>&1"#
     }
 
     fn macos_docker_tools_command(&self) -> String {
-        let workspace = Self::shell_escape_single_quotes(&self.project_dir);
+        let workspace = quote_posix_argument(&self.project_dir);
         format!(
             r#"{brew}
 brew install docker docker-compose docker-buildx colima qemu
@@ -166,8 +167,8 @@ else
 JSON
 fi
 
-mkdir -p '{workspace}'
-cat >'{workspace}/qemu-system-aarch64-tcg' <<'SH'
+mkdir -p {workspace}
+cat >{workspace}/qemu-system-aarch64-tcg <<'SH'
 #!/bin/bash
 args=()
 for arg in "$@"; do
@@ -183,18 +184,18 @@ for arg in "$@"; do
 done
 exec /opt/homebrew/bin/qemu-system-aarch64 "${{args[@]}}"
 SH
-chmod +x '{workspace}/qemu-system-aarch64-tcg'
+chmod +x {workspace}/qemu-system-aarch64-tcg
 
 mkdir -p "$HOME/.local/share/qemu"
 ln -sf /opt/homebrew/share/qemu/edk2-aarch64-code.fd "$HOME/.local/share/qemu/edk2-aarch64-code.fd"
 ln -sf /opt/homebrew/share/qemu/edk2-aarch64-code.fd "$HOME/.local/share/qemu/edk-aarch64-tcg-code.fd"
 
-cat >'{workspace}/start-colima' <<'SH'
+cat >{workspace}/start-colima <<'SH'
 #!/bin/sh
 QEMU_SYSTEM_AARCH64="$(dirname "$0")/qemu-system-aarch64-tcg" \
   colima start --cpu 2 --memory 4 --disk 20 --vm-type qemu --cpu-type max
 SH
-chmod +x '{workspace}/start-colima'
+chmod +x {workspace}/start-colima
 "#,
             brew = Self::homebrew_preamble(),
             workspace = workspace
@@ -202,17 +203,17 @@ chmod +x '{workspace}/start-colima'
     }
 
     fn node_toolchain_command(node: &NodeToolchainPlan) -> String {
-        let node_version = Self::shell_escape_single_quotes(&node.node);
-        let nvm_version = Self::shell_escape_single_quotes(&node.nvm);
-        let npm_version = Self::shell_escape_single_quotes(node.npm.as_deref().unwrap_or(""));
-        let pnpm_version = Self::shell_escape_single_quotes(&node.pnpm);
+        let node_version = quote_posix_argument(&node.node);
+        let nvm_version = quote_posix_argument(&node.nvm);
+        let npm_version = quote_posix_argument(node.npm.as_deref().unwrap_or(""));
+        let pnpm_version = quote_posix_argument(&node.pnpm);
 
         format!(
             r#"set -euo pipefail
-export VM_NODE_VERSION='{node_version}'
-export VM_NVM_VERSION='{nvm_version}'
-export VM_NPM_VERSION='{npm_version}'
-export VM_PNPM_VERSION='{pnpm_version}'
+export VM_NODE_VERSION={node_version}
+export VM_NVM_VERSION={nvm_version}
+export VM_NPM_VERSION={npm_version}
+export VM_PNPM_VERSION={pnpm_version}
 installer="$(mktemp)"
 trap 'rm -f "$installer"' EXIT
 cat > "$installer" <<'VM_NODE_TOOLCHAIN'
@@ -233,14 +234,14 @@ bash "$installer""#,
             return None;
         }
 
-        let project_dir = Self::shell_escape_single_quotes(&self.project_dir);
-        let manager = Self::shell_escape_single_quotes(manager);
-        let browsers = Self::shell_escape_single_quotes(&browsers);
+        let project_dir = quote_posix_argument(&self.project_dir);
+        let manager = quote_posix_argument(manager);
+        let browsers = quote_posix_argument(&browsers);
         Some(format!(
             r#"set -euo pipefail
-export VM_PROJECT_PATH='{project_dir}'
-export VM_NODE_DEPENDENCY_MANAGER='{manager}'
-export VM_PLAYWRIGHT_BROWSERS='{browsers}'
+export VM_PROJECT_PATH={project_dir}
+export VM_NODE_DEPENDENCY_MANAGER={manager}
+export VM_PLAYWRIGHT_BROWSERS={browsers}
 bootstrap="$(mktemp)"
 trap 'rm -f "$bootstrap"' EXIT
 cat > "$bootstrap" <<'VM_NODE_BOOTSTRAP'
@@ -257,7 +258,7 @@ bash "$bootstrap""#,
             .as_ref()
             .and_then(|versions| versions.python.as_deref())
             .unwrap_or("3.11");
-        let python_version = Self::shell_escape_single_quotes(python_version);
+        let python_version = quote_posix_argument(python_version);
         let tooling = if self.is_macos_guest(config) {
             format!(
                 "{}\nif ! command -v pipx >/dev/null 2>&1; then brew install pipx; fi",
@@ -289,8 +290,8 @@ if ! command -v pyenv >/dev/null 2>&1; then
   curl -fsSL https://pyenv.run | bash
 fi
 eval "$(pyenv init -)"
-pyenv install -s '{python_version}'
-pyenv global '{python_version}'
+pyenv install -s {python_version}
+pyenv global {python_version}
 {tooling}
 export PATH="{}"
 pipx ensurepath >/dev/null 2>&1 || true
@@ -301,12 +302,12 @@ pipx ensurepath >/dev/null 2>&1 || true
     }
 
     fn python_project_command(&self, config: &VmConfig) -> String {
-        let project = Self::shell_escape_single_quotes(&self.project_dir);
+        let project = quote_posix_argument(&self.project_dir);
         format!(
             r#"export PATH="$HOME/.pyenv/bin:{}"
 eval "$(pyenv init -)"
-if [ -f '{project}/requirements.txt' ]; then
-  cd '{project}'
+if [ -f {project}/requirements.txt ]; then
+  cd {project}
   if [ ! -d .venv ]; then
     python3 -m venv .venv
   fi
@@ -318,12 +319,12 @@ fi"#,
     }
 
     fn ruby_project_command(&self, config: &VmConfig) -> String {
-        let project = Self::shell_escape_single_quotes(&self.project_dir);
+        let project = quote_posix_argument(&self.project_dir);
         format!(
             r#"{}
-if [ -f '{project}/Gemfile' ]; then
+if [ -f {project}/Gemfile ]; then
   if ! command -v bundle >/dev/null 2>&1; then gem install bundler; fi
-  cd '{project}' && bundle install
+  cd {project} && bundle install
 fi"#,
             if self.is_macos_guest(config) {
                 format!(
@@ -359,23 +360,23 @@ fi
     }
 
     fn rust_project_command(project_dir: &str) -> String {
-        let project = Self::shell_escape_single_quotes(project_dir);
+        let project = quote_posix_argument(project_dir);
         format!(
             r#"export PATH="$HOME/.cargo/bin:$PATH"
-if [ -f '{project}/Cargo.toml' ]; then
-  cd '{project}' && cargo fetch
+if [ -f {project}/Cargo.toml ]; then
+  cd {project} && cargo fetch
 fi"#
         )
     }
 
     fn go_project_command(&self, config: &VmConfig) -> String {
-        let project = Self::shell_escape_single_quotes(&self.project_dir);
+        let project = quote_posix_argument(&self.project_dir);
         format!(
             r#"if ! command -v go >/dev/null 2>&1; then
   {}
 fi
-if [ -f '{project}/go.mod' ]; then
-  cd '{project}' && go mod download
+if [ -f {project}/go.mod ]; then
+  cd {project} && go mod download
 fi"#,
             if self.is_macos_guest(config) {
                 format!("{}\nbrew install go", Self::homebrew_preamble())

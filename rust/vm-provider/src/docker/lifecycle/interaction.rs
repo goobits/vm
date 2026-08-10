@@ -15,10 +15,6 @@ use vm_messages::messages::MESSAGES;
 use super::DEFAULT_SHELL;
 
 impl<'a> LifecycleOperations<'a> {
-    fn shell_escape_single_quotes(input: &str) -> String {
-        input.replace('\'', "'\"'\"'")
-    }
-
     #[must_use = "SSH connection results should be handled"]
     pub fn ssh_into_container(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
         let workspace_path = self
@@ -39,7 +35,7 @@ impl<'a> LifecycleOperations<'a> {
 
         let target_path = SecurityValidator::validate_relative_path(relative_path, workspace_path)?;
         let target_dir = target_path.to_string_lossy();
-        let target_dir_escaped = Self::shell_escape_single_quotes(target_dir.as_ref());
+        let target_dir_quoted = shell_session::quote_posix_argument(target_dir.as_ref());
         let worktree_repair = shell_session::worktree_repair_script(workspace_path);
 
         let tty_flag = if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
@@ -126,8 +122,7 @@ impl<'a> LifecycleOperations<'a> {
                 "sh",
                 "-lc",
                 &format!(
-                    "{worktree_repair}\nexport VM_TARGET_DIR='{target_dir}' && cd \"$VM_TARGET_DIR\" && exec \"$SHELL\" -il",
-                    target_dir = target_dir_escaped
+                    "{worktree_repair}\nexport VM_TARGET_DIR={target_dir_quoted} && cd \"$VM_TARGET_DIR\" && exec \"$SHELL\" -il"
                 ),
             ],
         )
@@ -183,7 +178,7 @@ impl<'a> LifecycleOperations<'a> {
             .as_ref()
             .and_then(|t| t.shell.as_deref())
             .unwrap_or(DEFAULT_SHELL);
-        let workspace_escaped = Self::shell_escape_single_quotes(workspace_path);
+        let workspace_quoted = shell_session::quote_posix_argument(workspace_path);
         let worktree_repair = shell_session::worktree_repair_script(workspace_path);
 
         Self::repair_home_state(self.executable, &target_container, &user_config)?;
@@ -201,7 +196,7 @@ impl<'a> LifecycleOperations<'a> {
             format!("SHELL={shell}"),
             shell.to_string(),
             "-ilc".to_string(),
-            format!("{worktree_repair}\ncd '{workspace_escaped}' && exec \"$@\""),
+            format!("{worktree_repair}\ncd {workspace_quoted} && exec \"$@\""),
             "vm-exec".to_string(),
         ];
         args.extend(cmd.iter().cloned());

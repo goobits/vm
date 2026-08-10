@@ -5,7 +5,6 @@ tart:
   disk_size: 80
   ssh_user: admin
   install_docker: true
-  storage_path: /Volumes/MeowDocker/Tart
 project:
   hostname: dev.vm.local
   name: vm

@@ -52,10 +52,6 @@ pub struct TartProvider {
 }
 
 impl TartProvider {
-    pub(super) fn shell_escape_single_quotes(input: &str) -> String {
-        input.replace('\'', "'\"'\"'")
-    }
-
     pub fn new(config: VmConfig) -> Result<Self> {
         if !is_tool_installed("tart") {
             return Err(VmError::Dependency("Tart".into()));
@@ -288,8 +284,6 @@ impl TartProvider {
         let host_path = self.host_workspace_path()?;
         let raw_log_path = tart_run_log_path(vm_name);
         info!("Tart run log for '{}': {}", vm_name, raw_log_path);
-        let vm_name = Self::shell_escape_single_quotes(vm_name);
-        let log_path = Self::shell_escape_single_quotes(&raw_log_path);
         let mut dir_args = vec![format!("{}:tag=workspace", host_path.display())];
         for mount in collect_host_sync_mounts(&self.config) {
             dir_args.push(format!("{}:tag={}", mount.host_path.display(), mount.tag));
@@ -298,7 +292,7 @@ impl TartProvider {
             dir_args.push(format!("{}:tag={}", share.host_path.display(), share.tag));
         }
 
-        let cmd = self.build_run_command(&vm_name, &log_path, &dir_args);
+        let cmd = self.build_run_command(vm_name, &raw_log_path, &dir_args);
 
         let mut command = std::process::Command::new("sh");
         command.args(["-c", &cmd]);
@@ -331,15 +325,17 @@ impl TartProvider {
             ""
         };
 
-        let escaped_dir_args: Vec<String> = dir_args
+        let quoted_dir_args: Vec<String> = dir_args
             .iter()
-            .map(|arg| format!("--dir '{}'", Self::shell_escape_single_quotes(arg)))
+            .map(|arg| format!("--dir {}", shell_session::quote_posix_argument(arg)))
             .collect();
+        let vm_name = shell_session::quote_posix_argument(vm_name);
+        let log_path = shell_session::quote_posix_argument(log_path);
 
         format!(
-            "nohup tart run --no-graphics {}{} '{}' >'{}' 2>&1 &",
+            "nohup tart run --no-graphics {}{} {} >{} 2>&1 &",
             nested_arg,
-            escaped_dir_args.join(" "),
+            quoted_dir_args.join(" "),
             vm_name,
             log_path
         )
@@ -741,7 +737,7 @@ impl Provider for TartProvider {
         let sync_dir = self.get_sync_directory();
         self.ensure_workspace_mount_ready(&vm_name, &sync_dir)?;
         self.ensure_shell_config_ready(&vm_name, &sync_dir)?;
-        let sync_dir_escaped = Self::shell_escape_single_quotes(&sync_dir);
+        let sync_dir_quoted = shell_session::quote_posix_argument(&sync_dir);
         let worktree_repair = shell_session::worktree_repair_script(&sync_dir);
 
         let mut args: Vec<String> = vec![
@@ -749,10 +745,7 @@ impl Provider for TartProvider {
             vm_name,
             shell.to_string(),
             "-ilc".to_string(),
-            format!(
-                "{worktree_repair}\ncd '{sync_dir}' && exec \"$@\"",
-                sync_dir = sync_dir_escaped
-            ),
+            format!("{worktree_repair}\ncd {sync_dir_quoted} && exec \"$@\""),
             "vm-exec".to_string(),
         ];
         args.extend(cmd.iter().cloned());
@@ -825,15 +818,15 @@ impl Provider for TartProvider {
         // Use scp-like approach via tart exec
         if is_upload {
             // Upload: local -> VM
-            let copy_cmd = format!("cat > '{}'", remote_path.replace('\'', "'\"'\"'"));
+            let copy_cmd = format!("cat > {}", shell_session::quote_posix_argument(remote_path));
             let output = cmd!(
                 "sh",
                 "-c",
                 format!(
-                    "cat '{}' | tart exec {} sh -c \"{}\"",
-                    local_path.replace('\'', "'\"'\"'"),
-                    vm_name,
-                    copy_cmd
+                    "cat {} | tart exec {} sh -c {}",
+                    shell_session::quote_posix_argument(local_path),
+                    shell_session::quote_posix_argument(&vm_name),
+                    shell_session::quote_posix_argument(&copy_cmd)
                 )
             );
             let output = if let Some(tart_home) = self.tart_home() {
@@ -845,7 +838,7 @@ impl Provider for TartProvider {
             output.map_err(|e| VmError::Provider(format!("Failed to copy file to VM: {}", e)))?;
         } else {
             // Download: VM -> local
-            let copy_cmd = format!("cat '{}'", remote_path.replace('\'', "'\"'\"'"));
+            let copy_cmd = format!("cat {}", shell_session::quote_posix_argument(remote_path));
             let result = self
                 .tart_expr(&["exec", &vm_name, "sh", "-c", &copy_cmd])
                 .stdout_capture()

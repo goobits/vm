@@ -1,5 +1,9 @@
 use super::provider::tart_run_log_path;
-use crate::{project_plan::ProjectPlan, tart_base};
+use crate::{
+    project_plan::ProjectPlan,
+    shell_session::{quote_posix_argument, quote_posix_home_path},
+    tart_base,
+};
 use duct::cmd;
 use tracing::info;
 use vm_config::config::{BoxSpec, VmConfig};
@@ -140,21 +144,17 @@ impl TartProvisioner {
         }
     }
 
-    fn shell_escape_single_quotes(input: &str) -> String {
-        input.replace('\'', "'\"'\"'")
-    }
-
     fn shell_quote_packages(packages: &[String]) -> String {
         packages
             .iter()
-            .map(|package| format!("'{}'", Self::shell_escape_single_quotes(package)))
+            .map(|package| quote_posix_argument(package))
             .collect::<Vec<_>>()
             .join(" ")
     }
 
-    fn virtiofs_mount_command(tag: &str, target: &str) -> String {
-        let tag = Self::shell_escape_single_quotes(tag);
-        let target = Self::shell_escape_single_quotes(target);
+    pub(super) fn virtiofs_mount_command(tag: &str, target: &str) -> String {
+        let tag = quote_posix_argument(tag);
+        let target = quote_posix_home_path(target);
         format!(
             r#"is_mounted() {{
   if [ -x /sbin/mount ]; then
@@ -165,16 +165,16 @@ impl TartProvisioner {
     return 1
   fi
 }}
-target='{target}';
+target={target};
 if [ -x /sbin/mount_virtiofs ]; then
   mkdir -p "$target"
   if ! is_mounted "$target"; then
-    /sbin/mount_virtiofs '{tag}' "$target"
+    /sbin/mount_virtiofs {tag} "$target"
   fi
 else
   if ! is_mounted "$target"; then
     if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
-    $SUDO mkdir -p "$target" && $SUDO mount -t virtiofs '{tag}' "$target"
+    $SUDO mkdir -p "$target" && $SUDO mount -t virtiofs {tag} "$target"
   fi
 fi"#
         )
@@ -478,7 +478,7 @@ mod tests {
 
         let command = provisioner.custom_provision_command();
 
-        assert!(command.contains("'/work/it'\"'\"'s here/provision.sh'"));
+        assert!(command.contains("'/work/it'\"'\"'s here'/provision.sh"));
         assert!(command.contains("cd '/work/it'\"'\"'s here'"));
     }
 
@@ -488,6 +488,10 @@ mod tests {
 
         assert!(command.contains("mount_virtiofs 'tag'\"'\"'s'"));
         assert!(command.contains("target='/path with '\"'\"'quotes'\"'\"'';"));
+
+        let home_command = TartProvisioner::virtiofs_mount_command("config", "$HOME/.config");
+        assert!(home_command.contains("target=\"$HOME\"/'.config';"));
+        assert!(!home_command.contains("target='$HOME"));
     }
 
     #[test]

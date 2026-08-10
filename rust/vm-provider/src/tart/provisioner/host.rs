@@ -1,4 +1,5 @@
 use super::TartProvisioner;
+use crate::shell_session::{quote_posix_argument, quote_posix_home_path};
 use crate::tart::host_sync::{
     collect_host_sync_mounts, expand_tilde, file_name, resolve_guest_home_path, resolve_home_dir,
 };
@@ -83,19 +84,19 @@ impl TartProvisioner {
         let source = source
             .canonicalize()
             .unwrap_or_else(|_| source.to_path_buf());
-        let guest_target_escaped = Self::shell_escape_single_quotes(guest_target);
         let guest_parent = Path::new(guest_target)
             .parent()
             .map(|path| path.display().to_string())
             .unwrap_or_else(|| ".".to_string());
-        let guest_parent_escaped = Self::shell_escape_single_quotes(&guest_parent);
+        let guest_target = quote_posix_home_path(guest_target);
+        let guest_parent = quote_posix_home_path(&guest_parent);
+        let instance = quote_posix_argument(&self.instance_name);
 
         if source.is_file() {
-            let source_escaped = Self::shell_escape_single_quotes(&source.to_string_lossy());
-            let command = format!(
-                "cat '{}' | tart exec {} bash -lc \"mkdir -p '{}' && cat > '{}'\"",
-                source_escaped, self.instance_name, guest_parent_escaped, guest_target_escaped
-            );
+            let source = quote_posix_argument(&source.to_string_lossy());
+            let remote_command =
+                quote_posix_argument(&format!("mkdir -p {guest_parent} && cat > {guest_target}"));
+            let command = format!("cat {source} | tart exec {instance} bash -lc {remote_command}");
             self.host_shell(&command).run().map_err(|error| {
                 VmError::Provider(format!("Failed to sync file to Tart VM: {error}"))
             })?;
@@ -107,15 +108,13 @@ impl TartProvisioner {
                 return Ok(());
             };
             let parent = source.parent().unwrap_or(source.as_path());
-            let parent_escaped = Self::shell_escape_single_quotes(&parent.to_string_lossy());
-            let name_escaped = Self::shell_escape_single_quotes(&name);
+            let parent = quote_posix_argument(&parent.to_string_lossy());
+            let name = quote_posix_argument(&name);
+            let remote_command = quote_posix_argument(&format!(
+                "mkdir -p {guest_parent} && tar -xf - -C {guest_parent}"
+            ));
             let command = format!(
-                "tar -C '{}' -cf - '{}' | tart exec {} bash -lc \"mkdir -p '{}' && tar -xf - -C '{}'\"",
-                parent_escaped,
-                name_escaped,
-                self.instance_name,
-                guest_parent_escaped,
-                guest_parent_escaped
+                "tar -C {parent} -cf - {name} | tart exec {instance} bash -lc {remote_command}"
             );
             self.host_shell(&command).run().map_err(|error| {
                 VmError::Provider(format!("Failed to sync directory to Tart VM: {error}"))
@@ -142,31 +141,23 @@ impl TartProvisioner {
             return Ok(());
         };
 
-        let source_escaped = Self::shell_escape_single_quotes(&source.to_string_lossy());
-        let instance_escaped = Self::shell_escape_single_quotes(&self.instance_name);
-        let parent_escaped = Self::shell_escape_single_quotes(&parent.to_string_lossy());
-        let target_escaped = Self::shell_escape_single_quotes(guest_relative_path);
-        let mode_escaped = Self::shell_escape_single_quotes(mode);
+        let source = quote_posix_argument(&source.to_string_lossy());
+        let instance = quote_posix_argument(&self.instance_name);
+        let parent = quote_posix_home_path(&format!("$HOME/{}", parent.display()));
+        let target = quote_posix_home_path(&format!("$HOME/{guest_relative_path}"));
+        let mode = quote_posix_argument(mode);
         let remote_script = format!(
             r#"set -e
-mkdir -p "$HOME/{parent}"
-cat > "$HOME/{target}"
+mkdir -p {parent}
+cat > {target}
 home_uid="$(stat -f %u "$HOME" 2>/dev/null || stat -c %u "$HOME" 2>/dev/null || id -u)"
 home_gid="$(stat -f %g "$HOME" 2>/dev/null || stat -c %g "$HOME" 2>/dev/null || id -g)"
 if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
-$SUDO chown "$home_uid:$home_gid" "$HOME/{target}" 2>/dev/null || true
-chmod {mode} "$HOME/{target}""#,
-            parent = parent_escaped,
-            target = target_escaped,
-            mode = mode_escaped
+$SUDO chown "$home_uid:$home_gid" {target} 2>/dev/null || true
+chmod {mode} {target}"#,
         );
-        let remote_script_escaped = Self::shell_escape_single_quotes(&remote_script);
-        let command = format!(
-            "cat '{source}' | tart exec '{instance}' bash -lc '{script}'",
-            source = source_escaped,
-            instance = instance_escaped,
-            script = remote_script_escaped
-        );
+        let remote_script = quote_posix_argument(&remote_script);
+        let command = format!("cat {source} | tart exec {instance} bash -lc {remote_script}");
 
         self.host_shell(&command).run().map_err(|error| {
             VmError::Provider(format!(
@@ -195,38 +186,38 @@ chmod {mode} "$HOME/{target}""#,
         let mut commands = Vec::new();
         if let Some(name) = &git_config.user_name {
             commands.push(format!(
-                "git config --global user.name '{}'",
-                Self::shell_escape_single_quotes(name)
+                "git config --global user.name {}",
+                quote_posix_argument(name)
             ));
         }
         if let Some(email) = &git_config.user_email {
             commands.push(format!(
-                "git config --global user.email '{}'",
-                Self::shell_escape_single_quotes(email)
+                "git config --global user.email {}",
+                quote_posix_argument(email)
             ));
         }
         if let Some(rebase) = &git_config.pull_rebase {
             commands.push(format!(
-                "git config --global pull.rebase '{}'",
-                Self::shell_escape_single_quotes(rebase)
+                "git config --global pull.rebase {}",
+                quote_posix_argument(rebase)
             ));
         }
         if let Some(branch) = &git_config.init_default_branch {
             commands.push(format!(
-                "git config --global init.defaultBranch '{}'",
-                Self::shell_escape_single_quotes(branch)
+                "git config --global init.defaultBranch {}",
+                quote_posix_argument(branch)
             ));
         }
         if let Some(editor) = &git_config.core_editor {
             commands.push(format!(
-                "git config --global core.editor '{}'",
-                Self::shell_escape_single_quotes(editor)
+                "git config --global core.editor {}",
+                quote_posix_argument(editor)
             ));
         }
         if let Some(content) = &git_config.core_excludesfile_content {
             commands.push(format!(
                 "printf '%s' {} > \"$HOME/.gitignore_global\"",
-                crate::shell_session::quote_posix_argument(content)
+                quote_posix_argument(content)
             ));
             commands.push(
                 "git config --global core.excludesfile \"$HOME/.gitignore_global\"".to_string(),

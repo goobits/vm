@@ -1,4 +1,5 @@
 use super::TartProvisioner;
+use crate::shell_session::quote_posix_argument;
 use tracing::info;
 use vm_config::config::VmConfig;
 
@@ -80,7 +81,7 @@ impl TartProvisioner {
     }
 
     pub(super) fn custom_provision_command(&self) -> String {
-        let project = Self::shell_escape_single_quotes(&self.project_dir);
-        format!("if [ -f '{project}/provision.sh' ]; then cd '{project}' && bash provision.sh; fi")
+        let project = quote_posix_argument(&self.project_dir);
+        format!("if [ -f {project}/provision.sh ]; then cd {project} && bash provision.sh; fi")
     }
 }
