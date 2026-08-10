@@ -184,29 +184,17 @@ RUN for path in /home/${PROJECT_USER}/.zshrc /home/${PROJECT_USER}/.bashrc /home
     done && \
     chown ${PROJECT_UID}:${PROJECT_GID} /home/${PROJECT_USER}
 
-# --- Git Worktree Auto-Repair Configuration ---
-# Create shared initialization script that runs for ALL shells (interactive, non-interactive, bash, zsh, sh)
+# --- Shared Session Configuration ---
 USER root
 RUN mkdir -p /etc/profile.d && \
-    cat > /etc/profile.d/vm-worktree-repair.sh << 'EOF'
-#!/bin/sh
-# VM Git Worktree Auto-Repair
-# Automatically repairs worktree paths when switching between host and container
-if [ -d "/workspace/.git" ] || [ -f "/workspace/.git" ]; then
-    # Run in background, suppress all output, ignore errors
-    (cd /workspace 2>/dev/null && git worktree repair 2>/dev/null || true) &
-fi
-EOF
-
-# Make executable and create one shared runtime shell hook for both bash and zsh.
-RUN chmod +x /etc/profile.d/vm-worktree-repair.sh && \
+    rm -f /etc/profile.d/vm-worktree-repair.sh && \
     cat > /etc/profile.d/vm-shell-runtime.sh << 'EOF'
 #!/bin/sh
-[ -f /etc/profile.d/vm-worktree-repair.sh ] && . /etc/profile.d/vm-worktree-repair.sh
-export VM_WORKTREES='{{ worktrees_base_dir }}'
-if [ -n "$VM_CARGO_REGISTRY_HOST" ] && [ -n "$VM_CARGO_REGISTRY_PORT" ]; then
-    mkdir -p "$HOME/.cargo"
-    cat > "$HOME/.cargo/config.toml" << EOCARGO
+if [ -z "${VM_SHELL_RUNTIME_READY:-}" ]; then
+    export VM_WORKTREES='{{ worktrees_base_dir }}'
+    if [ -n "$VM_CARGO_REGISTRY_HOST" ] && [ -n "$VM_CARGO_REGISTRY_PORT" ]; then
+        mkdir -p "$HOME/.cargo"
+        cat > "$HOME/.cargo/config.toml" << EOCARGO
 [source.crates-io]
 replace-with = "vm-registry"
 
@@ -216,6 +204,8 @@ registry = "sparse+http://${VM_CARGO_REGISTRY_HOST}:${VM_CARGO_REGISTRY_PORT}/ca
 [net]
 retry = 2
 EOCARGO
+    fi
+    export VM_SHELL_RUNTIME_READY=1
 fi
 EOF
 

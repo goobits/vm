@@ -174,8 +174,8 @@ services:
       - DATABASE_URL=postgresql://{{ config.services.postgresql.user | default(value="postgres") }}:{{ postgresql_password | default(value="postgres") }}@postgres:5432/{{ config.services.postgresql.database | default(value=project_name ~ "_dev") }}
       - PGPASSWORD={{ postgresql_password | default(value="postgres") }}
       {% endif %}
-      # Disable Python bytecode generation for clean read-only mounting
-      - PYTHONDONTWRITEBYTECODE=1
+      # Keep Python bytecode on the fast home/cache volume instead of the source bind.
+      - PYTHONPYCACHEPREFIX=/home/{{ project_user }}/.cache/python/pycache
       # Host package environment variables
       {% if host_env_vars %}{% for env_var in host_env_vars %}- {{ env_var.0 }}={{ env_var.1 }}
       {% endfor %}{% endif %}

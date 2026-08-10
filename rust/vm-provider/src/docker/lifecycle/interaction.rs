@@ -3,7 +3,7 @@ use std::io::IsTerminal;
 use std::path::Path;
 
 use super::LifecycleOperations;
-use crate::{docker::UserConfig, security::SecurityValidator};
+use crate::{docker::UserConfig, security::SecurityValidator, shell_session};
 use vm_core::msg;
 use vm_core::{
     command_stream::stream_command_visible,
@@ -68,6 +68,7 @@ impl<'a> LifecycleOperations<'a> {
         let target_path = SecurityValidator::validate_relative_path(relative_path, workspace_path)?;
         let target_dir = target_path.to_string_lossy();
         let target_dir_escaped = Self::shell_escape_single_quotes(target_dir.as_ref());
+        let worktree_repair = shell_session::worktree_repair_script(workspace_path);
 
         let tty_flag = if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
             "-it"
@@ -153,7 +154,7 @@ impl<'a> LifecycleOperations<'a> {
                 "sh",
                 "-lc",
                 &format!(
-                    "export VM_TARGET_DIR='{target_dir}' && cd \"$VM_TARGET_DIR\" && exec \"$SHELL\" -il",
+                    "{worktree_repair}\nexport VM_TARGET_DIR='{target_dir}' && cd \"$VM_TARGET_DIR\" && exec \"$SHELL\" -il",
                     target_dir = target_dir_escaped
                 ),
             ],
@@ -211,6 +212,7 @@ impl<'a> LifecycleOperations<'a> {
             .and_then(|t| t.shell.as_deref())
             .unwrap_or(DEFAULT_SHELL);
         let workspace_escaped = Self::shell_escape_single_quotes(workspace_path);
+        let worktree_repair = shell_session::worktree_repair_script(workspace_path);
 
         let mut args: Vec<String> = vec![
             "exec".to_string(),
@@ -225,7 +227,7 @@ impl<'a> LifecycleOperations<'a> {
             format!("SHELL={shell}"),
             shell.to_string(),
             "-ilc".to_string(),
-            format!("cd '{workspace_escaped}' && exec \"$@\""),
+            format!("{worktree_repair}\ncd '{workspace_escaped}' && exec \"$@\""),
             "vm-exec".to_string(),
         ];
         args.extend(cmd.iter().cloned());

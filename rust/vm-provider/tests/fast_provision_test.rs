@@ -14,19 +14,27 @@ fn render_template_placeholders(template: &str, vars: &HashMap<&str, &str>) -> S
     result
 }
 
-fn render_zshrc_for_test(project_path_b64: &str) -> String {
+fn render_zshrc_for_test(project_path_shell: &str) -> String {
+    render_zshrc_for_test_with_prompt(project_path_shell, false, false)
+}
+
+fn render_zshrc_for_test_with_prompt(
+    project_path_shell: &str,
+    show_git_branch: bool,
+    show_timestamp: bool,
+) -> String {
     let mut tera = Tera::default();
     tera.add_raw_template("zshrc", vm_provider::ZSHRC_TEMPLATE)
         .expect("zshrc template should load");
 
     let mut context = Context::new();
     context.insert("project_name", "test-project");
-    context.insert("project_path_b64", project_path_b64);
+    context.insert("project_path_shell", project_path_shell);
     context.insert("project_config", &json!({}));
     context.insert("terminal_emoji", "🚀");
     context.insert("terminal_username", "vm-dev");
-    context.insert("show_git_branch", &false);
-    context.insert("show_timestamp", &false);
+    context.insert("show_git_branch", &show_git_branch);
+    context.insert("show_timestamp", &show_timestamp);
     context.insert(
         "terminal_colors",
         &json!({
@@ -46,12 +54,40 @@ fn render_zshrc_for_test(project_path_b64: &str) -> String {
         .expect("zshrc template should render")
 }
 
+#[test]
+fn test_rendered_fast_prompt_is_valid_zsh() {
+    if std::process::Command::new("zsh")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        return;
+    }
+
+    let rendered = render_zshrc_for_test_with_prompt("'/workspace'", true, true);
+    let temp = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(temp.path(), &rendered).unwrap();
+    let output = std::process::Command::new("zsh")
+        .args(["-n"])
+        .arg(temp.path())
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "rendered prompt should parse: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(rendered.contains("git branch --show-current"));
+    assert!(rendered.contains("${VM_GIT_PROMPT} [%*]"));
+}
+
 fn render_docker_zshrc_for_test() -> String {
-    render_zshrc_for_test("L3dvcmtzcGFjZQ==")
+    render_zshrc_for_test("'/workspace'")
 }
 
 fn render_tart_zshrc_for_test() -> String {
-    render_zshrc_for_test("L3dvcmtzcGFjZQ==")
+    render_zshrc_for_test("'/workspace'")
 }
 
 #[test]
@@ -164,7 +200,7 @@ fn test_rendered_zshrc_prompt_survives_bashrc_prompt() {
 fn test_rendered_docker_zshrc_targets_workspace() {
     let rendered = render_docker_zshrc_for_test();
 
-    assert!(rendered.contains("VM_PROJECT_PATH=\"$(vm_b64decode 'L3dvcmtzcGFjZQ==')\""));
+    assert!(rendered.contains("VM_PROJECT_PATH='/workspace'"));
     assert!(rendered.contains("alias dev='cd \"$VM_PROJECT_PATH\" && ls'"));
     assert!(rendered.contains("PROMPT='🚀 vm-dev %c"));
 }
@@ -173,7 +209,7 @@ fn test_rendered_docker_zshrc_targets_workspace() {
 fn test_rendered_tart_zshrc_targets_workspace() {
     let rendered = render_tart_zshrc_for_test();
 
-    assert!(rendered.contains("VM_PROJECT_PATH=\"$(vm_b64decode 'L3dvcmtzcGFjZQ==')\""));
+    assert!(rendered.contains("VM_PROJECT_PATH='/workspace'"));
     assert!(rendered.contains("alias dev='cd \"$VM_PROJECT_PATH\" && ls'"));
     assert!(rendered.contains("PROMPT='🚀 vm-dev %c"));
 }
@@ -185,7 +221,7 @@ fn test_zshrc_template_has_expected_jinja_variables() {
         "{{ project_name }}",
         "{{ terminal_emoji }}",
         "{{ terminal_username }}",
-        "{{ project_path_b64 }}",
+        "{{ project_path_shell }}",
     ];
 
     for variable in &expected_variables {
@@ -205,23 +241,32 @@ fn test_zshrc_template_render_placeholder_substitution() {
     vars.insert("{{ project_name }}", "test-project");
     vars.insert("{{ terminal_emoji }}", "🚀");
     vars.insert("{{ terminal_username }}", "developer");
-    vars.insert("{{ project_path_b64 }}", "L3dvcmtzcGFjZQ==");
+    vars.insert("{{ project_path_shell }}", "'/workspace'");
 
     let result = render_template_placeholders(template, &vars);
 
     assert!(result.contains("test-project"));
     assert!(result.contains("🚀"));
     assert!(result.contains("developer"));
-    assert!(result.contains("L3dvcmtzcGFjZQ=="));
+    assert!(result.contains("'/workspace'"));
 }
 
 #[test]
-fn test_zshrc_template_has_git_branch_function() {
+fn test_zshrc_template_uses_fast_lazy_shell_paths() {
     let template = vm_provider::ZSHRC_TEMPLATE;
+
+    assert!(template.contains("vm_update_git_prompt()"));
+    assert!(template.contains("git branch --show-current"));
+    assert!(!template.contains("git branch 2>/dev/null |"));
+    assert!(!template.contains("$(date "));
+    assert!(template.contains("[%*]"));
+    assert!(template.contains("_vm_load_nvm()"));
     assert!(
-        template.contains("function git_branch_name()"),
-        "Template should define the git branch helper"
+        template.find("_vm_load_nvm()").unwrap()
+            < template.find("\\. \"$NVM_DIR/nvm.sh\"").unwrap()
     );
+    assert!(template.contains("PYTHONPYCACHEPREFIX"));
+    assert!(!template.contains("PYTHONDONTWRITEBYTECODE"));
 }
 
 #[test]

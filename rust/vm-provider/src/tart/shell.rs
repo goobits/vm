@@ -1,5 +1,5 @@
 use super::provider::TartProvider;
-use crate::{security::SecurityValidator, Provider, VmError};
+use crate::{security::SecurityValidator, shell_session, Provider, VmError};
 use std::io::IsTerminal;
 use std::path::Path;
 use std::time::Duration;
@@ -76,8 +76,9 @@ impl TartProvider {
         }
 
         let shell_escaped = Self::shell_escape_single_quotes(shell);
+        let worktree_repair = shell_session::worktree_repair_script(&sync_dir);
         let ssh_command = format!(
-            "export VM_TARGET_DIR='{target_path}' && cd \"$VM_TARGET_DIR\" && exec '{shell}' -il",
+            "{worktree_repair}\nexport VM_TARGET_DIR='{target_path}' && cd \"$VM_TARGET_DIR\" && exec '{shell}' -il",
             target_path = target_path_escaped,
             shell = shell_escaped
         );

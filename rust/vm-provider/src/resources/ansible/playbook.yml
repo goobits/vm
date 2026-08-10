@@ -87,7 +87,7 @@
             project_uid: '{{ lookup("env", "HOST_UID") | default(ansible_user_uid, true) }}'
             project_gid: '{{ lookup("env", "HOST_GID") | default(ansible_user_gid, true) }}'
             project_path: '{{ project_config.project.workspace_path | default(default_workspace) }}'
-            project_path_b64: "{{ (project_config.project.workspace_path | default(default_workspace)) | b64encode }}"
+            project_path_shell: "{{ (project_config.project.workspace_path | default(default_workspace)) | quote }}"
             project_hostname: "{{ project_config.project.hostname | default('dev.' + (project_config.project.name | default('project')) + '.local') }}"
             terminal_emoji: "{{ project_config.terminal.emoji | default('🐳') }}"
             terminal_username: "{{ project_config.terminal.username | default('dev') }}"
@@ -514,6 +514,12 @@
             group: '{{ project_user_group }}'
             mode: '0644'
         become_user: root
+
+      - name: Remove legacy per-shell worktree repair hook
+        file:
+            path: /etc/profile.d/vm-worktree-repair.sh
+            state: absent
+        when: is_docker_container
 
       # Layered provisioning: works for both fresh builds and snapshots.
       - name: Install additional APT packages

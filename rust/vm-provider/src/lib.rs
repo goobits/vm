@@ -147,6 +147,7 @@ pub mod context;
 pub mod progress;
 mod resource_limits;
 pub mod resources;
+mod shell_session;
 pub mod tart_base;
 
 // Re-export template constants for testing

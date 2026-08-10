@@ -113,10 +113,7 @@ fi"#,
             .as_ref()
             .and_then(|p| p.name.clone())
             .unwrap_or_else(|| Self::default_project_name(project_path));
-        let project_path_b64 = {
-            use base64::Engine;
-            base64::engine::general_purpose::STANDARD.encode(project_path)
-        };
+        let project_path_shell = crate::shell_session::quote_posix_argument(project_path);
         let project_aliases = config
             .aliases
             .iter()
@@ -148,7 +145,7 @@ fi"#,
         let mut context = Context::new();
         context.insert("project_name", &project_name);
         context.insert("project_path", project_path);
-        context.insert("project_path_b64", &project_path_b64);
+        context.insert("project_path_shell", &project_path_shell);
         context.insert(
             "project_config",
             &serde_json::to_value(config).unwrap_or_else(|_| json!({})),

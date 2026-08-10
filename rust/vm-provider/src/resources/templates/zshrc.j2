@@ -3,10 +3,27 @@
 # User binaries installed by VM provisioning (AI CLIs, pipx, and pip --user).
 export PATH="$HOME/.local/bin:$PATH"
 
-# NVM Configuration (handles npm global packages in PATH)
+# NVM Configuration: load it only when a command needs it. Docker images already expose the
+# selected Node version directly in PATH, while Tart pays this cost once on the
+# first Node/NVM command instead of on every shell startup.
 export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+  _vm_load_nvm() {
+    unfunction nvm node npm npx corepack pnpm yarn 2>/dev/null || true
+    \. "$NVM_DIR/nvm.sh"
+  }
+  nvm() { _vm_load_nvm; nvm "$@"; }
+  if ! command -v node >/dev/null 2>&1; then
+    node() { _vm_load_nvm; command node "$@"; }
+    npm() { _vm_load_nvm; command npm "$@"; }
+    npx() { _vm_load_nvm; command npx "$@"; }
+    corepack() { _vm_load_nvm; command corepack "$@"; }
+    pnpm() { _vm_load_nvm; command pnpm "$@"; }
+    yarn() { _vm_load_nvm; command yarn "$@"; }
+  fi
+fi
 
+{% if project_aliases is defined and project_aliases | length > 0 %}
 vm_b64decode() {
   if command -v base64 >/dev/null 2>&1; then
     printf '%s' "$1" | base64 --decode 2>/dev/null || printf '%s' "$1" | base64 -d 2>/dev/null
@@ -14,8 +31,9 @@ vm_b64decode() {
     printf '%s' "$1"
   fi
 }
+{% endif %}
 
-VM_PROJECT_PATH="$(vm_b64decode '{{ project_path_b64 }}')"
+VM_PROJECT_PATH={{ project_path_shell }}
 
 # Source shared runtime shell setup before prompt configuration.
 if [ -f /etc/profile.d/vm-shell-runtime.sh ]; then
@@ -28,8 +46,9 @@ _SHELL_HISTORY_DIR="$HOME/.shell_history"
 if [ ! -d "$_SHELL_HISTORY_DIR" ]; then
   mkdir -p "$_SHELL_HISTORY_DIR" 2>/dev/null || true
 fi
-chown "$(id -u)":"$(id -g)" "$_SHELL_HISTORY_DIR" 2>/dev/null || true
-chmod u+w "$_SHELL_HISTORY_DIR" 2>/dev/null || true
+if [ ! -w "$_SHELL_HISTORY_DIR" ]; then
+  chmod u+w "$_SHELL_HISTORY_DIR" 2>/dev/null || true
+fi
 if [ -w "$_SHELL_HISTORY_DIR" ]; then
   export HISTFILE="${HISTFILE:-$_SHELL_HISTORY_DIR/zsh_history}"
 else
@@ -51,33 +70,37 @@ export LANGUAGE=en_US:en
 export LC_ALL=en_US.UTF-8
 export LC_CTYPE=en_US.UTF-8
 
-# Prevent Python from creating __pycache__ directories
-export PYTHONDONTWRITEBYTECODE=1
+# Keep bytecode off shared source mounts without disabling Python's cache.
+export PYTHONPYCACHEPREFIX="${XDG_CACHE_HOME:-$HOME/.cache}/python/pycache"
 
 # Custom Prompt Configuration
-function git_branch_name() {
+VM_GIT_PROMPT=''
 {% if show_git_branch %}
-  git branch 2>/dev/null | grep '^*' | cut -c3- | sed 's/^/ (/' | sed 's/$/)/'
-{% endif %}
+vm_update_git_prompt() {
+  local branch
+  branch="$(command git branch --show-current 2>/dev/null)" || branch=''
+  if [ -n "$branch" ]; then
+    VM_GIT_PROMPT=" (${branch//\%/%%})"
+  else
+    VM_GIT_PROMPT=''
+  fi
 }
-
-function format_timestamp() {
-{% if show_timestamp %}
-  echo " [$(date '+%H:%M:%S')]"
+if (( ${precmd_functions[(Ie)vm_update_git_prompt]} == 0 )); then
+  precmd_functions+=(vm_update_git_prompt)
+fi
 {% endif %}
-}
 
 # Set custom prompt: emoji username current-folder (branch) [timestamp] > 
 setopt PROMPT_SUBST
-PROMPT='{{ terminal_emoji }} {{ terminal_username }} %c$(git_branch_name)$(format_timestamp) > '
+PROMPT='{{ terminal_emoji }} {{ terminal_username }} %c${VM_GIT_PROMPT}{% if show_timestamp %} [%*]{% endif %} > '
 
 # Terminal Color Configuration
 export TERM=xterm-256color
 export LS_COLORS='di=1;34:ln=1;36:so=1;35:pi=1;33:ex=1;32:bd=1;33:cd=1;33:su=0;41:sg=0;46:tw=0;42:ow=0;43:'
 
 # Cross-platform command aliases
-case "$(uname -s)" in
-  Darwin)
+case "$OSTYPE" in
+  darwin*)
     alias ls='ls -G'
     if command -v ggrep >/dev/null 2>&1; then
       alias grep='ggrep --color=auto'
@@ -93,7 +116,7 @@ case "$(uname -s)" in
     alias diff='diff --color=auto'
     ;;
 esac
-export VM_SHELL_CONFIG_VERSION=3
+export VM_SHELL_CONFIG_VERSION=4
 
 vm_home_is_writable() {
   local _vm_home_test="$HOME/.vm-home-write-test"

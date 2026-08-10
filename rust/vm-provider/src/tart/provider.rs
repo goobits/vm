@@ -7,8 +7,8 @@ use crate::{
     context::ProviderContext,
     progress::ProgressReporter,
     resource_limits::ResolvedResources,
-    tart_base, BoxConfig, InstanceState, Provider, ResourceUsage, ServiceStatus, TempProvider,
-    VmError, VmStatusReport,
+    shell_session, tart_base, BoxConfig, InstanceState, Provider, ResourceUsage, ServiceStatus,
+    TempProvider, VmError, VmStatusReport,
 };
 use duct::cmd;
 use serde::Deserialize;
@@ -740,6 +740,7 @@ impl Provider for TartProvider {
         self.ensure_workspace_mount_ready(&vm_name, &sync_dir)?;
         self.ensure_shell_config_ready(&vm_name, &sync_dir)?;
         let sync_dir_escaped = Self::shell_escape_single_quotes(&sync_dir);
+        let worktree_repair = shell_session::worktree_repair_script(&sync_dir);
 
         let mut args: Vec<String> = vec![
             "exec".to_string(),
@@ -747,7 +748,7 @@ impl Provider for TartProvider {
             shell.to_string(),
             "-ilc".to_string(),
             format!(
-                "cd '{sync_dir}' && exec \"$@\"",
+                "{worktree_repair}\ncd '{sync_dir}' && exec \"$@\"",
                 sync_dir = sync_dir_escaped
             ),
             "vm-exec".to_string(),
