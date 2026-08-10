@@ -105,6 +105,16 @@ pub(super) fn gateway_url(port: u16) -> VmResult<String> {
     Ok(format_gateway_url(&address, port))
 }
 
+pub(super) fn review(_files: &ApplianceFiles, submission_id: &str) -> VmResult<()> {
+    process::validate_job_id(submission_id)?;
+    process::run(
+        &mut guest_shell(&format!(
+            "cd {GUEST_ROOT} && sudo docker compose --project-name {COMPOSE_PROJECT} --file compose.yaml --env-file environment.env run --rm --no-deps --env SUBMISSION_ID={submission_id} reviewer"
+        )),
+        "run the ephemeral package integration reviewer",
+    )
+}
+
 fn format_gateway_url(address: &str, port: u16) -> String {
     if address.contains(':') {
         format!("http://[{address}]:{port}")
@@ -213,6 +223,7 @@ fn sync_controller_files(files: &ApplianceFiles) -> VmResult<()> {
         (files.read_token_path(), "read-token"),
         (files.publish_token_path(), "publish-token"),
         (files.controller_token_path(), "controller-token"),
+        (files.reviewer_token_path(), "reviewer-token"),
         (files.git_token_path(), "git-token"),
     ] {
         let content = std::fs::read(&source).map_err(|error| {

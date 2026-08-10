@@ -2,7 +2,10 @@ mod catalog;
 mod checkout;
 mod docker;
 mod files;
+mod integration;
 mod process;
+mod runtime;
+mod submission;
 mod tart;
 
 use std::{path::PathBuf, time::Duration};
@@ -77,7 +80,8 @@ pub(super) async fn handle(
             runtime,
             port,
             registry_image,
-        } => up(&files, runtime, port, registry_image).await,
+            review_image,
+        } => up(&files, runtime, port, registry_image, review_image).await,
         PackagesSubcommand::Down { runtime } => down(&files, runtime),
         PackagesSubcommand::Status { runtime } => status(&files, runtime).await,
         PackagesSubcommand::Doctor { runtime } => doctor(&files, runtime).await,
@@ -108,6 +112,25 @@ pub(super) async fn handle(
             .await
         }
         PackagesSubcommand::Show { checkout_id } => catalog::show(&files, &checkout_id).await,
+        PackagesSubcommand::Submit {
+            checkout_id,
+            consumer,
+        } => submission::handle(&files, config_path, profile, checkout_id, consumer).await,
+        PackagesSubcommand::Integrate {
+            submission_id,
+            consumer,
+            strategy,
+        } => {
+            integration::handle(
+                &files,
+                config_path,
+                profile,
+                submission_id,
+                consumer,
+                strategy,
+            )
+            .await
+        }
         PackagesSubcommand::Auth { token_file, clear } => {
             catalog::configure_git_auth(&files, token_file, clear)
         }
@@ -131,19 +154,38 @@ fn configured_state_and_client(
     Ok((state, client))
 }
 
+fn launch_review(
+    files: &ApplianceFiles,
+    state: &ApplianceState,
+    submission_id: &str,
+) -> VmResult<()> {
+    if state.review_image.is_empty() {
+        return Err(VmError::validation(
+            "Package appliance state predates integration review support",
+            Some("Run `vm packages up` to refresh it"),
+        ));
+    }
+    match state.runtime {
+        InfrastructureRuntime::Docker => docker::review(files, submission_id),
+        InfrastructureRuntime::Tart => tart::review(files, submission_id),
+    }
+}
+
 async fn up(
     files: &ApplianceFiles,
     requested: PackageInfrastructureRuntime,
     port: u16,
     registry_image: Option<String>,
+    review_image: Option<String>,
 ) -> VmResult<()> {
     let runtime = resolve_runtime(requested, files)?;
     let image = registry_image.unwrap_or_else(default_registry_image);
+    let review_image = review_image.unwrap_or_else(default_review_image);
     let bind = match runtime {
         InfrastructureRuntime::Docker => "127.0.0.1",
         InfrastructureRuntime::Tart => "0.0.0.0",
     };
-    let config = ApplianceConfig::new(bind, port, image).map_err(VmError::from)?;
+    let config = ApplianceConfig::new(bind, port, image, review_image).map_err(VmError::from)?;
     files.materialize(&config)?;
 
     let gateway_url = match runtime {
@@ -157,6 +199,7 @@ async fn up(
         gateway_url: gateway_url.clone(),
         gateway_port: port,
         registry_image: config.registry_image,
+        review_image: config.review_image,
         controller_version: env!("CARGO_PKG_VERSION").to_string(),
     })?;
 
@@ -274,6 +317,13 @@ fn default_registry_image() -> String {
     )
 }
 
+fn default_review_image() -> String {
+    format!(
+        "ghcr.io/goobits/vm-package-review:{}",
+        env!("CARGO_PKG_VERSION")
+    )
+}
+
 async fn wait_for_gateway(gateway_url: &str) -> VmResult<()> {
     for _ in 0..HEALTH_ATTEMPTS {
         if gateway_is_healthy(gateway_url).await {
@@ -334,6 +384,7 @@ mod tests {
             gateway_url: "http://192.0.2.8:3080".into(),
             gateway_port: 3080,
             registry_image: "registry/image:1".into(),
+            review_image: "review/image:1".into(),
             controller_version: "1".into(),
         };
         let docker = client_environment(&state, "read-token".into(), "docker").unwrap();
@@ -348,6 +399,7 @@ mod tests {
             gateway_url: "http://127.0.0.1:3080".into(),
             gateway_port: 3080,
             registry_image: "registry/image:1".into(),
+            review_image: "review/image:1".into(),
             controller_version: "1".into(),
         };
         assert!(client_environment(&state, "read-token".into(), "tart").is_err());

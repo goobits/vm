@@ -36,12 +36,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::Start { host, port, data } => {
             let read_token = std::env::var("PKG_WORK_READ_TOKEN")?;
             let controller_token = std::env::var("PKG_WORK_CONTROLLER_TOKEN")?;
+            let reviewer_token = std::env::var("PKG_WORK_REVIEWER_TOKEN")?;
             tokio::runtime::Runtime::new()?.block_on(vm_package_work::run(
                 host,
                 port,
                 data,
                 read_token,
                 controller_token,
+                reviewer_token,
             ))?;
         }
     }

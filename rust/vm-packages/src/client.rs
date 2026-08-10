@@ -4,8 +4,9 @@ use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    CheckoutLease, CheckoutRecord, CreateCheckout, LeaseRequest, PackageDefinition,
-    RegisterPackage, RegistryEndpoints, TransitionRequest, WorkflowReceipt,
+    CheckoutLease, CheckoutRecord, CreateCheckout, IntegrationRequest, LeaseRequest,
+    PackageDefinition, RegisterPackage, RegistryEndpoints, ReviewRequest, SubmissionRecord,
+    TransitionRequest, ValidationRequest, WorkflowReceipt,
 };
 
 pub type PackageInventory = BTreeMap<String, Vec<String>>;
@@ -24,6 +25,7 @@ pub struct PackageInfrastructureClient {
     endpoints: RegistryEndpoints,
     read_token: Option<String>,
     controller_token: Option<String>,
+    reviewer_token: Option<String>,
 }
 
 impl PackageInfrastructureClient {
@@ -33,6 +35,7 @@ impl PackageInfrastructureClient {
             endpoints,
             read_token: None,
             controller_token: None,
+            reviewer_token: None,
         }
     }
 
@@ -43,6 +46,11 @@ impl PackageInfrastructureClient {
 
     pub fn with_controller_token(mut self, token: impl Into<String>) -> Self {
         self.controller_token = Some(token.into());
+        self
+    }
+
+    pub fn with_reviewer_token(mut self, token: impl Into<String>) -> Self {
+        self.reviewer_token = Some(token.into());
         self
     }
 
@@ -133,11 +141,99 @@ impl PackageInfrastructureClient {
             .await
     }
 
+    pub async fn submissions(&self) -> Result<Vec<SubmissionRecord>> {
+        self.get_work("v1/submissions").await
+    }
+
+    pub async fn submission(&self, submission_id: &str) -> Result<SubmissionRecord> {
+        self.get_work(&format!("v1/submissions/{submission_id}"))
+            .await
+    }
+
+    pub async fn checkout_submission(&self, checkout_id: &str) -> Result<SubmissionRecord> {
+        self.get_work(&format!("v1/checkouts/{checkout_id}/submission"))
+            .await
+    }
+
+    pub async fn validate_submission(
+        &self,
+        submission_id: &str,
+        request: &ValidationRequest,
+    ) -> Result<SubmissionRecord> {
+        self.post_work(&format!("v1/submissions/{submission_id}/validate"), request)
+            .await
+    }
+
+    pub async fn record_review(
+        &self,
+        submission_id: &str,
+        request: &ReviewRequest,
+    ) -> Result<SubmissionRecord> {
+        let url = self.work_url(&format!("v1/submissions/{submission_id}/review"));
+        let token = self
+            .reviewer_token
+            .as_ref()
+            .or(self.controller_token.as_ref())
+            .context("package workflow reviewer credential is unavailable")?;
+        self.http
+            .post(&url)
+            .bearer_auth(token)
+            .json(request)
+            .send()
+            .await
+            .with_context(|| format!("failed to connect to package workflow at {url}"))?
+            .error_for_status()
+            .with_context(|| format!("package workflow rejected POST {url}"))?
+            .json()
+            .await
+            .with_context(|| format!("package workflow returned invalid JSON from {url}"))
+    }
+
+    pub async fn prepare_integration(
+        &self,
+        submission_id: &str,
+        request: &IntegrationRequest,
+    ) -> Result<SubmissionRecord> {
+        self.post_work(
+            &format!("v1/submissions/{submission_id}/integrate"),
+            request,
+        )
+        .await
+    }
+
+    pub async fn complete_integration(
+        &self,
+        submission_id: &str,
+        request: &ValidationRequest,
+    ) -> Result<SubmissionRecord> {
+        self.post_work(
+            &format!("v1/submissions/{submission_id}/integration/complete"),
+            request,
+        )
+        .await
+    }
+
     pub fn checkout_archive_url(&self, checkout_id: &str, consumer: &str) -> String {
         let consumer =
             url::form_urlencoded::byte_serialize(consumer.as_bytes()).collect::<String>();
         self.work_url(&format!(
             "v1/checkouts/{checkout_id}/archive?consumer={consumer}"
+        ))
+    }
+
+    pub fn submission_upload_url(&self, checkout_id: &str, consumer: &str) -> String {
+        let consumer =
+            url::form_urlencoded::byte_serialize(consumer.as_bytes()).collect::<String>();
+        self.work_url(&format!(
+            "v1/checkouts/{checkout_id}/submission?consumer={consumer}"
+        ))
+    }
+
+    pub fn integration_bundle_url(&self, submission_id: &str, consumer: &str) -> String {
+        let consumer =
+            url::form_urlencoded::byte_serialize(consumer.as_bytes()).collect::<String>();
+        self.work_url(&format!(
+            "v1/submissions/{submission_id}/integration?consumer={consumer}"
         ))
     }
 
@@ -164,6 +260,7 @@ impl PackageInfrastructureClient {
             .read_token
             .as_ref()
             .or(self.controller_token.as_ref())
+            .or(self.reviewer_token.as_ref())
             .context("package workflow read credential is unavailable")?;
         self.http
             .get(&url)

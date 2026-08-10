@@ -29,6 +29,8 @@ pub struct ApplianceState {
     pub gateway_url: String,
     pub gateway_port: u16,
     pub registry_image: String,
+    #[serde(default)]
+    pub review_image: String,
     pub controller_version: String,
 }
 
@@ -49,6 +51,7 @@ pub struct ApplianceConfig {
     pub bind_address: String,
     pub gateway_port: u16,
     pub registry_image: String,
+    pub review_image: String,
 }
 
 impl ApplianceConfig {
@@ -56,6 +59,7 @@ impl ApplianceConfig {
         bind_address: impl Into<String>,
         gateway_port: u16,
         registry_image: impl Into<String>,
+        review_image: impl Into<String>,
     ) -> Result<Self> {
         let bind_address = bind_address.into();
         if !matches!(bind_address.as_str(), "127.0.0.1" | "0.0.0.0") {
@@ -66,21 +70,26 @@ impl ApplianceConfig {
         }
 
         let registry_image = checked_image(registry_image.into())?;
+        let review_image = checked_image(review_image.into())?;
         if registry_image.trim().is_empty() {
             bail!("package registry image cannot be empty");
+        }
+        if review_image.trim().is_empty() {
+            bail!("package review image cannot be empty");
         }
 
         Ok(Self {
             bind_address,
             gateway_port,
             registry_image,
+            review_image,
         })
     }
 
     pub fn environment(&self) -> String {
         format!(
-            "VM_PACKAGES_BIND={}\nVM_PACKAGES_PORT={}\nVM_PACKAGES_REGISTRY_IMAGE={}\n",
-            self.bind_address, self.gateway_port, self.registry_image
+            "VM_PACKAGES_BIND={}\nVM_PACKAGES_PORT={}\nVM_PACKAGES_REGISTRY_IMAGE={}\nVM_PACKAGES_REVIEW_IMAGE={}\n",
+            self.bind_address, self.gateway_port, self.registry_image, self.review_image
         )
     }
 }
@@ -112,6 +121,8 @@ mod tests {
         assert!(COMPOSE_YAML.contains("agent-temporary-data:/data/agents"));
         assert!(COMPOSE_YAML.contains("source-mirrors:/data/sources"));
         assert!(COMPOSE_YAML.contains("work_controller_token"));
+        assert!(COMPOSE_YAML.contains("agent-temporary-data:/data/agents:ro"));
+        assert!(COMPOSE_YAML.contains("profiles: [jobs]"));
         assert!(GATEWAY_CONFIG.contains("reverse_proxy work:3091"));
         assert!(!COMPOSE_YAML.contains("/var/run/docker.sock"));
         assert!(!COMPOSE_YAML.contains("/workspace"));
@@ -120,7 +131,7 @@ mod tests {
 
     #[test]
     fn environment_rejects_line_injection() {
-        assert!(ApplianceConfig::new("127.0.0.1", 3080, "image\nBAD=value").is_err());
+        assert!(ApplianceConfig::new("127.0.0.1", 3080, "image\nBAD=value", "review:1").is_err());
     }
 
     #[test]
@@ -130,6 +141,7 @@ mod tests {
             gateway_url: "http://192.0.2.2:3080".into(),
             gateway_port: 3080,
             registry_image: "registry.example/vm-packages:1".into(),
+            review_image: "registry.example/vm-package-review:1".into(),
             controller_version: "1.0.0".into(),
         };
         assert_eq!(

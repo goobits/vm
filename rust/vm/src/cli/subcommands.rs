@@ -23,6 +23,9 @@ pub enum PackagesSubcommand {
         /// Override the immutable registry service image
         #[arg(long)]
         registry_image: Option<String>,
+        /// Override the immutable integration-review image
+        #[arg(long)]
+        review_image: Option<String>,
     },
     /// Stop the appliance while preserving all named volumes
     Down {
@@ -64,6 +67,22 @@ pub enum PackagesSubcommand {
     },
     /// Show one package checkout
     Show { checkout_id: String },
+    /// Validate and submit committed package work for integration review
+    Submit {
+        checkout_id: String,
+        /// Defaults to the current project
+        #[arg(long)]
+        consumer: Option<String>,
+    },
+    /// Rebase or merge an approved submission and rerun selected checks
+    Integrate {
+        submission_id: String,
+        /// Defaults to the current project
+        #[arg(long)]
+        consumer: Option<String>,
+        #[arg(long, default_value = "rebase", value_parser = ["rebase", "merge"])]
+        strategy: String,
+    },
     /// Install or clear the controller's private Git token
     Auth {
         #[arg(long, conflicts_with = "clear")]

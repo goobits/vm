@@ -25,6 +25,7 @@ members = [
     # Service Layer
     "vm-package-server",
     "vm-package-work",
+    "vm-package-review",
     "vm-auth-proxy",
     "vm-docker-registry",
 
@@ -70,7 +71,7 @@ colored = "3.1.1"
 uuid = { version = "1.23", features = ["v4", "serde"] }
 sysinfo = "0.30.13"
 axum = { version = "0.8", features = ["multipart", "ws"] }
-tokio = { version = "1.52", features = ["net", "rt-multi-thread", "macros", "fs", "process"] }
+tokio = { version = "1.52", features = ["net", "rt-multi-thread", "macros", "fs", "io-util", "process"] }
 tokio-util = { version = "0.7", features = ["io"] }
 aes-gcm = "0.10"
 pbkdf2 = "0.13.0"

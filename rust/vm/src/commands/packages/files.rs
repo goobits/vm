@@ -10,6 +10,7 @@ const ENVIRONMENT_FILE: &str = "environment.env";
 const READ_TOKEN_FILE: &str = "read-token";
 const PUBLISH_TOKEN_FILE: &str = "publish-token";
 const CONTROLLER_TOKEN_FILE: &str = "controller-token";
+const REVIEWER_TOKEN_FILE: &str = "reviewer-token";
 const GIT_TOKEN_FILE: &str = "git-token";
 const STATE_FILE: &str = "state.json";
 
@@ -64,6 +65,10 @@ impl ApplianceFiles {
         self.root.join(GIT_TOKEN_FILE)
     }
 
+    pub(super) fn reviewer_token_path(&self) -> PathBuf {
+        self.root.join(REVIEWER_TOKEN_FILE)
+    }
+
     pub(super) fn read_token(&self) -> VmResult<String> {
         self.token(&self.read_token_path())
     }
@@ -107,6 +112,7 @@ impl ApplianceFiles {
             self.read_token_path(),
             self.publish_token_path(),
             self.controller_token_path(),
+            self.reviewer_token_path(),
         ] {
             if !path.exists() {
                 let token = vm_core::secrets::generate_random_password(48);
@@ -198,7 +204,8 @@ mod tests {
     fn materializes_controller_files_without_registry_data() {
         let directory = tempfile::tempdir().unwrap();
         let files = ApplianceFiles::at(directory.path().join("packages"));
-        let config = ApplianceConfig::new("127.0.0.1", 3080, "registry/image:1").unwrap();
+        let config =
+            ApplianceConfig::new("127.0.0.1", 3080, "registry/image:1", "review/image:1").unwrap();
         files.materialize(&config).unwrap();
 
         assert!(files.compose_path().is_file());
@@ -207,6 +214,7 @@ mod tests {
         assert!(files.read_token_path().is_file());
         assert!(files.publish_token_path().is_file());
         assert!(files.controller_token_path().is_file());
+        assert!(files.reviewer_token_path().is_file());
         assert!(files.git_token_path().is_file());
         assert_eq!(
             std::fs::read_to_string(files.publish_token_path())

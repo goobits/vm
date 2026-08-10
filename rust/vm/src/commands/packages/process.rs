@@ -3,6 +3,22 @@ use std::process::{Command, Output, Stdio};
 
 use crate::error::{VmError, VmResult};
 
+pub(super) fn validate_job_id(value: &str) -> VmResult<()> {
+    if !value.is_empty()
+        && value.len() <= 160
+        && value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+    {
+        Ok(())
+    } else {
+        Err(VmError::validation(
+            "Invalid package job identifier",
+            None::<String>,
+        ))
+    }
+}
+
 pub(super) fn run(command: &mut Command, context: &str) -> VmResult<()> {
     let status = command
         .status()

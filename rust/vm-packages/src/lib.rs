@@ -10,6 +10,7 @@ mod client;
 mod credentials;
 mod ecosystem;
 mod environment;
+mod submission;
 mod workflow;
 
 pub use appliance::{
@@ -21,6 +22,11 @@ pub use client::{InfrastructureStatus, PackageInfrastructureClient, PackageInven
 pub use credentials::authorization_token;
 pub use ecosystem::{PackageEcosystem, ParsePackageEcosystemError};
 pub use environment::{ClientEnvironment, RegistryEndpoints};
+pub use submission::{
+    CheckOutcome, IntegrationRecord, IntegrationRequest, IntegrationReview, PublicApiDiff,
+    ReviewDecision, ReviewRequest, SubmissionRecord, ValidationRequest, ValidationResult,
+    VersionRecommendation,
+};
 pub use workflow::{
     CheckoutLease, CheckoutRecord, CreateCheckout, LeaseRecord, LeaseRequest, ReceiptKind,
     TransitionRequest, WorkflowReceipt, WorkflowState, WorkflowTransition,

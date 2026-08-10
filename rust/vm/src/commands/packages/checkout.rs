@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 
-use vm_config::config::VmConfig;
 use vm_core::{vm_println, vm_progress, vm_success};
 use vm_packages::{
     ApplianceState, CreateCheckout, PackageEcosystem, PackageInfrastructureClient,
@@ -12,7 +11,12 @@ use crate::commands::command_context::{
 };
 use crate::error::{VmError, VmResult};
 
-use super::{configured_state_and_client, files::ApplianceFiles, gateway_for_provider};
+use super::{
+    configured_state_and_client,
+    files::ApplianceFiles,
+    gateway_for_provider,
+    runtime::{checkout_root, exec, exec_in_workspace},
+};
 
 pub(super) struct CheckoutIntent {
     pub(super) config_path: Option<PathBuf>,
@@ -107,18 +111,16 @@ fn attach(
     consumer: &str,
     ecosystem: PackageEcosystem,
 ) -> VmResult<()> {
-    let root = format!("/tmp/vm-package-checkouts/{}", checkout.checkout_id);
+    let root = checkout_root(&checkout.checkout_id);
     let source = format!("{root}/source");
     let archive = format!("/tmp/{}.bundle", checkout.checkout_id);
     let gateway = gateway_for_provider(state, subject.provider.name())?;
     let archive_client =
         PackageInfrastructureClient::new(RegistryEndpoints::new(gateway).map_err(VmError::from)?);
     let url = archive_client.checkout_archive_url(&checkout.checkout_id, consumer);
-    let target = Some(subject.target.as_str());
-    exec(subject, target, ["mkdir", "-p", root.as_str()])?;
+    exec(subject, ["mkdir", "-p", root.as_str()])?;
     exec(
         subject,
-        target,
         [
             "curl",
             "--fail",
@@ -132,10 +134,9 @@ fn attach(
             &archive,
         ],
     )?;
-    exec(subject, target, ["git", "clone", &archive, source.as_str()])?;
+    exec(subject, ["git", "clone", &archive, source.as_str()])?;
     exec(
         subject,
-        target,
         [
             "git",
             "-C",
@@ -147,25 +148,23 @@ fn attach(
                 .ok_or_else(|| VmError::validation("Checkout branch is missing", None::<String>))?,
         ],
     )?;
-    exec(subject, target, ["rm", "-f", archive.as_str()])?;
+    exec(subject, ["rm", "-f", archive.as_str()])?;
     exec(
         subject,
-        target,
         [
             "/bin/sh",
             "-c",
-            "umask 077; printf %s \"$1\" > \"$2\"",
+            "umask 077; printf 'Authorization: Bearer %s' \"$1\" > \"$2\"",
             "vm-package-lease",
             lease_token,
-            &format!("{root}/lease-token"),
+            &format!("{root}/authorization-header"),
         ],
     )?;
-    apply_override(subject, target, ecosystem, &checkout.package, &source)
+    apply_override(subject, ecosystem, &checkout.package, &source)
 }
 
 fn apply_override(
     subject: &RuntimeSubject,
-    target: Option<&str>,
     ecosystem: PackageEcosystem,
     package: &str,
     source: &str,
@@ -173,7 +172,6 @@ fn apply_override(
     match ecosystem {
         PackageEcosystem::Npm => exec_in_workspace(
             subject,
-            target,
             [
                 "npm",
                 "install",
@@ -184,14 +182,12 @@ fn apply_override(
         ),
         PackageEcosystem::Python => exec_in_workspace(
             subject,
-            target,
             ["python", "-m", "pip", "install", "--editable", source],
         ),
         PackageEcosystem::Cargo => {
             let patch = format!("patch.crates-io.{package}.path=\"{source}\"");
             exec_in_workspace(
                 subject,
-                target,
                 [
                     "cargo",
                     "metadata",
@@ -206,43 +202,4 @@ fn apply_override(
             Ok(())
         }
     }
-}
-
-fn exec_in_workspace<const N: usize>(
-    subject: &RuntimeSubject,
-    target: Option<&str>,
-    command: [&str; N],
-) -> VmResult<()> {
-    let mut wrapped = vec![
-        "/bin/sh".to_string(),
-        "-c".to_string(),
-        "cd \"$1\"; shift; exec \"$@\"".to_string(),
-        "vm-package-workspace".to_string(),
-        workspace_path(&subject.config).to_string(),
-    ];
-    wrapped.extend(command.into_iter().map(str::to_string));
-    subject
-        .provider
-        .exec(target, &wrapped)
-        .map_err(VmError::from)
-}
-
-fn exec<const N: usize>(
-    subject: &RuntimeSubject,
-    target: Option<&str>,
-    command: [&str; N],
-) -> VmResult<()> {
-    let command = command.into_iter().map(str::to_string).collect::<Vec<_>>();
-    subject
-        .provider
-        .exec(target, &command)
-        .map_err(VmError::from)
-}
-
-fn workspace_path(config: &VmConfig) -> &str {
-    config
-        .project
-        .as_ref()
-        .and_then(|project| project.workspace_path.as_deref())
-        .unwrap_or("/workspace")
 }

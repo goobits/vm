@@ -3884,6 +3884,17 @@ name = "vm-messages"
 version = "5.0.1"
 
 [[package]]
+name = "vm-package-review"
+version = "5.0.1"
+dependencies = [
+ "anyhow",
+ "clap",
+ "tempfile",
+ "tokio",
+ "vm-packages",
+]
+
+[[package]]
 name = "vm-package-server"
 version = "5.0.1"
 dependencies = [
@@ -3924,6 +3935,7 @@ dependencies = [
  "axum-test",
  "chrono",
  "clap",
+ "futures-util",
  "serde",
  "serde_json",
  "sha2 0.11.0",

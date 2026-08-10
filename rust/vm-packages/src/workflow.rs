@@ -133,6 +133,12 @@ pub struct TransitionRequest {
 pub enum ReceiptKind {
     Checkout,
     SourcePrepared,
+    Submission,
+    Validation,
+    Review,
+    Integration,
+    Release,
+    Publication,
     LeaseAcquired,
     LeaseRenewed,
     LeaseReleased,

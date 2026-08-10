@@ -1,0 +1,17 @@
+[package]
+name = "vm-package-review"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "pkg-review"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true }
+vm-packages = { path = "../vm-packages" }

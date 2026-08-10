@@ -53,6 +53,17 @@ pub(super) fn doctor(files: &ApplianceFiles) -> VmResult<()> {
     Ok(())
 }
 
+pub(super) fn review(files: &ApplianceFiles, submission_id: &str) -> VmResult<()> {
+    process::validate_job_id(submission_id)?;
+    process::run(
+        compose(files)
+            .args(["run", "--rm", "--no-deps", "--env"])
+            .arg(format!("SUBMISSION_ID={submission_id}"))
+            .arg("reviewer"),
+        "run the ephemeral package integration reviewer",
+    )
+}
+
 fn compose(files: &ApplianceFiles) -> Command {
     let mut command = Command::new("docker");
     command

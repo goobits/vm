@@ -63,8 +63,9 @@ services:
       - |
         export PKG_WORK_READ_TOKEN="$$(cat /run/secrets/work_read_token)"
         export PKG_WORK_CONTROLLER_TOKEN="$$(cat /run/secrets/work_controller_token)"
+        export PKG_WORK_REVIEWER_TOKEN="$$(cat /run/secrets/work_reviewer_token)"
         exec pkg-work start --host 0.0.0.0 --port 3091 --data /data
-    secrets: [work_read_token, work_controller_token, git_token]
+    secrets: [work_read_token, work_controller_token, work_reviewer_token, git_token]
     expose: ["3091"]
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:3091/health"]
@@ -82,6 +83,37 @@ services:
       - source-mirrors:/data/sources
     networks: [packages, egress]
 
+  reviewer:
+    profiles: [jobs]
+    image: "${VM_PACKAGES_REVIEW_IMAGE:?required}"
+    environment:
+      PKG_REVIEW_GATEWAY: http://gateway:8080
+      CARGO_HOME: /tmp/cargo-home
+      CARGO_TARGET_DIR: /tmp/cargo-target
+      npm_config_cache: /tmp/npm-cache
+      PIP_CACHE_DIR: /tmp/pip-cache
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        read_token="$$(cat /run/secrets/reviewer_read_token)"
+        export PKG_REVIEW_TOKEN="$$(cat /run/secrets/reviewer_token)"
+        export NPM_CONFIG_REGISTRY="http://reader:$${read_token}@gateway:8080/npm/"
+        export PIP_INDEX_URL="http://reader:$${read_token}@gateway:8080/pypi/simple/"
+        export CARGO_REGISTRIES_VM_INDEX="sparse+http://gateway:8080/cargo/index/"
+        export CARGO_REGISTRIES_VM_TOKEN="$${read_token}"
+        export CARGO_SOURCE_CRATES_IO_REPLACE_WITH=vm
+        export CARGO_SOURCE_VM_REGISTRY="sparse+http://gateway:8080/cargo/index/"
+        export CARGO_REGISTRY_GLOBAL_CREDENTIAL_PROVIDERS=cargo:token
+        exec pkg-review --submission "$${SUBMISSION_ID:?required}"
+    secrets: [reviewer_read_token, reviewer_token]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp:rw,exec,nosuid,size=4g"]
+    volumes:
+      - agent-temporary-data:/data/agents:ro
+    networks: [packages]
+
 networks:
   packages:
     name: vm-packages
@@ -98,6 +130,12 @@ secrets:
     file: ./read-token
   work_controller_token:
     file: ./controller-token
+  work_reviewer_token:
+    file: ./reviewer-token
+  reviewer_read_token:
+    file: ./read-token
+  reviewer_token:
+    file: ./reviewer-token
   git_token:
     file: ./git-token
 

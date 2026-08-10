@@ -8,39 +8,42 @@ use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 use vm_packages::{
     CheckoutLease, CheckoutRecord, CreateCheckout, LeaseRecord, LeaseRequest, PackageDefinition,
-    ReceiptKind, RegisterPackage, TransitionRequest, WorkflowReceipt, WorkflowState,
-    WorkflowTransition,
+    ReceiptKind, RegisterPackage, SubmissionRecord, TransitionRequest, WorkflowReceipt,
+    WorkflowState, WorkflowTransition,
 };
 
-use crate::{WorkError, WorkResult};
+use crate::{io::atomic_write, WorkError, WorkResult};
 
 const STATE_FILE: &str = "state/workflows.json";
 const DEFAULT_LEASE_SECONDS: i64 = 30 * 60;
 const MAX_LEASE_SECONDS: i64 = 24 * 60 * 60;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct IdempotencyRecord {
-    fingerprint: String,
-    checkout_id: String,
+pub(crate) struct IdempotencyRecord {
+    pub(crate) fingerprint: String,
+    #[serde(alias = "checkout_id")]
+    pub(crate) target_id: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-struct Database {
+pub(crate) struct Database {
     #[serde(default)]
-    sequence: u64,
+    pub(crate) sequence: u64,
     #[serde(default)]
-    checkouts: BTreeMap<String, CheckoutRecord>,
+    pub(crate) checkouts: BTreeMap<String, CheckoutRecord>,
     #[serde(default)]
-    receipts: BTreeMap<String, WorkflowReceipt>,
+    pub(crate) receipts: BTreeMap<String, WorkflowReceipt>,
     #[serde(default)]
-    idempotency: BTreeMap<String, IdempotencyRecord>,
+    pub(crate) idempotency: BTreeMap<String, IdempotencyRecord>,
     #[serde(default)]
-    packages: BTreeMap<String, PackageDefinition>,
+    pub(crate) packages: BTreeMap<String, PackageDefinition>,
+    #[serde(default)]
+    pub(crate) submissions: BTreeMap<String, SubmissionRecord>,
 }
 
 pub struct Store {
     root: PathBuf,
-    database: Mutex<Database>,
+    pub(crate) database: Mutex<Database>,
 }
 
 impl Store {
@@ -75,7 +78,7 @@ impl Store {
             ensure_fingerprint(existing, &fingerprint)?;
             let checkout = current
                 .checkouts
-                .get(&existing.checkout_id)
+                .get(&existing.target_id)
                 .cloned()
                 .ok_or_else(|| WorkError::Internal("idempotency target is missing".into()))?;
             return Ok(CheckoutLease {
@@ -154,7 +157,7 @@ impl Store {
             request.idempotency_key,
             IdempotencyRecord {
                 fingerprint,
-                checkout_id: checkout_id.clone(),
+                target_id: checkout_id.clone(),
             },
         );
         next.checkouts.insert(checkout_id, record.clone());
@@ -342,7 +345,7 @@ impl Store {
             ensure_fingerprint(existing, &fingerprint)?;
             return current
                 .checkouts
-                .get(&existing.checkout_id)
+                .get(&existing.target_id)
                 .cloned()
                 .ok_or_else(|| WorkError::Internal("idempotency target is missing".into()));
         }
@@ -380,7 +383,7 @@ impl Store {
             request.idempotency_key,
             IdempotencyRecord {
                 fingerprint,
-                checkout_id: checkout_id.to_string(),
+                target_id: checkout_id.to_string(),
             },
         );
         self.commit(&mut current, next).await?;
@@ -399,7 +402,7 @@ impl Store {
             ensure_fingerprint(existing, &fingerprint)?;
             return current
                 .checkouts
-                .get(&existing.checkout_id)
+                .get(&existing.target_id)
                 .cloned()
                 .ok_or_else(|| WorkError::Internal("idempotency target is missing".into()));
         }
@@ -437,7 +440,7 @@ impl Store {
             request.idempotency_key,
             IdempotencyRecord {
                 fingerprint,
-                checkout_id: checkout_id.to_string(),
+                target_id: checkout_id.to_string(),
             },
         );
         self.commit(&mut current, next).await?;
@@ -456,7 +459,7 @@ impl Store {
             ensure_fingerprint(existing, &fingerprint)?;
             return current
                 .checkouts
-                .get(&existing.checkout_id)
+                .get(&existing.target_id)
                 .cloned()
                 .ok_or_else(|| WorkError::Internal("idempotency target is missing".into()));
         }
@@ -509,7 +512,7 @@ impl Store {
             request.idempotency_key,
             IdempotencyRecord {
                 fingerprint,
-                checkout_id: checkout_id.to_string(),
+                target_id: checkout_id.to_string(),
             },
         );
         self.commit(&mut current, next).await?;
@@ -573,7 +576,7 @@ impl Store {
         self.commit(&mut current, next).await
     }
 
-    async fn commit(
+    pub(crate) async fn commit(
         &self,
         current: &mut tokio::sync::MutexGuard<'_, Database>,
         next: Database,
@@ -601,19 +604,19 @@ impl Store {
     }
 }
 
-struct ReceiptInput<'a> {
-    kind: ReceiptKind,
-    checkout_id: &'a str,
-    actor: &'a str,
-    previous: Option<WorkflowState>,
-    next: WorkflowState,
-    commit: Option<String>,
-    validation_result: Option<String>,
-    reason: &'a str,
-    timestamp: chrono::DateTime<Utc>,
+pub(crate) struct ReceiptInput<'a> {
+    pub(crate) kind: ReceiptKind,
+    pub(crate) checkout_id: &'a str,
+    pub(crate) actor: &'a str,
+    pub(crate) previous: Option<WorkflowState>,
+    pub(crate) next: WorkflowState,
+    pub(crate) commit: Option<String>,
+    pub(crate) validation_result: Option<String>,
+    pub(crate) reason: &'a str,
+    pub(crate) timestamp: chrono::DateTime<Utc>,
 }
 
-fn receipt(database: &mut Database, input: ReceiptInput<'_>) -> WorkflowReceipt {
+pub(crate) fn receipt(database: &mut Database, input: ReceiptInput<'_>) -> WorkflowReceipt {
     WorkflowReceipt {
         receipt_id: format!("receipt-{:08}", next_id(database)),
         kind: input.kind,
@@ -714,7 +717,7 @@ fn validate_transition(request: &TransitionRequest) -> WorkResult<()> {
     validate_idempotency_key(&request.idempotency_key)
 }
 
-fn validate_label(field: &str, value: &str) -> WorkResult<()> {
+pub(crate) fn validate_label(field: &str, value: &str) -> WorkResult<()> {
     let valid = !value.is_empty()
         && value.len() <= 128
         && !value.contains("..")
@@ -729,7 +732,7 @@ fn validate_label(field: &str, value: &str) -> WorkResult<()> {
     }
 }
 
-fn validate_idempotency_key(key: &str) -> WorkResult<()> {
+pub(crate) fn validate_idempotency_key(key: &str) -> WorkResult<()> {
     if key.trim().is_empty() || key.len() > 128 {
         Err(WorkError::Invalid(
             "idempotency key must contain 1 to 128 characters".into(),
@@ -756,7 +759,10 @@ fn validate_lease(
     Ok(())
 }
 
-fn ensure_fingerprint(existing: &IdempotencyRecord, fingerprint: &str) -> WorkResult<()> {
+pub(crate) fn ensure_fingerprint(
+    existing: &IdempotencyRecord,
+    fingerprint: &str,
+) -> WorkResult<()> {
     if existing.fingerprint == fingerprint {
         Ok(())
     } else {
@@ -766,7 +772,7 @@ fn ensure_fingerprint(existing: &IdempotencyRecord, fingerprint: &str) -> WorkRe
     }
 }
 
-fn operation_fingerprint(
+pub(crate) fn operation_fingerprint(
     operation: &str,
     checkout_id: Option<&str>,
     value: &impl Serialize,
@@ -795,13 +801,6 @@ fn pretty_json(value: &impl Serialize) -> WorkResult<Vec<u8>> {
     let mut content = serde_json::to_vec_pretty(value)?;
     content.push(b'\n');
     Ok(content)
-}
-
-async fn atomic_write(path: PathBuf, content: Vec<u8>) -> WorkResult<()> {
-    tokio::task::spawn_blocking(move || vm_core::file_system::atomic_write(&path, &content))
-        .await
-        .map_err(|error| WorkError::Internal(format!("atomic write task failed: {error}")))??;
-    Ok(())
 }
 
 #[cfg(test)]

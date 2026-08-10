@@ -8,8 +8,9 @@ use sha2::{Digest, Sha256};
 use tokio::process::Command;
 use tokio::sync::Mutex;
 use vm_packages::{CheckoutLease, CheckoutRecord, TransitionRequest, WorkflowState};
+use vm_packages::{IntegrationRecord, IntegrationRequest, SubmissionRecord};
 
-use crate::{Store, WorkError, WorkResult};
+use crate::{io::atomic_write, ImportedSubmission, Store, WorkError, WorkResult};
 
 #[derive(Clone)]
 pub struct SourceManager {
@@ -97,6 +98,371 @@ impl SourceManager {
         )
         .await?;
         Ok(archive)
+    }
+
+    pub async fn submission_staging_path(&self, checkout: &CheckoutRecord) -> WorkResult<PathBuf> {
+        let source = self.checkout_source(checkout)?;
+        if !source.is_dir() {
+            return Err(WorkError::Conflict("checkout source is not ready".into()));
+        }
+        let uploads = source
+            .parent()
+            .expect("managed source has a parent")
+            .join("uploads");
+        tokio::fs::create_dir_all(&uploads).await?;
+        Ok(uploads.join(format!(
+            "{}.bundle",
+            vm_core::secrets::generate_random_password(16)
+        )))
+    }
+
+    pub async fn import_submission(
+        &self,
+        store: &Store,
+        checkout: &CheckoutRecord,
+        bundle: &Path,
+    ) -> WorkResult<vm_packages::SubmissionRecord> {
+        let lock = self
+            .lock(&format!("checkout:{}", checkout.checkout_id))
+            .await;
+        let _guard = lock.lock().await;
+        let source = self.checkout_source(checkout)?;
+        let branch = checkout
+            .branch
+            .as_deref()
+            .ok_or_else(|| WorkError::Conflict("checkout branch is missing".into()))?;
+        let base_commit = checkout
+            .base_commit
+            .as_deref()
+            .ok_or_else(|| WorkError::Conflict("checkout base commit is missing".into()))?;
+        run(
+            self.git()
+                .arg("-C")
+                .arg(&source)
+                .arg("bundle")
+                .arg("verify")
+                .arg(bundle),
+            "verify submitted Git bundle",
+        )
+        .await?;
+        let heads = git_output(
+            self.git()
+                .arg("bundle")
+                .arg("list-heads")
+                .arg(bundle)
+                .arg(format!("refs/heads/{branch}")),
+            "read submitted Git bundle head",
+        )
+        .await?;
+        let submitted_commit = heads
+            .split_whitespace()
+            .next()
+            .filter(|commit| {
+                matches!(commit.len(), 40 | 64)
+                    && commit
+                        .chars()
+                        .all(|character| character.is_ascii_hexdigit())
+            })
+            .ok_or_else(|| {
+                WorkError::Invalid("bundle does not contain the checkout branch".into())
+            })?
+            .to_string();
+        if submitted_commit == base_commit {
+            return Err(WorkError::Invalid(
+                "submission contains no commits beyond its base".into(),
+            ));
+        }
+        let submission_ref = format!(
+            "refs/submissions/{}",
+            submitted_commit.chars().take(16).collect::<String>()
+        );
+        run(
+            self.git()
+                .arg("-C")
+                .arg(&source)
+                .arg("fetch")
+                .arg(bundle)
+                .arg(format!("refs/heads/{branch}:{submission_ref}")),
+            "import submitted package commits",
+        )
+        .await?;
+        if run(
+            self.git()
+                .arg("-C")
+                .arg(&source)
+                .arg("merge-base")
+                .arg("--is-ancestor")
+                .arg(base_commit)
+                .arg(&submitted_commit),
+            "verify submitted commit ancestry",
+        )
+        .await
+        .is_err()
+        {
+            return Err(WorkError::Conflict(
+                "submitted history does not descend from the recorded base commit".into(),
+            ));
+        }
+        run(
+            self.git()
+                .arg("-C")
+                .arg(&source)
+                .arg("diff")
+                .arg("--check")
+                .arg(format!("{base_commit}..{submitted_commit}")),
+            "validate submitted diff",
+        )
+        .await?;
+        let diff = run(
+            self.git()
+                .arg("-C")
+                .arg(&source)
+                .arg("diff")
+                .arg("--binary")
+                .arg(format!("{base_commit}..{submitted_commit}")),
+            "capture submitted diff",
+        )
+        .await?
+        .stdout;
+        let submissions = source
+            .parent()
+            .expect("managed source has a parent")
+            .join("submissions");
+        tokio::fs::create_dir_all(&submissions).await?;
+        let key = submitted_commit.chars().take(16).collect::<String>();
+        atomic_write(submissions.join(format!("{key}.diff")), diff.clone()).await?;
+        let durable_bundle = submissions.join(format!("{key}.bundle"));
+        if !tokio::fs::try_exists(&durable_bundle).await? {
+            tokio::fs::rename(bundle, &durable_bundle).await?;
+        } else {
+            tokio::fs::remove_file(bundle).await?;
+        }
+        store
+            .record_submission(
+                &checkout.checkout_id,
+                ImportedSubmission {
+                    submitted_commit,
+                    diff_digest: digest_hex(&diff),
+                },
+            )
+            .await
+    }
+
+    pub async fn prepare_integration(
+        &self,
+        store: &Store,
+        submission: &SubmissionRecord,
+        request: IntegrationRequest,
+    ) -> WorkResult<SubmissionRecord> {
+        if submission.state != WorkflowState::Approved {
+            return Err(WorkError::Conflict(
+                "only an approved submission can be integrated".into(),
+            ));
+        }
+        if !matches!(request.strategy.as_str(), "rebase" | "merge") {
+            return Err(WorkError::Invalid(
+                "integration strategy must be rebase or merge".into(),
+            ));
+        }
+        let definition = store.package(&submission.package).await?;
+        let checkout = store.get_checkout(&submission.checkout_id).await?;
+        let lock = self.lock(&format!("package:{}", definition.name)).await;
+        let _guard = lock.lock().await;
+        let mirror = self
+            .root
+            .join("sources")
+            .join(format!("{}.git", source_key(&definition.name)));
+        self.sync_mirror(&mirror, &definition.repository).await?;
+        let canonical_ref = format!("refs/heads/{}", definition.default_branch);
+        let canonical_commit = git_output(
+            self.git()
+                .arg("--git-dir")
+                .arg(&mirror)
+                .arg("rev-parse")
+                .arg(&canonical_ref),
+            "resolve current canonical package commit",
+        )
+        .await?;
+        let integration_root = self
+            .root
+            .join("agents")
+            .join(&submission.checkout_id)
+            .join("integrations")
+            .join(&submission.submission_id);
+        let source = integration_root.join("source");
+        tokio::fs::create_dir_all(&integration_root).await?;
+        if tokio::fs::try_exists(&source).await? {
+            tokio::fs::remove_dir_all(&source).await?;
+        }
+        run(
+            self.git()
+                .arg("clone")
+                .arg("--no-hardlinks")
+                .arg(&mirror)
+                .arg(&source),
+            "create isolated integration checkout",
+        )
+        .await?;
+        run(
+            self.git().arg("-C").arg(&source).args([
+                "config",
+                "user.name",
+                "VM Package Controller",
+            ]),
+            "configure integration Git identity",
+        )
+        .await?;
+        run(
+            self.git().arg("-C").arg(&source).args([
+                "config",
+                "user.email",
+                "packages@vm.internal",
+            ]),
+            "configure integration Git identity",
+        )
+        .await?;
+        let submitted_source = self.checkout_source(&checkout)?;
+        let submitted_ref = format!(
+            "refs/submissions/{}",
+            submission
+                .submitted_commit
+                .chars()
+                .take(16)
+                .collect::<String>()
+        );
+        run(
+            self.git()
+                .arg("-C")
+                .arg(&source)
+                .arg("fetch")
+                .arg(&submitted_source)
+                .arg(format!("{submitted_ref}:{submitted_ref}")),
+            "load approved submission into integration checkout",
+        )
+        .await?;
+        let branch = format!("integration/{}", submission.submission_id);
+        match request.strategy.as_str() {
+            "rebase" => {
+                run(
+                    self.git()
+                        .arg("-C")
+                        .arg(&source)
+                        .arg("switch")
+                        .arg("--create")
+                        .arg(&branch)
+                        .arg(&submitted_ref),
+                    "create rebased integration branch",
+                )
+                .await?;
+                run(
+                    self.git()
+                        .arg("-C")
+                        .arg(&source)
+                        .arg("rebase")
+                        .arg(&canonical_commit),
+                    "rebase submission onto current canonical source",
+                )
+                .await?;
+            }
+            "merge" => {
+                run(
+                    self.git()
+                        .arg("-C")
+                        .arg(&source)
+                        .arg("switch")
+                        .arg("--create")
+                        .arg(&branch)
+                        .arg(&canonical_commit),
+                    "create merged integration branch",
+                )
+                .await?;
+                run(
+                    self.git()
+                        .arg("-C")
+                        .arg(&source)
+                        .args(["merge", "--no-ff", "--no-edit"])
+                        .arg(&submitted_ref),
+                    "merge submission into current canonical source",
+                )
+                .await?;
+            }
+            _ => unreachable!("strategy was validated"),
+        }
+        let integration_commit = git_output(
+            self.git()
+                .arg("-C")
+                .arg(&source)
+                .args(["rev-parse", "HEAD"]),
+            "resolve integration commit",
+        )
+        .await?;
+        run(
+            self.git()
+                .arg("-C")
+                .arg(&source)
+                .arg("diff")
+                .arg("--check")
+                .arg(format!("{canonical_commit}..{integration_commit}")),
+            "validate integrated diff",
+        )
+        .await?;
+        let bundle = integration_root.join("integration.bundle");
+        if tokio::fs::try_exists(&bundle).await? {
+            tokio::fs::remove_file(&bundle).await?;
+        }
+        run(
+            self.git()
+                .arg("-C")
+                .arg(&source)
+                .args(["bundle", "create"])
+                .arg(&bundle)
+                .arg("--all"),
+            "bundle integrated package source",
+        )
+        .await?;
+        store
+            .record_integration(
+                &submission.submission_id,
+                IntegrationRecord {
+                    canonical_commit,
+                    integration_commit,
+                    strategy: request.strategy,
+                    worktree: source.to_string_lossy().into_owned(),
+                    validation: None,
+                    timestamp: chrono::Utc::now(),
+                },
+                &request.actor,
+                request.idempotency_key,
+            )
+            .await
+    }
+
+    pub fn integration_bundle(&self, submission: &SubmissionRecord) -> WorkResult<PathBuf> {
+        let integration = submission
+            .integration
+            .as_ref()
+            .ok_or_else(|| WorkError::Conflict("integration is not prepared".into()))?;
+        let source = PathBuf::from(&integration.worktree);
+        let expected = self
+            .root
+            .join("agents")
+            .join(&submission.checkout_id)
+            .join("integrations")
+            .join(&submission.submission_id)
+            .join("source");
+        if source != expected {
+            return Err(WorkError::Internal(
+                "integration source escaped its managed directory".into(),
+            ));
+        }
+        let bundle = expected
+            .parent()
+            .expect("managed integration source has a parent")
+            .join("integration.bundle");
+        if !bundle.is_file() {
+            return Err(WorkError::Conflict("integration bundle is missing".into()));
+        }
+        Ok(bundle)
     }
 
     async fn prepare_locked(
@@ -230,6 +596,25 @@ impl SourceManager {
             .or_insert_with(|| Arc::new(Mutex::new(())))
             .clone()
     }
+
+    fn checkout_source(&self, checkout: &CheckoutRecord) -> WorkResult<PathBuf> {
+        let source = checkout
+            .worktree
+            .as_deref()
+            .map(PathBuf::from)
+            .ok_or_else(|| WorkError::Conflict("checkout source is not ready".into()))?;
+        let expected = self
+            .root
+            .join("agents")
+            .join(&checkout.checkout_id)
+            .join("source");
+        if source != expected {
+            return Err(WorkError::Internal(
+                "checkout source escaped its managed directory".into(),
+            ));
+        }
+        Ok(source)
+    }
 }
 
 async fn run(command: &mut Command, operation: &str) -> WorkResult<Output> {
@@ -263,12 +648,18 @@ fn source_key(value: &str) -> String {
             }
         })
         .collect::<String>();
-    let digest = Sha256::digest(value.as_bytes());
-    let mut suffix = String::with_capacity(8);
-    for byte in digest.iter().take(4) {
-        write!(&mut suffix, "{byte:02x}").expect("writing to a String cannot fail");
-    }
+    let suffix = digest_hex(value.as_bytes());
+    let suffix = &suffix[..8];
     format!("{}-{suffix}", slug.trim_matches('-'))
+}
+
+fn digest_hex(value: &[u8]) -> String {
+    let digest = Sha256::digest(value);
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        write!(&mut encoded, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    encoded
 }
 
 #[cfg(test)]
@@ -359,5 +750,45 @@ mod tests {
             String::from_utf8(branch.stdout).unwrap().trim(),
             prepared.branch.as_deref().unwrap()
         );
+
+        let active = store
+            .transition(
+                &prepared.checkout_id,
+                vm_packages::TransitionRequest {
+                    next: WorkflowState::Active,
+                    actor: "agent-1".into(),
+                    reason: "consumer attached".into(),
+                    commit: prepared.base_commit.clone(),
+                    validation_result: None,
+                    idempotency_key: "active".into(),
+                },
+            )
+            .await
+            .unwrap();
+        git(&consumer, &["config", "user.email", "agent@example.com"]);
+        git(&consumer, &["config", "user.name", "Agent"]);
+        std::fs::write(
+            consumer.join("Cargo.toml"),
+            "[package]\nname='auth'\nversion='1.0.1'\n",
+        )
+        .unwrap();
+        git(&consumer, &["add", "Cargo.toml"]);
+        git(&consumer, &["commit", "-m", "update auth"]);
+        let submitted_bundle = directory.path().join("submitted.bundle");
+        git(
+            &consumer,
+            &[
+                "bundle",
+                "create",
+                submitted_bundle.to_str().unwrap(),
+                "--all",
+            ],
+        );
+        let submission = source
+            .import_submission(&store, &active, &submitted_bundle)
+            .await
+            .unwrap();
+        assert_eq!(submission.state, WorkflowState::Submitted);
+        assert_ne!(submission.base_commit, submission.submitted_commit);
     }
 }

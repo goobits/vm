@@ -21,6 +21,7 @@ path = "src/git_askpass.rs"
 axum = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
+futures-util = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
