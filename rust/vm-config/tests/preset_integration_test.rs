@@ -883,13 +883,7 @@ fn test_vibe_tart_preset_uses_linux_tart_by_default() -> Result<()> {
             .and_then(|tart| tart.install_docker),
         Some(true)
     );
-    assert_eq!(
-        tart_profile
-            .environment
-            .get("CARGO_TARGET_DIR")
-            .map(String::as_str),
-        Some("/home/admin/.cache/vm-cargo-target")
-    );
+    assert!(!tart_profile.environment.contains_key("CARGO_TARGET_DIR"));
     assert!(!vibe_tart.environment.contains_key("CARGO_TARGET_DIR"));
     let macos_profile = vibe_tart
         .profiles

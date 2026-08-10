@@ -206,7 +206,7 @@ fi"#
             .filter(|(_, command)| !command.trim().is_empty())
             .map(|(label, command)| {
                 format!(
-                    "printf '%s\\n' 'VM_PROVISION_STEP={label}' >&2\n(\n{}\n)",
+                    "printf '%s\\n' 'VM_PROVISION_STEP={label}' >&2\n(\n[ ! -r \"$HOME/.vm_runtime_env\" ] || . \"$HOME/.vm_runtime_env\"\n[ ! -r \"$HOME/.vm_shell_overrides\" ] || . \"$HOME/.vm_shell_overrides\"\n{}\n)",
                     command.trim()
                 )
             })
@@ -348,7 +348,7 @@ mod tests {
 
         assert_eq!(command.matches("touch \"$HOME/.bashrc\"").count(), 1);
         assert!(command.contains("rm -f \"$HOME/.vm_shell_overrides\""));
-        assert!(command.contains("VM_SHELL_CONFIG_VERSION=4"));
+        assert!(command.contains("VM_SHELL_CONFIG_VERSION=5"));
     }
 
     #[test]
@@ -573,7 +573,7 @@ mod tests {
 
         assert!(rendered.contains("PROMPT='🍎 "));
         assert!(rendered.contains("alias gs='git status'"));
-        assert!(rendered.contains("VM_SHELL_CONFIG_VERSION=4"));
+        assert!(rendered.contains("VM_SHELL_CONFIG_VERSION=5"));
         assert!(rendered.contains("yocodex()"));
         assert!(rendered.contains("vm_repair_codex_state"));
         assert!(rendered.contains("VM_PROJECT_PATH='/workspace'"));

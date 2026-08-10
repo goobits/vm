@@ -15,6 +15,7 @@ use super::compose_context::{
 use super::compose_model::{RenderedResources, RenderedStorage};
 use super::preview::redact_compose;
 use super::{DockerOps, UserConfig};
+use crate::guest_cache::GuestCachePolicy;
 use crate::user_home::resolve_home_dir;
 use crate::{Mount, ProviderContext, TempVmState};
 use vm_config::config::VmConfig;
@@ -120,7 +121,16 @@ impl<'a> ComposeOperations<'a> {
             }
         }
 
-        let storage = RenderedStorage::new(&final_config, base_project_name, &final_project_name);
+        let guest_home_dir = format!("/home/{}", user_config.username);
+        let cache_policy = GuestCachePolicy::new(base_project_name);
+        let guest_cache_env = cache_policy.container_environment(&guest_home_dir, &final_config);
+        let tool_cache_target = format!("{guest_home_dir}/.cache");
+        let storage = RenderedStorage::new(
+            &final_config,
+            base_project_name,
+            &final_project_name,
+            &tool_cache_target,
+        );
         let resources = RenderedResources::resolve(&final_config)?;
 
         let mut tera_context = TeraContext::new();
@@ -130,6 +140,8 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("storage_volumes", &storage.mounts);
         tera_context.insert("named_volumes", &storage.named_volumes);
         tera_context.insert("tmpfs_mounts", &storage.tmpfs);
+        tera_context.insert("tool_cache_target", &storage.tool_cache_target);
+        tera_context.insert("guest_cache_env", &guest_cache_env);
         tera_context.insert("resources", &resources);
         tera_context.insert("project_dir", &project_dir_str);
         tera_context.insert("build_context_dir", &build_context_str);
@@ -671,6 +683,13 @@ mod tests {
         assert!(environment.iter().any(|value| {
             value.as_str() == Some("PLAYWRIGHT_BROWSERS_PATH=/home/developer/.cache/ms-playwright")
         }));
+        assert!(environment.iter().any(|value| {
+            value.as_str()
+                == Some("CARGO_TARGET_DIR=/home/developer/.cache/vm/cargo-target/sketch-api")
+        }));
+        assert!(environment.iter().any(|value| {
+            value.as_str() == Some("npm_config_cache=/home/developer/.cache/node/npm")
+        }));
 
         assert_eq!(
             dev.get("tmpfs")
@@ -712,6 +731,21 @@ mod tests {
                 Some(true)
             );
         }
+        let tool_cache = volume_mount(dev, "tool_cache");
+        assert_eq!(
+            tool_cache
+                .get("target")
+                .and_then(serde_yaml_ng::Value::as_str),
+            Some("/home/developer/.cache")
+        );
+        assert_eq!(
+            tool_cache
+                .get("volume")
+                .and_then(serde_yaml_ng::Value::as_mapping)
+                .and_then(|volume| volume.get("nocopy"))
+                .and_then(serde_yaml_ng::Value::as_bool),
+            Some(false)
+        );
 
         let named_volumes = yaml_mapping(&yaml, "volumes");
         assert_eq!(
@@ -735,6 +769,16 @@ mod tests {
                 .get("name")
                 .and_then(serde_yaml_ng::Value::as_str),
             Some(platform_store_name.as_str())
+        );
+        let tool_cache_name = format!(
+            "vm_sketch-api_linux_{}_tool_cache",
+            container_architecture()
+        );
+        assert_eq!(
+            named_volumes["tool_cache"]
+                .get("name")
+                .and_then(serde_yaml_ng::Value::as_str),
+            Some(tool_cache_name.as_str())
         );
         assert_eq!(
             named_volumes["managed_scratch"]["labels"]
@@ -761,6 +805,13 @@ mod tests {
                 .and_then(serde_yaml_ng::Value::as_str),
             Some(platform_store_name.as_str()),
             "platform stores remain shared across named instances"
+        );
+        assert_eq!(
+            instance_volumes["tool_cache"]
+                .get("name")
+                .and_then(serde_yaml_ng::Value::as_str),
+            Some(tool_cache_name.as_str()),
+            "tool caches remain shared across named instances"
         );
         assert_eq!(
             instance_volumes["managed_scratch"]

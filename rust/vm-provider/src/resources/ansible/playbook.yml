@@ -125,6 +125,7 @@
       - name: Load shared project plan
         set_fact:
             project_installs: "{{ project_config.get('_vm_project_plan', {}).get('installs', {}) }}"
+            cache_environment: "{{ project_config.get('_vm_cache_environment', {}) }}"
 
       - name: Set project bootstrap metadata
         set_fact:
@@ -453,12 +454,16 @@
 
       - name: Reconcile configured Node.js toolchain
         command: /bin/bash /app/shared/scripts/install-node-toolchain.sh
-        environment:
-            HOME: '{{ home_dir }}'
-            VM_NODE_VERSION: "{{ node_toolchain.get('node', project_config.versions.node | default('22')) }}"
-            VM_NVM_VERSION: "{{ node_toolchain.get('nvm', project_config.versions.nvm | default('v0.40.3')) }}"
-            VM_NPM_VERSION: "{{ node_toolchain.get('npm', project_config.versions.npm | default('')) }}"
-            VM_PNPM_VERSION: "{{ node_toolchain.get('pnpm', project_config.versions.pnpm | default('10.12.3')) }}"
+        environment: >-
+            {{
+              cache_environment | combine({
+                'HOME': home_dir,
+                'VM_NODE_VERSION': node_toolchain.get('node', project_config.versions.node | default('22')),
+                'VM_NVM_VERSION': node_toolchain.get('nvm', project_config.versions.nvm | default('v0.40.3')),
+                'VM_NPM_VERSION': node_toolchain.get('npm', project_config.versions.npm | default('')),
+                'VM_PNPM_VERSION': node_toolchain.get('pnpm', project_config.versions.pnpm | default('10.12.3'))
+              })
+            }}
         become_user: '{{ project_user }}'
         register: node_toolchain_install
         changed_when: "'VM_NODE_TOOLCHAIN_CHANGED=1' in node_toolchain_install.stdout"
@@ -567,9 +572,13 @@
             args:
               executable: /bin/bash
             become_user: '{{ project_user }}'
-            environment:
-              CARGO_HOME: '{{ home_dir }}/.cargo'
-              RUSTUP_HOME: '{{ home_dir }}/.rustup'
+            environment: >-
+              {{
+                cache_environment | combine({
+                  'CARGO_HOME': home_dir ~ '/.cargo',
+                  'RUSTUP_HOME': home_dir ~ '/.rustup'
+                })
+              }}
 
           - name: Clean up rustup installer
             file:
@@ -785,7 +794,7 @@
 
       - name: Ensure Playwright browser cache ownership
         file:
-            path: '{{ home_dir }}/.cache/ms-playwright'
+            path: "{{ cache_environment.get('PLAYWRIGHT_BROWSERS_PATH', home_dir ~ '/.cache/ms-playwright') }}"
             state: directory
             owner: '{{ project_uid }}'
             group: '{{ project_gid }}'
@@ -795,12 +804,15 @@
 
       - name: Bootstrap locked Node dependencies and browsers
         command: /bin/bash /app/shared/scripts/bootstrap-node.sh
-        environment:
-            HOME: '{{ home_dir }}'
-            VM_PROJECT_PATH: '{{ project_path }}'
-            VM_NODE_DEPENDENCY_MANAGER: '{{ node_dependency_manager }}'
-            VM_PLAYWRIGHT_BROWSERS: '{{ playwright_browsers | join(" ") }}'
-            PLAYWRIGHT_BROWSERS_PATH: '{{ home_dir }}/.cache/ms-playwright'
+        environment: >-
+            {{
+              cache_environment | combine({
+                'HOME': home_dir,
+                'VM_PROJECT_PATH': project_path,
+                'VM_NODE_DEPENDENCY_MANAGER': node_dependency_manager,
+                'VM_PLAYWRIGHT_BROWSERS': playwright_browsers | join(' ')
+              })
+            }}
         become_user: '{{ project_user }}'
         async: 1800
         poll: 30

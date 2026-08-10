@@ -10,7 +10,7 @@ pub const MANAGE_SERVICE_TASK: &str = include_str!("resources/ansible/tasks/mana
 pub const SERVICE_DEFINITIONS: &str = include_str!("resources/services/service_definitions.yml");
 pub const ZSHRC_TEMPLATE: &str = include_str!("resources/templates/zshrc.j2");
 #[cfg(any(feature = "tart", test))]
-pub(crate) const SHELL_CONFIG_VERSION: &str = "4";
+pub(crate) const SHELL_CONFIG_VERSION: &str = "5";
 pub const THEMES_JSON: &str = include_str!("resources/templates/themes.json");
 pub const CLAUDE_SETTINGS_TEMPLATE: &str =
     include_str!("resources/settings/claude-settings.json.j2");
@@ -157,6 +157,8 @@ mod tests {
     #[test]
     fn ansible_consumes_the_shared_host_project_plan() {
         assert!(ANSIBLE_PLAYBOOK.contains("_vm_project_plan"));
+        assert!(ANSIBLE_PLAYBOOK.contains("_vm_cache_environment"));
+        assert!(ANSIBLE_PLAYBOOK.contains("cache_environment | combine"));
         assert!(!ANSIBLE_PLAYBOOK.contains("project_package_files"));
         assert!(!ANSIBLE_PLAYBOOK.contains("Inspect project package files"));
     }

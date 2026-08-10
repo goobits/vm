@@ -3,6 +3,10 @@
 # User binaries installed by VM provisioning (AI CLIs, pipx, and pip --user).
 export PATH="$HOME/.local/bin:$PATH"
 
+# Provider-neutral caches and explicit vm.yaml environment overrides.
+[ -r "$HOME/.vm_runtime_env" ] && source "$HOME/.vm_runtime_env"
+[ -r "$HOME/.vm_shell_overrides" ] && source "$HOME/.vm_shell_overrides"
+
 # NVM Configuration: load it only when a command needs it. Docker images already expose the
 # selected Node version directly in PATH, while Tart pays this cost once on the
 # first Node/NVM command instead of on every shell startup.
@@ -70,9 +74,6 @@ export LANGUAGE=en_US:en
 export LC_ALL=en_US.UTF-8
 export LC_CTYPE=en_US.UTF-8
 
-# Keep bytecode off shared source mounts without disabling Python's cache.
-export PYTHONPYCACHEPREFIX="${XDG_CACHE_HOME:-$HOME/.cache}/python/pycache"
-
 # Custom Prompt Configuration
 VM_GIT_PROMPT=''
 {% if show_git_branch %}
@@ -116,7 +117,7 @@ case "$OSTYPE" in
     alias diff='diff --color=auto'
     ;;
 esac
-export VM_SHELL_CONFIG_VERSION=4
+export VM_SHELL_CONFIG_VERSION=5
 
 vm_home_is_writable() {
   local _vm_home_test="$HOME/.vm-home-write-test"

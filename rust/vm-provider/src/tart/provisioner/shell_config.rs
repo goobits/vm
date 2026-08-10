@@ -1,4 +1,5 @@
 use super::{GuestCommand, TartProvisioner};
+use crate::guest_cache::GuestCachePolicy;
 use crate::{THEMES_JSON, ZSHRC_TEMPLATE};
 use serde_json::json;
 use tera::{Context, Tera};
@@ -42,6 +43,9 @@ impl TartProvisioner {
     pub(super) fn shell_config_command(config: &VmConfig, project_dir: &str) -> Result<String> {
         let rendered = Self::render_canonical_zshrc(config, project_dir)?;
         let rendered = crate::shell_session::quote_posix_argument(&rendered);
+        let runtime_environment = crate::shell_session::quote_posix_argument(
+            &GuestCachePolicy::from_config(config).shell_exports(),
+        );
         let overrides = Self::render_shell_overrides(config).map_or_else(
             || "rm -f \"$HOME/.vm_shell_overrides\"".to_string(),
             |overrides| {
@@ -53,11 +57,15 @@ impl TartProvisioner {
         );
 
         Ok(format!(
-            r#"printf '%s\n' {rendered} > "$HOME/.zshrc"
+            r#"printf '%s\n' {runtime_environment} > "$HOME/.vm_runtime_env"
+printf '%s\n' {rendered} > "$HOME/.zshrc"
 {overrides}
 touch "$HOME/.bashrc"
 if ! grep -Fq '. "$HOME/.vm_shell_overrides"' "$HOME/.bashrc"; then
   printf '\n[ -f "$HOME/.vm_shell_overrides" ] && . "$HOME/.vm_shell_overrides"\n' >> "$HOME/.bashrc"
+fi
+if ! grep -Fq '. "$HOME/.vm_runtime_env"' "$HOME/.bashrc"; then
+  printf '\n[ -r "$HOME/.vm_runtime_env" ] && . "$HOME/.vm_runtime_env"\n' >> "$HOME/.bashrc"
 fi
 if command -v chsh >/dev/null 2>&1 && command -v zsh >/dev/null 2>&1; then
   chsh -s "$(command -v zsh)" "$USER" >/dev/null 2>&1 || true

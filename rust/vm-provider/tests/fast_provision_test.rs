@@ -265,7 +265,7 @@ fn test_zshrc_template_uses_fast_lazy_shell_paths() {
         template.find("_vm_load_nvm()").unwrap()
             < template.find("\\. \"$NVM_DIR/nvm.sh\"").unwrap()
     );
-    assert!(template.contains("PYTHONPYCACHEPREFIX"));
+    assert!(template.contains("$HOME/.vm_runtime_env"));
     assert!(!template.contains("PYTHONDONTWRITEBYTECODE"));
 }
 

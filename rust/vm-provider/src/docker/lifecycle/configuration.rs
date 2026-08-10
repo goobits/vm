@@ -4,6 +4,7 @@ use std::{borrow::Cow, fs, process::Command};
 
 use super::LifecycleOperations;
 use crate::docker::{build::BuildOperations, DockerOps, UserConfig};
+use crate::guest_cache::{GuestCachePolicy, CACHE_ENV_CONFIG_KEY};
 use crate::project_plan::{ProjectPlan, PROJECT_PLAN_CONFIG_KEY};
 use vm_config::config::VmConfig;
 use vm_core::error::{Result, VmError};
@@ -96,6 +97,18 @@ impl<'a> LifecycleOperations<'a> {
                 VmError::Internal(format!("Failed to serialize project install plan: {error}"))
             })?,
         );
+        let user = UserConfig::from_vm_config(&config);
+        let home_dir = format!("/home/{}", user.username);
+        let cache_environment = GuestCachePolicy::from_config(&config)
+            .container_environment(&home_dir, &config)
+            .into_iter()
+            .collect::<std::collections::BTreeMap<_, _>>();
+        config.extra_config.insert(
+            CACHE_ENV_CONFIG_KEY.to_string(),
+            serde_json::to_value(cache_environment).map_err(|error| {
+                VmError::Internal(format!("Failed to serialize guest cache policy: {error}"))
+            })?,
+        );
 
         Ok(config)
     }
@@ -173,7 +186,44 @@ impl<'a> LifecycleOperations<'a> {
 mod tests {
     use super::*;
     use std::fs;
-    use vm_config::config::VmSettings;
+    use vm_config::config::{ProjectConfig, VmSettings};
+
+    #[test]
+    fn copied_config_contains_the_shared_guest_cache_policy() {
+        let directory = tempfile::tempdir().unwrap();
+        let generated_dir = directory.path().join("generated");
+        let project_dir = directory.path().join("project");
+        fs::create_dir(&project_dir).unwrap();
+        let config = VmConfig {
+            project: Some(ProjectConfig {
+                name: Some("codeatlas".to_string()),
+                ..Default::default()
+            }),
+            vm: Some(VmSettings {
+                user: Some("developer".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let lifecycle = LifecycleOperations::new(&config, &generated_dir, &project_dir, "docker");
+        let project_plan = ProjectPlan::detect(&project_dir, &config);
+
+        let copied = lifecycle
+            .prepare_config_for_copy(&[], &project_plan)
+            .unwrap();
+        let cache_environment = copied.extra_config[CACHE_ENV_CONFIG_KEY]
+            .as_object()
+            .unwrap();
+
+        assert_eq!(
+            cache_environment["CARGO_TARGET_DIR"].as_str(),
+            Some("/home/developer/.cache/vm/cargo-target/codeatlas")
+        );
+        assert_eq!(
+            cache_environment["npm_config_cache"].as_str(),
+            Some("/home/developer/.cache/node/npm")
+        );
+    }
 
     #[cfg(unix)]
     #[test]

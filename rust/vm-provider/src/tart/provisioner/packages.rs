@@ -241,7 +241,6 @@ bash "$installer""#,
 export VM_PROJECT_PATH='{project_dir}'
 export VM_NODE_DEPENDENCY_MANAGER='{manager}'
 export VM_PLAYWRIGHT_BROWSERS='{browsers}'
-export PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright"
 bootstrap="$(mktemp)"
 trap 'rm -f "$bootstrap"' EXIT
 cat > "$bootstrap" <<'VM_NODE_BOOTSTRAP'

@@ -62,6 +62,15 @@ services:
         target: /home/{{ project_user }}/.shell_history
         volume:
           nocopy: true
+      {% if tool_cache_target %}
+      # Project/platform tool caches survive container recreation.
+      - type: volume
+        source: tool_cache
+        target: {{ tool_cache_target }}
+        volume:
+          # Seed the empty volume from the image so the project user owns it.
+          nocopy: false
+      {% endif %}
       {% for volume in storage_volumes %}
       - type: volume
         source: {{ volume.alias }}
@@ -174,8 +183,6 @@ services:
       - DATABASE_URL=postgresql://{{ config.services.postgresql.user | default(value="postgres") }}:{{ postgresql_password | default(value="postgres") }}@postgres:5432/{{ config.services.postgresql.database | default(value=project_name ~ "_dev") }}
       - PGPASSWORD={{ postgresql_password | default(value="postgres") }}
       {% endif %}
-      # Keep Python bytecode on the fast home/cache volume instead of the source bind.
-      - PYTHONPYCACHEPREFIX=/home/{{ project_user }}/.cache/python/pycache
       # Host package environment variables
       {% if host_env_vars %}{% for env_var in host_env_vars %}- {{ env_var.0 }}={{ env_var.1 }}
       {% endfor %}{% endif %}
@@ -183,9 +190,11 @@ services:
       {% for name, value in config.environment %}- {{ name }}={{ value }}
       {% endfor %}
       {%- endif %}
+      # Provider-neutral defaults; explicit project environment values win.
+      {% for env_var in guest_cache_env %}- {{ env_var.0 }}={{ env_var.1 }}
+      {% endfor %}
       # Internal values come last so project environment cannot weaken bootstrap identity.
       - VM_IMAGE_IDENTITY={{ image_tag }}
-      - PLAYWRIGHT_BROWSERS_PATH=/home/{{ project_user }}/.cache/ms-playwright
     {% if config.security.enable_debugging | default(value=false) %}
     cap_add:
       - SYS_PTRACE

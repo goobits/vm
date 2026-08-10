@@ -27,8 +27,6 @@ terminal:
   show_timestamp: false
   theme: dracula
   username: vm-dev
-environment:
-  CARGO_TARGET_DIR: /home/admin/.cache/vm-cargo-target
 host_sync:
   git_config: true
   ai_tools: true

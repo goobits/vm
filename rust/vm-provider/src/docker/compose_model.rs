@@ -42,10 +42,16 @@ pub(super) struct RenderedStorage {
     pub mounts: Vec<RenderedVolume>,
     pub named_volumes: Vec<RenderedVolume>,
     pub tmpfs: Vec<RenderedTmpfs>,
+    pub tool_cache_target: Option<String>,
 }
 
 impl RenderedStorage {
-    pub fn new(config: &VmConfig, base_project: &str, instance_project: &str) -> Self {
+    pub fn new(
+        config: &VmConfig,
+        base_project: &str,
+        instance_project: &str,
+        tool_cache_target: &str,
+    ) -> Self {
         let mounts = config
             .storage
             .volumes
@@ -69,6 +75,16 @@ impl RenderedStorage {
             .collect::<Vec<_>>();
         let mut named_volumes = mounts.clone();
         named_volumes.push(builtin_volume(instance_project, "shell_history"));
+        let tool_cache_target = (!config
+            .storage
+            .volumes
+            .values()
+            .any(|volume| volume.target == tool_cache_target))
+        .then(|| tool_cache_target.to_string());
+        if tool_cache_target.is_some() {
+            let platform_scope = format!("{base_project}_linux_{}", container_architecture());
+            named_volumes.push(builtin_volume(&platform_scope, "tool_cache"));
+        }
         if config
             .services
             .get("postgresql")
@@ -109,6 +125,7 @@ impl RenderedStorage {
             mounts,
             named_volumes,
             tmpfs,
+            tool_cache_target,
         }
     }
 }
@@ -166,7 +183,9 @@ pub(super) fn container_architecture() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vm_config::config::{CpuLimit, MemoryLimit, VmSettings};
+    use vm_config::config::{
+        CpuLimit, MemoryLimit, VmSettings, VolumeMountConfig, VolumeRetention, VolumeScope,
+    };
 
     #[test]
     fn resolves_fixed_resource_limits_for_compose() {
@@ -182,6 +201,29 @@ mod tests {
         let resources = RenderedResources::resolve(&config).unwrap();
         assert_eq!(resources.memory.as_deref(), Some("8192m"));
         assert_eq!(resources.cpus, Some(6));
+    }
+
+    #[test]
+    fn explicit_cache_mount_replaces_the_builtin_tool_cache() {
+        let mut config = VmConfig::default();
+        config.storage.volumes.insert(
+            "custom_cache".to_string(),
+            VolumeMountConfig {
+                target: "/home/developer/.cache".to_string(),
+                scope: VolumeScope::Project,
+                nocopy: true,
+                retention: VolumeRetention::Keep,
+            },
+        );
+
+        let storage =
+            RenderedStorage::new(&config, "codeatlas", "codeatlas", "/home/developer/.cache");
+
+        assert!(storage.tool_cache_target.is_none());
+        assert!(!storage
+            .named_volumes
+            .iter()
+            .any(|volume| volume.alias == "tool_cache"));
     }
 
     #[test]
