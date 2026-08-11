@@ -441,6 +441,20 @@ mod tests {
     }
 
     #[test]
+    fn canonical_global_schema_covers_managed_services() {
+        let schema: Value =
+            serde_yaml_ng::from_str(include_str!("../../../configs/schema/global.schema.yaml"))
+                .unwrap();
+        let services = &schema["properties"]["services"]["properties"];
+
+        for name in ["auth_proxy", "postgresql", "redis", "mongodb", "mysql"] {
+            assert!(services[name].is_mapping(), "missing global service {name}");
+        }
+        assert!(schema["properties"]["backups"].is_mapping());
+        assert!(schema["properties"]["snapshots"].is_mapping());
+    }
+
+    #[test]
     fn parses_mount_objects_for_config_set() {
         let value = parse_value_with_schema(
             "mounts",

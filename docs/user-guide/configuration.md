@@ -256,13 +256,12 @@ vm config preset nodejs
 vm config preset python,postgres
 ```
 
-## Package Registry And Secrets
-
-System plumbing lives under `system`; plugin-backed user workflows stay flat.
+## Package Infrastructure And Secrets
 
 ```bash
-vm system registry status
-vm system registry ls
+vm packages status
+vm packages list
+vm tools list
 vm secret status
 vm secret ls
 ```

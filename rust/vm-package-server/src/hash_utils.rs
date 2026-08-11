@@ -24,10 +24,7 @@ fn to_hex(bytes: &[u8]) -> String {
 /// assert_eq!(hash.len(), 64); // SHA256 produces 64 hex characters
 /// ```
 pub fn sha256_hash(data: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(data);
-    to_hex(&hasher.finalize())
+    vm_packages::sha256_hex(data)
 }
 
 /// Calculate SHA1 hash of data (for npm).

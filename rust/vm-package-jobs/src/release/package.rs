@@ -8,10 +8,12 @@ use semver::Version;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use vm_packages::{
-    BeginReleaseRequest, CleanupRequest, CompleteReleaseRequest, PackageEcosystem,
-    PackageInfrastructureClient, PublicationRequest, RegistryEndpoints, ReleaseRecord,
-    VersionRecommendation, WorkflowState,
+    sha256_hex as digest_hex, BeginReleaseRequest, CleanupRequest, CompleteReleaseRequest,
+    PackageEcosystem, PackageInfrastructureClient, PublicationRequest, RegistryEndpoints,
+    ReleaseRecord, VersionRecommendation, WorkflowState,
 };
+
+use crate::runtime::{operation_key, required_secret as secret, run_command as run};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackageReleaseOptions {
@@ -218,18 +220,6 @@ async fn cleanup_release(client: &PackageInfrastructureClient, release_id: &str)
         )
         .await?;
     Ok(())
-}
-
-fn secret(variable: &str) -> Result<String> {
-    let path = std::env::var(variable).with_context(|| format!("{variable} is required"))?;
-    let value = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read secret file {path}"))?
-        .trim()
-        .to_string();
-    if value.is_empty() {
-        bail!("secret file configured by {variable} is empty");
-    }
-    Ok(value)
 }
 
 fn download_bundle(url: &str, token: &str, destination: &Path) -> Result<()> {
@@ -745,17 +735,6 @@ fn git_text(repository: &Path, arguments: &[&str]) -> Result<String> {
     Ok(String::from_utf8(output.stdout)?.trim().to_string())
 }
 
-fn digest_hex(content: &[u8]) -> String {
-    Sha256::digest(content)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
-}
-
-fn operation_key(operation: &str, value: &str) -> String {
-    format!("{operation}-{}", &digest_hex(value.as_bytes())[..32])
-}
-
 fn git() -> Command {
     let mut command = Command::new("git");
     command.env("GIT_TERMINAL_PROMPT", "0");
@@ -765,19 +744,6 @@ fn git() -> Command {
             .env("PKG_WORK_GIT_TOKEN_FILE", token_file);
     }
     command
-}
-
-fn run(command: &mut Command, operation: &str) -> Result<Output> {
-    let output = command
-        .output()
-        .with_context(|| format!("failed to {operation}"))?;
-    if output.status.success() {
-        return Ok(output);
-    }
-    bail!(
-        "failed to {operation}: {}",
-        String::from_utf8_lossy(&output.stderr).trim()
-    )
 }
 
 fn output(command: &mut Command, operation: &str) -> Result<Output> {

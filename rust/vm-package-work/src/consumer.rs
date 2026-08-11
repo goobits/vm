@@ -173,7 +173,7 @@ impl Store {
         let now = Utc::now();
         let rollout_id = format!(
             "rollout-{}-{}-{:06}",
-            source_key(&request.package),
+            branch_component(&request.package),
             now.format("%Y%m%d"),
             next_id(&mut next)
         );
@@ -473,7 +473,7 @@ fn validate_rollout(request: &CreateRollout) -> WorkResult<()> {
     validate_idempotency_key(&request.idempotency_key)
 }
 
-fn source_key(value: &str) -> String {
+fn branch_component(value: &str) -> String {
     value
         .chars()
         .map(|character| {

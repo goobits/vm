@@ -18,6 +18,14 @@ properties:
     properties:
       auth_proxy:
         $ref: "#/definitions/AuthProxySettings"
+      postgresql:
+        $ref: "#/definitions/DatabaseSettings"
+      redis:
+        $ref: "#/definitions/DatabaseSettings"
+      mongodb:
+        $ref: "#/definitions/DatabaseSettings"
+      mysql:
+        $ref: "#/definitions/DatabaseSettings"
     additionalProperties: false
 
   defaults:
@@ -26,7 +34,7 @@ properties:
     properties:
       provider:
         type: string
-        enum: ["docker", "vagrant", "tart"]
+        enum: ["docker", "podman", "tart"]
         description: "Default provider when not specified in vm.yaml"
       terminal:
         $ref: "#/definitions/TerminalConfig"
@@ -73,7 +81,7 @@ properties:
     properties:
       enabled:
         type: boolean
-        default: false
+        default: true
         description: "Enable git worktrees support globally"
       base_path:
         type: string
@@ -84,9 +92,33 @@ properties:
           - /mnt/worktrees
     additionalProperties: false
 
+  backups:
+    $ref: "#/definitions/BackupSettings"
+
+  snapshots:
+    $ref: "#/definitions/SnapshotSettings"
+
 additionalProperties: true
 
 definitions:
+  DatabaseSettings:
+    type: object
+    properties:
+      enabled:
+        type: boolean
+        default: false
+      port:
+        type: integer
+        minimum: 1024
+        maximum: 65535
+      version:
+        type: string
+        minLength: 1
+      data_dir:
+        type: string
+        minLength: 1
+    additionalProperties: false
+
   AuthProxySettings:
     type: object
     description: "Authentication proxy configuration"
@@ -107,6 +139,31 @@ definitions:
         maximum: 8760
         default: 24
         description: "Token expiry in hours"
+    additionalProperties: false
+
+  BackupSettings:
+    type: object
+    properties:
+      enabled:
+        type: boolean
+        default: true
+      path:
+        type: string
+        minLength: 1
+      keep_count:
+        type: integer
+        minimum: 1
+      databases_only:
+        type: boolean
+        default: true
+    additionalProperties: false
+
+  SnapshotSettings:
+    type: object
+    properties:
+      path:
+        type: string
+        minLength: 1
     additionalProperties: false
 
   TerminalConfig:

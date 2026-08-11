@@ -26,9 +26,11 @@ Goobits VM is built using a **layered architecture** designed around the princip
 | Provider | `vm-snapshot` | Snapshot lifecycle: create, restore, export, and import | `cargo test -p vm-snapshot` |
 | Application | `vm` | Main CLI orchestration and commands | `cargo test -p goobits-vm` / `cargo run -p goobits-vm -- --help` |
 | Application | `vm-installer` | Self-installation flow for distributing the CLI | `cargo run -p vm-installer -- --help` |
-| Service | `vm-package-server` | Local multi-registry artifact service | `cargo test -p vm-package-server` / `cargo run -p vm-package-server -- --help` |
+| Domain | `vm-packages` | Package protocols, workflow records, appliance definition, client | `cargo test -p vm-packages` |
+| Service | `vm-package-server` | Immutable npm, Cargo, PyPI, and tool artifacts | `cargo test -p vm-package-server` |
+| Service | `vm-package-work` | Deterministic checkout, review, release, and rollout state | `cargo test -p vm-package-work` |
+| Service | `vm-package-jobs` | Ephemeral review, release, and rollout workers | `cargo test -p vm-package-jobs` |
 | Service | `vm-auth-proxy` | Authentication proxy that fronts API/services | `cargo run -p vm-auth-proxy -- --help` |
-| Utility | `vm-package-manager` | Unified installer for npm/pip/cargo tooling | `cargo run -p vm-package-manager -- --help` |
 | Utility | `vm-platform` | OS detection, system integration, resource probing | `cargo test -p vm-platform` |
 | Tooling | `version-sync` | Keeps version numbers aligned across manifests | `cargo run -p version-sync -- check` |
 
@@ -135,6 +137,18 @@ import/export entry points
 
 ### Service Layer
 
+#### vm-packages
+**Role**: Provider-neutral package-infrastructure contract and client.
+
+**Responsibilities**:
+- Shared protocol and workflow records
+- Validated package, tool, consumer, and release identities
+- Docker Compose appliance definition and guest client environment
+- Authenticated controller client
+
+**Key Exports**: `PackageInfrastructureClient`, `RegistryEndpoints`, workflow
+records, appliance resources
+
 #### vm-package-server
 **Role**: Package registry and artifact management service.
 
@@ -145,6 +159,26 @@ import/export entry points
 - HTTP API for package operations
 
 **Key Exports**: Package server implementation, HTTP handlers, registry operations
+
+#### vm-package-work
+**Role**: Deterministic workflow state and isolated Git-source controller.
+
+**Responsibilities**:
+- Checkout leases and state transitions
+- Isolated package and consumer worktrees
+- Submission, integration, release, rollout, and recovery receipts
+
+**Key Exports**: `Store`, `SourceManager`, authenticated workflow router
+
+#### vm-package-jobs
+**Role**: Ephemeral, credential-scoped package jobs.
+
+**Responsibilities**:
+- Credential-free integration review
+- Authorized release publication
+- Isolated consumer rollouts
+
+**Key Exports**: Review, release, and rollout binaries
 
 #### vm-auth-proxy
 **Role**: Authentication and authorization proxy for VM services.
@@ -170,17 +204,6 @@ import/export entry points
 
 **Key Exports**: Platform detection, system utilities, resource monitoring
 
-#### vm-package-manager
-**Role**: Package manager integration and link detection.
-
-**Responsibilities**:
-- Integration with npm, pip, cargo, and other package managers
-- Development package link detection
-- Package dependency analysis
-- Version management utilities
-
-**Key Exports**: Package manager integrations, link detection, dependency analysis
-
 ## Dependency Flow
 
 ```mermaid
@@ -200,13 +223,16 @@ graph TD
 
     %% Utility layer
     F[vm-platform] --> A
-    G[vm-package-manager] --> A
+    Q[vm-packages]
 
     %% Service layer
     H[vm-package-server] --> A
-    H --> C
+    H --> Q
+    W[vm-package-work] --> A
+    W --> Q
+    J[vm-package-jobs] --> Q
     I[vm-auth-proxy] --> A
-    I --> C
+
     %% Application layer
     L[vm] --> A
     L --> B
@@ -214,9 +240,8 @@ graph TD
     L --> D
     L --> E
     L --> F
-    L --> G
-    L --> H
     L --> I
+    L --> Q
 
     %% Installer
     M[vm-installer] --> A

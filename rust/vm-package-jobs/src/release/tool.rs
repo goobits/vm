@@ -4,7 +4,7 @@ use std::path::Path;
 
 use anyhow::{bail, Context, Result};
 use sha2::{Digest, Sha256};
-use vm_packages::{validate_tool_name, PublishToolArtifact, ToolArtifactRecord};
+use vm_packages::{encode_hex, validate_tool_name, PublishToolArtifact, ToolArtifactRecord};
 
 /// Inputs shared by tool publishers regardless of how their source archive was built.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,7 +45,7 @@ pub fn publication_request(
     let request = PublishToolArtifact {
         version: manifest.version,
         target: manifest.target,
-        artifact_digest: encode_digest(hasher.finalize()),
+        artifact_digest: encode_hex(hasher.finalize()),
         size_bytes: metadata.len(),
         links: manifest.links,
         source_commit: manifest.source_commit,
@@ -74,18 +74,6 @@ pub fn verify_record(
         bail!("existing tool publication does not match this release attempt");
     }
     Ok(())
-}
-
-fn encode_digest(digest: impl AsRef<[u8]>) -> String {
-    use std::fmt::Write as _;
-
-    digest
-        .as_ref()
-        .iter()
-        .fold(String::with_capacity(64), |mut encoded, byte| {
-            write!(&mut encoded, "{byte:02x}").expect("writing to a String cannot fail");
-            encoded
-        })
 }
 
 #[cfg(test)]

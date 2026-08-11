@@ -161,10 +161,6 @@ vm tunnel stop 8080
 ```bash
 vm system update [--version <version>] [--force]
 vm system uninstall [--keep-config] [--yes]
-vm system registry status
-vm system registry add [--type <python|npm|cargo>]
-vm system registry ls
-vm system registry rm [--force]
 vm system base build <preset> --provider <docker|tart> [--guest-os <auto|linux|macos>]
 vm system base validate <preset> [--provider <docker|tart|all>]
 ```

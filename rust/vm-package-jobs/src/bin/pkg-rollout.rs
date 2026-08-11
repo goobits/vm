@@ -1,10 +1,12 @@
 use std::fs;
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::Command;
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
-use sha2::{Digest, Sha256};
+use vm_package_jobs::runtime::{
+    command_text as text, operation_key, required_secret as secret, run_command as run,
+};
 use vm_packages::{
     PackageEcosystem, PackageInfrastructureClient, RegistryEndpoints, RolloutState,
     RolloutValidationRequest,
@@ -272,38 +274,4 @@ fn configure_git(source: &Path) -> Result<()> {
         "configure rollout Git identity",
     )?;
     Ok(())
-}
-
-fn secret(variable: &str) -> Result<String> {
-    let path = std::env::var(variable).with_context(|| format!("{variable} is required"))?;
-    let token = fs::read_to_string(path)?.trim().to_string();
-    if token.is_empty() {
-        bail!("rollout token is empty");
-    }
-    Ok(token)
-}
-
-fn operation_key(operation: &str, value: &str) -> String {
-    let digest = Sha256::digest(value.as_bytes())
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    format!("{operation}-{}", &digest[..32])
-}
-
-fn text(command: &mut Command, operation: &str) -> Result<String> {
-    Ok(String::from_utf8(run(command, operation)?.stdout)?)
-}
-
-fn run(command: &mut Command, operation: &str) -> Result<Output> {
-    let output = command
-        .output()
-        .with_context(|| format!("failed to {operation}"))?;
-    if output.status.success() {
-        return Ok(output);
-    }
-    bail!(
-        "failed to {operation}: {}",
-        String::from_utf8_lossy(&output.stderr).trim()
-    )
 }

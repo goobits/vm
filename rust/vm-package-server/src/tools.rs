@@ -177,7 +177,7 @@ async fn save_stream_immutable(
     file.sync_all().await?;
     drop(file);
 
-    let actual_digest = encode_digest(hasher.finalize());
+    let actual_digest = vm_packages::encode_hex(hasher.finalize());
     if actual_digest != expected_digest {
         return Err(AppError::BadRequest(format!(
             "tool artifact digest mismatch: expected {expected_digest}, received {actual_digest}"
@@ -307,19 +307,7 @@ async fn sha256_file(path: &FsPath) -> AppResult<(String, u64)> {
         hasher.update(&buffer[..read]);
         size += read as u64;
     }
-    Ok((encode_digest(hasher.finalize()), size))
-}
-
-fn encode_digest(digest: impl AsRef<[u8]>) -> String {
-    use std::fmt::Write as _;
-
-    digest
-        .as_ref()
-        .iter()
-        .fold(String::with_capacity(64), |mut encoded, byte| {
-            write!(&mut encoded, "{byte:02x}").expect("writing to a String cannot fail");
-            encoded
-        })
+    Ok((vm_packages::encode_hex(hasher.finalize()), size))
 }
 
 #[cfg(test)]
@@ -389,7 +377,7 @@ mod tests {
     async fn artifact_upload_is_authenticated_verified_immutable_and_streamed_back() {
         let directory = tempfile::tempdir().unwrap();
         let content = archive();
-        let digest = encode_digest(Sha256::digest(&content));
+        let digest = vm_packages::encode_hex(Sha256::digest(&content));
         let path = tool_artifact_path("agent-skills", "1.0.0", "any", &digest);
         let server = TestServer::new(router().with_state(state(directory.path())));
 

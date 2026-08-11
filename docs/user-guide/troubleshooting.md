@@ -142,8 +142,8 @@ source binds.
 ## Package Registry
 
 ```bash
-vm system registry status
-vm system registry ls
+vm packages status
+vm packages doctor
 ```
 
 ## Secrets
