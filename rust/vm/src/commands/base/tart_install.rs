@@ -228,7 +228,7 @@ fn receipt_file_name(base_name: &str, tart_home: Option<&Path>) -> VmResult<Stri
     }
     let context = tart_home.map_or_else(
         || "default".to_string(),
-        |path| format!("{:016x}", fnv1a(path.as_os_str().as_encoded_bytes())),
+        |path| format!("{:016x}", fnv1a(path.to_string_lossy().as_bytes())),
     );
     Ok(format!("{base_name}-{context}.json"))
 }
