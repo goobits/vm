@@ -14,20 +14,13 @@
 //! ## Usage
 //!
 //! ```rust
-//! // use vm_package_server::validation::{escape_shell_arg, validate_safe_path, sanitize_docker_name};
+//! use vm_package_server::validation::{sanitize_docker_name, validate_safe_path};
 //!
-//! // Safely escape shell arguments
-//! // let safe_arg = escape_shell_arg("user input with spaces");
-//! // assert_eq!(safe_arg, "'user input with spaces'");
-//!
-//! // Validate file paths
-//! // if validate_safe_path("safe/relative/path").is_ok() {
-//! //     // Path is safe to use
-//! // }
-//!
-//! // Sanitize Docker container names
-//! // let container_name = sanitize_docker_name("my-app-container").expect("should sanitize");
-//! // assert_eq!(container_name, "my-app-container");
+//! assert!(validate_safe_path("safe/relative/path").is_ok());
+//! assert_eq!(
+//!     sanitize_docker_name("my-app-container").unwrap(),
+//!     "my-app-container"
+//! );
 //! ```
 
 pub mod docker;

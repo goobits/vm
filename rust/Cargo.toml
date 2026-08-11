@@ -84,13 +84,11 @@ semver = "1.0"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["fmt", "env-filter", "json"] }
 tower-http = { version = "0.7", features = ["trace", "fs"] }
-askama = "0.16.0"
 reqwest = { version = "0.13.4", features = ["blocking", "json", "multipart", "rustls", "stream"], default-features = false }
 url = "2.5.8"
 bytes = "1.12.0"
 dialoguer = "0.12"
 once_cell = "1.21"
-notify = { version = "8.2", features = ["crossbeam-channel"] }
 futures-util = "0.3.32"
 nix = { version = "0.31", features = ["user"] }
 log = "0.4.33"

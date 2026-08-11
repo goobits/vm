@@ -73,14 +73,6 @@ pub(crate) fn metadata_path(data_dir: &Path, package: &str) -> AppResult<PathBuf
     Ok(data_dir.join("npm/metadata").join(file_name))
 }
 
-pub(crate) fn package_name_from_metadata_file(file_name: &str) -> Option<String> {
-    file_name
-        .strip_suffix(".json")
-        .map(|name| name.replace("%2F", "/"))
-}
-
-// Deprecated functions have been removed.
-
 /// Returns NPM package metadata including all versions and download information.
 ///
 /// Serves package metadata compatible with NPM registry API, including version information,
@@ -443,8 +435,6 @@ mod tests {
             server_addr: "http://localhost:8080".to_string(),
             upstream_client: Arc::new(UpstreamClient::disabled()),
             config,
-            npm_registry: crate::registry::NpmRegistry::new(),
-            pypi_registry: crate::registry::PypiRegistry::new(),
         });
 
         (state, temp_dir)

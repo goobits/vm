@@ -24,7 +24,6 @@ path = "tests/cli_commands_e2e_test.rs"
 required-features = ["standalone-binary"]
 
 [dependencies]
-async-trait = "0.1"
 axum = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
@@ -40,17 +39,14 @@ tracing-subscriber = { workspace = true }
 thiserror = { workspace = true }
 tempfile = { workspace = true }
 tokio-util = { workspace = true }
-askama = { workspace = true }
 chrono = { workspace = true }
 reqwest = { workspace = true }
 url = { workspace = true }
 bytes = { workspace = true }
 once_cell = { workspace = true }
-notify = { workspace = true }
 futures-util = { workspace = true }
 flate2 = { workspace = true }
 tar = { workspace = true }
-dirs = { workspace = true }
 vm-core = { path = "../vm-core" }
 vm-packages = { path = "../vm-packages" }
 

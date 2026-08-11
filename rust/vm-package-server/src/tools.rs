@@ -318,7 +318,6 @@ mod tests {
     use vm_packages::tool_artifact_path;
 
     use crate::config::Config;
-    use crate::registry::{NpmRegistry, PypiRegistry};
     use crate::upstream::UpstreamClient;
 
     fn state(root: &FsPath) -> Arc<AppState> {
@@ -331,8 +330,6 @@ mod tests {
             server_addr: "http://localhost:3080".into(),
             upstream_client: Arc::new(UpstreamClient::disabled()),
             config: Arc::new(config),
-            npm_registry: NpmRegistry::new(),
-            pypi_registry: PypiRegistry::new(),
         })
     }
 

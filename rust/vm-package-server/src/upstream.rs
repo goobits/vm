@@ -14,9 +14,9 @@ use url::Url;
 ///
 /// # Fields
 ///
-/// * `pypi_url` - Base URL for the PyPI registry (default: "https://pypi.org")
-/// * `npm_url` - Base URL for the npm registry (default: "https://registry.npmjs.org")
-/// * `cargo_url` - Base URL for the Cargo registry (default: "https://index.crates.io")
+/// * `pypi_url` - Base URL for the PyPI registry (default: <https://pypi.org>)
+/// * `npm_url` - Base URL for the npm registry (default: <https://registry.npmjs.org>)
+/// * `cargo_url` - Base URL for the Cargo registry (default: <https://index.crates.io>)
 /// * `timeout` - HTTP request timeout for upstream calls
 /// * `enabled` - Whether upstream registry lookups are enabled
 ///

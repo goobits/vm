@@ -196,7 +196,7 @@ pub async fn append_to_file<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C)
 
 #[cfg(test)]
 mod tests {
-    use super::{read_local_or_cache, save_immutable};
+    use super::{append_to_file, read_file, read_local_or_cache, save_file, save_immutable};
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -235,5 +235,36 @@ mod tests {
 
         assert_eq!(fetches.load(Ordering::SeqCst), 1);
         assert_eq!(tokio::fs::read(cached).await.unwrap(), b"upstream");
+    }
+
+    #[tokio::test]
+    async fn storage_reports_missing_files_and_creates_parent_directories() {
+        let directory = tempfile::tempdir().unwrap();
+        let missing = directory.path().join("missing");
+        assert!(matches!(
+            read_file(&missing).await,
+            Err(crate::AppError::NotFound(_))
+        ));
+
+        let nested = directory.path().join("nested/package/index");
+        save_file(&nested, b"metadata").await.unwrap();
+        assert_eq!(read_file(nested).await.unwrap(), b"metadata");
+    }
+
+    #[tokio::test]
+    async fn append_is_line_oriented_and_rejects_non_utf8() {
+        let directory = tempfile::tempdir().unwrap();
+        let index = directory.path().join("index");
+        append_to_file(&index, b"one").await.unwrap();
+        append_to_file(&index, b"two").await.unwrap();
+        assert_eq!(
+            tokio::fs::read_to_string(&index).await.unwrap(),
+            "one\ntwo\n"
+        );
+
+        assert!(matches!(
+            append_to_file(&index, [0xff]).await,
+            Err(crate::AppError::Utf8(_))
+        ));
     }
 }

@@ -149,17 +149,25 @@ mod tests {
 
     #[test]
     fn test_validate_server_address_invalid() {
-        // Invalid IPs
-        assert!(validate_server_address("256.256.256.256").is_err());
-        assert!(validate_server_address("192.168.1").is_err());
-
-        // Injection attempts
-        assert!(validate_server_address("127.0.0.1; rm -rf /").is_err());
-        assert!(validate_server_address("host\nmalicious").is_err());
-
-        // Invalid hostnames
-        assert!(validate_server_address("-example.com").is_err());
-        assert!(validate_server_address("example-.com").is_err());
-        assert!(validate_server_address("exam ple.com").is_err());
+        let long_hostname = "a".repeat(254);
+        let long_label = format!("{}.com", "a".repeat(64));
+        for address in [
+            "256.256.256.256",
+            "192.168.1",
+            "127.0.0.1; rm -rf /",
+            "host\nmalicious",
+            "host\0malicious",
+            "host\x1fmalicious",
+            "-example.com",
+            "example-.com",
+            "exam ple.com",
+            &long_hostname,
+            &long_label,
+        ] {
+            assert!(
+                validate_server_address(address).is_err(),
+                "accepted invalid server address: {address:?}"
+            );
+        }
     }
 }
