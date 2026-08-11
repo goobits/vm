@@ -48,3 +48,13 @@ jobs:
             "${image}:v${version}" \
             "${image}:latest"
           echo "Published ${image}:v${version}" >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Verify the image is anonymously pullable
+        run: |
+          version=$(awk -F '"' '/^version = / { print $2; exit }' rust/Cargo.toml)
+          owner=$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          image="ghcr.io/${owner}/vm-tart-linux:v${version}"
+          probe="vm-tart-public-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          trap 'tart delete "$probe" >/dev/null 2>&1 || true' EXIT
+          tart clone "$image" "$probe"
+          tart get "$probe" >/dev/null
