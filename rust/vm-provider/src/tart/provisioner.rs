@@ -1,4 +1,4 @@
-use super::{provider::tart_run_log_path, TartCommand};
+use super::{provider::tart_run_log_path, ssh_identity::TartSshIdentity, TartCommand};
 use crate::{
     project_plan::ProjectPlan,
     shell_session::{quote_posix_argument, quote_posix_home_path},
@@ -43,6 +43,11 @@ impl TartProvisioner {
 
         // 1. Wait for VM to be ready
         self.wait_for_ssh()?;
+
+        // Seed the VM-owned host identity while the guest-agent transport is
+        // available. Existing guests can bootstrap this once over SSH.
+        let identity = TartSshIdentity::ensure()?;
+        self.ssh_exec(&identity.authorized_key_script())?;
 
         // 2. Mount the workspace and repair guest state in one SSH batch.
         self.ssh_exec_batch(vec![
@@ -160,21 +165,25 @@ impl TartProvisioner {
   fi
 }}
 target={target};
+if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+  SUDO="sudo -n"
+else
+  SUDO=""
+fi
 if [ -x /sbin/mount_virtiofs ]; then
-  mkdir -p "$target"
+  $SUDO mkdir -p "$target"
   if ! is_mounted "$target"; then
-    /sbin/mount_virtiofs {tag} "$target"
+    $SUDO /sbin/mount_virtiofs {tag} "$target"
   fi
 else
   if ! is_mounted "$target"; then
-    if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=""; fi
     $SUDO mkdir -p "$target" && $SUDO mount -t virtiofs {tag} "$target"
   fi
 fi"#
         )
     }
 
-    fn workspace_mount_command(&self, config: &VmConfig) -> String {
+    pub(super) fn workspace_mount_command(&self, config: &VmConfig) -> String {
         let read_only = config
             .project
             .as_ref()
@@ -529,6 +538,8 @@ mod tests {
         let home_command = TartProvisioner::virtiofs_mount_command("config", "$HOME/.config");
         assert!(home_command.contains("target=\"$HOME\"/'.config';"));
         assert!(!home_command.contains("target='$HOME"));
+        assert!(home_command.contains("sudo -n"));
+        assert!(home_command.contains("$SUDO /sbin/mount_virtiofs"));
     }
 
     #[test]

@@ -41,7 +41,10 @@ impl TartProvisioner {
         )])
     }
 
-    pub(super) fn shell_config_command(config: &VmConfig, project_dir: &str) -> Result<String> {
+    pub(in crate::tart) fn shell_config_command(
+        config: &VmConfig,
+        project_dir: &str,
+    ) -> Result<String> {
         let rendered = Self::render_canonical_zshrc(config, project_dir)?;
         let rendered = quote_posix_argument(&rendered);
         let runtime_environment =

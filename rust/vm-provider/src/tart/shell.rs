@@ -1,33 +1,12 @@
-use super::{provider::TartProvider, readiness::ShellTransport};
+use super::{provider::TartProvider, readiness::ShellTransport, ssh_identity::TartSshIdentity};
 use crate::{security::SecurityValidator, shell_session, Provider, VmError};
 use std::io::IsTerminal;
-use std::net::IpAddr;
 use std::path::Path;
-use std::process::Command;
 use tracing::info;
 use vm_core::error::Result;
 use vm_core::msg;
 use vm_core::{vm_println, vm_warning};
 use vm_messages::messages::MESSAGES;
-
-fn direct_ssh_args(user: &str, ip: IpAddr) -> Vec<String> {
-    vec![
-        "-t".to_string(),
-        "-o".to_string(),
-        "ConnectTimeout=5".to_string(),
-        "-o".to_string(),
-        "ServerAliveInterval=30".to_string(),
-        "-o".to_string(),
-        "ServerAliveCountMax=3".to_string(),
-        "-o".to_string(),
-        "StrictHostKeyChecking=no".to_string(),
-        "-o".to_string(),
-        "UserKnownHostsFile=/dev/null".to_string(),
-        "-o".to_string(),
-        "LogLevel=ERROR".to_string(),
-        format!("{user}@{ip}"),
-    ]
-}
 
 impl TartProvider {
     pub(super) fn open_shell(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
@@ -94,6 +73,7 @@ impl TartProvider {
         let status = match transport {
             ShellTransport::GuestAgent => {
                 self.ensure_workspace_mount_ready(&instance_name, &sync_dir)?;
+                self.ensure_host_sync_mounts_ready(&instance_name, &sync_dir)?;
                 self.ensure_configured_mounts_ready(&instance_name)?;
                 self.ensure_shell_config_ready(&instance_name, &sync_dir)?;
                 self.tart()
@@ -104,11 +84,10 @@ impl TartProvider {
             }
             ShellTransport::Ssh(ip) => {
                 vm_warning!("Tart guest agent unavailable; connecting over SSH to {ip}");
-                Command::new("ssh")
-                    .args(direct_ssh_args(user, ip))
-                    .arg(&ssh_command)
-                    .status()
-                    .map_err(|e| VmError::Provider(format!("SSH failed: {e}")))?
+                let identity = TartSshIdentity::ensure()?;
+                identity.ensure_authorized(user, ip)?;
+                let recovery = self.shell_recovery_script(&instance_name, &sync_dir)?;
+                identity.interactive(user, ip, &format!("{recovery}\n{ssh_command}"))?
             }
         };
 
@@ -119,19 +98,5 @@ impl TartProvider {
                 "Shell terminated unexpectedly".to_string(),
             )),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::direct_ssh_args;
-
-    #[test]
-    fn direct_ssh_uses_ephemeral_host_key_policy() {
-        let args = direct_ssh_args("admin", "192.168.64.37".parse().unwrap());
-
-        assert!(args.iter().any(|arg| arg == "StrictHostKeyChecking=no"));
-        assert!(args.iter().any(|arg| arg == "UserKnownHostsFile=/dev/null"));
-        assert_eq!(args.last().map(String::as_str), Some("admin@192.168.64.37"));
     }
 }

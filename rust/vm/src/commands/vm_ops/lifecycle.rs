@@ -65,9 +65,28 @@ async fn wait_until_ready(
     display_name: &str,
     ready_for: ReadyFor,
 ) -> VmResult<()> {
+    wait_until_ready_for(
+        provider,
+        container,
+        display_name,
+        ready_for,
+        READY_TIMEOUT,
+        READY_INTERVAL,
+    )
+    .await
+}
+
+async fn wait_until_ready_for(
+    provider: &dyn Provider,
+    container: Option<&str>,
+    display_name: &str,
+    ready_for: ReadyFor,
+    timeout: Duration,
+    interval: Duration,
+) -> VmResult<()> {
     let mut announced = false;
     let mut last_error = None;
-    let deadline = tokio::time::Instant::now() + READY_TIMEOUT;
+    let deadline = tokio::time::Instant::now() + timeout;
 
     loop {
         match ready_for.check(provider, container) {
@@ -85,12 +104,13 @@ async fn wait_until_ready(
         if now >= deadline {
             break;
         }
-        tokio::time::sleep(READY_INTERVAL.min(deadline - now)).await;
+        tokio::time::sleep(interval.min(deadline - now)).await;
     }
 
     let source = last_error.unwrap_or_else(|| {
         vm_core::error::VmError::Timeout(format!(
-            "Environment '{display_name}' did not become ready within 60 seconds"
+            "Environment '{display_name}' did not become ready within {} seconds",
+            timeout.as_secs()
         ))
     });
     Err(VmError::vm_operation(

@@ -5,7 +5,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use super::{ensure_running, StartOutcome};
+use super::{ensure_running, wait_until_ready_for, ReadyFor, StartOutcome};
 use crate::commands::vm_ops::interaction::{handle_exec, handle_ssh};
 use crate::commands::vm_ops::resolve_or_create_target;
 use vm_config::{config::VmConfig, GlobalConfig};
@@ -25,6 +25,7 @@ struct FakeProvider {
     command_ready_checks: Arc<AtomicUsize>,
     shell_ready_checks: Arc<AtomicUsize>,
     fail_start_after_transition: bool,
+    ready: bool,
 }
 
 impl FakeProvider {
@@ -39,11 +40,17 @@ impl FakeProvider {
             command_ready_checks: Arc::new(AtomicUsize::new(0)),
             shell_ready_checks: Arc::new(AtomicUsize::new(0)),
             fail_start_after_transition: false,
+            ready: true,
         }
     }
 
     fn with_start_race(mut self) -> Self {
         self.fail_start_after_transition = true;
+        self
+    }
+
+    fn never_ready(mut self) -> Self {
+        self.ready = false;
         self
     }
 }
@@ -145,12 +152,12 @@ impl Provider for FakeProvider {
 
     fn is_ready(&self, container: Option<&str>) -> ProviderResult<bool> {
         self.command_ready_checks.fetch_add(1, Ordering::SeqCst);
-        Ok(self.instance_state(container)?.is_running())
+        Ok(self.ready && self.instance_state(container)?.is_running())
     }
 
     fn is_shell_ready(&self, container: Option<&str>) -> ProviderResult<bool> {
         self.shell_ready_checks.fetch_add(1, Ordering::SeqCst);
-        Ok(self.instance_state(container)?.is_running())
+        Ok(self.ready && self.instance_state(container)?.is_running())
     }
 
     fn provision(&self, _container: Option<&str>) -> ProviderResult<()> {
@@ -343,4 +350,26 @@ async fn exec_starts_a_stopped_environment_before_running() {
     assert_eq!(provider.creates.load(Ordering::SeqCst), 0);
     assert_eq!(provider.command_ready_checks.load(Ordering::SeqCst), 1);
     assert_eq!(provider.shell_ready_checks.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn readiness_wait_obeys_its_real_deadline() {
+    let provider = FakeProvider::new(Some(InstanceState::Running)).never_ready();
+    let started = tokio::time::Instant::now();
+
+    let error = wait_until_ready_for(
+        &provider,
+        Some("demo-dev"),
+        "demo-dev",
+        ReadyFor::Shell,
+        std::time::Duration::from_millis(20),
+        std::time::Duration::from_millis(5),
+    )
+    .await
+    .unwrap_err();
+
+    assert!(started.elapsed() < std::time::Duration::from_secs(1));
+    assert!(error.to_string().contains("wait until ready"));
+    assert!(provider.shell_ready_checks.load(Ordering::SeqCst) >= 2);
+    assert_eq!(provider.command_ready_checks.load(Ordering::SeqCst), 0);
 }

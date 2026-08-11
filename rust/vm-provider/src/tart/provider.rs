@@ -1,6 +1,6 @@
 use super::{
     host_sync::collect_host_sync_mounts, instance::TartInstanceManager, mounts::TartDirShare,
-    provisioner::TartProvisioner, TartCommand,
+    provisioner::TartProvisioner, readiness::SharedShellProbeCache, TartCommand,
 };
 use crate::tart_storage as storage;
 use crate::{
@@ -15,8 +15,10 @@ use crate::{
 use duct::cmd;
 use serde::Deserialize;
 use std::ffi::OsStr;
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::{Arc, Mutex};
 use tracing::{error, info, warn};
 use vm_config::config::{BoxSpec, VmConfig};
 use vm_core::command_stream::{
@@ -51,6 +53,7 @@ pub(crate) fn tart_run_log_path(vm_name: &str) -> String {
 pub struct TartProvider {
     pub(super) config: VmConfig,
     pub(super) command: TartCommand,
+    pub(super) shell_probe_cache: SharedShellProbeCache,
 }
 
 impl TartProvider {
@@ -64,7 +67,11 @@ impl TartProvider {
     fn from_config(config: VmConfig) -> Result<Self> {
         let project = extract_project_name(&config);
         let command = TartCommand::for_project(&config, project)?;
-        Ok(Self { config, command })
+        Ok(Self {
+            config,
+            command,
+            shell_probe_cache: Arc::new(Mutex::new(None)),
+        })
     }
 
     pub(super) fn tart_home(&self) -> Option<String> {
@@ -300,18 +307,20 @@ impl TartProvider {
             dir_args.push(share.tart_argument());
         }
 
-        let cmd = self.build_run_command(vm_name, &raw_log_path, &dir_args);
-
-        let mut command = std::process::Command::new("sh");
-        command.args(["-c", &cmd]);
-        if let Some(tart_home) = self.tart_home() {
-            command.env("TART_HOME", tart_home);
-        }
+        let stdout = File::create(&raw_log_path).map_err(|error| {
+            VmError::Provider(format!("Failed to create Tart run log: {error}"))
+        })?;
+        let stderr = stdout
+            .try_clone()
+            .map_err(|error| VmError::Provider(format!("Failed to open Tart run log: {error}")))?;
+        let mut command = std::process::Command::new("nohup");
+        self.command.configure(&mut command);
+        command.args(self.build_run_args(vm_name, &dir_args));
 
         command
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stdout(stdout)
+            .stderr(stderr)
             .spawn()
             .map_err(|e| {
                 VmError::Provider(format!(
@@ -323,30 +332,24 @@ impl TartProvider {
         Ok(())
     }
 
-    fn build_run_command(&self, vm_name: &str, log_path: &str, dir_args: &[String]) -> String {
+    fn build_run_args(&self, vm_name: &str, dir_args: &[String]) -> Vec<String> {
         let tart = self.config.tart.as_ref();
-        let nested_arg = if tart.and_then(|tart| tart.nested).unwrap_or(false)
-            && tart.and_then(|tart| tart.guest_os.as_deref()) != Some("macos")
-        {
-            "--nested "
-        } else {
-            ""
-        };
-
-        let quoted_dir_args: Vec<String> = dir_args
-            .iter()
-            .map(|arg| format!("--dir {}", shell_session::quote_posix_argument(arg)))
-            .collect();
-        let vm_name = shell_session::quote_posix_argument(vm_name);
-        let log_path = shell_session::quote_posix_argument(log_path);
-
-        format!(
-            "nohup tart run --no-graphics {}{} {} >{} 2>&1 &",
-            nested_arg,
-            quoted_dir_args.join(" "),
-            vm_name,
-            log_path
-        )
+        let nested = tart.and_then(|tart| tart.nested).unwrap_or(false)
+            && tart.and_then(|tart| tart.guest_os.as_deref()) != Some("macos");
+        let mut args = vec![
+            "tart".to_string(),
+            "run".to_string(),
+            "--no-graphics".to_string(),
+        ];
+        if nested {
+            args.push("--nested".to_string());
+        }
+        for directory in dir_args {
+            args.push("--dir".to_string());
+            args.push(directory.clone());
+        }
+        args.push(vm_name.to_string());
+        args
     }
 
     fn parse_metrics_json(&self, raw: &str) -> Result<CollectedMetrics> {
@@ -399,36 +402,18 @@ impl TartProvider {
     }
 
     fn apply_runtime_config(&self, instance: &str, config: &VmConfig) -> Result<()> {
-        let resources = ResolvedResources::resolve(config)?;
+        let resources = Self::resolved_tart_resources(config)?;
 
         if let Some(count) = resources.cpus {
-            let adjusted_count = Self::adjust_cpu_count(count);
-            if adjusted_count != count {
-                warn!(
-                    "Requested {} CPUs but only {} are available; applying {} CPUs",
-                    count,
-                    get_cpu_core_count().unwrap_or(2),
-                    adjusted_count
-                );
-            }
-            info!("Setting CPU count to {}", adjusted_count);
-            self.tart_expr(&["set", instance, "--cpu", &adjusted_count.to_string()])
+            info!("Setting CPU count to {}", count);
+            self.tart_expr(&["set", instance, "--cpu", &count.to_string()])
                 .run()
                 .map_err(|e| VmError::Provider(format!("Failed to set CPU: {}", e)))?;
         }
 
         if let Some(memory_mb) = resources.memory_mb {
-            let adjusted_memory_mb = Self::adjust_memory_mb(memory_mb);
-            if adjusted_memory_mb != memory_mb {
-                warn!(
-                    "Requested {} MB RAM but only {} GB total memory is available; applying {} MB",
-                    memory_mb,
-                    get_total_memory_gb().unwrap_or(4),
-                    adjusted_memory_mb
-                );
-            }
-            info!("Setting memory to {}MB", adjusted_memory_mb);
-            self.tart_expr(&["set", instance, "--memory", &adjusted_memory_mb.to_string()])
+            info!("Setting memory to {}MB", memory_mb);
+            self.tart_expr(&["set", instance, "--memory", &memory_mb.to_string()])
                 .run()
                 .map_err(|e| VmError::Provider(format!("Failed to set memory: {}", e)))?;
         }
@@ -455,6 +440,50 @@ impl TartProvider {
         } else {
             requested_mb
         }
+    }
+
+    fn resolved_tart_resources(config: &VmConfig) -> Result<ResolvedResources> {
+        let requested = ResolvedResources::resolve(config)?;
+        let cpus = requested.cpus.map(|count| {
+            let adjusted = Self::adjust_cpu_count(count);
+            if adjusted != count {
+                vm_warning!(
+                    "Tart requested {count} CPUs, but the host can safely apply {adjusted}; using {adjusted}"
+                );
+            }
+            adjusted
+        });
+        let memory_mb = requested.memory_mb.map(|memory| {
+            let adjusted = Self::adjust_memory_mb(memory);
+            if adjusted != memory {
+                vm_warning!(
+                    "Tart requested {memory} MB RAM, but the host can safely apply {adjusted} MB; using {adjusted} MB"
+                );
+            }
+            adjusted
+        });
+
+        let host_cpus = get_cpu_core_count().unwrap_or(2);
+        let host_memory_mb = get_total_memory_gb().unwrap_or(4).saturating_mul(1024);
+        if Self::uses_most_of_host(cpus, memory_mb, host_cpus, host_memory_mb) {
+            vm_warning!(
+                "Tart is configured for at least 75% of this host; Docker Desktop or another VM may oversubscribe macOS"
+            );
+        }
+
+        Ok(ResolvedResources { memory_mb, cpus })
+    }
+
+    fn uses_most_of_host(
+        cpus: Option<u32>,
+        memory_mb: Option<u32>,
+        host_cpus: u32,
+        host_memory_mb: u64,
+    ) -> bool {
+        cpus.is_some_and(|count| count.saturating_mul(4) >= host_cpus.saturating_mul(3))
+            || memory_mb.is_some_and(|memory| {
+                u64::from(memory).saturating_mul(4) >= host_memory_mb.saturating_mul(3)
+            })
     }
 
     fn vm_name(&self) -> String {
@@ -589,9 +618,8 @@ impl TartProvider {
 
         // Resolve percentages once and apply the same host-relative values used by
         // container providers. Tart still enforces a small host-safety margin.
-        let resources = ResolvedResources::resolve(config)?;
+        let resources = Self::resolved_tart_resources(config)?;
         if let Some(memory_mb) = resources.memory_mb {
-            let memory_mb = Self::adjust_memory_mb(memory_mb);
             ProgressReporter::task(
                 &main_phase,
                 &format!("Setting memory to {} MB...", memory_mb),
@@ -601,7 +629,6 @@ impl TartProvider {
         }
 
         if let Some(cpus) = resources.cpus {
-            let cpus = Self::adjust_cpu_count(cpus);
             ProgressReporter::task(&main_phase, &format!("Setting CPUs to {}...", cpus));
             self.stream_tart_command(&["set", vm_name, "--cpu", &cpus.to_string()])?;
             ProgressReporter::task(&main_phase, "CPUs configured.");
@@ -720,6 +747,7 @@ impl Provider for TartProvider {
     }
 
     fn start(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
+        self.clear_shell_transport_cache();
         let vm_name = self.vm_name_with_instance(container)?;
         let state = self
             .get_instance_state(&vm_name)?
@@ -739,6 +767,7 @@ impl Provider for TartProvider {
     }
 
     fn stop(&self, container: Option<&str>) -> Result<()> {
+        self.clear_shell_transport_cache();
         let vm_name = self.vm_name_with_instance(container)?;
         if !Self::tart_state_requires_stop(self.get_instance_state(&vm_name)?.as_deref()) {
             return Ok(());
@@ -1034,6 +1063,23 @@ mod tests {
     }
 
     #[test]
+    fn high_tart_allocations_are_detected_for_host_headroom_warning() {
+        assert!(TartProvider::uses_most_of_host(Some(6), None, 8, 16 * 1024));
+        assert!(TartProvider::uses_most_of_host(
+            None,
+            Some(12 * 1024),
+            8,
+            16 * 1024
+        ));
+        assert!(!TartProvider::uses_most_of_host(
+            Some(4),
+            Some(8 * 1024),
+            8,
+            16 * 1024
+        ));
+    }
+
+    #[test]
     fn host_workspace_path_uses_loaded_config_parent() {
         let outer = tempfile::tempdir().unwrap();
         let project_dir = outer.path().join("workspace");
@@ -1139,8 +1185,9 @@ mod tests {
         });
 
         assert!(provider
-            .build_run_command("vm-mac", "/tmp/vm-tart-vm_mac.log", &[])
-            .contains("tart run --no-graphics --nested "));
+            .build_run_args("vm-mac", &[])
+            .iter()
+            .any(|argument| argument == "--nested"));
     }
 
     #[test]
@@ -1155,7 +1202,23 @@ mod tests {
         });
 
         assert!(!provider
-            .build_run_command("vm-mac", "/tmp/vm-tart-vm_mac.log", &[])
-            .contains(" --nested "));
+            .build_run_args("vm-mac", &[])
+            .iter()
+            .any(|argument| argument == "--nested"));
+    }
+
+    #[test]
+    fn tart_run_arguments_preserve_directory_paths_without_shell_parsing() {
+        let provider = provider(VmConfig::default());
+        let args = provider.build_run_args(
+            "vm-mac",
+            &["/Users/me/project with spaces:tag=workspace".to_string()],
+        );
+
+        assert_eq!(args[0..3], ["tart", "run", "--no-graphics"]);
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["--dir", "/Users/me/project with spaces:tag=workspace"]));
+        assert_eq!(args.last().map(String::as_str), Some("vm-mac"));
     }
 }

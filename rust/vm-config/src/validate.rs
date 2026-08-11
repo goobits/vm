@@ -334,6 +334,28 @@ impl ConfigValidator {
     }
 
     fn validate_runtime(&self) -> Result<()> {
+        if self.config.provider.as_deref() == Some("tart") {
+            if let Some(user) = self
+                .config
+                .tart
+                .as_ref()
+                .and_then(|tart| tart.ssh_user.as_deref())
+            {
+                let mut characters = user.chars();
+                let valid_first = characters
+                    .next()
+                    .is_some_and(|character| character.is_ascii_alphanumeric() || character == '_');
+                let valid_rest = characters.all(|character| {
+                    character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.')
+                });
+                if !valid_first || !valid_rest {
+                    return Err(VmError::Config(format!(
+                        "Invalid tart.ssh_user '{user}': use a Unix username, not SSH options or shell syntax"
+                    )));
+                }
+            }
+        }
+
         let Some(vm) = &self.config.vm else {
             return Ok(());
         };
@@ -596,6 +618,31 @@ mod tests {
 
         let validator = ConfigValidator::new(config, std::path::PathBuf::from("test.yaml"), false);
         assert!(validator.validate().is_err());
+    }
+
+    #[test]
+    fn tart_ssh_user_is_structurally_validated() {
+        let config = |user: &str| VmConfig {
+            provider: Some("tart".to_string()),
+            project: Some(crate::config::ProjectConfig {
+                name: Some("test".to_string()),
+                ..Default::default()
+            }),
+            tart: Some(crate::config::TartConfig {
+                ssh_user: Some(user.to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        assert!(ConfigValidator::new(config("admin"), PathBuf::new(), true)
+            .validate()
+            .is_ok());
+        assert!(
+            ConfigValidator::new(config("-oProxyCommand=bad"), PathBuf::new(), true)
+                .validate()
+                .is_err()
+        );
     }
 
     #[test]

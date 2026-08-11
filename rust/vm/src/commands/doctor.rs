@@ -72,6 +72,9 @@ fn run_diagnostics(fix: bool, provider: &str) -> Result<()> {
                 } else {
                     vm_hint!("Run `vm doctor --fix`");
                 }
+            } else if error_str.contains("known incompatible Tart release") {
+                vm_println!("  Tart: incompatible version");
+                vm_hint!("Use Tart 2.32.1 on this macOS host; Tart 2.35.0 is known to crash");
             } else {
                 return Err(e.into());
             }
@@ -143,26 +146,39 @@ fn validate_provider_environment(provider: &str) -> vm_provider::VmResult<()> {
     match provider {
         "docker" | "podman" => validate_docker_environment(provider),
         "tart" => {
-            let status = Command::new("tart")
+            let output = Command::new("tart")
                 .arg("--version")
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
+                .output()
                 .map_err(|error| {
                     vm_provider::VmError::Dependency(format!("tart is not installed: {error}"))
                 })?;
-            if status.success() {
-                Ok(())
-            } else {
-                Err(vm_provider::VmError::Provider(
+            if !output.status.success() {
+                return Err(vm_provider::VmError::Provider(
                     "tart is not available".to_string(),
+                ));
+            }
+            let version = String::from_utf8_lossy(&output.stdout);
+            if tart_version_number(&version) == Some("2.35.0") {
+                Err(vm_provider::VmError::Provider(
+                    "known incompatible Tart release 2.35.0".to_string(),
                 ))
+            } else {
+                Ok(())
             }
         }
         other => Err(vm_provider::VmError::Provider(format!(
             "Unknown provider '{other}'"
         ))),
     }
+}
+
+fn tart_version_number(output: &str) -> Option<&str> {
+    output.split_whitespace().find(|value| {
+        value
+            .chars()
+            .next()
+            .is_some_and(|first| first.is_ascii_digit())
+    })
 }
 
 /// Check SSH directory and key permissions
@@ -372,4 +388,16 @@ fn try_create_config_directory() -> bool {
     };
 
     std::fs::create_dir_all(&config_dir).is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tart_version_number;
+
+    #[test]
+    fn parses_tart_version_output_without_assuming_a_prefix() {
+        assert_eq!(tart_version_number("tart 2.32.1\n"), Some("2.32.1"));
+        assert_eq!(tart_version_number("2.35.0\n"), Some("2.35.0"));
+        assert_eq!(tart_version_number("tart unknown\n"), None);
+    }
 }

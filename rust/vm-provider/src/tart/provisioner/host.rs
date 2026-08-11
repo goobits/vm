@@ -8,7 +8,7 @@ use vm_config::config::VmConfig;
 use vm_core::error::{Result, VmError};
 
 impl TartProvisioner {
-    pub(super) fn host_sync_mount_command(&self, config: &VmConfig) -> Option<String> {
+    pub(in crate::tart) fn host_sync_mount_command(&self, config: &VmConfig) -> Option<String> {
         let mounts = collect_host_sync_mounts(config);
         if mounts.is_empty() {
             return None;

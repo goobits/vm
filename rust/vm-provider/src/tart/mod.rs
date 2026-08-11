@@ -5,6 +5,7 @@ mod provider;
 mod provisioner;
 mod readiness;
 mod shell;
+mod ssh_identity;
 mod temp;
 
 pub use crate::TartCommand;
