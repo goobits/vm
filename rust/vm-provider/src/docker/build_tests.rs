@@ -147,11 +147,42 @@ fn test_derived_image_tag_snapshot_ignores_host_identity_inputs() {
     let build_ops_b = BuildOperations::new(&config_b, &temp_path_b, "docker");
 
     let tag_a = build_ops_a
-        .derived_image_tag("vm-snapshot/global/vibe-box:latest", build_context.path())
+        .derived_image_tag(
+            "vm-snapshot/global/vibe-box:latest",
+            "sha256:shared-base",
+            build_context.path(),
+        )
         .unwrap();
     let tag_b = build_ops_b
-        .derived_image_tag("vm-snapshot/global/vibe-box:latest", build_context.path())
+        .derived_image_tag(
+            "vm-snapshot/global/vibe-box:latest",
+            "sha256:shared-base",
+            build_context.path(),
+        )
         .unwrap();
 
     assert_eq!(tag_a, tag_b);
+}
+
+#[test]
+fn test_derived_image_tag_changes_when_base_image_is_rebuilt() {
+    let build_context = tempfile::tempdir().unwrap();
+    fs::write(
+        build_context.path().join("Dockerfile.generated"),
+        "FROM ubuntu:24.04\n",
+    )
+    .unwrap();
+    fs::create_dir(build_context.path().join("shared")).unwrap();
+
+    let config = VmConfig::default();
+    let generated = tempfile::tempdir().unwrap();
+    let build_ops = BuildOperations::new(&config, generated.path(), "docker");
+    let old_tag = build_ops
+        .derived_image_tag("example/base:latest", "sha256:old", build_context.path())
+        .unwrap();
+    let new_tag = build_ops
+        .derived_image_tag("example/base:latest", "sha256:new", build_context.path())
+        .unwrap();
+
+    assert_ne!(old_tag, new_tag);
 }

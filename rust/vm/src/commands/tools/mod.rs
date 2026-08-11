@@ -4,7 +4,7 @@ mod updates;
 use std::path::PathBuf;
 
 use vm_config::config::VmConfig;
-use vm_core::{vm_hint, vm_println, vm_success};
+use vm_core::{vm_hint, vm_println, vm_progress, vm_success};
 use vm_packages::{RegisterTool, ToolKind};
 use vm_provider::Provider;
 
@@ -14,10 +14,27 @@ use crate::error::{VmError, VmResult};
 use super::command_context::{
     load_or_create_runtime_subject, load_runtime_subject, RuntimeSubject,
 };
+use super::packages;
 use super::packages::tooling::{self, CachedToolCatalog, RefreshOutcome};
 use super::vm_ops::ensure_running;
 
 use guest::InstallMode;
+
+struct BuiltinTool {
+    name: &'static str,
+    kind: ToolKind,
+    repository: &'static str,
+    branch: &'static str,
+    requires_git_auth: bool,
+}
+
+const BUILTIN_TOOLS: &[BuiltinTool] = &[BuiltinTool {
+    name: "agent-skills",
+    kind: ToolKind::Collection,
+    repository: "https://github.com/goobits/agent-skills.git",
+    branch: "main",
+    requires_git_auth: true,
+}];
 
 pub(super) async fn handle(
     command: ToolsSubcommand,
@@ -83,6 +100,14 @@ pub(super) async fn handle(
             }
             Ok(())
         }
+        ToolsSubcommand::Publish { name } => {
+            packages::publish_tool(&name)?;
+            if let Ok(config) = vm_config::AppConfig::load(config_path, profile, None) {
+                let _ = tooling::refresh(&config.vm).await;
+            }
+            vm_success!("Published tool '{name}'");
+            Ok(())
+        }
         ToolsSubcommand::Refresh { quiet } => {
             let config = vm_config::AppConfig::load(config_path, profile, None)?.vm;
             match tooling::refresh(&config).await? {
@@ -104,6 +129,7 @@ pub(super) async fn handle(
             background,
         } => {
             let subject = load_or_create_runtime_subject(config_path, profile, environment).await?;
+            ensure_builtin_releases(&subject.config).await?;
             ensure_running(
                 subject.provider.as_ref(),
                 Some(subject.target.as_str()),
@@ -126,6 +152,65 @@ pub(super) async fn handle(
             )
         }
     }
+}
+
+async fn ensure_builtin_releases(config: &VmConfig) -> VmResult<()> {
+    let selected = BUILTIN_TOOLS
+        .iter()
+        .filter(|tool| config.tools.entries.contains_key(tool.name))
+        .collect::<Vec<_>>();
+    if selected.is_empty() {
+        return Ok(());
+    }
+    let client = tooling::client()?;
+    let definitions = client.tools().await?;
+    for tool in selected {
+        if !definitions
+            .iter()
+            .any(|definition| definition.name == tool.name)
+        {
+            client
+                .register_tool(&RegisterTool {
+                    name: tool.name.into(),
+                    kind: tool.kind,
+                    repository: tool.repository.into(),
+                    default_branch: tool.branch.into(),
+                })
+                .await?;
+            vm_success!("Registered built-in tool '{}'", tool.name);
+        }
+
+        let inventory = client.tool(tool.name).await?;
+        let configured_version = config.tools.entries[tool.name]
+            .version
+            .as_deref()
+            .filter(|version| *version != "latest");
+        let has_release = configured_version.map_or_else(
+            || !inventory.artifacts.is_empty(),
+            |version| {
+                inventory
+                    .artifacts
+                    .iter()
+                    .any(|artifact| artifact.version == version)
+            },
+        );
+        if !has_release {
+            if tool.requires_git_auth
+                && inventory.definition.repository == tool.repository
+                && !packages::git_auth_configured()?
+            {
+                return Err(VmError::validation(
+                    format!("Built-in tool '{}' requires private Git access", tool.name),
+                    Some(
+                        "Run `gh auth login --hostname github.com`, then `vm packages auth --github`",
+                    ),
+                ));
+            }
+            vm_progress!("Publishing the initial '{}' collection...", tool.name);
+            packages::publish_tool(tool.name)?;
+        }
+    }
+    Ok(())
 }
 
 fn kind_name(kind: ToolKind) -> &'static str {
@@ -174,6 +259,7 @@ pub(in crate::commands) fn before_shell(
             environment,
             &selected,
             &tooling::gateway(provider.name())?,
+            &tooling::read_token()?,
             InstallMode::Background,
         )?;
         vm_println!("Tool updates started in the background: {names}");
@@ -211,6 +297,7 @@ fn apply_updates(
         environment,
         &selected,
         &tooling::gateway(provider.name())?,
+        &tooling::read_token()?,
         mode,
     )?;
     match mode {

@@ -53,6 +53,7 @@ pub(super) fn build(
     let staging = temporary_name(base_name, "staging");
     let mut command = Command::new("bash");
     tart.configure(&mut command);
+    command.env("VIBE_AI_TOOLS_INSTALLER", super::VIBE_AI_TOOLS_INSTALLER);
     command.args([
         "-c",
         builder,

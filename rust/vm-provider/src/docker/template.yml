@@ -25,6 +25,7 @@ services:
     image: {{ image_tag }}
     labels:
       com.vm.managed: "true"
+      com.vm.role: "environment"
       com.vm.project: "{{ base_project_name }}"
       com.vm.instance: "{{ project_name }}"
       {% if is_temporary %}

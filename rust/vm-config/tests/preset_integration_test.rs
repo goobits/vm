@@ -909,10 +909,11 @@ fn test_vibe_tart_preset_uses_linux_tart_by_default() -> Result<()> {
     assert!(ai_tools.is_antigravity_enabled());
     assert!(ai_tools.is_claude_enabled());
     assert!(ai_tools.is_codex_enabled());
-    for name in ["antigravity", "claude", "codex", "agent-skills"] {
+    assert!(vibe_tart.tools.entries.contains_key("agent-skills"));
+    for name in ["antigravity", "claude", "codex"] {
         assert!(
-            vibe_tart.tools.entries.contains_key(name),
-            "vibe-tart should select {name} through managed tools"
+            !vibe_tart.tools.entries.contains_key(name),
+            "the Vibe base should own {name}"
         );
     }
     assert!(vibe_tart.npm_packages.is_empty());

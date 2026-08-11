@@ -602,9 +602,37 @@ CMD ["tail", "-f", "/dev/null"]
         Ok(inspect.status.success())
     }
 
-    pub fn derived_image_tag(&self, base_image: &str, build_context: &Path) -> Result<String> {
+    pub fn image_identity(&self, image: &str) -> Result<String> {
+        let inspect = Command::new(self.executable)
+            .args(["image", "inspect", "--format", "{{.Id}}", image])
+            .output()?;
+        if !inspect.status.success() {
+            return Err(VmError::Internal(format!(
+                "Failed to inspect base image '{}': {}",
+                image,
+                String::from_utf8_lossy(&inspect.stderr).trim()
+            )));
+        }
+
+        let identity = String::from_utf8_lossy(&inspect.stdout).trim().to_string();
+        if identity.is_empty() {
+            return Err(VmError::Internal(format!(
+                "Base image '{image}' did not report an image ID"
+            )));
+        }
+        Ok(identity)
+    }
+
+    pub fn derived_image_tag(
+        &self,
+        base_image: &str,
+        base_image_identity: &str,
+        build_context: &Path,
+    ) -> Result<String> {
         let mut hasher = Sha256::new();
         hasher.update(base_image.as_bytes());
+        hasher.update([0]);
+        hasher.update(base_image_identity.as_bytes());
         hasher.update([0]);
 
         for arg in self.gather_build_args(base_image) {

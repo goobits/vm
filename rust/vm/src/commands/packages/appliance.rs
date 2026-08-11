@@ -18,6 +18,7 @@ const HEALTH_INTERVAL: Duration = Duration::from_millis(500);
 pub(super) enum PackageJob<'a> {
     Review(&'a str),
     Release(&'a str),
+    ToolRelease(&'a str),
     Rollout(&'a str),
 }
 
@@ -54,6 +55,7 @@ impl<'a> PackageJob<'a> {
         match self {
             Self::Review(_) => "reviewer",
             Self::Release(_) => "releaser",
+            Self::ToolRelease(_) => "tool-releaser",
             Self::Rollout(_) => "rollout",
         }
     }
@@ -61,13 +63,14 @@ impl<'a> PackageJob<'a> {
     pub(super) fn variable(self) -> &'static str {
         match self {
             Self::Review(_) | Self::Release(_) => "SUBMISSION_ID",
+            Self::ToolRelease(_) => "TOOL_NAME",
             Self::Rollout(_) => "ROLLOUT_ID",
         }
     }
 
     pub(super) fn id(self) -> &'a str {
         match self {
-            Self::Review(id) | Self::Release(id) | Self::Rollout(id) => id,
+            Self::Review(id) | Self::Release(id) | Self::ToolRelease(id) | Self::Rollout(id) => id,
         }
     }
 }
@@ -121,18 +124,36 @@ pub(super) async fn up(
     registry_image: Option<String>,
     job_image: Option<String>,
 ) -> VmResult<()> {
-    let runtime = resolve_runtime(requested, files.read_state()?.map(|state| state.runtime));
-    let image = registry_image.unwrap_or_else(default_registry_image);
-    let job_image = job_image.unwrap_or_else(default_job_image);
+    let previous = files.read_state()?;
+    let runtime = resolve_runtime(requested, previous.as_ref().map(|state| state.runtime));
+    let image = resolve_image(
+        registry_image,
+        previous.as_ref().map(|state| {
+            (
+                state.controller_version.as_str(),
+                state.registry_image.as_str(),
+            )
+        }),
+        default_registry_image(),
+    );
+    let job_image = resolve_image(
+        job_image,
+        previous
+            .as_ref()
+            .map(|state| (state.controller_version.as_str(), state.job_image.as_str())),
+        default_job_image(),
+    );
     let bind = match runtime {
         InfrastructureRuntime::Docker => "127.0.0.1",
         InfrastructureRuntime::Tart => "0.0.0.0",
     };
     let config = ApplianceConfig::new(bind, port, image, job_image).map_err(VmError::from)?;
+    let allow_source_build = config.registry_image == default_registry_image()
+        && config.job_image == default_job_image();
     files.materialize(&config)?;
 
     let gateway_url = match runtime {
-        InfrastructureRuntime::Docker => docker::up(files, port)?,
+        InfrastructureRuntime::Docker => docker::up(files, &config, allow_source_build)?,
         InfrastructureRuntime::Tart => tart::up(files, port)?,
     };
     wait_for_gateway(&gateway_url).await?;
@@ -331,6 +352,22 @@ fn default_job_image() -> String {
     )
 }
 
+fn resolve_image(
+    requested: Option<String>,
+    previous: Option<(&str, &str)>,
+    default: String,
+) -> String {
+    requested
+        .or_else(|| {
+            previous
+                .filter(|(version, image)| {
+                    *version == env!("CARGO_PKG_VERSION") && !image.trim().is_empty()
+                })
+                .map(|(_, image)| image.to_string())
+        })
+        .unwrap_or(default)
+}
+
 async fn wait_for_gateway(gateway_url: &str) -> VmResult<()> {
     let endpoints = RegistryEndpoints::new(gateway_url).map_err(VmError::from)?;
     let client = PackageInfrastructureClient::new(endpoints);
@@ -372,7 +409,7 @@ fn workflow_client(
 
 #[cfg(test)]
 mod tests {
-    use super::{default_registry_image, first_run_runtime_for, resolve_runtime};
+    use super::{default_registry_image, first_run_runtime_for, resolve_image, resolve_runtime};
     use crate::cli::PackageInfrastructureRuntime;
     use vm_packages::InfrastructureRuntime;
 
@@ -414,5 +451,32 @@ mod tests {
     #[test]
     fn default_image_is_versioned() {
         assert!(default_registry_image().ends_with(env!("CARGO_PKG_VERSION")));
+    }
+
+    #[test]
+    fn same_version_reuses_image_overrides_until_the_controller_changes() {
+        let local = resolve_image(
+            None,
+            Some((env!("CARGO_PKG_VERSION"), "registry.local/packages:dev")),
+            "registry.example/packages:current".into(),
+        );
+        assert_eq!(local, "registry.local/packages:dev");
+
+        let upgraded = resolve_image(
+            None,
+            Some(("0.0.1", "registry.local/packages:dev")),
+            "registry.example/packages:current".into(),
+        );
+        assert_eq!(upgraded, "registry.example/packages:current");
+    }
+
+    #[test]
+    fn explicit_image_override_wins() {
+        let image = resolve_image(
+            Some("registry.local/packages:new".into()),
+            Some((env!("CARGO_PKG_VERSION"), "registry.local/packages:old")),
+            "registry.example/packages:current".into(),
+        );
+        assert_eq!(image, "registry.local/packages:new");
     }
 }

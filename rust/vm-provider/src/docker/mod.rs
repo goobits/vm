@@ -67,6 +67,41 @@ pub fn validate_docker_environment(executable: &str) -> Result<()> {
     Ok(())
 }
 
+fn is_environment_container(name: &str, role: &str, compose_service: &str) -> bool {
+    if role == "environment" {
+        return true;
+    }
+    if !role.is_empty() {
+        return false;
+    }
+
+    // Backwards compatibility for containers created before com.vm.role was
+    // introduced. The primary Compose service shares the environment's full
+    // container name; database and package-edge services do not.
+    name.ends_with("-dev") && (compose_service.is_empty() || compose_service == name)
+}
+
+fn host_ports_from_bindings(bindings: &str) -> Result<Vec<u16>> {
+    let value: serde_json::Value = serde_json::from_str(bindings).map_err(|error| {
+        VmError::Internal(format!(
+            "Failed to parse managed service port bindings: {error}"
+        ))
+    })?;
+    let mut ports = value
+        .as_object()
+        .into_iter()
+        .flat_map(|bindings| bindings.values())
+        .filter_map(serde_json::Value::as_array)
+        .flatten()
+        .filter_map(|binding| binding.get("HostPort"))
+        .filter_map(serde_json::Value::as_str)
+        .filter_map(|port| port.parse::<u16>().ok())
+        .collect::<Vec<_>>();
+    ports.sort_unstable();
+    ports.dedup();
+    Ok(ports)
+}
+
 /// Container user and permission configuration
 #[derive(Debug, Clone)]
 pub struct UserConfig {
@@ -245,6 +280,11 @@ impl Provider for DockerProvider {
         lifecycle.exec_in_container(container, cmd)
     }
 
+    fn exec_with_stdin(&self, container: Option<&str>, cmd: &[String], input: &[u8]) -> Result<()> {
+        self.lifecycle_ops()
+            .exec_in_container_with_stdin(container, cmd, input)
+    }
+
     fn exec_output(&self, container: Option<&str>, cmd: &[String]) -> Result<String> {
         self.lifecycle_ops()
             .exec_in_container_output(container, cmd)
@@ -358,7 +398,7 @@ impl Provider for DockerProvider {
                 "--filter",
                 "label=com.vm.managed=true",
                 "--format",
-                "{{.Names}}\t{{.ID}}\t{{.Status}}\t{{.CreatedAt}}\t{{.RunningFor}}\t{{.Label \"com.vm.project\"}}",
+                "{{.Names}}\t{{.ID}}\t{{.Status}}\t{{.CreatedAt}}\t{{.RunningFor}}\t{{.Label \"com.vm.project\"}}\t{{.Label \"com.vm.role\"}}\t{{.Label \"com.docker.compose.service\"}}",
             ])
             .output()
             .map_err(|e| {
@@ -391,7 +431,15 @@ impl Provider for DockerProvider {
                 let status = parts[2];
                 let created_at = parts[3];
                 let running_for = parts[4];
-                let project = parts.get(5).map(|s| s.to_string());
+                let role = parts.get(6).copied().unwrap_or_default();
+                let compose_service = parts.get(7).copied().unwrap_or_default();
+                if !is_environment_container(name, role, compose_service) {
+                    continue;
+                }
+                let project = parts
+                    .get(5)
+                    .filter(|project| !project.is_empty())
+                    .map(|project| project.to_string());
 
                 instances.push(create_docker_instance_info(
                     name,
@@ -405,6 +453,48 @@ impl Provider for DockerProvider {
         }
 
         Ok(instances)
+    }
+
+    fn reusable_host_ports(&self, environment: &str) -> Result<Vec<u16>> {
+        let compose = compose::ComposeOperations::new(
+            &self.config,
+            &self.generated_dir,
+            &self._project_dir,
+            &self.executable,
+        );
+        let instance = compose.instance_name_from_container(environment);
+        let mut ports = Vec::new();
+        for service in compose.get_expected_service_containers(instance.as_deref()) {
+            if !DockerOps::container_exists(Some(&self.executable), &service).unwrap_or(false) {
+                continue;
+            }
+            let output = Command::new(&self.executable)
+                .args([
+                    "inspect",
+                    "--format",
+                    "{{json .HostConfig.PortBindings}}",
+                    &service,
+                ])
+                .output()
+                .map_err(|error| {
+                    VmError::Internal(format!(
+                        "Failed to inspect managed service '{service}': {error}"
+                    ))
+                })?;
+            if !output.status.success() {
+                return Err(VmError::Internal(format!(
+                    "Failed to inspect managed service '{}': {}",
+                    service,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                )));
+            }
+            ports.extend(host_ports_from_bindings(
+                String::from_utf8_lossy(&output.stdout).trim(),
+            )?);
+        }
+        ports.sort_unstable();
+        ports.dedup();
+        Ok(ports)
     }
 
     fn snapshot(&self, request: &crate::SnapshotRequest) -> Result<()> {
@@ -599,7 +689,7 @@ impl TempProvider for DockerProvider {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_docker_environment;
+    use super::{host_ports_from_bindings, is_environment_container, validate_docker_environment};
     use std::io::Write;
 
     #[cfg(unix)]
@@ -630,5 +720,34 @@ exit 1
         std::fs::set_permissions(&docker, permissions).unwrap();
 
         validate_docker_environment(docker.to_str().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn environment_filter_excludes_managed_compose_services() {
+        assert!(is_environment_container(
+            "demo-dev",
+            "environment",
+            "demo-dev"
+        ));
+        assert!(is_environment_container("demo-dev", "", "demo-dev"));
+        assert!(!is_environment_container("demo-postgres", "", "postgres"));
+        assert!(!is_environment_container(
+            "demo-package-edge",
+            "",
+            "package-edge"
+        ));
+        assert!(!is_environment_container("demo-dev", "service", "demo-dev"));
+    }
+
+    #[test]
+    fn parses_managed_service_host_port_bindings() {
+        assert_eq!(
+            host_ports_from_bindings(
+                r#"{"5432/tcp":[{"HostIp":"127.0.0.1","HostPort":"3129"}],"6379/tcp":[{"HostIp":"::1","HostPort":"3130"}]}"#
+            )
+            .unwrap(),
+            vec![3129, 3130]
+        );
+        assert!(host_ports_from_bindings("not-json").is_err());
     }
 }

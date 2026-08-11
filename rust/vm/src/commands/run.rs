@@ -51,6 +51,7 @@ pub(super) async fn handle(intent: RunIntent) -> VmResult<()> {
     config.provider = provider_override;
     apply_overrides(&mut config, &intent)?;
     apply_kind(&mut config, &intent);
+    super::packages::apply_client_environment(&mut config)?;
 
     let provider = get_provider(config.clone()).map_err(VmError::from)?;
     let target = target(&intent);

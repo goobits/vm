@@ -249,6 +249,21 @@ fn package_registration_parses_explicit_and_discovery_modes() {
 }
 
 #[test]
+fn package_auth_can_import_the_active_github_credential() {
+    assert!(matches!(
+        Args::parse_from(["vm", "packages", "auth", "--github"]).command,
+        Command::Packages {
+            command: PackagesSubcommand::Auth {
+                github: true,
+                token_file: None,
+                clear: false,
+                ..
+            }
+        }
+    ));
+}
+
+#[test]
 fn package_checkout_parses_isolated_work_request() {
     assert!(matches!(
         Args::parse_from([
@@ -361,6 +376,12 @@ fn tool_refresh_status_and_batch_update_commands_parse() {
         Command::Tools {
             command: ToolsSubcommand::Show { name }
         } if name == "codex"
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "tools", "publish", "agent-skills"]).command,
+        Command::Tools {
+            command: ToolsSubcommand::Publish { name }
+        } if name == "agent-skills"
     ));
     assert!(matches!(
         Args::parse_from(["vm", "tools", "refresh"]).command,

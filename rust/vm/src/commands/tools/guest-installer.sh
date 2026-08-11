@@ -39,9 +39,15 @@ safe_archive() {
 resolved_below() {
   root_path=$1
   candidate=$2
-  resolved=$(readlink -f "$candidate") || return 1
+  if command -v realpath >/dev/null 2>&1; then
+    root_resolved=$(realpath "$root_path") || return 1
+    resolved=$(realpath "$candidate") || return 1
+  else
+    root_resolved=$(readlink -f "$root_path") || return 1
+    resolved=$(readlink -f "$candidate") || return 1
+  fi
   case "$resolved" in
-    "$root_path"|"$root_path"/*) return 0 ;;
+    "$root_resolved"|"$root_resolved"/*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -62,10 +68,12 @@ install_tool() (
 
   manifest_file="$task/manifest"
   links="$task/links"
+  new_links="$task/new-links"
   printf '%s\n' "$manifest" > "$manifest_file"
   tab=$(printf '\t')
-  IFS="$tab" read -r name version target digest url < "$manifest_file"
+  IFS="$tab" read -r name version target kind digest url < "$manifest_file"
   test -n "$name" && test -n "$version" && test -n "$target"
+  test "$kind" = binary || test "$kind" = collection
   test "${#digest}" -eq 64
   tail -n +2 "$manifest_file" > "$links"
 
@@ -101,24 +109,48 @@ install_tool() (
   fi
 
   : > "$prepared"
+  : > "$new_links"
   sequence=0
+
+  prepare_link() {
+    link_source=$1
+    link_destination=$2
+    if test -e "$link_destination" || test -L "$link_destination"; then
+      if test ! -L "$link_destination" || ! resolved_below "$releases/$name" "$link_destination"; then
+        echo "Refusing to replace unmanaged path: $link_destination" >&2
+        exit 1
+      fi
+    fi
+    link_parent=$(dirname "$link_destination")
+    mkdir -p "$link_parent"
+    sequence=$((sequence + 1))
+    pending="$link_parent/.vm-tool-$name-$$-$sequence"
+    rm -f "$pending"
+    ln -s "$link_source" "$pending"
+    printf '%s\t%s\n' "$pending" "$link_destination" >> "$prepared"
+    printf '%s\n' "$link_destination" >> "$new_links"
+  }
+
   while IFS="$tab" read -r destination source; do
     resolved_below "$release" "$release/$source" || {
       echo "$name activation source is unavailable: $source" >&2
       exit 1
     }
     destination_path="$HOME/$destination"
-    if test -e "$destination_path" && test ! -L "$destination_path"; then
-      echo "Refusing to replace unmanaged path: $destination_path" >&2
-      exit 1
+    if test "$kind" = collection && test -d "$destination_path" && test ! -L "$destination_path"; then
+      found_skill=false
+      for skill_path in "$release/$source"/*; do
+        test -d "$skill_path" && test -f "$skill_path/SKILL.md" || continue
+        found_skill=true
+        prepare_link "$skill_path" "$destination_path/$(basename "$skill_path")"
+      done
+      if test "$found_skill" = false; then
+        echo "$name collection has no skill directories below: $source" >&2
+        exit 1
+      fi
+      continue
     fi
-    parent=$(dirname "$destination_path")
-    mkdir -p "$parent"
-    sequence=$((sequence + 1))
-    pending="$parent/.vm-tool-$name-$$-$sequence"
-    rm -f "$pending"
-    ln -s "$release/$source" "$pending"
-    printf '%s\t%s\n' "$pending" "$destination_path" >> "$prepared"
+    prepare_link "$release/$source" "$destination_path"
   done < "$links"
 
   while IFS="$tab" read -r pending destination_path; do
@@ -126,9 +158,24 @@ install_tool() (
   done < "$prepared"
   : > "$prepared"
 
+  old_links="$states/$name.links"
+  if test -f "$old_links"; then
+    while IFS= read -r old_destination; do
+      test -n "$old_destination" || continue
+      if ! grep -Fqx "$old_destination" "$new_links" \
+        && test -L "$old_destination" \
+        && resolved_below "$releases/$name" "$old_destination"; then
+        rm -f "$old_destination"
+      fi
+    done < "$old_links"
+  fi
+
   state_temp="$states/.$name.$$.tmp"
+  links_temp="$states/.$name.links.$$.tmp"
   printf '%s\t%s\t%s\t%s\n' "$name" "$version" "$target" "$digest" > "$state_temp"
+  cp "$new_links" "$links_temp"
   mv -f "$state_temp" "$states/$name.state"
+  mv -f "$links_temp" "$states/$name.links"
   printf '%s %s is active\n' "$name" "$version"
 )
 

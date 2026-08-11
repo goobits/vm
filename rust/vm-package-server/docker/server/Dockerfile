@@ -3,6 +3,7 @@
 FROM rust:1.97-bookworm AS builder
 
 WORKDIR /source
+ENV CARGO_TARGET_DIR=/source/target
 COPY . .
 RUN cargo build --locked --release \
       --package vm-package-server \
@@ -22,7 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     groupadd --gid 10001 packages && \
     useradd --uid 10001 --gid packages --create-home packages && \
     install -d -o packages -g packages \
-      /data/npm /data/cargo /data/pypi /data/cache \
+      /data/npm /data/cargo /data/pypi /data/tools/artifacts /data/cache \
       /data/state /data/receipts /data/logs /data/agents \
       /data/rollouts /data/sources /data/catalog
 

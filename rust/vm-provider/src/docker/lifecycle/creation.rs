@@ -113,7 +113,9 @@ impl<'a> LifecycleOperations<'a> {
             self.executable,
         );
         let build_args = build_ops.gather_build_args(&base_image);
-        let image_tag = build_ops.derived_image_tag(&base_image, &build_context)?;
+        let base_image_identity = build_ops.image_identity(&base_image)?;
+        let image_tag =
+            build_ops.derived_image_tag(&base_image, &base_image_identity, &build_context)?;
         let compose_path = match instance_name {
             Some(name) => compose_ops.write_docker_compose_with_instance_and_image_tag(
                 &build_context,

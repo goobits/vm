@@ -17,9 +17,6 @@ project:
 
 tools:
   updates: prompt
-  antigravity: {}
-  claude: {}
-  codex: {}
   agent-skills: {}
 
 host_sync:

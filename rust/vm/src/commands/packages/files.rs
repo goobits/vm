@@ -98,6 +98,14 @@ impl ApplianceFiles {
         self.set_external_token(&self.git_token_path(), token, "Git")
     }
 
+    pub(super) fn has_git_token(&self) -> VmResult<bool> {
+        match fs::read_to_string(self.git_token_path()) {
+            Ok(token) => Ok(!token.trim().is_empty()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(VmError::from(error)),
+        }
+    }
+
     pub(super) fn set_ci_publish_token(&self, token: &str) -> VmResult<()> {
         self.set_external_token(&self.ci_publish_token_path(), token, "CI registry")
     }
@@ -368,6 +376,9 @@ mod tests {
         );
         assert_eq!(files.read_token().unwrap().len(), 48);
         assert_eq!(files.controller_token().unwrap().len(), 48);
+        assert!(!files.has_git_token().unwrap());
+        files.set_git_token("github-token").unwrap();
+        assert!(files.has_git_token().unwrap());
         assert!(!files.root().join("npm").exists());
     }
 

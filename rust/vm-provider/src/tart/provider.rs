@@ -799,6 +799,15 @@ impl Provider for TartProvider {
         self.stream_tart_command_visible(&arg_refs)
     }
 
+    fn exec_with_stdin(&self, container: Option<&str>, cmd: &[String], input: &[u8]) -> Result<()> {
+        let args = self.guest_exec_args(container, cmd)?;
+        self.tart_expr(&args)
+            .stdin_bytes(input.to_vec())
+            .run()
+            .map(|_| ())
+            .map_err(|_| VmError::Provider("Tart guest command with standard input failed".into()))
+    }
+
     fn exec_output(&self, container: Option<&str>, cmd: &[String]) -> Result<String> {
         let args = self.guest_exec_args(container, cmd)?;
         self.tart_expr(&args)

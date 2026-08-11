@@ -188,6 +188,10 @@ pub(in crate::commands) fn gateway(provider: &str) -> VmResult<String> {
     gateway_for_provider(&state, provider)
 }
 
+pub(in crate::commands) fn read_token() -> VmResult<String> {
+    ApplianceFiles::discover()?.read_token()
+}
+
 pub(in crate::commands) fn client() -> VmResult<PackageInfrastructureClient> {
     let files = ApplianceFiles::discover()?;
     super::appliance::configured_client(&files)

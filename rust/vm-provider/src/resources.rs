@@ -127,7 +127,7 @@ mod tests {
         assert!(path < ZSHRC_TEMPLATE.find("yocodex()").unwrap());
         assert_eq!(ZSHRC_TEMPLATE.matches("yoclaude()").count(), 1);
         assert_eq!(ZSHRC_TEMPLATE.matches("yocodex()").count(), 1);
-        assert!(ZSHRC_TEMPLATE.contains("Run 'vm tools update' on the host"));
+        assert!(ZSHRC_TEMPLATE.contains("Update the Vibe base and recreate"));
         assert_eq!(
             ZSHRC_TEMPLATE
                 .matches("export PATH=\"$HOME/.local/bin:$PATH\"")

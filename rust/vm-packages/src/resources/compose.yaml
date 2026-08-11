@@ -21,7 +21,7 @@ services:
       - gateway-data:/data
       - gateway-config:/config
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-    networks: [packages]
+    networks: [packages, controller]
 
   oci-cache:
     image: registry:3.1.1
@@ -45,9 +45,42 @@ services:
       - registry-oci-cache:/var/lib/registry
     networks: [packages, egress]
 
+  volume-init:
+    image: "${VM_PACKAGES_REGISTRY_IMAGE:?required}"
+    user: "0:0"
+    restart: "no"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        for target in /volumes/*; do
+          chown 10001:10001 "$${target}"
+        done
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN"]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    network_mode: none
+    volumes:
+      - registry-npm-artifacts:/volumes/npm
+      - registry-cargo-artifacts:/volumes/cargo
+      - registry-pypi-artifacts:/volumes/pypi
+      - registry-tool-artifacts:/volumes/tools
+      - registry-upstream-cache:/volumes/cache
+      - registry-metadata:/volumes/metadata
+      - workflow-state:/volumes/state
+      - workflow-receipts:/volumes/receipts
+      - workflow-logs:/volumes/logs
+      - agent-temporary-data:/volumes/agents
+      - rollout-temporary-data:/volumes/rollouts
+      - source-mirrors:/volumes/sources
+      - package-catalog:/volumes/catalog
+
   registry:
     image: "${VM_PACKAGES_REGISTRY_IMAGE:?required}"
     restart: unless-stopped
+    depends_on:
+      volume-init:
+        condition: service_completed_successfully
     environment:
       RUST_LOG: info
     entrypoint: ["/bin/sh", "-ec"]
@@ -80,6 +113,9 @@ services:
   work:
     image: "${VM_PACKAGES_REGISTRY_IMAGE:?required}"
     restart: unless-stopped
+    depends_on:
+      volume-init:
+        condition: service_completed_successfully
     environment:
       RUST_LOG: info
       PKG_WORK_GIT_ASKPASS: /usr/local/bin/pkg-git-askpass
@@ -164,6 +200,24 @@ services:
     security_opt: ["no-new-privileges:true"]
     read_only: true
     tmpfs: ["/tmp:rw,exec,nosuid,size=8g"]
+    networks: [packages, egress]
+
+  tool-releaser:
+    profiles: [jobs]
+    image: "${VM_PACKAGES_JOB_IMAGE:?required}"
+    environment:
+      PKG_RELEASE_GATEWAY: http://gateway:8080
+      PKG_RELEASE_TOKEN_FILE: /run/secrets/release_token
+      PKG_RELEASE_PUBLISH_TOKEN_FILE: /run/secrets/publish_token
+      PKG_RELEASE_GIT_TOKEN_FILE: /run/secrets/git_token
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - exec pkg-tool-release --tool "$${TOOL_NAME:?required}"
+    secrets: [release_token, publish_token, git_token]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp:rw,exec,nosuid,size=2g"]
     networks: [packages, egress]
 
   rollout:
@@ -281,6 +335,8 @@ networks:
   packages:
     name: vm-packages
     internal: true
+  controller:
+    name: vm-packages-controller
   egress:
     name: vm-packages-egress
 
@@ -288,6 +344,8 @@ secrets:
   registry_read_token:
     file: ./read-token
   registry_publish_token:
+    file: ./publish-token
+  publish_token:
     file: ./publish-token
   work_read_token:
     file: ./read-token

@@ -262,9 +262,16 @@ fn validate_tool_archive_sync(path: &FsPath) -> AppResult<()> {
         }
 
         let kind = entry.header().entry_type();
-        if !(kind.is_file() || kind.is_dir() || kind.is_symlink() || kind.is_hard_link()) {
+        if !(kind.is_file()
+            || kind.is_dir()
+            || kind.is_symlink()
+            || kind.is_hard_link()
+            || kind.is_pax_global_extensions()
+            || kind.is_pax_local_extensions())
+        {
             return Err(AppError::BadRequest(
-                "tool archives may contain only files, directories, and safe links".into(),
+                "tool archives may contain only files, directories, safe links, and PAX metadata"
+                    .into(),
             ));
         }
         if kind.is_symlink() || kind.is_hard_link() {
@@ -340,6 +347,15 @@ mod tests {
         {
             let gzip = flate2::write::GzEncoder::new(&mut encoded, flate2::Compression::default());
             let mut archive = tar::Builder::new(gzip);
+            let pax = format!("52 comment={}\n", "a".repeat(40));
+            let mut pax_header = tar::Header::new_gnu();
+            pax_header.set_entry_type(tar::EntryType::XGlobalHeader);
+            pax_header.set_size(pax.len() as u64);
+            pax_header.set_mode(0o644);
+            pax_header.set_cksum();
+            archive
+                .append_data(&mut pax_header, "pax_global_header", pax.as_bytes())
+                .unwrap();
             let content = b"one whole skills repository";
             let mut header = tar::Header::new_gnu();
             header.set_size(content.len() as u64);

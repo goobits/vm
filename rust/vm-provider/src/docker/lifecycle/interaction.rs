@@ -162,9 +162,25 @@ impl<'a> LifecycleOperations<'a> {
 
     #[must_use = "command execution results should be handled"]
     pub fn exec_in_container(&self, container: Option<&str>, cmd: &[String]) -> Result<()> {
-        let args = self.container_exec_args(container, cmd)?;
+        let args = self.container_exec_args(container, cmd, false)?;
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
         stream_command_visible(self.executable, &arg_refs)
+    }
+
+    #[must_use = "command execution results should be handled"]
+    pub fn exec_in_container_with_stdin(
+        &self,
+        container: Option<&str>,
+        cmd: &[String],
+        input: &[u8],
+    ) -> Result<()> {
+        let args = self.container_exec_args(container, cmd, true)?;
+        let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        duct::cmd(self.executable, &arg_refs)
+            .stdin_bytes(input.to_vec())
+            .run()
+            .map(|_| ())
+            .map_err(|_| VmError::Internal("Guest command with standard input failed".into()))
     }
 
     pub fn exec_in_container_output(
@@ -172,7 +188,7 @@ impl<'a> LifecycleOperations<'a> {
         container: Option<&str>,
         cmd: &[String],
     ) -> Result<String> {
-        let args = self.container_exec_args(container, cmd)?;
+        let args = self.container_exec_args(container, cmd, false)?;
         let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
         duct::cmd(self.executable, &arg_refs)
             .stderr_capture()
@@ -180,7 +196,12 @@ impl<'a> LifecycleOperations<'a> {
             .map_err(Into::into)
     }
 
-    fn container_exec_args(&self, container: Option<&str>, cmd: &[String]) -> Result<Vec<String>> {
+    fn container_exec_args(
+        &self,
+        container: Option<&str>,
+        cmd: &[String],
+        attach_stdin: bool,
+    ) -> Result<Vec<String>> {
         let target_container = self.resolve_target_container(container)?;
         let workspace_path = self
             .config
@@ -202,8 +223,11 @@ impl<'a> LifecycleOperations<'a> {
 
         Self::repair_home_state(self.executable, &target_container, &user_config)?;
 
-        let mut args: Vec<String> = vec![
-            "exec".to_string(),
+        let mut args: Vec<String> = vec!["exec".to_string()];
+        if attach_stdin {
+            args.push("-i".to_string());
+        }
+        args.extend([
             target_container,
             "sudo".to_string(),
             "-Hu".to_string(),
@@ -217,7 +241,7 @@ impl<'a> LifecycleOperations<'a> {
             "-ilc".to_string(),
             format!("{worktree_repair}\ncd {workspace_quoted} && exec \"$@\""),
             "vm-exec".to_string(),
-        ];
+        ]);
         args.extend(cmd.iter().cloned());
         Ok(args)
     }

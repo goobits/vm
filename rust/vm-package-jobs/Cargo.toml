@@ -8,10 +8,16 @@ license.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
+flate2 = { workspace = true }
+reqwest = { workspace = true }
 semver = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { workspace = true }
 vm-packages = { path = "../vm-packages" }
+
+[dev-dependencies]
+tar = { workspace = true }

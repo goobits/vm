@@ -2,12 +2,31 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use serde::Deserialize;
 use url::Url;
 use vm_config::detector::{git::detect_repository, ProjectFacts};
-use vm_packages::{PackageEcosystem, RegisterPackage};
+use vm_packages::{PackageEcosystem, RegisterPackage, ToolKind};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::error::{VmError, VmResult};
+
+const TOOL_MANIFEST: &str = "vm-tool.yaml";
+
+pub(super) struct Discovery {
+    pub(super) packages: Vec<RegisterPackage>,
+    pub(super) tools: Vec<PathBuf>,
+}
+
+#[derive(Default)]
+struct RepositoryRoots {
+    packages: BTreeSet<PathBuf>,
+    tools: BTreeSet<PathBuf>,
+}
+
+#[derive(Deserialize)]
+struct ToolManifest {
+    kind: ToolKind,
+}
 
 pub(super) fn discover(
     targets: &[String],
@@ -15,16 +34,21 @@ pub(super) fn discover(
     ecosystem: Option<PackageEcosystem>,
     branch: Option<&str>,
     ci_registry: Option<&str>,
-) -> VmResult<Vec<RegisterPackage>> {
+) -> VmResult<Discovery> {
     let roots = repository_roots(targets, recursive)?;
-    roots
+    let packages = roots
+        .packages
         .iter()
         .map(|root| discover_one(root, ecosystem, branch, ci_registry))
-        .collect()
+        .collect::<VmResult<_>>()?;
+    Ok(Discovery {
+        packages,
+        tools: roots.tools.into_iter().collect(),
+    })
 }
 
-fn repository_roots(targets: &[String], recursive: bool) -> VmResult<Vec<PathBuf>> {
-    let mut roots = BTreeSet::new();
+fn repository_roots(targets: &[String], recursive: bool) -> VmResult<RepositoryRoots> {
+    let mut roots = RepositoryRoots::default();
     for target in targets {
         let path = fs::canonicalize(target).map_err(|error| {
             VmError::filesystem(error, target, "resolve package registration path")
@@ -39,22 +63,26 @@ fn repository_roots(targets: &[String], recursive: bool) -> VmResult<Vec<PathBuf
             ));
         }
         if recursive {
-            roots.extend(find_repository_roots(&path)?);
+            let discovered = find_repository_roots(&path)?;
+            roots.packages.extend(discovered.packages);
+            roots.tools.extend(discovered.tools);
+        } else if is_tool_repository(&path)? {
+            roots.tools.insert(path);
         } else {
-            roots.insert(path);
+            roots.packages.insert(path);
         }
     }
-    if roots.is_empty() {
+    if roots.packages.is_empty() && roots.tools.is_empty() {
         return Err(VmError::validation(
             "No Git package repositories were found",
             Some("Pass package repository roots, or use --recursive on their parent directory"),
         ));
     }
-    Ok(roots.into_iter().collect())
+    Ok(roots)
 }
 
-fn find_repository_roots(root: &Path) -> VmResult<Vec<PathBuf>> {
-    let mut repositories = Vec::new();
+fn find_repository_roots(root: &Path) -> VmResult<RepositoryRoots> {
+    let mut repositories = RepositoryRoots::default();
     for entry in WalkDir::new(root)
         .follow_links(false)
         .into_iter()
@@ -67,10 +95,31 @@ fn find_repository_roots(root: &Path) -> VmResult<Vec<PathBuf>> {
             )
         })?;
         if entry.file_type().is_dir() && entry.path().join(".git").exists() {
-            repositories.push(entry.into_path());
+            let path = entry.into_path();
+            if is_tool_repository(&path)? {
+                repositories.tools.insert(path);
+            } else {
+                repositories.packages.insert(path);
+            }
         }
     }
     Ok(repositories)
+}
+
+fn is_tool_repository(root: &Path) -> VmResult<bool> {
+    let path = root.join(TOOL_MANIFEST);
+    if !path.is_file() {
+        return Ok(false);
+    }
+    let manifest =
+        serde_yaml_ng::from_str::<ToolManifest>(&read_manifest(&path)?).map_err(|error| {
+            VmError::validation(
+                format!("Invalid {}: {error}", path.display()),
+                Some("Expected `kind: binary` or `kind: collection`"),
+            )
+        })?;
+    let _kind = manifest.kind;
+    Ok(true)
 }
 
 fn should_visit(entry: &DirEntry) -> bool {
@@ -280,7 +329,7 @@ mod tests {
     use git2::Repository;
     use vm_packages::PackageEcosystem;
 
-    use super::{discover, normalize_repository_url};
+    use super::{discover, normalize_repository_url, TOOL_MANIFEST};
 
     fn package(root: &Path, directory: &str, manifest: &str, content: &str) -> PathBuf {
         let path = root.join(directory);
@@ -323,7 +372,7 @@ mod tests {
             "[project]\nname = \"shared_auth\"\nversion = \"1.0.0\"\n",
         );
 
-        let packages = discover(
+        let discovery = discover(
             &[directory.path().to_string_lossy().into_owned()],
             true,
             None,
@@ -331,6 +380,7 @@ mod tests {
             None,
         )
         .unwrap();
+        let packages = discovery.packages;
 
         assert_eq!(packages.len(), 3);
         assert_eq!(packages[0].name, "@shared/auth");
@@ -365,7 +415,7 @@ mod tests {
         let target = path.to_string_lossy().into_owned();
 
         assert!(discover(std::slice::from_ref(&target), false, None, None, None).is_err());
-        let packages = discover(
+        let discovery = discover(
             &[target],
             false,
             Some(PackageEcosystem::Cargo),
@@ -373,6 +423,7 @@ mod tests {
             None,
         )
         .unwrap();
+        let packages = discovery.packages;
 
         assert_eq!(packages[0].name, "mixed-rs");
         assert_eq!(packages[0].default_branch, "stable");
@@ -380,5 +431,56 @@ mod tests {
             normalize_repository_url("github.com:shared/mixed.git").unwrap(),
             "ssh://github.com/shared/mixed.git"
         );
+    }
+
+    #[test]
+    fn recursive_discovery_separates_tool_repositories() {
+        let directory = tempfile::tempdir().unwrap();
+        let tool = package(
+            directory.path(),
+            "agent-skills",
+            "package.json",
+            r#"{"name":"@shared/agent-skills"}"#,
+        );
+        fs::write(tool.join(TOOL_MANIFEST), "kind: collection\n").unwrap();
+
+        let discovery = discover(
+            &[directory.path().to_string_lossy().into_owned()],
+            true,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert!(discovery.packages.is_empty());
+        assert_eq!(discovery.tools.len(), 1);
+        assert!(discovery.tools[0].ends_with("agent-skills"));
+    }
+
+    #[test]
+    fn invalid_tool_manifest_fails_discovery() {
+        let directory = tempfile::tempdir().unwrap();
+        let tool = package(
+            directory.path(),
+            "broken-tool",
+            "package.json",
+            r#"{"name":"broken-tool"}"#,
+        );
+        fs::write(tool.join(TOOL_MANIFEST), "kind: plugin\n").unwrap();
+
+        let error = discover(
+            &[directory.path().to_string_lossy().into_owned()],
+            true,
+            None,
+            None,
+            None,
+        )
+        .err()
+        .unwrap()
+        .to_string();
+
+        assert!(error.contains("Invalid"));
+        assert!(error.contains(TOOL_MANIFEST));
     }
 }

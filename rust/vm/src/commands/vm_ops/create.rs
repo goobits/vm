@@ -70,6 +70,11 @@ pub async fn handle_create(
         .into_iter()
         .find(|candidate| candidate.name == target_name);
     let is_recreate = force && existing_instance.is_some();
+    let reusable_host_ports = if is_recreate {
+        Vec::new()
+    } else {
+        provider.reusable_host_ports(&target_name)?
+    };
 
     // Fail before expensive provider work when an explicitly mapped port is
     // occupied by something other than the environment being force-recreated.
@@ -80,6 +85,9 @@ pub async fn handle_create(
             .and_then(|settings| settings.port_binding.as_deref())
             .unwrap_or("0.0.0.0");
         for mapping in &config.ports.mappings {
+            if reusable_host_ports.contains(&mapping.host) {
+                continue;
+            }
             if std::net::TcpListener::bind((port_binding, mapping.host))
                 .is_err_and(|error| error.kind() == std::io::ErrorKind::AddrInUse)
             {
@@ -95,7 +103,7 @@ pub async fn handle_create(
     let validation = if is_recreate {
         validator.validate_for_recreate(&config)
     } else {
-        validator.validate(&config)
+        validator.validate_with_reusable_ports(&config, &reusable_host_ports)
     };
     match validation {
         Ok(report) => {

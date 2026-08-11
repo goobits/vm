@@ -120,6 +120,10 @@ impl Provider for PodmanProvider {
         self.docker_provider.exec(container, cmd)
     }
 
+    fn exec_with_stdin(&self, container: Option<&str>, cmd: &[String], input: &[u8]) -> Result<()> {
+        self.docker_provider.exec_with_stdin(container, cmd, input)
+    }
+
     fn exec_output(&self, container: Option<&str>, cmd: &[String]) -> Result<String> {
         self.docker_provider.exec_output(container, cmd)
     }
@@ -182,6 +186,10 @@ impl Provider for PodmanProvider {
 
     fn list_instances(&self) -> Result<Vec<InstanceInfo>> {
         self.docker_provider.list_instances()
+    }
+
+    fn reusable_host_ports(&self, environment: &str) -> Result<Vec<u16>> {
+        self.docker_provider.reusable_host_ports(environment)
     }
 
     fn snapshot(&self, request: &SnapshotRequest) -> Result<()> {

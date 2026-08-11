@@ -81,6 +81,16 @@ require_tool() {
 require_tool tart
 require_tool curl
 
+if [[ -z "${VIBE_AI_TOOLS_INSTALLER:-}" ]]; then
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  installer_path="${script_dir}/install-vibe-ai-tools.sh"
+  if [[ ! -f "${installer_path}" ]]; then
+    echo "Missing Vibe AI tool installer: ${installer_path}" >&2
+    exit 1
+  fi
+  VIBE_AI_TOOLS_INSTALLER="$(<"${installer_path}")"
+fi
+
 cleanup_running_vm() {
   if tart list | grep -Eq "^${BASE_NAME}[[:space:]]+running"; then
     tart stop "$BASE_NAME" >/dev/null
@@ -237,6 +247,9 @@ else
       prettier
   "
 fi
+
+tart exec "$BASE_NAME" bash -lc "$VIBE_AI_TOOLS_INSTALLER" -- \
+  antigravity claude codex
 
 echo "[5/5] Stopping '${BASE_NAME}'..."
 tart stop "$BASE_NAME" >/dev/null

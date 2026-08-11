@@ -103,26 +103,42 @@ impl ConfigValidator {
 
     /// Validates the given configuration.
     pub fn validate(&self, config: &VmConfig) -> Result<ValidationReport> {
-        self.validate_with_port_availability(config, true)
+        self.validate_with_port_availability(config, true, &[])
+    }
+
+    /// Validate a new environment while allowing ports already owned by
+    /// provider-managed services that will be reused by that environment.
+    pub fn validate_with_reusable_ports(
+        &self,
+        config: &VmConfig,
+        reusable_host_ports: &[u16],
+    ) -> Result<ValidationReport> {
+        self.validate_with_port_availability(config, true, reusable_host_ports)
     }
 
     /// Validate a known existing environment before it is recreated. Host port
     /// occupancy is ignored because the current environment owns those ports;
     /// all structural and resource checks still run.
     pub fn validate_for_recreate(&self, config: &VmConfig) -> Result<ValidationReport> {
-        self.validate_with_port_availability(config, false)
+        self.validate_with_port_availability(config, false, &[])
     }
 
     fn validate_with_port_availability(
         &self,
         config: &VmConfig,
         check_port_availability: bool,
+        reusable_host_ports: &[u16],
     ) -> Result<ValidationReport> {
         let mut report = ValidationReport::default();
 
         self.validate_cpu(config, &mut report)?;
         self.validate_memory(config, &mut report)?;
-        self.validate_ports(config, &mut report, check_port_availability)?;
+        self.validate_ports(
+            config,
+            &mut report,
+            check_port_availability,
+            reusable_host_ports,
+        )?;
         self.validate_user(config, &mut report)?;
         // self.validate_disk_space(&mut report)?; // Placeholder for future implementation
 
@@ -248,6 +264,7 @@ impl ConfigValidator {
         config: &VmConfig,
         report: &mut ValidationReport,
         check_port_availability: bool,
+        reusable_host_ports: &[u16],
     ) -> Result<()> {
         let binding_ip = config
             .vm
@@ -320,7 +337,7 @@ impl ConfigValidator {
             }
 
             let addr = format!("{binding_ip}:{}", mapping.host);
-            if TcpListener::bind(&addr).is_err() {
+            if !reusable_host_ports.contains(&mapping.host) && TcpListener::bind(&addr).is_err() {
                 report.add_error(format!(
                     "Configuration error: Port {} is already in use on host",
                     mapping.host
@@ -331,7 +348,7 @@ impl ConfigValidator {
         for service in config.services.values() {
             if let Some(port) = service.port {
                 let addr = format!("{binding_ip}:{port}");
-                if TcpListener::bind(&addr).is_err() {
+                if !reusable_host_ports.contains(&port) && TcpListener::bind(&addr).is_err() {
                     report.add_error(format!(
                         "Port {port} is already in use on the host. Please change the port for this service in your vm.yaml or free it."
                     ));
@@ -374,5 +391,50 @@ mod tests {
 
         assert!(normal.errors.iter().any(|error| error.contains("in use")));
         assert!(recreate.errors.is_empty());
+    }
+
+    #[test]
+    fn reusable_service_ports_do_not_hide_unrelated_conflicts() {
+        let reusable_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let reusable_port = reusable_listener.local_addr().unwrap().port();
+        let unrelated_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let unrelated_port = unrelated_listener.local_addr().unwrap().port();
+        let mut config = VmConfig {
+            vm: Some(VmSettings {
+                user: Some("developer".to_string()),
+                port_binding: Some("127.0.0.1".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        config.services.insert(
+            "postgresql".to_string(),
+            ServiceConfig {
+                enabled: true,
+                port: Some(reusable_port),
+                ..Default::default()
+            },
+        );
+        config.services.insert(
+            "redis".to_string(),
+            ServiceConfig {
+                enabled: true,
+                port: Some(unrelated_port),
+                ..Default::default()
+            },
+        );
+
+        let report = ConfigValidator::new()
+            .validate_with_reusable_ports(&config, &[reusable_port])
+            .unwrap();
+
+        assert!(!report
+            .errors
+            .iter()
+            .any(|error| error.contains(&reusable_port.to_string())));
+        assert!(report
+            .errors
+            .iter()
+            .any(|error| error.contains(&unrelated_port.to_string())));
     }
 }

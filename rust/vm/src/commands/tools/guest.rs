@@ -12,6 +12,9 @@ const INSTALLER: &str = include_str!("guest-installer.sh");
 const LAUNCHER: &str = r#"
 set -eu
 umask 077
+IFS= read -r CARGO_REGISTRIES_VM_TOKEN
+test -n "$CARGO_REGISTRIES_VM_TOKEN"
+export CARGO_REGISTRIES_VM_TOKEN
 root="${XDG_DATA_HOME:-$HOME/.local/share}/vm-tools"
 mkdir -p "$root"
 script="$root/installer.sh"
@@ -86,6 +89,7 @@ pub(super) fn install(
     environment: &str,
     artifacts: &[ToolArtifactRecord],
     gateway: &str,
+    read_token: &str,
     mode: InstallMode,
 ) -> VmResult<()> {
     if artifacts.is_empty() {
@@ -103,18 +107,24 @@ pub(super) fn install(
     for artifact in artifacts {
         command.push(manifest(artifact, gateway.gateway())?);
     }
+    let input = format!("{read_token}\n");
     provider
-        .exec(Some(environment), &command)
+        .exec_with_stdin(Some(environment), &command, input.as_bytes())
         .map_err(VmError::from)
 }
 
 fn manifest(artifact: &ToolArtifactRecord, gateway: &str) -> VmResult<String> {
     artifact.validate().map_err(VmError::from)?;
+    let kind = match artifact.kind {
+        vm_packages::ToolKind::Binary => "binary",
+        vm_packages::ToolKind::Collection => "collection",
+    };
     let mut manifest = format!(
-        "{}\t{}\t{}\t{}\t{}{}",
+        "{}\t{}\t{}\t{}\t{}\t{}{}",
         artifact.tool,
         artifact.version,
         artifact.target,
+        kind,
         artifact.artifact_digest,
         gateway.trim_end_matches('/'),
         artifact.artifact_path
@@ -186,6 +196,7 @@ fn parse_installed(output: &str) -> BTreeMap<String, InstalledTool> {
 mod tests {
     use super::*;
     use chrono::Utc;
+    use std::{fs, process::Command};
     use vm_packages::ToolKind;
 
     #[test]
@@ -237,6 +248,49 @@ mod tests {
         };
         let manifest = manifest(&artifact, "http://packages.internal:3080").unwrap();
         assert_eq!(manifest.lines().count(), 3);
-        assert!(manifest.starts_with("agent-skills\t1.0.0\tany\t"));
+        assert!(manifest.starts_with("agent-skills\t1.0.0\tany\tcollection\t"));
+    }
+
+    #[test]
+    fn collection_installer_merges_skill_siblings_into_an_existing_root() {
+        let directory = tempfile::tempdir().unwrap();
+        let home = directory.path().join("home");
+        let data = directory.path().join("data");
+        let digest = "a".repeat(64);
+        let release = data
+            .join("vm-tools/releases/agent-skills")
+            .join(format!("1.0.0-{digest}"))
+            .join("skills");
+        for skill in ["x-one", "x-two"] {
+            let skill = release.join(skill);
+            fs::create_dir_all(&skill).unwrap();
+            fs::write(skill.join("SKILL.md"), "# Test\n").unwrap();
+        }
+        fs::create_dir_all(home.join(".codex/skills/.system")).unwrap();
+        let installer = directory.path().join("installer.sh");
+        fs::write(&installer, INSTALLER).unwrap();
+        let manifest = format!(
+            "agent-skills\t1.0.0\tany\tcollection\t{digest}\thttp://unused\n.codex/skills\tskills"
+        );
+
+        let output = Command::new("sh")
+            .arg(installer)
+            .arg(manifest)
+            .env("HOME", &home)
+            .env("XDG_DATA_HOME", &data)
+            .env("CARGO_REGISTRIES_VM_TOKEN", "test-token")
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(home.join(".codex/skills/.system").is_dir());
+        assert!(home.join(".codex/skills/x-one").is_symlink());
+        assert!(home.join(".codex/skills/x-two").is_symlink());
+        let links = fs::read_to_string(data.join("vm-tools/state/agent-skills.links")).unwrap();
+        assert_eq!(links.lines().count(), 2);
     }
 }

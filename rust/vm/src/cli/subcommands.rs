@@ -155,11 +155,18 @@ pub enum PackagesSubcommand {
     },
     /// Install or clear the controller's private Git token
     Auth {
-        #[arg(long, alias = "git-token-file", conflicts_with = "clear")]
+        #[arg(
+            long,
+            alias = "git-token-file",
+            conflicts_with_all = ["clear", "github"]
+        )]
         token_file: Option<PathBuf>,
+        /// Import the active GitHub CLI token without printing it
+        #[arg(long, conflicts_with = "clear")]
+        github: bool,
         #[arg(long, conflicts_with = "clear_ci")]
         ci_token_file: Option<PathBuf>,
-        #[arg(long)]
+        #[arg(long, conflicts_with = "github")]
         clear: bool,
         #[arg(long)]
         clear_ci: bool,
@@ -182,6 +189,8 @@ pub enum ToolsSubcommand {
     List,
     /// Show one registered tool and its published releases
     Show { name: String },
+    /// Publish the current source of one registered collection
+    Publish { name: String },
     /// Refresh the appliance-generated tool catalog cache
     Refresh {
         #[arg(long, hide = true)]

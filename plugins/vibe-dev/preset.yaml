@@ -1,17 +1,14 @@
 # Vibe Development Preset
-# Uses a pre-built @vibe-box snapshot; managed tools activate from package infrastructure.
+# Uses a pre-built @vibe-box snapshot with Antigravity, Claude, and Codex.
 
 # Reference pre-built vibe-box snapshot
 vm_box: '@vibe-box'
 
 tools:
   updates: prompt
-  antigravity: {}
-  claude: {}
-  codex: {}
   agent-skills: {}
 
 # Host synchronization configuration (runtime behavior)
 host_sync:
   git_config: true
-  ai_tools: true  # Sync supported AI state; installation is owned by tools above.
+  ai_tools: true  # Sync AI state; the Vibe base owns the CLI executables.

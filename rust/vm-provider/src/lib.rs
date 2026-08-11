@@ -382,6 +382,19 @@ pub trait Provider {
     /// Execute a command inside the VM.
     fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()>;
 
+    /// Execute a command with bytes supplied only over standard input. This is
+    /// used for short-lived credentials that must not appear in process args.
+    fn exec_with_stdin(
+        &self,
+        _container: Option<&str>,
+        _cmd: &[String],
+        _input: &[u8],
+    ) -> Result<()> {
+        Err(VmError::Provider(
+            "This provider does not support command standard input".into(),
+        ))
+    }
+
     /// Execute a command and return its standard output without opening a TTY.
     fn exec_output(&self, _container: Option<&str>, _cmd: &[String]) -> Result<String> {
         Err(VmError::Provider(
@@ -463,6 +476,12 @@ pub trait Provider {
 
     /// List all instances managed by this provider.
     fn list_instances(&self) -> Result<Vec<InstanceInfo>>;
+
+    /// Host ports already owned by managed service containers that will be
+    /// reused when this environment is created.
+    fn reusable_host_ports(&self, _environment: &str) -> Result<Vec<u16>> {
+        Ok(Vec::new())
+    }
 
     /// Check if this provider supports multiple instances
     fn supports_multi_instance(&self) -> bool {

@@ -138,7 +138,27 @@ ENV PATH="/home/${USER_NAME}/.cargo/bin:${PATH}"
 ENV CARGO_HOME="/home/${USER_NAME}/.cargo"
 ENV RUSTUP_HOME="/home/${USER_NAME}/.rustup"
 
+# Vibe-owned AI CLIs are part of the immutable base. Project package
+# infrastructure remains responsible only for explicitly managed tools such as
+# agent-skills.
+USER ${USER_NAME}
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+RUN export HOME="/home/${USER_NAME}" && \
+    export PATH="$HOME/.local/bin:$PATH" && \
+    curl -fsSL https://antigravity.google/cli/install.sh | bash && \
+    curl -fsSL https://claude.ai/install.sh | bash -s -- stable && \
+    curl -fsSL https://chatgpt.com/codex/install.sh | sh && \
+    command -v agy >/dev/null && \
+    command -v claude >/dev/null && \
+    command -v codex >/dev/null
+
 USER root
+RUN install -d -m 0755 /usr/local/lib/vm-ai-tools && \
+    install -m 0755 "$(readlink -f /home/${USER_NAME}/.local/bin/codex)" \
+        /usr/local/lib/vm-ai-tools/codex && \
+    ln -sfn /usr/local/lib/vm-ai-tools/codex /usr/local/bin/codex && \
+    /usr/local/bin/codex --version
+
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update && \

@@ -119,6 +119,24 @@ mod tests {
     fn compose_keeps_private_data_in_named_volumes() {
         let definition: serde_yaml_ng::Value = serde_yaml_ng::from_str(COMPOSE_YAML).unwrap();
         assert!(definition.get("services").is_some());
+        let gateway_networks = definition["services"]["gateway"]["networks"]
+            .as_sequence()
+            .unwrap();
+        assert!(gateway_networks.iter().any(|network| network == "packages"));
+        assert!(gateway_networks
+            .iter()
+            .any(|network| network == "controller"));
+        assert!(!definition["services"]["registry"]["networks"]
+            .as_sequence()
+            .unwrap()
+            .iter()
+            .any(|network| network == "controller"));
+        assert!(definition["networks"]["packages"]["internal"]
+            .as_bool()
+            .unwrap());
+        assert!(definition["networks"]["controller"]
+            .get("internal")
+            .is_none());
         assert!(COMPOSE_YAML.contains("registry-metadata:/data"));
         assert!(COMPOSE_YAML.contains("registry-npm-artifacts:/data/npm/tarballs"));
         assert!(COMPOSE_YAML.contains("registry-cargo-artifacts:/data/cargo/crates"));
@@ -134,7 +152,11 @@ mod tests {
         assert!(COMPOSE_YAML.contains("package-catalog:/data/catalog"));
         assert!(COMPOSE_YAML.contains("infrastructure-backups:/backups"));
         assert!(COMPOSE_YAML.contains("registry-tool-artifacts:/volumes/tools"));
+        assert!(COMPOSE_YAML.contains("volume-init:"));
+        assert!(COMPOSE_YAML.contains("cap_add: [\"CHOWN\"]"));
+        assert!(COMPOSE_YAML.contains("condition: service_completed_successfully"));
         assert!(COMPOSE_YAML.contains("work_controller_token"));
+        assert!(COMPOSE_YAML.contains("publish_token:\n    file: ./publish-token"));
         assert!(COMPOSE_YAML.contains("work_release_token"));
         assert!(COMPOSE_YAML.contains("work_rollout_token"));
         assert!(COMPOSE_YAML.contains("agent-temporary-data:/data/agents:ro"));
@@ -142,6 +164,8 @@ mod tests {
             COMPOSE_YAML.contains("entrypoint: [\"pkg-release\"]")
                 || COMPOSE_YAML.contains("exec pkg-release")
         );
+        assert!(COMPOSE_YAML.contains("tool-releaser:"));
+        assert!(COMPOSE_YAML.contains("exec pkg-tool-release"));
         assert!(COMPOSE_YAML.contains("profiles: [jobs]"));
         assert!(COMPOSE_YAML.contains("profiles: [maintenance]"));
         assert!(GATEWAY_CONFIG.contains("reverse_proxy work:3091"));

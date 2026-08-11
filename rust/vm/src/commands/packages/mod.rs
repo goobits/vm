@@ -24,6 +24,17 @@ use appliance::configured_client;
 use files::ApplianceFiles;
 pub(super) use runtime::apply_client_environment;
 
+pub(in crate::commands) fn publish_tool(name: &str) -> VmResult<()> {
+    let files = ApplianceFiles::discover()?;
+    let _operation_lock = files.acquire_operation_lock()?;
+    let (state, _) = appliance::configured_state_and_client(&files)?;
+    appliance::launch_job(&files, &state, appliance::PackageJob::ToolRelease(name))
+}
+
+pub(in crate::commands) fn git_auth_configured() -> VmResult<bool> {
+    ApplianceFiles::discover()?.has_git_token()
+}
+
 pub(super) async fn handle(
     command: PackagesSubcommand,
     config_path: Option<PathBuf>,
@@ -141,10 +152,11 @@ pub(super) async fn handle(
         }
         PackagesSubcommand::Auth {
             token_file,
+            github,
             ci_token_file,
             clear,
             clear_ci,
-        } => catalog::configure_auth(&files, token_file, ci_token_file, clear, clear_ci),
+        } => catalog::configure_auth(&files, token_file, github, ci_token_file, clear, clear_ci),
     }
 }
 

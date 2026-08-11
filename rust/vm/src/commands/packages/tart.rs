@@ -20,8 +20,9 @@ const READY_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Debug, Deserialize)]
 struct TartEntry {
+    #[serde(alias = "Name")]
     name: String,
-    #[serde(default)]
+    #[serde(default, alias = "State")]
     state: String,
 }
 
@@ -53,7 +54,7 @@ impl PackageTart {
             self.command.command().args(["list", "--format", "json"]),
             "list Tart virtual machines",
         )?;
-        let entries: Vec<TartEntry> = serde_json::from_slice(&output.stdout)
+        let entries = parse_inventory(&output.stdout)
             .map_err(|error| VmError::general(error, "Failed to parse Tart VM inventory"))?;
         Ok(entries.into_iter().find(|entry| entry.name == name))
     }
@@ -84,6 +85,10 @@ impl PackageTart {
         }
         Ok(format_gateway_url(&address, port))
     }
+}
+
+fn parse_inventory(output: &[u8]) -> serde_json::Result<Vec<TartEntry>> {
+    serde_json::from_slice(output)
 }
 
 pub(super) fn storage_home(files: &ApplianceFiles) -> VmResult<Option<String>> {
@@ -383,7 +388,7 @@ fn sync_controller_files(tart: &PackageTart, files: &ApplianceFiles) -> VmResult
 
 #[cfg(test)]
 mod tests {
-    use super::format_gateway_url;
+    use super::{format_gateway_url, parse_inventory};
 
     #[test]
     fn gateway_url_supports_ipv4_and_ipv6() {
@@ -392,5 +397,21 @@ mod tests {
             "http://192.0.2.4:3080"
         );
         assert_eq!(format_gateway_url("fd00::4", 3080), "http://[fd00::4]:3080");
+    }
+
+    #[test]
+    fn inventory_accepts_tart_and_legacy_field_casing() {
+        let entries = parse_inventory(
+            br#"[
+                {"Name":"vm-packages","State":"running"},
+                {"name":"legacy","state":"stopped"}
+            ]"#,
+        )
+        .unwrap();
+
+        assert_eq!(entries[0].name, "vm-packages");
+        assert_eq!(entries[0].state, "running");
+        assert_eq!(entries[1].name, "legacy");
+        assert_eq!(entries[1].state, "stopped");
     }
 }

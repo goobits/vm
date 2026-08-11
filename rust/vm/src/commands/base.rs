@@ -12,6 +12,7 @@ mod tart_install;
 
 const DOCKER_BASE_NAME: &str = "@vibe-box";
 const TART_BASE_BUILDER: &str = include_str!("../../scripts/build-vibe-tart-base.sh");
+const VIBE_AI_TOOLS_INSTALLER: &str = include_str!("../../scripts/install-vibe-ai-tools.sh");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct TartVibeBase {
@@ -34,7 +35,7 @@ pub async fn handle_base(command: BaseSubcommand) -> VmResult<()> {
             preset,
             provider,
             guest_os,
-        } => handle_build(&preset, &provider, &guest_os),
+        } => handle_build(&preset, &provider, &guest_os).await,
         BaseSubcommand::Validate {
             preset,
             provider,
@@ -44,24 +45,35 @@ pub async fn handle_base(command: BaseSubcommand) -> VmResult<()> {
     }
 }
 
-fn handle_build(preset: &str, provider: &str, guest_os: &str) -> VmResult<()> {
+async fn handle_build(preset: &str, provider: &str, guest_os: &str) -> VmResult<()> {
     ensure_supported_preset(preset)?;
 
     match provider {
         "docker" => {
-            let current_exe = std::env::current_exe()
-                .map_err(|e| VmError::general(e, "Failed to locate current vm executable"))?;
             let dockerfile = resolve_tool_path("Dockerfile.vibe");
-            let mut command = Command::new(current_exe);
-            command.args([
-                "snapshot",
-                "create",
+            let build_context = dockerfile.parent().ok_or_else(|| {
+                VmError::validation(
+                    "Vibe Dockerfile has no build context",
+                    Some(dockerfile.display().to_string()),
+                )
+            })?;
+            let config = AppConfig {
+                global: Default::default(),
+                vm: VmConfig::default(),
+            };
+            vm_snapshot::create::handle_create(
+                &config,
+                "docker",
                 DOCKER_BASE_NAME,
-                "--from-dockerfile",
-                &dockerfile.to_string_lossy(),
-                "--force",
-            ]);
-            run_command(command, "build Docker vibe base")?;
+                Some("Vibe Docker base"),
+                false,
+                None,
+                Some(&dockerfile),
+                Some(build_context),
+                &[],
+                true,
+            )
+            .await?;
             vm_println!("Built Docker vibe base: {}", DOCKER_BASE_NAME);
         }
         "tart" => {
@@ -276,7 +288,7 @@ fn run_command(mut command: Command, context: &str) -> VmResult<()> {
 mod tests {
     use super::{
         configured_tart_vibe_base, resolve_tart_guest_os, tart_base_local_name, tart_base_name,
-        TartVibeBase, TART_BASE_BUILDER,
+        TartVibeBase, TART_BASE_BUILDER, VIBE_AI_TOOLS_INSTALLER,
     };
     use std::ffi::OsStr;
     use vm_config::config::{BoxSpec, TartConfig, VmConfig, VmSettings};
@@ -312,6 +324,27 @@ mod tests {
         assert!(TART_BASE_BUILDER.contains("tart clone"));
         assert!(TART_BASE_BUILDER.contains("--guest-os"));
         assert!(!TART_BASE_BUILDER.contains("tart delete \"$BASE_NAME\""));
+    }
+
+    #[test]
+    fn vibe_bases_own_standard_ai_clis() {
+        const DOCKERFILE: &str = include_str!("../../../../Dockerfile.vibe");
+        const VIBE_PRESET: &str = include_str!("../../../../plugins/vibe-dev/preset.yaml");
+
+        for installer in [
+            "https://antigravity.google/cli/install.sh",
+            "https://claude.ai/install.sh",
+            "https://chatgpt.com/codex/install.sh",
+        ] {
+            assert!(VIBE_AI_TOOLS_INSTALLER.contains(installer));
+            assert!(DOCKERFILE.contains(installer));
+        }
+        assert!(TART_BASE_BUILDER.contains("VIBE_AI_TOOLS_INSTALLER"));
+        assert!(TART_BASE_BUILDER.contains("antigravity claude codex"));
+        assert!(VIBE_PRESET.contains("agent-skills: {}"));
+        for managed_entry in ["antigravity: {}", "claude: {}", "codex: {}"] {
+            assert!(!VIBE_PRESET.contains(managed_entry));
+        }
     }
 
     #[test]

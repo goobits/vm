@@ -690,6 +690,12 @@ mod tests {
                 .and_then(serde_yaml_ng::Value::as_str),
             Some("sketch-api")
         );
+        assert_eq!(
+            labels
+                .get("com.vm.role")
+                .and_then(serde_yaml_ng::Value::as_str),
+            Some("environment")
+        );
         assert!(!labels.contains_key("com.vm.temporary"));
 
         let temp_state = TempVmState::new(
