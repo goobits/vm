@@ -1,5 +1,5 @@
 ---
-Status: Static implementation complete; live acceptance pending
+Status: Static implementation complete; live acceptance in progress
 Date: 2026-08-11
 Depends: docs/user-guide/package-infrastructure.md, docs/development/architecture.md
 ---
@@ -132,6 +132,12 @@ Latest result on 2026-08-11: all three commands passed. The workspace check
 covered every crate with all features enabled and two compile jobs.
 
 ## Post-Recreation Acceptance
+
+The first Docker shell smoke test exposed and fixed an uninitialized zsh prompt
+hook and a silent managed-tool activation failure. Shell shortcuts now remain
+available while binaries are absent and point to `vm tools update`; the host
+correctly reports that the package appliance must be started before the first
+catalog refresh. Package appliance acceptance remains below.
 
 These are the only remaining tasks:
 

@@ -206,6 +206,38 @@ fn test_rendered_zshrc_prompt_survives_bashrc_prompt() {
 }
 
 #[test]
+fn test_yocodex_explains_missing_managed_tool() {
+    if std::process::Command::new("zsh")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        return;
+    }
+
+    let home = tempfile::tempdir().expect("temp home should be created");
+    let zshrc = home.path().join(".zshrc");
+    std::fs::write(&zshrc, render_docker_zshrc_for_test()).expect("zshrc should be written");
+    let output = std::process::Command::new("zsh")
+        .args([
+            "-dfc",
+            "source \"$1\"; PATH=/usr/bin:/bin; yocodex",
+            "vm-zshrc-test",
+        ])
+        .arg(&zshrc)
+        .env("HOME", home.path())
+        .env("USER", "developer")
+        .env("LOGNAME", "developer")
+        .output()
+        .expect("zsh should run");
+
+    assert_eq!(output.status.code(), Some(127));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Codex is not active"), "got: {stderr}");
+    assert!(stderr.contains("vm tools update"), "got: {stderr}");
+}
+
+#[test]
 fn test_rendered_docker_zshrc_targets_workspace() {
     let rendered = render_docker_zshrc_for_test();
 

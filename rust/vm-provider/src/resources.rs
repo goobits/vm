@@ -118,13 +118,16 @@ mod tests {
     }
 
     #[test]
-    fn managed_tool_path_precedes_shell_wrapper_detection() {
+    fn managed_tool_wrappers_are_always_available() {
         let path = ZSHRC_TEMPLATE
             .find("export PATH=\"$HOME/.local/bin:$PATH\"")
             .unwrap();
 
-        assert!(path < ZSHRC_TEMPLATE.find("if command -v claude").unwrap());
-        assert!(path < ZSHRC_TEMPLATE.find("if command -v codex").unwrap());
+        assert!(path < ZSHRC_TEMPLATE.find("yoclaude()").unwrap());
+        assert!(path < ZSHRC_TEMPLATE.find("yocodex()").unwrap());
+        assert_eq!(ZSHRC_TEMPLATE.matches("yoclaude()").count(), 1);
+        assert_eq!(ZSHRC_TEMPLATE.matches("yocodex()").count(), 1);
+        assert!(ZSHRC_TEMPLATE.contains("Run 'vm tools update' on the host"));
         assert_eq!(
             ZSHRC_TEMPLATE
                 .matches("export PATH=\"$HOME/.local/bin:$PATH\"")

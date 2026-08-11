@@ -188,18 +188,25 @@ vm_repair_codex_state() {
   [ -f "$HOME/.codex/config.toml" ] && chmod 600 "$HOME/.codex/config.toml" 2>/dev/null || true
 }
 
-if command -v claude >/dev/null 2>&1; then
-  yoclaude() {
-    vm_repair_claude_state
-    claude --dangerously-skip-permissions "$@"
-  }
-fi
-if command -v codex >/dev/null 2>&1; then
-  yocodex() {
-    vm_repair_codex_state
-    CODEX_HOME="$HOME/.codex" codex --dangerously-bypass-approvals-and-sandbox "$@"
-  }
-fi
+yoclaude() {
+  if ! command -v claude >/dev/null 2>&1; then
+    echo "ERROR: Claude is not active in this environment." >&2
+    echo "Hint: Run 'vm tools update' on the host, then retry." >&2
+    return 127
+  fi
+  vm_repair_claude_state
+  claude --dangerously-skip-permissions "$@"
+}
+
+yocodex() {
+  if ! command -v codex >/dev/null 2>&1; then
+    echo "ERROR: Codex is not active in this environment." >&2
+    echo "Hint: Run 'vm tools update' on the host, then retry." >&2
+    return 127
+  fi
+  vm_repair_codex_state
+  CODEX_HOME="$HOME/.codex" codex --dangerously-bypass-approvals-and-sandbox "$@"
+}
 
 # ZSH Syntax Highlighting
 if [[ -r /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]]; then
