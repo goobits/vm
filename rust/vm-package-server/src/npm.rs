@@ -150,9 +150,10 @@ pub async fn package_metadata(
         Ok(upstream_metadata) => {
             info!(package = %package, "Found package on upstream NPM, updating URLs and returning");
             // Update tarball URLs to point to our server for transparent proxying
-            let updated_metadata = state
-                .upstream_client
-                .update_npm_tarball_urls(upstream_metadata, &host);
+            let updated_metadata =
+                state
+                    .upstream_client
+                    .update_npm_tarball_urls(upstream_metadata, &host, &package);
             Ok(Json(updated_metadata))
         }
         Err(_) => {

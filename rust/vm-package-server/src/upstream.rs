@@ -421,11 +421,20 @@ impl UpstreamClient {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let client = UpstreamClient::new(UpstreamConfig::default())?;
     /// let mut metadata = client.fetch_npm_metadata("express").await?;
-    /// metadata = client.update_npm_tarball_urls(metadata, "http://localhost:3080");
+    /// metadata = client.update_npm_tarball_urls(
+    ///     metadata,
+    ///     "http://localhost:3080",
+    ///     "express",
+    /// );
     /// # Ok(())
     /// # }
     /// ```
-    pub fn update_npm_tarball_urls(&self, mut metadata: Value, server_addr: &str) -> Value {
+    pub fn update_npm_tarball_urls(
+        &self,
+        mut metadata: Value,
+        server_addr: &str,
+        package: &str,
+    ) -> Value {
         if let Some(versions) = metadata["versions"].as_object_mut() {
             for version_data in versions.values_mut() {
                 if let Some(dist) = version_data.get_mut("dist").and_then(|d| d.as_object_mut()) {
@@ -436,8 +445,14 @@ impl UpstreamClient {
                                 .path_segments()
                                 .and_then(|mut segments| segments.next_back())
                             {
-                                let new_tarball_url = format!("{server_addr}/npm/-/{filename}");
-                                dist.insert("tarball".to_string(), Value::String(new_tarball_url));
+                                if let Some(new_tarball_url) =
+                                    npm_proxy_tarball_url(server_addr, package, filename)
+                                {
+                                    dist.insert(
+                                        "tarball".to_string(),
+                                        Value::String(new_tarball_url),
+                                    );
+                                }
                             }
                         }
                     }
@@ -445,5 +460,68 @@ impl UpstreamClient {
             }
         }
         metadata
+    }
+}
+
+fn npm_proxy_tarball_url(server_addr: &str, package: &str, filename: &str) -> Option<String> {
+    let mut url = Url::parse(server_addr).ok()?;
+    let mut segments = url.path_segments_mut().ok()?;
+    segments.pop_if_empty();
+    segments.extend(["npm", package, "-", filename]);
+    drop(segments);
+    Some(url.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::UpstreamClient;
+    use serde_json::json;
+
+    #[test]
+    fn npm_metadata_points_tarballs_at_the_package_route() {
+        let metadata = json!({
+            "versions": {
+                "7.0.0": {
+                    "dist": {
+                        "tarball": "https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz"
+                    }
+                }
+            }
+        });
+
+        let updated = UpstreamClient::disabled().update_npm_tarball_urls(
+            metadata,
+            "http://packages.internal:3080",
+            "is-number",
+        );
+
+        assert_eq!(
+            updated["versions"]["7.0.0"]["dist"]["tarball"],
+            "http://packages.internal:3080/npm/is-number/-/is-number-7.0.0.tgz"
+        );
+    }
+
+    #[test]
+    fn npm_metadata_encodes_scoped_packages_as_one_route_segment() {
+        let metadata = json!({
+            "versions": {
+                "1.0.0": {
+                    "dist": {
+                        "tarball": "https://registry.npmjs.org/@goobits/auth/-/auth-1.0.0.tgz"
+                    }
+                }
+            }
+        });
+
+        let updated = UpstreamClient::disabled().update_npm_tarball_urls(
+            metadata,
+            "http://packages.internal:3080",
+            "@goobits/auth",
+        );
+
+        assert_eq!(
+            updated["versions"]["1.0.0"]["dist"]["tarball"],
+            "http://packages.internal:3080/npm/@goobits%2Fauth/-/auth-1.0.0.tgz"
+        );
     }
 }
