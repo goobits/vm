@@ -73,6 +73,7 @@ pub enum ErrorCode {
     InternalError,   // For server-side errors
     AuthError,       // For authentication issues
     Conflict,        // For immutable release conflicts
+    Unavailable,     // For temporarily unavailable infrastructure
 }
 
 impl ErrorCode {
@@ -84,6 +85,7 @@ impl ErrorCode {
             ErrorCode::InternalError => "internal_error",
             ErrorCode::AuthError => "auth_error",
             ErrorCode::Conflict => "conflict",
+            ErrorCode::Unavailable => "unavailable",
         }
     }
 
@@ -95,6 +97,7 @@ impl ErrorCode {
             ErrorCode::InternalError => StatusCode::INTERNAL_SERVER_ERROR,
             ErrorCode::AuthError => StatusCode::UNAUTHORIZED,
             ErrorCode::Conflict => StatusCode::CONFLICT,
+            ErrorCode::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
         }
     }
 }
@@ -135,6 +138,9 @@ pub enum AppError {
     #[error("Conflict: {0}")]
     Conflict(String),
 
+    #[error("Unavailable: {0}")]
+    Unavailable(String),
+
     #[error("Not implemented: {0}")]
     NotImplemented(String),
 
@@ -156,6 +162,7 @@ impl AppError {
             AppError::InternalError(_) => ErrorCode::InternalError,
             AppError::Unauthorized(_) => ErrorCode::AuthError,
             AppError::Conflict(_) => ErrorCode::Conflict,
+            AppError::Unavailable(_) => ErrorCode::Unavailable,
             AppError::NotImplemented(_) => ErrorCode::InternalError,
             AppError::Io(_) | AppError::Anyhow(_) => ErrorCode::InternalError,
         }

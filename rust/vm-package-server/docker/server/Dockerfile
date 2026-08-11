@@ -24,7 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     install -d -o packages -g packages \
       /data/npm /data/cargo /data/pypi /data/cache \
       /data/state /data/receipts /data/logs /data/agents \
-      /data/rollouts /data/sources
+      /data/rollouts /data/sources /data/catalog
 
 COPY --from=builder /usr/local/bin/pkg-server /usr/local/bin/pkg-server
 COPY --from=builder /usr/local/bin/pkg-work /usr/local/bin/pkg-work

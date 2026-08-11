@@ -15,6 +15,7 @@ pub mod npm;
 pub mod package_utils;
 pub mod pypi;
 pub mod pypi_utils;
+pub mod resolver;
 pub mod server;
 pub mod state;
 pub mod storage;

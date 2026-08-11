@@ -13,6 +13,7 @@ mod digest;
 mod ecosystem;
 mod environment;
 mod release;
+mod resolver;
 mod submission;
 mod tools;
 mod validation;
@@ -35,6 +36,10 @@ pub use environment::{ClientEnvironment, RegistryEndpoints};
 pub use release::{
     BeginReleaseRequest, CompleteReleaseRequest, PublicationRecord, PublicationRequest,
     ReleaseRecord,
+};
+pub use resolver::{
+    InternalPackageCatalog, OverrideAvailability, PackageIdentity, PackageResolver,
+    ResolutionAvailability, ResolutionError, ResolutionSource,
 };
 pub use submission::{
     CheckOutcome, IntegrationRecord, IntegrationRequest, IntegrationReview, PublicApiDiff,

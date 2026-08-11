@@ -330,6 +330,7 @@ mod tests {
             server_addr: "http://localhost:3080".into(),
             upstream_client: Arc::new(UpstreamClient::disabled()),
             config: Arc::new(config),
+            resolver: Arc::new(crate::resolver::ResolverService::standalone()),
         })
     }
 

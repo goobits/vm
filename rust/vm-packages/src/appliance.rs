@@ -127,6 +127,8 @@ mod tests {
         assert!(COMPOSE_YAML.contains("agent-temporary-data:/data/agents"));
         assert!(COMPOSE_YAML.contains("rollout-temporary-data:/data/rollouts"));
         assert!(COMPOSE_YAML.contains("source-mirrors:/data/sources"));
+        assert!(COMPOSE_YAML.contains("package-catalog:/catalog:ro"));
+        assert!(COMPOSE_YAML.contains("package-catalog:/data/catalog"));
         assert!(COMPOSE_YAML.contains("infrastructure-backups:/backups"));
         assert!(COMPOSE_YAML.contains("registry-tool-artifacts:/volumes/tools"));
         assert!(COMPOSE_YAML.contains("work_controller_token"));

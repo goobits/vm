@@ -171,10 +171,14 @@ pub async fn download_crate(
     let local_path = state.data_dir.join("cargo/crates").join(&filename);
     let cache_path = state.data_dir.join("cache/cargo/crates").join(&filename);
     let upstream = Arc::clone(&state.upstream_client);
+    let resolver = Arc::clone(&state.resolver);
     let upstream_crate = crate_name.clone();
     let upstream_version = version.clone();
 
     let data = storage::read_local_or_cache(local_path, cache_path, move || async move {
+        resolver
+            .require_public_upstream(vm_packages::PackageEcosystem::Cargo, &upstream_crate)
+            .await?;
         upstream
             .stream_cargo_crate(&upstream_crate, &upstream_version)
             .await

@@ -137,6 +137,10 @@ pub async fn package_metadata(
     }
 
     // No local metadata found, try upstream NPM
+    state
+        .resolver
+        .require_public_upstream(vm_packages::PackageEcosystem::Npm, &package)
+        .await?;
     debug!(package = %package, "No local metadata found, checking upstream NPM");
     match state.upstream_client.fetch_npm_metadata(&package).await {
         Ok(upstream_metadata) => {
@@ -203,8 +207,13 @@ pub async fn download_tarball(
         .join(&filename);
     let tarball_url = format!("/{package}/-/{filename}");
     let upstream = Arc::clone(&state.upstream_client);
+    let resolver = Arc::clone(&state.resolver);
+    let resolved_package = package.clone();
 
     let data = storage::read_local_or_cache(local_path, cache_path, move || async move {
+        resolver
+            .require_public_upstream(vm_packages::PackageEcosystem::Npm, &resolved_package)
+            .await?;
         upstream
             .stream_npm_tarball(&tarball_url)
             .await
@@ -435,6 +444,7 @@ mod tests {
             server_addr: "http://localhost:8080".to_string(),
             upstream_client: Arc::new(UpstreamClient::disabled()),
             config,
+            resolver: Arc::new(crate::resolver::ResolverService::standalone()),
         });
 
         (state, temp_dir)

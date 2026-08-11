@@ -25,6 +25,7 @@ use crate::{
     cargo,
     config::Config,
     npm, pypi,
+    resolver::ResolverService,
     state::AppState,
     upstream::{UpstreamClient, UpstreamConfig},
 };
@@ -101,6 +102,7 @@ async fn run_server_internal(
         server_addr,
         upstream_client,
         config,
+        resolver: Arc::new(ResolverService::from_environment()),
     };
 
     let app = app_router(state);
@@ -253,6 +255,7 @@ mod tests {
             server_addr: "http://127.0.0.1:3080".into(),
             upstream_client: Arc::new(UpstreamClient::disabled()),
             config,
+            resolver: Arc::new(ResolverService::standalone()),
         };
         let server = TestServer::new(app_router(state));
 

@@ -27,6 +27,7 @@ mod cargo_tests {
             server_addr: "http://localhost:8080".to_string(),
             upstream_client: Arc::new(UpstreamClient::disabled()),
             config,
+            resolver: Arc::new(crate::resolver::ResolverService::standalone()),
         });
 
         (state, temp_dir)

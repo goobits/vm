@@ -134,6 +134,10 @@ pub async fn package_index(
 
     // If no local files found, try upstream PyPI
     if files.is_empty() {
+        state
+            .resolver
+            .require_public_upstream(vm_packages::PackageEcosystem::Python, &normalized_package)
+            .await?;
         debug!(package = %package, "No local files found, checking upstream PyPI");
         match state
             .upstream_client
@@ -396,6 +400,7 @@ mod tests {
             server_addr: "http://127.0.0.1:3080".to_string(),
             upstream_client: Arc::new(UpstreamClient::disabled()),
             config,
+            resolver: Arc::new(crate::resolver::ResolverService::standalone()),
         });
 
         (state, temp_dir)

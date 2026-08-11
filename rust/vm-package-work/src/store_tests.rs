@@ -157,6 +157,14 @@ async fn catalog_retries_are_exact_and_checkout_archives_are_consumer_scoped() {
         })
         .await
         .is_err());
+    let catalog: vm_packages::InternalPackageCatalog = serde_json::from_slice(
+        &tokio::fs::read(directory.path().join("catalog/packages.json"))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(catalog
+        .contains(&vm_packages::PackageIdentity::new(PackageEcosystem::Cargo, "auth").unwrap()));
 
     let checkout = store
         .create_checkout(request("scoped", "agent-1"))

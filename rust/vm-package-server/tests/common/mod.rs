@@ -55,6 +55,7 @@ pub async fn create_test_setup() -> Result<TestSetup> {
         server_addr: "http://localhost:8080".to_string(),
         upstream_client,
         config,
+        resolver: Arc::new(vm_package_server::resolver::ResolverService::standalone()),
     });
 
     // Find available port for testing

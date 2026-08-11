@@ -6,9 +6,10 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use vm_packages::{
     sha256_hex, validate_label, CheckoutLease, CheckoutRecord, CleanupRequest, ConsumerRecord,
-    CreateCheckout, LeaseRecord, LeaseRequest, PackageDefinition, ReceiptKind, RegisterPackage,
-    ReleaseRecord, RolloutRecord, SubmissionRecord, ToolArtifactRecord, ToolDefinition,
-    ToolPublicationReceipt, TransitionRequest, WorkflowReceipt, WorkflowState, WorkflowTransition,
+    CreateCheckout, InternalPackageCatalog, LeaseRecord, LeaseRequest, PackageDefinition,
+    ReceiptKind, RegisterPackage, ReleaseRecord, RolloutRecord, SubmissionRecord,
+    ToolArtifactRecord, ToolDefinition, ToolPublicationReceipt, TransitionRequest, WorkflowReceipt,
+    WorkflowState, WorkflowTransition,
 };
 
 use crate::submission::transition_records;
@@ -26,6 +27,7 @@ pub(crate) use support::{
 };
 
 const STATE_FILE: &str = "state/workflows.json";
+const CATALOG_FILE: &str = "catalog/packages.json";
 const DEFAULT_LEASE_SECONDS: i64 = 8 * 60 * 60;
 const MAX_LEASE_SECONDS: i64 = 24 * 60 * 60;
 
@@ -74,6 +76,7 @@ impl Store {
         let root = root.into();
         tokio::fs::create_dir_all(root.join("state")).await?;
         tokio::fs::create_dir_all(root.join("receipts")).await?;
+        tokio::fs::create_dir_all(root.join("catalog")).await?;
         let path = root.join(STATE_FILE);
         let database = match tokio::fs::read(&path).await {
             Ok(content) => serde_json::from_slice(&content)?,
@@ -86,6 +89,7 @@ impl Store {
         };
         store.expire_leases().await?;
         store.materialize_receipts().await?;
+        store.materialize_catalog().await?;
         Ok(store)
     }
 
@@ -197,13 +201,14 @@ impl Store {
     ) -> WorkResult<PackageDefinition> {
         request.validate()?;
         let mut current = self.database.lock().await;
-        if let Some(existing) = current.packages.get(&request.name) {
+        if let Some(existing) = current.packages.get(&request.name).cloned() {
             if existing.ecosystem == request.ecosystem
                 && existing.repository == request.repository
                 && existing.default_branch == request.default_branch
                 && existing.ci_registry == request.ci_registry
             {
-                return Ok(existing.clone());
+                self.materialize_catalog_locked(&current).await?;
+                return Ok(existing);
             }
             return Err(WorkError::Conflict(format!(
                 "package '{}' is already registered with different settings",
@@ -222,6 +227,7 @@ impl Store {
         next.packages
             .insert(definition.name.clone(), definition.clone());
         self.commit(&mut current, next).await?;
+        self.materialize_catalog_locked(&current).await?;
         Ok(definition)
     }
 
@@ -681,6 +687,16 @@ impl Store {
     async fn materialize_receipts(&self) -> WorkResult<()> {
         let database = self.database.lock().await;
         self.materialize_receipts_locked(&database).await
+    }
+
+    async fn materialize_catalog(&self) -> WorkResult<()> {
+        let database = self.database.lock().await;
+        self.materialize_catalog_locked(&database).await
+    }
+
+    async fn materialize_catalog_locked(&self, database: &Database) -> WorkResult<()> {
+        let catalog = InternalPackageCatalog::from_definitions(database.packages.values())?;
+        atomic_write(self.root.join(CATALOG_FILE), pretty_json(&catalog)?).await
     }
 
     async fn materialize_receipts_locked(&self, database: &Database) -> WorkResult<()> {

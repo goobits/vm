@@ -141,6 +141,10 @@ pub async fn index_file(
         }
         Err(AppError::NotFound(_)) => {
             // Index not found locally, try upstream crates.io
+            state
+                .resolver
+                .require_public_upstream(vm_packages::PackageEcosystem::Cargo, crate_name)
+                .await?;
             debug!(crate_name = %crate_name, "Index not found locally, checking upstream crates.io");
             match state
                 .upstream_client
