@@ -251,6 +251,11 @@ impl Store {
             .collect()
     }
 
+    pub async fn internal_catalog(&self) -> WorkResult<InternalPackageCatalog> {
+        let database = self.database.lock().await;
+        InternalPackageCatalog::from_definitions(database.packages.values()).map_err(Into::into)
+    }
+
     pub async fn record_source(
         &self,
         checkout_id: &str,

@@ -54,6 +54,7 @@ pub async fn create_test_setup() -> Result<TestSetup> {
         data_dir: data_dir.clone(),
         server_addr: "http://localhost:8080".to_string(),
         upstream_client,
+        internal_client: None,
         config,
         resolver: Arc::new(vm_package_server::resolver::ResolverService::standalone()),
     });

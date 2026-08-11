@@ -264,6 +264,41 @@ services:
       {% endfor -%}
     {%- endif %}
 
+  {% if package_edge %}
+  package-edge:
+    image: "{{ package_edge.image }}"
+    container_name: {{ project_name }}-package-edge
+    labels:
+      com.vm.managed: "true"
+      com.vm.project: "{{ base_project_name }}"
+      com.vm.instance: "{{ project_name }}"
+      com.vm.package-edge.revision: "{{ package_edge.revision }}"
+    environment:
+      PKG_SERVER_INTERNAL_GATEWAY: "{{ package_edge.internal_gateway }}"
+      PKG_SERVER_INTERNAL_TOKEN: "{{ package_edge.read_token }}"
+      PKG_SERVER_READ_TOKEN: "{{ package_edge.read_token }}"
+    volumes:
+      - type: volume
+        source: package_edge_cache
+        target: /data
+        volume:
+          nocopy: true
+    expose: ["3080"]
+    restart: unless-stopped
+    init: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp:rw,nosuid,size=64m"]
+    {% if config.networking and config.networking.networks and config.networking.networks | length > 0 -%}
+    networks:
+      {% for network in config.networking.networks -%}
+      {{ network }}:
+        aliases: [package-edge]
+      {% endfor -%}
+    {%- endif %}
+  {% endif %}
+
   {% if config.services.postgresql.enabled | default(value=false) %}
   postgres:
     image: postgres:15-alpine
@@ -297,6 +332,15 @@ services:
   {% endif %}
 
 volumes:
+  {% if package_edge %}
+  package_edge_cache:
+    name: {{ project_name }}_package_edge_cache
+    labels:
+      com.vm.managed: "true"
+      com.vm.project: "{{ base_project_name }}"
+      com.vm.instance: "{{ project_name }}"
+      com.vm.retention: "keep"
+  {% endif %}
   {% for volume in named_volumes %}
   {{ volume.alias }}:
     name: {{ volume.name }}

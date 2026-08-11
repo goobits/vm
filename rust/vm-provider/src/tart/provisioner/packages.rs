@@ -25,6 +25,13 @@ impl TartProvisioner {
             commands.push(("generic system packages", command));
         }
 
+        if let Some(command) = self.docker_install_command(config) {
+            commands.push(("Docker runtime", command));
+        }
+        if let Some(command) = Self::package_edge_command(config) {
+            commands.push(("package edge", command));
+        }
+
         if let Some(node) = project_plan.installs.node.as_ref() {
             commands.push(("Node.js toolchain", Self::node_toolchain_command(node)));
         }
@@ -54,10 +61,6 @@ npm install -g {}"#,
                 "Rust runtime and packages",
                 Self::rust_runtime_command(config),
             ));
-        }
-
-        if let Some(command) = self.docker_install_command(config) {
-            commands.push(("Docker runtime", command));
         }
 
         match runtime {
@@ -92,11 +95,12 @@ npm install -g {}"#,
     }
 
     fn docker_install_command(&self, config: &VmConfig) -> Option<String> {
-        if !config
-            .tart
-            .as_ref()
-            .and_then(|tart| tart.install_docker)
-            .unwrap_or(false)
+        if config.package_edge.is_none()
+            && !config
+                .tart
+                .as_ref()
+                .and_then(|tart| tart.install_docker)
+                .unwrap_or(false)
         {
             return None;
         }
@@ -166,6 +170,55 @@ elif command -v service >/dev/null 2>&1; then
 fi
 {restart}
 docker info >/dev/null 2>&1 || sudo docker info >/dev/null 2>&1"#
+        ))
+    }
+
+    fn package_edge_command(config: &VmConfig) -> Option<String> {
+        let edge = config.package_edge.as_ref()?;
+        let image = quote_posix_argument(&edge.image);
+        let gateway = quote_posix_argument(&format!(
+            "PKG_SERVER_INTERNAL_GATEWAY={}",
+            edge.internal_gateway
+        ));
+        let internal_token =
+            quote_posix_argument(&format!("PKG_SERVER_INTERNAL_TOKEN={}", edge.read_token));
+        let read_token =
+            quote_posix_argument(&format!("PKG_SERVER_READ_TOKEN={}", edge.read_token));
+        let revision = quote_posix_argument(&edge.revision);
+
+        Some(format!(
+            r#"set -e
+sudo install -d -m 0700 /etc/vm
+printf '%s\n' {gateway} {internal_token} {read_token} | sudo tee /etc/vm/package-edge.env >/dev/null
+sudo chmod 0600 /etc/vm/package-edge.env
+current="$(sudo docker inspect --format '{{{{ index .Config.Labels "com.vm.package-edge.revision" }}}}' vm-package-edge 2>/dev/null || true)"
+if [ "$current" != {revision} ]; then
+  sudo docker rm -f vm-package-edge >/dev/null 2>&1 || true
+  sudo docker run --detach \
+    --name vm-package-edge \
+    --restart unless-stopped \
+    --network host \
+    --read-only \
+    --tmpfs /tmp:rw,nosuid,size=64m \
+    --cap-drop ALL \
+    --security-opt no-new-privileges:true \
+    --label com.vm.managed=true \
+    --label com.vm.package-edge.revision={revision} \
+    --env-file /etc/vm/package-edge.env \
+    --volume vm-package-edge-cache:/data \
+    {image} >/dev/null
+else
+  sudo docker start vm-package-edge >/dev/null
+fi
+attempt=0
+until [ "$(sudo docker inspect --format '{{{{.State.Health.Status}}}}' vm-package-edge 2>/dev/null || true)" = healthy ]; do
+  attempt=$((attempt + 1))
+  if [ "$attempt" -ge 40 ]; then
+    sudo docker logs --tail 20 vm-package-edge >&2 || true
+    exit 1
+  fi
+  sleep 0.25
+done"#
         ))
     }
 
@@ -451,7 +504,7 @@ fi"#,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vm_config::config::TartConfig;
+    use vm_config::config::{PackageEdgeConfig, TartConfig};
 
     #[test]
     fn linux_docker_activates_the_managed_oci_mirror() {
@@ -482,5 +535,39 @@ mod tests {
             .status()
             .unwrap()
             .success());
+    }
+
+    #[test]
+    fn linux_package_edge_is_private_persistent_and_idempotent() {
+        let mut config = VmConfig {
+            os: Some("linux".to_string()),
+            package_edge: Some(PackageEdgeConfig {
+                image: "registry.example/edge:1".into(),
+                internal_gateway: "http://192.0.2.8:3080".into(),
+                client_gateway: "http://127.0.0.1:3080".into(),
+                read_token: "reader-token".into(),
+                revision: "abc123".into(),
+            }),
+            ..Default::default()
+        };
+        let command = TartProvisioner::package_edge_command(&config).unwrap();
+
+        assert!(command.contains("--network host"));
+        assert!(command.contains("--read-only"));
+        assert!(command.contains("--cap-drop ALL"));
+        assert!(command.contains("vm-package-edge-cache:/data"));
+        assert!(command.contains("chmod 0600 /etc/vm/package-edge.env"));
+        assert!(command.contains("com.vm.package-edge.revision="));
+        assert!(command.contains("abc123"));
+        assert!(!command.contains("PKG_SERVER_PUBLISH_TOKEN"));
+        #[cfg(unix)]
+        assert!(std::process::Command::new("/bin/bash")
+            .args(["-n", "-c", &command])
+            .status()
+            .unwrap()
+            .success());
+
+        config.package_edge = None;
+        assert!(TartProvisioner::package_edge_command(&config).is_none());
     }
 }

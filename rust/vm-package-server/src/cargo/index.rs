@@ -141,25 +141,53 @@ pub async fn index_file(
         }
         Err(AppError::NotFound(_)) => {
             // Index not found locally, try upstream crates.io
-            state
+            let source = state
                 .resolver
-                .require_public_upstream(vm_packages::PackageEcosystem::Cargo, crate_name)
+                .resolve_missing(
+                    vm_packages::PackageEcosystem::Cargo,
+                    crate_name,
+                    state.internal_client.is_some(),
+                )
                 .await?;
-            debug!(crate_name = %crate_name, "Index not found locally, checking upstream crates.io");
-            match state
-                .upstream_client
-                .fetch_cargo_index(crate_name, &path)
-                .await
-            {
-                Ok(upstream_content) => {
-                    info!(crate_name = %crate_name, "Found crate on upstream crates.io, returning index");
-                    Ok(upstream_content)
-                }
-                Err(e) => {
-                    debug!(crate_name = %crate_name, error = %e, "Crate not found on upstream crates.io either");
-                    Err(e)
-                }
-            }
+            debug!(crate_name = %crate_name, source = ?source, "Index not found locally, resolving Cargo source");
+            let cache_scope = match source {
+                vm_packages::ResolutionSource::InternalRegistry => "internal",
+                vm_packages::ResolutionSource::PublicUpstream => "public",
+                _ => unreachable!("local releases are checked before source resolution"),
+            };
+            let cache_path = state
+                .data_dir
+                .join("cache")
+                .join(cache_scope)
+                .join("cargo/index")
+                .join(&index_path_str);
+            let internal = state.internal_client.clone();
+            let upstream = Arc::clone(&state.upstream_client);
+            let resolved_path = path.clone();
+            let resolved_crate = crate_name.to_string();
+            let content = storage::read_refreshing_cache(
+                cache_path,
+                storage::METADATA_CACHE_TTL,
+                move || async move {
+                    let content = match source {
+                        vm_packages::ResolutionSource::InternalRegistry => {
+                            internal
+                                .expect("resolver only selects a configured internal registry")
+                                .cargo_index(&resolved_path)
+                                .await?
+                        }
+                        vm_packages::ResolutionSource::PublicUpstream => {
+                            upstream
+                                .fetch_cargo_index(&resolved_crate, &resolved_path)
+                                .await?
+                        }
+                        _ => unreachable!("local releases are checked before source resolution"),
+                    };
+                    Ok(content.into_bytes())
+                },
+            )
+            .await?;
+            String::from_utf8(content).map_err(|error| AppError::Utf8(error.utf8_error()))
         }
         Err(error) => Err(error),
     }

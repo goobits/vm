@@ -1,6 +1,6 @@
 //! Shared HTTP handler state.
 
-use crate::{config::Config, resolver::ResolverService, upstream::UpstreamClient};
+use crate::{config::Config, resolver::ResolverService, InternalRegistryClient, UpstreamClient};
 use axum::http::{header, uri::Authority, HeaderMap};
 use serde::Serialize;
 use std::{path::PathBuf, sync::Arc};
@@ -14,6 +14,8 @@ pub struct AppState {
     pub server_addr: String,
     /// Shared client for approved upstream registries.
     pub upstream_client: Arc<UpstreamClient>,
+    /// Optional authoritative registry used by a worker-local edge.
+    pub internal_client: Option<Arc<InternalRegistryClient>>,
     /// Authentication and server policy.
     pub config: Arc<Config>,
     /// Shared internal/external source-selection policy.

@@ -329,6 +329,7 @@ mod tests {
             data_dir: root.to_path_buf(),
             server_addr: "http://localhost:3080".into(),
             upstream_client: Arc::new(UpstreamClient::disabled()),
+            internal_client: None,
             config: Arc::new(config),
             resolver: Arc::new(crate::resolver::ResolverService::standalone()),
         })

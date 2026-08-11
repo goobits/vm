@@ -134,27 +134,67 @@ pub async fn package_index(
 
     // If no local files found, try upstream PyPI
     if files.is_empty() {
-        state
+        let source = state
             .resolver
-            .require_public_upstream(vm_packages::PackageEcosystem::Python, &normalized_package)
+            .resolve_missing(
+                vm_packages::PackageEcosystem::Python,
+                &normalized_package,
+                state.internal_client.is_some(),
+            )
             .await?;
-        debug!(package = %package, "No local files found, checking upstream PyPI");
-        match state
-            .upstream_client
-            .fetch_pypi_simple(&normalized_package)
-            .await
-        {
-            Ok(upstream_html) => {
-                info!(package = %package, "Found package on upstream PyPI, proxying response");
-                return Ok(Html(rewrite_upstream_links(
-                    upstream_html,
-                    &state.public_base_url(&headers),
-                )));
+        debug!(package = %package, source = ?source, "No local files found, resolving Python source");
+        let cache_scope = match source {
+            vm_packages::ResolutionSource::InternalRegistry => "internal",
+            vm_packages::ResolutionSource::PublicUpstream => "public",
+            _ => unreachable!("local releases are checked before source resolution"),
+        };
+        let cache_path = state
+            .data_dir
+            .join("cache")
+            .join(cache_scope)
+            .join("pypi/simple")
+            .join(format!("{normalized_package}.html"));
+        let internal = state.internal_client.clone();
+        let upstream = Arc::clone(&state.upstream_client);
+        let resolved_package = normalized_package.clone();
+        let html = storage::read_refreshing_cache(
+            cache_path,
+            storage::METADATA_CACHE_TTL,
+            move || async move {
+                let html = match source {
+                    vm_packages::ResolutionSource::InternalRegistry => {
+                        internal
+                            .expect("resolver only selects a configured internal registry")
+                            .pypi_index(&resolved_package)
+                            .await?
+                    }
+                    vm_packages::ResolutionSource::PublicUpstream => {
+                        upstream.fetch_pypi_simple(&resolved_package).await?
+                    }
+                    _ => unreachable!("local releases are checked before source resolution"),
+                };
+                Ok(html.into_bytes())
+            },
+        )
+        .await?;
+        let html = String::from_utf8(html).map_err(|error| AppError::Utf8(error.utf8_error()))?;
+        let html = match source {
+            vm_packages::ResolutionSource::InternalRegistry => rewrite_internal_links(
+                html,
+                state
+                    .internal_client
+                    .as_ref()
+                    .expect("resolver only selects a configured internal registry")
+                    .gateway(),
+                &state.public_base_url(&headers),
+            ),
+            vm_packages::ResolutionSource::PublicUpstream => {
+                rewrite_upstream_links(html, &state.public_base_url(&headers))
             }
-            Err(_) => {
-                debug!(package = %package, "Package not found on upstream PyPI either");
-            }
-        }
+            _ => unreachable!("local releases are checked before source resolution"),
+        };
+        info!(package = %package, source = ?source, "Resolved Python package index");
+        return Ok(Html(html));
     }
 
     let mut html = format!(
@@ -181,6 +221,14 @@ fn rewrite_upstream_links(html: String, public_base_url: &str) -> String {
         "https://files.pythonhosted.org/packages/",
         &format!("{public_base_url}/pypi/upstream/"),
     )
+}
+
+fn rewrite_internal_links(html: String, internal_gateway: &str, public_base_url: &str) -> String {
+    html.replace("../../packages/", "../../internal/packages/")
+        .replace(
+            &format!("{}/pypi/", internal_gateway.trim_end_matches('/')),
+            &format!("{public_base_url}/pypi/internal/"),
+        )
 }
 
 // Deprecated functions have been removed.
@@ -233,7 +281,7 @@ pub async fn download_upstream_file(
         .ok_or_else(|| AppError::BadRequest("PyPI artifact path has no filename".into()))?;
     validate_filename(filename)?;
 
-    let cache_path = state.data_dir.join("cache/pypi").join(&safe_path);
+    let cache_path = state.data_dir.join("cache/public/pypi").join(&safe_path);
     let upstream = Arc::clone(&state.upstream_client);
     let upstream_path = path.clone();
     let data = storage::read_through_cache(cache_path, move || async move {
@@ -244,6 +292,28 @@ pub async fn download_upstream_file(
     })
     .await?;
     info!(path = %path, size = data.len(), "Serving cached upstream PyPI artifact");
+    Ok(data)
+}
+
+/// Cache an immutable artifact fetched from the authoritative internal registry.
+pub async fn download_internal_file(
+    AxumPath(path): AxumPath<String>,
+    State(state): State<Arc<AppState>>,
+) -> AppResult<Vec<u8>> {
+    let safe_path = validation::validate_safe_path(&path)
+        .map_err(|error| AppError::BadRequest(format!("Invalid PyPI artifact path: {error}")))?;
+    let internal = state
+        .internal_client
+        .clone()
+        .ok_or_else(|| AppError::NotFound("internal package source is not configured".into()))?;
+    let cache_path = state.data_dir.join("cache/internal/pypi").join(&safe_path);
+    let data = storage::read_through_cache(cache_path, move || async move {
+        internal
+            .pypi_artifact(&path)
+            .await
+            .map(|bytes| bytes.to_vec())
+    })
+    .await?;
     Ok(data)
 }
 
@@ -399,6 +469,7 @@ mod tests {
             data_dir,
             server_addr: "http://127.0.0.1:3080".to_string(),
             upstream_client: Arc::new(UpstreamClient::disabled()),
+            internal_client: None,
             config,
             resolver: Arc::new(crate::resolver::ResolverService::standalone()),
         });

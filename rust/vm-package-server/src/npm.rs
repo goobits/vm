@@ -137,27 +137,56 @@ pub async fn package_metadata(
     }
 
     // No local metadata found, try upstream NPM
-    state
+    let source = state
         .resolver
-        .require_public_upstream(vm_packages::PackageEcosystem::Npm, &package)
+        .resolve_missing(
+            vm_packages::PackageEcosystem::Npm,
+            &package,
+            state.internal_client.is_some(),
+        )
         .await?;
-    debug!(package = %package, "No local metadata found, checking upstream NPM");
-    match state.upstream_client.fetch_npm_metadata(&package).await {
-        Ok(upstream_metadata) => {
-            info!(package = %package, "Found package on upstream NPM, updating URLs and returning");
-            // Update tarball URLs to point to our server for transparent proxying
-            let updated_metadata =
-                state
-                    .upstream_client
-                    .update_npm_tarball_urls(upstream_metadata, &host, &package);
-            Ok(Json(updated_metadata))
-        }
-        Err(_) => {
-            debug!(package = %package, "Package not found on upstream NPM either");
-            // Return 404 as per npm registry behavior
-            Err(AppError::NotFound(format!("Package not found: {package}")))
-        }
-    }
+    debug!(package = %package, source = ?source, "No local metadata found, resolving npm source");
+    let cache_scope = match source {
+        vm_packages::ResolutionSource::InternalRegistry => "internal",
+        vm_packages::ResolutionSource::PublicUpstream => "public",
+        _ => unreachable!("local releases are checked before source resolution"),
+    };
+    let cache_path = state
+        .data_dir
+        .join("cache")
+        .join(cache_scope)
+        .join("npm/metadata")
+        .join(format!("{}.json", sha256_hash(package.as_bytes())));
+    let upstream = Arc::clone(&state.upstream_client);
+    let internal = state.internal_client.clone();
+    let resolved_package = package.clone();
+    let metadata = storage::read_refreshing_cache(
+        cache_path,
+        storage::METADATA_CACHE_TTL,
+        move || async move {
+            let metadata = match source {
+                vm_packages::ResolutionSource::InternalRegistry => {
+                    internal
+                        .expect("resolver only selects a configured internal registry")
+                        .npm_metadata(&resolved_package)
+                        .await?
+                }
+                vm_packages::ResolutionSource::PublicUpstream => {
+                    upstream.fetch_npm_metadata(&resolved_package).await?
+                }
+                _ => unreachable!("local releases are checked before source resolution"),
+            };
+            serde_json::to_vec(&metadata).map_err(AppError::from)
+        },
+    )
+    .await?;
+    let metadata = serde_json::from_slice(&metadata)?;
+    info!(package = %package, source = ?source, "Resolved npm package metadata");
+    Ok(Json(
+        state
+            .upstream_client
+            .update_npm_tarball_urls(metadata, &host, &package),
+    ))
 }
 
 /// Downloads NPM package tarballs from local storage or upstream registry.
@@ -200,24 +229,46 @@ pub async fn download_tarball(
     debug!(package = %package, filename = %filename, "Incoming npm tarball download request");
     info!(package = %package, filename = %filename, "Downloading npm tarball");
     let local_path = state.data_dir.join("npm/tarballs").join(&filename);
+    let source = state
+        .resolver
+        .resolve_missing(
+            vm_packages::PackageEcosystem::Npm,
+            &package,
+            state.internal_client.is_some(),
+        )
+        .await?;
+    let cache_scope = match source {
+        vm_packages::ResolutionSource::InternalRegistry => "internal",
+        vm_packages::ResolutionSource::PublicUpstream => "public",
+        _ => unreachable!("cache and local releases are checked before source resolution"),
+    };
     let cache_path = state
         .data_dir
-        .join("cache/npm")
+        .join("cache")
+        .join(cache_scope)
+        .join("npm")
         .join(sha256_hash(package.as_bytes()))
         .join(&filename);
     let tarball_url = format!("/{package}/-/{filename}");
     let upstream = Arc::clone(&state.upstream_client);
-    let resolver = Arc::clone(&state.resolver);
+    let internal = state.internal_client.clone();
     let resolved_package = package.clone();
+    let resolved_filename = filename.clone();
 
     let data = storage::read_local_or_cache(local_path, cache_path, move || async move {
-        resolver
-            .require_public_upstream(vm_packages::PackageEcosystem::Npm, &resolved_package)
-            .await?;
-        upstream
-            .stream_npm_tarball(&tarball_url)
-            .await
-            .map(|bytes| bytes.to_vec())
+        let bytes = match source {
+            vm_packages::ResolutionSource::InternalRegistry => {
+                internal
+                    .expect("resolver only selects a configured internal registry")
+                    .npm_tarball(&resolved_package, &resolved_filename)
+                    .await?
+            }
+            vm_packages::ResolutionSource::PublicUpstream => {
+                upstream.stream_npm_tarball(&tarball_url).await?
+            }
+            _ => unreachable!("cache and local releases are checked before source resolution"),
+        };
+        Ok(bytes.to_vec())
     })
     .await?;
     info!(package = %package, filename = %filename, size = data.len(), "Serving npm tarball");
@@ -443,6 +494,7 @@ mod tests {
             data_dir,
             server_addr: "http://localhost:8080".to_string(),
             upstream_client: Arc::new(UpstreamClient::disabled()),
+            internal_client: None,
             config,
             resolver: Arc::new(crate::resolver::ResolverService::standalone()),
         });

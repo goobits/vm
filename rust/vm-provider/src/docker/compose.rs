@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 // External crates
 use tera::Context as TeraContext;
+use vm_core::command_stream::stream_command;
 use vm_core::error::{Result, VmError};
 
 // Internal imports
@@ -180,6 +181,12 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("is_macos", &cfg!(target_os = "macos"));
         tera_context.insert("service_env_vars", &service_environment);
         tera_context.insert("extra_mounts", &rendered_mounts);
+        if let Some(mut edge) = final_config.package_edge.clone() {
+            if mode == RenderMode::Preview {
+                edge.read_token = "<redacted>".to_string();
+            }
+            tera_context.insert("package_edge", &edge);
+        }
 
         // AI sync flags for template
         if let Some(ai_sync) = &self
@@ -414,6 +421,25 @@ impl<'a> ComposeOperations<'a> {
             )));
         }
 
+        // The package edge is runtime infrastructure rather than part of the
+        // derived image, so a restart can add it without rebuilding the worker.
+        if self.config.package_edge.is_some() && compose_path.exists() {
+            let edge_container = container_name.strip_suffix("-dev").map_or_else(
+                || format!("{container_name}-package-edge"),
+                |name| format!("{name}-package-edge"),
+            );
+            if !DockerOps::container_exists(Some(self.executable), &edge_container).unwrap_or(false)
+            {
+                let args = super::ComposeCommand::build_args(
+                    &compose_path,
+                    "up",
+                    &["--detach", "--no-deps", "package-edge"],
+                )?;
+                let args = args.iter().map(String::as_str).collect::<Vec<_>>();
+                stream_command(self.executable, &args)?;
+            }
+        }
+
         // Start existing services directly to avoid Compose name conflicts.
         let expected_services = self.get_expected_service_containers(instance_name.as_deref());
         for service in expected_services {
@@ -511,8 +537,9 @@ mod tests {
     use crate::docker::compose_model::container_architecture;
     use tempfile::TempDir;
     use vm_config::config::{
-        ContainerLoggingConfig, CpuLimit, MemoryLimit, ProjectConfig, StorageConfig,
-        TmpfsMountConfig, VmConfig, VmSettings, VolumeMountConfig, VolumeRetention, VolumeScope,
+        ContainerLoggingConfig, CpuLimit, MemoryLimit, PackageEdgeConfig, ProjectConfig,
+        StorageConfig, TmpfsMountConfig, VmConfig, VmSettings, VolumeMountConfig, VolumeRetention,
+        VolumeScope,
     };
 
     fn setup_test_env() -> (TempDir, PathBuf, PathBuf) {
@@ -839,6 +866,51 @@ mod tests {
             Some("feature")
         );
         assert_eq!(compose.instance_name_from_container("sketch-api-dev"), None);
+    }
+
+    #[test]
+    fn renders_read_only_package_edge_without_blocking_the_worker() {
+        let (_temp_dir, project_dir, generated_dir) = setup_test_env();
+        let config = VmConfig {
+            provider: Some("docker".into()),
+            project: Some(ProjectConfig {
+                name: Some("edge-test".into()),
+                ..Default::default()
+            }),
+            package_edge: Some(PackageEdgeConfig {
+                image: "registry.example/packages:1".into(),
+                internal_gateway: "http://host.docker.internal:3080".into(),
+                client_gateway: "http://package-edge:3080".into(),
+                read_token: "read-token".into(),
+                revision: "revision-1".into(),
+            }),
+            ..Default::default()
+        };
+        let rendered = ComposeOperations::new(&config, &generated_dir, &project_dir, "docker")
+            .render_docker_compose(&project_dir, &ProviderContext::default())
+            .unwrap();
+        let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(&rendered).unwrap();
+        let services = yaml_mapping(&yaml, "services");
+        let dev = services["edge-test-dev"].as_mapping().unwrap();
+        let edge = services["package-edge"].as_mapping().unwrap();
+
+        assert!(!dev.contains_key("depends_on"));
+        assert_eq!(edge["read_only"].as_bool(), Some(true));
+        assert_eq!(edge["restart"].as_str(), Some("unless-stopped"));
+        assert!(edge["environment"]
+            .as_mapping()
+            .unwrap()
+            .contains_key("PKG_SERVER_INTERNAL_GATEWAY"));
+        assert!(!edge["environment"]
+            .as_mapping()
+            .unwrap()
+            .contains_key("PKG_SERVER_PUBLISH_TOKEN"));
+        assert!(yaml_mapping(&yaml, "volumes").contains_key("package_edge_cache"));
+
+        let preview = ComposeOperations::new(&config, &generated_dir, &project_dir, "docker")
+            .render_docker_compose_preview(&project_dir, None, &ProviderContext::default())
+            .unwrap();
+        assert!(!preview.contains("read-token"));
     }
 
     #[test]

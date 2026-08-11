@@ -17,10 +17,10 @@ use tokio_util::io::ReaderStream;
 use vm_packages::{
     authorization_token, BeginReleaseRequest, CheckoutLease, CleanupRequest,
     CompleteReleaseRequest, ConsumerRecord, ConsumerUsage, CreateCheckout, CreateRollout,
-    IntegrationRequest, LeaseRequest, PackageDefinition, PackageDrift, PublicationRequest,
-    RegisterConsumer, RegisterPackage, ReleaseRecord, ReviewRequest, RolloutRecord, RolloutState,
-    RolloutValidationRequest, SubmissionRecord, TransitionRequest, ValidationRequest,
-    WorkflowState,
+    IntegrationRequest, InternalPackageCatalog, LeaseRequest, PackageDefinition, PackageDrift,
+    PublicationRequest, RegisterConsumer, RegisterPackage, ReleaseRecord, ReviewRequest,
+    RolloutRecord, RolloutState, RolloutValidationRequest, SubmissionRecord, TransitionRequest,
+    ValidationRequest, WorkflowState,
 };
 
 use crate::{SourceManager, Store, WorkError, WorkResult};
@@ -99,6 +99,7 @@ pub fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router {
     };
     let reads = Router::new()
         .route("/v1/packages", get(list_packages))
+        .route("/v1/catalog", get(get_catalog))
         .route("/v1/packages/{*name}", get(get_package))
         .route("/v1/checkouts", get(list_checkouts))
         .route("/v1/checkouts/{checkout_id}", get(get_checkout))
@@ -224,6 +225,10 @@ async fn list_checkouts(
 
 async fn list_packages(State(state): State<AppState>) -> WorkResult<Json<Vec<PackageDefinition>>> {
     Ok(Json(state.store.packages().await))
+}
+
+async fn get_catalog(State(state): State<AppState>) -> WorkResult<Json<InternalPackageCatalog>> {
+    Ok(Json(state.store.internal_catalog().await?))
 }
 
 async fn get_package(

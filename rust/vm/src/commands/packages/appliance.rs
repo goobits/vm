@@ -11,7 +11,8 @@ use crate::error::{VmError, VmResult};
 
 use super::{docker, files::ApplianceFiles, process, tart};
 
-const HEALTH_ATTEMPTS: usize = 30;
+const HEALTH_TIMEOUT: Duration = Duration::from_secs(60);
+const HEALTH_INTERVAL: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone, Copy)]
 pub(super) enum PackageJob<'a> {
@@ -326,11 +327,18 @@ fn default_job_image() -> String {
 }
 
 async fn wait_for_gateway(gateway_url: &str) -> VmResult<()> {
-    for _ in 0..HEALTH_ATTEMPTS {
-        if gateway_is_healthy(gateway_url).await {
+    let endpoints = RegistryEndpoints::new(gateway_url).map_err(VmError::from)?;
+    let client = PackageInfrastructureClient::new(endpoints);
+    let deadline = tokio::time::Instant::now() + HEALTH_TIMEOUT;
+    loop {
+        if client.is_fully_healthy().await {
             return Ok(());
         }
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            break;
+        }
+        tokio::time::sleep(HEALTH_INTERVAL.min(deadline - now)).await;
     }
     Err(VmError::validation(
         format!("Package gateway did not become healthy at {gateway_url}"),

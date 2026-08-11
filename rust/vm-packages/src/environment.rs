@@ -51,6 +51,7 @@ impl RegistryEndpoints {
 pub struct ClientEnvironment {
     endpoints: RegistryEndpoints,
     read_token: String,
+    oci_mirror: String,
 }
 
 impl ClientEnvironment {
@@ -60,9 +61,15 @@ impl ClientEnvironment {
             bail!("package read token cannot be empty");
         }
         Ok(Self {
+            oci_mirror: endpoints.gateway().to_string(),
             endpoints,
             read_token,
         })
+    }
+
+    pub fn with_oci_mirror(mut self, gateway: impl Into<String>) -> Result<Self> {
+        self.oci_mirror = RegistryEndpoints::new(gateway)?.gateway().to_string();
+        Ok(self)
     }
 
     pub fn variables(&self) -> Vec<(String, String)> {
@@ -86,7 +93,7 @@ impl ClientEnvironment {
                 "CARGO_REGISTRY_GLOBAL_CREDENTIAL_PROVIDERS".into(),
                 "cargo:token".into(),
             ),
-            ("VM_OCI_MIRROR".into(), self.endpoints.gateway().into()),
+            ("VM_OCI_MIRROR".into(), self.oci_mirror.clone()),
         ]
     }
 

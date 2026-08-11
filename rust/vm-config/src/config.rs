@@ -211,10 +211,24 @@ pub struct VmConfig {
     #[serde(skip)]
     pub git_config: Option<GitConfig>,
 
+    /// Controller-supplied package edge attached to this runtime only.
+    #[serde(skip)]
+    pub package_edge: Option<PackageEdgeConfig>,
+
     // 14. Mock provider config (for testing only)
     #[cfg(feature = "test-helpers")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mock: Option<MockProviderConfig>,
+}
+
+/// Runtime-only settings for the read-only package proxy beside a worker.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PackageEdgeConfig {
+    pub image: String,
+    pub internal_gateway: String,
+    pub client_gateway: String,
+    pub read_token: String,
+    pub revision: String,
 }
 
 /// Configuration for the mock provider, for testing purposes.

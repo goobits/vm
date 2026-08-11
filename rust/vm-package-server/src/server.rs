@@ -19,15 +19,16 @@ use axum::{
 };
 use serde::Deserialize;
 use tokio::net::TcpListener;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     cargo,
     config::Config,
     npm, pypi,
-    resolver::ResolverService,
+    resolver::{ResolverService, CATALOG_REFRESH_INTERVAL},
     state::AppState,
     upstream::{UpstreamClient, UpstreamConfig},
+    InternalRegistryClient,
 };
 use vm_core::validation as core_validation;
 
@@ -86,6 +87,7 @@ async fn run_server_internal(
     // Create required components for AppState
     let upstream_config = UpstreamConfig::default();
     let upstream_client = Arc::new(UpstreamClient::new(upstream_config)?);
+    let internal_client = InternalRegistryClient::from_environment()?.map(Arc::new);
     let read_token = std::env::var("PKG_SERVER_READ_TOKEN").ok();
     let publish_token = std::env::var("PKG_SERVER_PUBLISH_TOKEN")
         .ok()
@@ -94,15 +96,24 @@ async fn run_server_internal(
         &host,
         read_token.as_deref(),
         publish_token.as_deref(),
+        internal_client.is_some(),
     )?);
     let server_addr = format!("http://{host}:{port}");
+    let resolver = Arc::new(ResolverService::from_environment(
+        &abs_data_dir,
+        internal_client.clone(),
+    ));
+    if internal_client.is_some() {
+        start_catalog_refresh(Arc::clone(&resolver));
+    }
 
     let state = AppState {
         data_dir: abs_data_dir,
         server_addr,
         upstream_client,
+        internal_client,
         config,
-        resolver: Arc::new(ResolverService::from_environment()),
+        resolver,
     };
 
     let app = app_router(state);
@@ -141,6 +152,7 @@ async fn run_server_internal(
 }
 
 fn app_router(state: AppState) -> Router {
+    let is_worker_edge = state.internal_client.is_some();
     let config = state.config.clone();
     let reads = Router::new()
         .route("/", get(index_handler))
@@ -153,6 +165,7 @@ fn app_router(state: AppState) -> Router {
         .route("/pypi/simple/", get(pypi::simple_index))
         .route("/pypi/simple/{package}/", get(pypi::package_index))
         .route("/pypi/packages/{filename}", get(pypi::download_file))
+        .route("/pypi/internal/{*path}", get(pypi::download_internal_file))
         .route("/pypi/upstream/{*path}", get(pypi::download_upstream_file))
         .route("/pypi/legacy/api/pypi", get(pypi::simple_index))
         .route("/pypi/legacy/api/pypi/{package}/", get(pypi::package_index))
@@ -184,27 +197,61 @@ fn app_router(state: AppState) -> Router {
             post(pypi::upload_package).put(pypi::upload_package),
         )
         .route("/cargo/api/v1/crates/new", put(cargo::publish_crate));
-    Router::new()
+    let mut app = Router::new()
         .route("/health", get(health_handler))
-        .merge(reads)
-        .merge(writes)
-        .merge(crate::tools::router())
-        .with_state(Arc::new(state))
+        .merge(reads);
+    if !is_worker_edge {
+        app = app.merge(writes).merge(crate::tools::router());
+    }
+    app.with_state(Arc::new(state))
+}
+
+fn start_catalog_refresh(resolver: Arc<ResolverService>) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(CATALOG_REFRESH_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut unavailable = false;
+        loop {
+            interval.tick().await;
+            match resolver.refresh().await {
+                Ok(()) if unavailable => {
+                    info!("package catalog connection recovered");
+                    unavailable = false;
+                }
+                Ok(()) => {}
+                Err(error) if unavailable => {
+                    debug!(error = %error, "package catalog remains unavailable");
+                }
+                Err(error) => {
+                    warn!(error = %error, "package catalog is unavailable; using the last known snapshot");
+                    unavailable = true;
+                }
+            }
+        }
+    });
 }
 
 fn configure_security(
     host: &str,
     read_token: Option<&str>,
     publish_token: Option<&str>,
+    read_only: bool,
 ) -> Result<Config> {
     let mut config = Config::default();
     let read_token = read_token.filter(|token| !token.trim().is_empty());
     let publish_token = publish_token.filter(|token| !token.trim().is_empty());
 
-    if !is_loopback_host(host) && (read_token.is_none() || publish_token.is_none()) {
-        anyhow::bail!(
-            "Refusing to bind package server to non-loopback host '{host}' without separate read and publish tokens"
-        );
+    if !is_loopback_host(host) {
+        if read_token.is_none() {
+            anyhow::bail!(
+                "Refusing to bind package server to non-loopback host '{host}' without a read token"
+            );
+        }
+        if !read_only && publish_token.is_none() {
+            anyhow::bail!(
+                "Refusing to bind writable package server to non-loopback host '{host}' without a separate publish token"
+            );
+        }
     }
 
     if read_token.is_some() || publish_token.is_some() {
@@ -226,20 +273,43 @@ fn is_loopback_host(host: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::Json;
     use axum_test::TestServer;
+    use vm_packages::{InternalPackageCatalog, PackageEcosystem, PackageIdentity};
+
+    async fn spawn_http(app: Router) -> (String, tokio::task::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let task = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        (format!("http://{address}"), task)
+    }
+
+    fn edge_state(data_dir: &std::path::Path, gateway: &str) -> AppState {
+        let internal = Arc::new(InternalRegistryClient::new(gateway, "read").unwrap());
+        AppState {
+            data_dir: data_dir.to_path_buf(),
+            server_addr: "http://127.0.0.1:3080".into(),
+            upstream_client: Arc::new(UpstreamClient::disabled()),
+            internal_client: Some(Arc::clone(&internal)),
+            config: Arc::new(configure_security("0.0.0.0", Some("read"), None, true).unwrap()),
+            resolver: Arc::new(ResolverService::worker_edge(data_dir, internal)),
+        }
+    }
 
     #[test]
     fn loopback_bind_does_not_require_authentication() {
-        let config = configure_security("127.0.0.1", None, None).unwrap();
+        let config = configure_security("127.0.0.1", None, None, false).unwrap();
         assert!(!config.security.require_authentication);
     }
 
     #[test]
     fn remote_bind_requires_and_enables_authentication() {
-        assert!(configure_security("0.0.0.0", None, None).is_err());
-        assert!(configure_security("0.0.0.0", Some("read"), None).is_err());
+        assert!(configure_security("0.0.0.0", None, None, false).is_err());
+        assert!(configure_security("0.0.0.0", Some("read"), None, false).is_err());
 
-        let config = configure_security("0.0.0.0", Some("read"), Some("publish")).unwrap();
+        let config = configure_security("0.0.0.0", Some("read"), Some("publish"), false).unwrap();
         assert!(config.security.require_authentication);
         assert_eq!(config.security.read_keys, ["read"]);
         assert_eq!(config.security.publish_keys, ["publish"]);
@@ -249,11 +319,12 @@ mod tests {
     async fn router_separates_health_read_and_publish_access() {
         let directory = tempfile::tempdir().unwrap();
         let config =
-            Arc::new(configure_security("0.0.0.0", Some("read"), Some("publish")).unwrap());
+            Arc::new(configure_security("0.0.0.0", Some("read"), Some("publish"), false).unwrap());
         let state = AppState {
             data_dir: directory.path().to_path_buf(),
             server_addr: "http://127.0.0.1:3080".into(),
             upstream_client: Arc::new(UpstreamClient::disabled()),
+            internal_client: None,
             config,
             resolver: Arc::new(ResolverService::standalone()),
         };
@@ -290,6 +361,151 @@ mod tests {
                 .status_code(),
             StatusCode::BAD_REQUEST
         );
+    }
+
+    #[tokio::test]
+    async fn worker_edge_exposes_no_publish_routes() {
+        let directory = tempfile::tempdir().unwrap();
+        let config = Arc::new(configure_security("0.0.0.0", Some("read"), None, true).unwrap());
+        let state = AppState {
+            data_dir: directory.path().to_path_buf(),
+            server_addr: "http://127.0.0.1:3080".into(),
+            upstream_client: Arc::new(UpstreamClient::disabled()),
+            internal_client: Some(Arc::new(
+                InternalRegistryClient::new("http://127.0.0.1:9", "read").unwrap(),
+            )),
+            config,
+            resolver: Arc::new(ResolverService::standalone()),
+        };
+        let server = TestServer::new(app_router(state));
+
+        assert_eq!(
+            server
+                .put("/npm/example")
+                .add_header(header::AUTHORIZATION, "Bearer read")
+                .json(&serde_json::json!({"name": "example"}))
+                .await
+                .status_code(),
+            StatusCode::METHOD_NOT_ALLOWED
+        );
+        assert_eq!(
+            server
+                .put("/tools/artifacts/tool/1.0.0/any/deadbeef.tar.gz")
+                .await
+                .status_code(),
+            StatusCode::NOT_FOUND
+        );
+    }
+
+    #[tokio::test]
+    async fn worker_edge_caches_internal_npm_across_infra_restart() {
+        let directory = tempfile::tempdir().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let gateway = format!("http://{address}");
+        let package = PackageIdentity::new(PackageEcosystem::Npm, "@goobits/auth").unwrap();
+        let catalog = InternalPackageCatalog::new([package]);
+        let tarball_url = format!("{gateway}/npm/%40goobits%2Fauth/-/auth-1.0.0.tgz");
+        let infra = Router::new()
+            .route(
+                "/work/v1/catalog",
+                get(move || {
+                    let catalog = catalog.clone();
+                    async move { Json(catalog) }
+                }),
+            )
+            .route(
+                "/npm/{package}",
+                get(move || {
+                    let tarball_url = tarball_url.clone();
+                    async move {
+                        Json(serde_json::json!({
+                            "name": "@goobits/auth",
+                            "versions": {
+                                "1.0.0": {
+                                    "name": "@goobits/auth",
+                                    "version": "1.0.0",
+                                    "dist": { "tarball": tarball_url }
+                                }
+                            }
+                        }))
+                    }
+                }),
+            )
+            .route(
+                "/npm/{package}/-/{filename}",
+                get(|| async { b"internal npm archive".to_vec() }),
+            );
+        let infra_task = tokio::spawn(async move {
+            axum::serve(listener, infra).await.unwrap();
+        });
+
+        let (edge_gateway, edge_task) =
+            spawn_http(app_router(edge_state(directory.path(), &gateway))).await;
+        let http = reqwest::Client::new();
+        let metadata_url = format!("{edge_gateway}/npm/%40goobits%2Fauth");
+        let metadata: serde_json::Value = http
+            .get(&metadata_url)
+            .bearer_auth("read")
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let edge_tarball = metadata["versions"]["1.0.0"]["dist"]["tarball"]
+            .as_str()
+            .unwrap();
+        assert!(edge_tarball.starts_with(&edge_gateway));
+        let archive = http
+            .get(edge_tarball)
+            .bearer_auth("read")
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap();
+        assert_eq!(&archive[..], b"internal npm archive");
+
+        infra_task.abort();
+        edge_task.abort();
+        let _ = infra_task.await;
+        let _ = edge_task.await;
+        let (restarted_gateway, restarted_edge) =
+            spawn_http(app_router(edge_state(directory.path(), &gateway))).await;
+        let metadata = http
+            .get(format!("{restarted_gateway}/npm/%40goobits%2Fauth"))
+            .bearer_auth("read")
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .json::<serde_json::Value>()
+            .await
+            .unwrap();
+        let tarball = metadata["versions"]["1.0.0"]["dist"]["tarball"]
+            .as_str()
+            .unwrap();
+        assert!(tarball.starts_with(&restarted_gateway));
+        let archive = http
+            .get(tarball)
+            .bearer_auth("read")
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap();
+        assert_eq!(&archive[..], b"internal npm archive");
+        restarted_edge.abort();
     }
 }
 

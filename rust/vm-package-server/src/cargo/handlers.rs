@@ -169,20 +169,46 @@ pub async fn download_crate(
     })?;
 
     let local_path = state.data_dir.join("cargo/crates").join(&filename);
-    let cache_path = state.data_dir.join("cache/cargo/crates").join(&filename);
+    let source = state
+        .resolver
+        .resolve_missing(
+            vm_packages::PackageEcosystem::Cargo,
+            &crate_name,
+            state.internal_client.is_some(),
+        )
+        .await?;
+    let cache_scope = match source {
+        vm_packages::ResolutionSource::InternalRegistry => "internal",
+        vm_packages::ResolutionSource::PublicUpstream => "public",
+        _ => unreachable!("cache and local releases are checked before source resolution"),
+    };
+    let cache_path = state
+        .data_dir
+        .join("cache")
+        .join(cache_scope)
+        .join("cargo/crates")
+        .join(&filename);
     let upstream = Arc::clone(&state.upstream_client);
-    let resolver = Arc::clone(&state.resolver);
+    let internal = state.internal_client.clone();
     let upstream_crate = crate_name.clone();
     let upstream_version = version.clone();
 
     let data = storage::read_local_or_cache(local_path, cache_path, move || async move {
-        resolver
-            .require_public_upstream(vm_packages::PackageEcosystem::Cargo, &upstream_crate)
-            .await?;
-        upstream
-            .stream_cargo_crate(&upstream_crate, &upstream_version)
-            .await
-            .map(|bytes| bytes.to_vec())
+        let bytes = match source {
+            vm_packages::ResolutionSource::InternalRegistry => {
+                internal
+                    .expect("resolver only selects a configured internal registry")
+                    .cargo_crate(&upstream_crate, &upstream_version)
+                    .await?
+            }
+            vm_packages::ResolutionSource::PublicUpstream => {
+                upstream
+                    .stream_cargo_crate(&upstream_crate, &upstream_version)
+                    .await?
+            }
+            _ => unreachable!("cache and local releases are checked before source resolution"),
+        };
+        Ok(bytes.to_vec())
     })
     .await?;
     info!(crate_name = %crate_name, version = %version, size = data.len(), "Serving Cargo crate");

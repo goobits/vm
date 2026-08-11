@@ -2,12 +2,14 @@ use crate::error::{AppError, AppResult};
 use crate::validation_utils::FileStreamValidator;
 use std::future::Future;
 use std::path::Path;
+use std::time::Duration;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{Mutex, MutexGuard};
 use tracing::{debug, info, warn};
 
 static PUBLISH_LOCK: Mutex<()> = Mutex::const_new(());
+pub const METADATA_CACHE_TTL: Duration = Duration::from_secs(5);
 
 /// Serialize release commits so multi-file registry metadata remains deterministic.
 pub async fn publish_guard() -> MutexGuard<'static, ()> {
@@ -130,6 +132,53 @@ where
     Ok(content)
 }
 
+/// Refresh mutable registry metadata, falling back to the last valid snapshot.
+pub async fn read_refreshing_cache<P, F, Fut>(
+    path: P,
+    max_age: Duration,
+    fetch: F,
+) -> AppResult<Vec<u8>>
+where
+    P: AsRef<Path>,
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = AppResult<Vec<u8>>>,
+{
+    let path = path.as_ref();
+    if cache_is_fresh(path, max_age).await? {
+        return read_file(path).await;
+    }
+
+    match fetch().await {
+        Ok(content) => {
+            if let Err(error) = save_file(path, &content).await {
+                warn!(path = %path.display(), error = %error, "could not refresh metadata cache");
+            }
+            Ok(content)
+        }
+        Err(fetch_error) => match read_file(path).await {
+            Ok(content) => {
+                warn!(path = %path.display(), error = %fetch_error, "using stale registry metadata");
+                Ok(content)
+            }
+            Err(AppError::NotFound(_)) => Err(fetch_error),
+            Err(cache_error) => Err(cache_error),
+        },
+    }
+}
+
+async fn cache_is_fresh(path: &Path, max_age: Duration) -> AppResult<bool> {
+    let metadata = match fs::metadata(path).await {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error.into()),
+    };
+    Ok(metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.elapsed().ok())
+        .is_some_and(|age| age <= max_age))
+}
+
 /// Read file content as a string with size validation
 pub async fn read_file_string<P: AsRef<Path>>(path: P) -> AppResult<String> {
     let path = path.as_ref();
@@ -196,11 +245,17 @@ pub async fn append_to_file<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C)
 
 #[cfg(test)]
 mod tests {
-    use super::{append_to_file, read_file, read_local_or_cache, save_file, save_immutable};
+    use super::{
+        append_to_file, read_file, read_local_or_cache, read_refreshing_cache, save_file,
+        save_immutable,
+    };
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     };
+    use std::time::Duration;
+
+    use crate::AppError;
 
     #[tokio::test]
     async fn immutable_artifacts_allow_exact_retries_only() {
@@ -235,6 +290,38 @@ mod tests {
 
         assert_eq!(fetches.load(Ordering::SeqCst), 1);
         assert_eq!(tokio::fs::read(cached).await.unwrap(), b"upstream");
+    }
+
+    #[tokio::test]
+    async fn refreshing_cache_uses_fresh_then_stale_metadata() {
+        let directory = tempfile::tempdir().unwrap();
+        let cached = directory.path().join("metadata/index.json");
+        let fetches = Arc::new(AtomicUsize::new(0));
+        let fetched = Arc::clone(&fetches);
+        let content = read_refreshing_cache(&cached, Duration::from_secs(60), move || async move {
+            fetched.fetch_add(1, Ordering::SeqCst);
+            Ok(b"fresh".to_vec())
+        })
+        .await
+        .unwrap();
+        assert_eq!(content, b"fresh");
+
+        let fetched = Arc::clone(&fetches);
+        let content = read_refreshing_cache(&cached, Duration::from_secs(60), move || async move {
+            fetched.fetch_add(1, Ordering::SeqCst);
+            Ok(b"unexpected".to_vec())
+        })
+        .await
+        .unwrap();
+        assert_eq!(content, b"fresh");
+
+        let content = read_refreshing_cache(&cached, Duration::ZERO, || async {
+            Err(AppError::Unavailable("offline".into()))
+        })
+        .await
+        .unwrap();
+        assert_eq!(content, b"fresh");
+        assert_eq!(fetches.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

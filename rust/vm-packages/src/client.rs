@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -13,6 +14,10 @@ use crate::{
 };
 
 pub type PackageInventory = BTreeMap<String, Vec<String>>;
+
+const CONNECT_TIMEOUT: Duration = Duration::from_millis(500);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const HEALTH_TIMEOUT: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InfrastructureStatus {
@@ -36,7 +41,11 @@ pub struct PackageInfrastructureClient {
 impl PackageInfrastructureClient {
     pub fn new(endpoints: RegistryEndpoints) -> Self {
         Self {
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .connect_timeout(CONNECT_TIMEOUT)
+                .timeout(REQUEST_TIMEOUT)
+                .build()
+                .expect("static package client settings are valid"),
             endpoints,
             read_token: None,
             controller_token: None,
@@ -74,6 +83,7 @@ impl PackageInfrastructureClient {
     pub async fn is_healthy(&self) -> bool {
         self.http
             .get(format!("{}/health", self.endpoints.gateway()))
+            .timeout(HEALTH_TIMEOUT)
             .send()
             .await
             .is_ok_and(|response| response.status().is_success())
@@ -82,6 +92,7 @@ impl PackageInfrastructureClient {
     pub async fn is_work_healthy(&self) -> bool {
         self.http
             .get(self.work_url("health"))
+            .timeout(HEALTH_TIMEOUT)
             .send()
             .await
             .is_ok_and(|response| response.status().is_success())
@@ -90,13 +101,19 @@ impl PackageInfrastructureClient {
     pub async fn is_oci_healthy(&self) -> bool {
         self.http
             .get(self.endpoints.oci())
+            .timeout(HEALTH_TIMEOUT)
             .send()
             .await
             .is_ok_and(|response| response.status().is_success())
     }
 
     pub async fn is_fully_healthy(&self) -> bool {
-        self.is_healthy().await && self.is_work_healthy().await && self.is_oci_healthy().await
+        let (gateway, work, oci) = tokio::join!(
+            self.is_healthy(),
+            self.is_work_healthy(),
+            self.is_oci_healthy()
+        );
+        gateway && work && oci
     }
 
     pub async fn status(&self) -> Result<InfrastructureStatus> {

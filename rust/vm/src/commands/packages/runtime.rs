@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use vm_config::config::VmConfig;
+use vm_config::config::{PackageEdgeConfig, VmConfig};
 use vm_packages::{ApplianceState, ClientEnvironment, InfrastructureRuntime, RegistryEndpoints};
 
 use crate::commands::command_context::RuntimeSubject;
@@ -14,7 +14,21 @@ pub(in crate::commands) fn apply_client_environment(config: &mut VmConfig) -> Vm
         return Ok(());
     };
     let provider = config.provider.as_deref().unwrap_or("docker");
-    let client = client_environment(&state, files.read_token()?, provider)?;
+    if provider == "tart"
+        && (config.os.as_deref() == Some("macos")
+            || config
+                .tart
+                .as_ref()
+                .and_then(|tart| tart.guest_os.as_deref())
+                == Some("macos"))
+    {
+        return Err(VmError::validation(
+            "The managed package edge requires a Linux Tart guest",
+            Some("Use the vibe-tart Linux profile"),
+        ));
+    }
+    let (client, edge) = client_environment(&state, files.read_token()?, provider)?;
+    config.package_edge = Some(edge);
     apply_environment(config, &client);
     Ok(())
 }
@@ -27,10 +41,42 @@ fn client_environment(
     state: &ApplianceState,
     read_token: String,
     provider: &str,
-) -> VmResult<ClientEnvironment> {
-    let gateway = gateway_for_provider(state, provider)?;
-    let endpoints = RegistryEndpoints::new(gateway).map_err(VmError::from)?;
-    ClientEnvironment::new(endpoints, read_token).map_err(VmError::from)
+) -> VmResult<(ClientEnvironment, PackageEdgeConfig)> {
+    if state.registry_image.trim().is_empty() {
+        return Err(VmError::validation(
+            "Package appliance state predates worker-edge support",
+            Some("Run `vm packages up` to refresh it"),
+        ));
+    }
+    let internal_gateway = gateway_for_provider(state, provider)?;
+    let client_gateway = match provider {
+        "docker" | "podman" => "http://package-edge:3080".to_string(),
+        "tart" => "http://127.0.0.1:3080".to_string(),
+        _ => {
+            return Err(VmError::validation(
+                format!("Provider '{provider}' does not support the managed package edge"),
+                Some("Use Docker, Podman, or a Linux Tart guest"),
+            ))
+        }
+    };
+    let revision = vm_packages::sha256_hex(format!(
+        "{}\0{}\0{}",
+        state.registry_image, internal_gateway, read_token
+    ));
+    let edge = PackageEdgeConfig {
+        image: state.registry_image.clone(),
+        internal_gateway: internal_gateway.clone(),
+        client_gateway: client_gateway.clone(),
+        read_token: read_token.clone(),
+        revision,
+    };
+    let client = ClientEnvironment::new(
+        RegistryEndpoints::new(client_gateway).map_err(VmError::from)?,
+        read_token,
+    )
+    .and_then(|client| client.with_oci_mirror(internal_gateway))
+    .map_err(VmError::from)?;
+    Ok((client, edge))
 }
 
 pub(super) fn gateway_for_provider(state: &ApplianceState, provider: &str) -> VmResult<String> {
@@ -137,9 +183,24 @@ mod tests {
     #[test]
     fn tart_appliance_has_one_provider_neutral_client_shape() {
         let state = state(InfrastructureRuntime::Tart);
-        let docker = client_environment(&state, "read-token".into(), "docker").unwrap();
-        let tart = client_environment(&state, "read-token".into(), "tart").unwrap();
-        assert_eq!(docker.variables(), tart.variables());
+        let (docker, docker_edge) =
+            client_environment(&state, "read-token".into(), "docker").unwrap();
+        let (tart, tart_edge) = client_environment(&state, "read-token".into(), "tart").unwrap();
+        let docker_variables = docker
+            .variables()
+            .into_iter()
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let tart_variables = tart
+            .variables()
+            .into_iter()
+            .collect::<std::collections::BTreeMap<_, _>>();
+        assert!(docker_variables["NPM_CONFIG_REGISTRY"].contains("package-edge"));
+        assert!(tart_variables["NPM_CONFIG_REGISTRY"].contains("127.0.0.1"));
+        assert_eq!(docker_variables["VM_OCI_MIRROR"], state.gateway_url);
+        assert_eq!(tart_variables["VM_OCI_MIRROR"], state.gateway_url);
+        assert_eq!(docker_edge.client_gateway, "http://package-edge:3080");
+        assert_eq!(tart_edge.client_gateway, "http://127.0.0.1:3080");
+        assert_eq!(docker_edge.internal_gateway, state.gateway_url);
     }
 
     #[test]
