@@ -86,6 +86,7 @@ vm_update_git_prompt() {
     VM_GIT_PROMPT=''
   fi
 }
+typeset -ga precmd_functions
 if (( ${precmd_functions[(Ie)vm_update_git_prompt]} == 0 )); then
   precmd_functions+=(vm_update_git_prompt)
 fi
@@ -117,7 +118,7 @@ case "$OSTYPE" in
     alias diff='diff --color=auto'
     ;;
 esac
-export VM_SHELL_CONFIG_VERSION=5
+export VM_SHELL_CONFIG_VERSION=6
 
 vm_home_is_writable() {
   local _vm_home_test="$HOME/.vm-home-write-test"

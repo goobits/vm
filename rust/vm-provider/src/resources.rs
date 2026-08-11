@@ -10,7 +10,7 @@ pub const MANAGE_SERVICE_TASK: &str = include_str!("resources/ansible/tasks/mana
 pub const SERVICE_DEFINITIONS: &str = include_str!("resources/services/service_definitions.yml");
 pub const ZSHRC_TEMPLATE: &str = include_str!("resources/templates/zshrc.j2");
 #[cfg(any(feature = "tart", test))]
-pub(crate) const SHELL_CONFIG_VERSION: &str = "5";
+pub(crate) const SHELL_CONFIG_VERSION: &str = "6";
 pub const THEMES_JSON: &str = include_str!("resources/templates/themes.json");
 pub const CLAUDE_SETTINGS_TEMPLATE: &str =
     include_str!("resources/settings/claude-settings.json.j2");

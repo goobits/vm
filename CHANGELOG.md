@@ -48,6 +48,7 @@
 - 🌐 Single-port ranges and explicit create-time port mappings now validate correctly.
 - 🚀 Tart stop operations are idempotent, and resolved stopped guests start reliably before shell connections.
 - 🚀 Docker client and service provisioning no longer depends on Python APT bindings and avoids reinstalling tools that are already present.
+- 🚀 Generated zsh configuration initializes its prompt-hook array before testing membership, eliminating first-login math errors.
 - 🚀 Tart refreshes managed shell configuration so `yoclaude` and `yocodex` are available on the first login.
 - 🚀 Tart guest-home sync and mount paths expand the intended guest home instead of creating literal `$HOME` paths.
 - 🚀 Missing standard Tart vibe bases are built by the installed binary when environment creation needs them, including through `vm ssh` and on another configured disk.

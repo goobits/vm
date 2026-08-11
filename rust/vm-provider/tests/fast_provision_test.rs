@@ -79,6 +79,7 @@ fn test_rendered_fast_prompt_is_valid_zsh() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(rendered.contains("git branch --show-current"));
+    assert!(rendered.contains("typeset -ga precmd_functions"));
     assert!(rendered.contains("${VM_GIT_PROMPT} [%*]"));
 }
 
@@ -165,8 +166,11 @@ fn test_rendered_zshrc_prompt_survives_bashrc_prompt() {
     }
 
     let home = tempfile::tempdir().expect("temp home should be created");
-    std::fs::write(home.path().join(".zshrc"), render_docker_zshrc_for_test())
-        .expect("zshrc should be written");
+    std::fs::write(
+        home.path().join(".zshrc"),
+        render_zshrc_for_test_with_prompt("'/workspace'", true, false),
+    )
+    .expect("zshrc should be written");
     std::fs::write(home.path().join(".bashrc"), "PROMPT='broken% '\n")
         .expect("bashrc should be written");
 
@@ -182,6 +186,11 @@ fn test_rendered_zshrc_prompt_survives_bashrc_prompt() {
     assert!(
         output.status.success(),
         "zsh should load rendered zshrc: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !String::from_utf8_lossy(&output.stderr).contains("bad math expression"),
+        "git prompt hook should initialize cleanly: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
