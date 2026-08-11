@@ -1,5 +1,6 @@
 use crate::error::VmError;
 use serde::Deserialize;
+use std::path::Path;
 use std::process::Command;
 use vm_core::{vm_hint, vm_println, vm_progress, vm_success};
 
@@ -102,41 +103,32 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
         }
 
         // Find the asset URL for our platform
-        let asset_pattern = format!("vm-{target}.tar.gz");
-        let asset_url = release
-            .assets
-            .iter()
-            .find(|asset| asset.name == asset_pattern)
-            .map(|asset| asset.browser_download_url.as_str())
-            .ok_or_else(|| {
-                VmError::validation(
-                    format!("No release binary is available for {target}"),
-                    None::<String>,
-                )
-            })?;
-        let archive_path = temp_dir.path().join(&asset_pattern);
-
-        // Download the archive
-        vm_progress!("Downloading vm binary...");
-        let archive_path_str = archive_path.to_str().ok_or_else(|| {
-            VmError::general(
-                std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid path"),
-                "Archive path is not valid UTF-8",
+        let archive_extension = if cfg!(windows) { "zip" } else { "tar.gz" };
+        let asset_pattern = format!("vm-{target}.{archive_extension}");
+        let checksum_pattern = format!("{asset_pattern}.sha256");
+        let asset_url = release.asset_url(&asset_pattern).ok_or_else(|| {
+            VmError::validation(
+                format!("No release binary is available for {target}"),
+                None::<String>,
             )
         })?;
-        let download_output = Command::new("curl")
-            .args(["-fsSL", "-o", archive_path_str, asset_url])
-            .output()?;
+        let checksum_url = release.asset_url(&checksum_pattern).ok_or_else(|| {
+            VmError::validation(
+                format!("Release checksum is missing for {asset_pattern}"),
+                None::<String>,
+            )
+        })?;
+        let archive_path = temp_dir.path().join(&asset_pattern);
+        let checksum_path = temp_dir.path().join(&checksum_pattern);
 
-        if !download_output.status.success() {
-            return Err(VmError::general(
-                std::io::Error::new(std::io::ErrorKind::Other, "Download failed"),
-                "Failed to download binary from GitHub".to_string(),
-            ));
-        }
+        vm_progress!("Downloading vm binary...");
+        download_asset(asset_url, &archive_path, "release archive")?;
+        download_asset(checksum_url, &checksum_path, "release checksum")?;
+        verify_release_checksum(&archive_path, &checksum_path, &asset_pattern)?;
 
         // Extract the archive
         vm_progress!("Extracting vm binary...");
+        let archive_path_str = path_as_str(&archive_path, "Archive")?;
         let temp_dir_str = temp_dir.path().to_str().ok_or_else(|| {
             VmError::general(
                 std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid path"),
@@ -144,7 +136,7 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
             )
         })?;
         let extract_output = Command::new("tar")
-            .args(["-xzf", archive_path_str, "-C", temp_dir_str])
+            .args(["-xf", archive_path_str, "-C", temp_dir_str])
             .output()?;
 
         if !extract_output.status.success() {
@@ -155,11 +147,17 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
         }
 
         // Find the vm binary
-        let binary_name = format!("vm-{target}");
+        let binary_name = format!("vm-{target}{}", std::env::consts::EXE_SUFFIX);
         let temp_binary = if temp_dir.path().join(&binary_name).exists() {
             temp_dir.path().join(&binary_name)
-        } else if temp_dir.path().join("vm").exists() {
-            temp_dir.path().join("vm")
+        } else if temp_dir
+            .path()
+            .join(format!("vm{}", std::env::consts::EXE_SUFFIX))
+            .exists()
+        {
+            temp_dir
+                .path()
+                .join(format!("vm{}", std::env::consts::EXE_SUFFIX))
         } else {
             return Err(VmError::general(
                 std::io::Error::new(std::io::ErrorKind::NotFound, "Binary not found"),
@@ -221,6 +219,95 @@ struct GitHubAsset {
     browser_download_url: String,
 }
 
+impl GitHubRelease {
+    fn asset_url(&self, name: &str) -> Option<&str> {
+        self.assets
+            .iter()
+            .find(|asset| asset.name == name)
+            .map(|asset| asset.browser_download_url.as_str())
+    }
+}
+
+fn path_as_str<'a>(path: &'a Path, kind: &str) -> Result<&'a str, VmError> {
+    path.to_str().ok_or_else(|| {
+        VmError::general(
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid path"),
+            format!("{kind} path is not valid UTF-8"),
+        )
+    })
+}
+
+fn download_asset(url: &str, destination: &Path, kind: &str) -> Result<(), VmError> {
+    let destination = path_as_str(destination, kind)?;
+    let output = Command::new("curl")
+        .args([
+            "-fsSL",
+            "--proto",
+            "=https",
+            "--tlsv1.2",
+            "-o",
+            destination,
+            url,
+        ])
+        .output()?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(VmError::general(
+            std::io::Error::new(std::io::ErrorKind::Other, "Download failed"),
+            format!("Failed to download {kind} from GitHub"),
+        ))
+    }
+}
+
+fn verify_release_checksum(
+    archive_path: &Path,
+    checksum_path: &Path,
+    archive_name: &str,
+) -> Result<(), VmError> {
+    let checksum = std::fs::read_to_string(checksum_path)
+        .map_err(|error| VmError::general(error, "Failed to read release checksum"))?;
+    let expected = parse_release_checksum(&checksum, archive_name)?;
+    let archive = std::fs::File::open(archive_path)
+        .map_err(|error| VmError::general(error, "Failed to read downloaded release"))?;
+    let (actual, _) = vm_packages::sha256_reader(std::io::BufReader::new(archive))
+        .map_err(|error| VmError::general(error, "Failed to hash downloaded release"))?;
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(VmError::validation(
+            format!("Checksum verification failed for {archive_name}"),
+            Some("The downloaded release was not installed"),
+        ))
+    }
+}
+
+fn parse_release_checksum(contents: &str, archive_name: &str) -> Result<String, VmError> {
+    let mut fields = contents.trim_start_matches('\u{feff}').split_whitespace();
+    let digest = fields.next().unwrap_or_default().to_ascii_lowercase();
+    if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(VmError::validation(
+            "Release checksum is not a valid SHA-256 digest",
+            None::<String>,
+        ));
+    }
+    if let Some(filename) = fields.next() {
+        if filename.trim_start_matches('*') != archive_name {
+            return Err(VmError::validation(
+                format!("Release checksum names unexpected asset '{filename}'"),
+                None::<String>,
+            ));
+        }
+    }
+    if fields.next().is_some() {
+        return Err(VmError::validation(
+            "Release checksum contains unexpected trailing fields",
+            None::<String>,
+        ));
+    }
+    Ok(digest)
+}
+
 fn replace_executable(
     staged: &std::path::Path,
     current: &std::path::Path,
@@ -274,7 +361,9 @@ fn detect_target() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_cargo_version, GitHubRelease};
+    use super::{
+        normalize_cargo_version, parse_release_checksum, verify_release_checksum, GitHubRelease,
+    };
 
     #[test]
     fn release_metadata_is_parsed_structurally() {
@@ -291,6 +380,31 @@ mod tests {
 
         assert_eq!(normalize_cargo_version(&release.tag_name), "5.1.0");
         assert_eq!(release.assets[0].name, "vm-aarch64-apple-darwin.tar.gz");
+    }
+
+    #[test]
+    fn release_checksum_must_match_asset_name_and_bytes() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("vm-aarch64-apple-darwin.tar.gz");
+        let checksum = temp.path().join("vm-aarch64-apple-darwin.tar.gz.sha256");
+        std::fs::write(&archive, "vm").unwrap();
+        std::fs::write(
+            &checksum,
+            "5bce98f73f3ed0c837f2729ed9509b38ea66a156db7f653356cb6fe37b366e85  vm-aarch64-apple-darwin.tar.gz\n",
+        )
+        .unwrap();
+
+        verify_release_checksum(&archive, &checksum, "vm-aarch64-apple-darwin.tar.gz").unwrap();
+        assert!(parse_release_checksum(
+            "5bce98f73f3ed0c837f2729ed9509b38ea66a156db7f653356cb6fe37b366e85  other.tar.gz",
+            "vm-aarch64-apple-darwin.tar.gz",
+        )
+        .is_err());
+        std::fs::write(&archive, "tampered").unwrap();
+        assert!(
+            verify_release_checksum(&archive, &checksum, "vm-aarch64-apple-darwin.tar.gz",)
+                .is_err()
+        );
     }
 
     #[cfg(unix)]

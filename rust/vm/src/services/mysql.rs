@@ -1,12 +1,18 @@
 //! MySQL Service Implementation
 
 use anyhow::Result;
-use tracing::warn;
 use vm_config::GlobalConfig;
 
-use super::{
-    container_runtime, default_container_runtime, get_or_generate_password, ManagedService,
+use super::container::{
+    loopback_healthy, loopback_port, reuse_managed_container, stop_managed_container,
+    ManagedContainerSpec,
 };
+use super::{container_runtime, get_or_generate_password, ManagedService};
+
+const CONTAINER_NAME: &str = "vm-mysql-global";
+const DISPLAY_NAME: &str = "MySQL";
+const IMAGE: &str = "mysql";
+const GUEST_PORT: u16 = 3306;
 
 /// MySQL database service that implements the ManagedService trait
 pub struct MysqlService;
@@ -28,21 +34,33 @@ impl Default for MysqlService {
 impl ManagedService for MysqlService {
     async fn start(&self, global_config: &GlobalConfig) -> Result<()> {
         let settings = &global_config.services.mysql;
-        let container_name = "vm-mysql-global";
         let executable = container_runtime(global_config);
+        let spec = ManagedContainerSpec {
+            name: CONTAINER_NAME,
+            display_name: DISPLAY_NAME,
+            image: IMAGE,
+            version: &settings.version,
+            host_port: settings.port,
+            guest_port: GUEST_PORT,
+        };
 
         let data_dir = shellexpand::tilde(&settings.data_dir).to_string();
         tokio::fs::create_dir_all(&data_dir).await?;
 
         let password = get_or_generate_password("mysql").await?;
+        if reuse_managed_container(executable, spec).await? {
+            return Ok(());
+        }
 
         let mut cmd = tokio::process::Command::new(executable);
         cmd.arg("run")
             .arg("-d")
             .arg("--name")
-            .arg(container_name)
+            .arg(CONTAINER_NAME)
+            .args(["--label", "com.vm.managed=true"])
+            .args(["--label", "com.vm.service=mysql"])
             .arg("-p")
-            .arg(format!("{}:3306", settings.port))
+            .arg(loopback_port(settings.port, GUEST_PORT))
             .arg("-v")
             .arg(format!("{data_dir}:/var/lib/mysql"))
             .arg("-e")
@@ -58,30 +76,14 @@ impl ManagedService for MysqlService {
     }
 
     async fn stop(&self) -> Result<()> {
-        let container_name = "vm-mysql-global";
-        let executable = default_container_runtime();
-
-        let mut stop_cmd = tokio::process::Command::new(&executable);
-        stop_cmd.arg("stop").arg(container_name);
-        if !stop_cmd.status().await?.success() {
-            warn!("Failed to stop MySQL container, it may not have been running.");
-        }
-
-        let mut rm_cmd = tokio::process::Command::new(&executable);
-        rm_cmd.arg("rm").arg(container_name);
-        if !rm_cmd.status().await?.success() {
-            warn!("Failed to remove MySQL container.");
-        }
-
-        Ok(())
+        let executable = crate::utils::configured_container_runtime();
+        stop_managed_container(&executable, CONTAINER_NAME).await
     }
 
     async fn check_health(&self, global_config: &GlobalConfig) -> bool {
         let port = self.get_port(global_config);
         // For database services, a TCP connection is a reliable health check
-        tokio::net::TcpStream::connect(format!("127.0.0.1:{port}"))
-            .await
-            .is_ok()
+        loopback_healthy(port).await
     }
 
     fn name(&self) -> &str {

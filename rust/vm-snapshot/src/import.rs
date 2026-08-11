@@ -81,6 +81,15 @@ pub async fn handle_import(
                 None::<String>,
             ));
         }
+        if !entry_type.is_file() && !entry_type.is_dir() {
+            return Err(VmError::validation(
+                format!(
+                    "Snapshot contains unsupported archive entry '{}'; only files and directories are allowed",
+                    entry_path.display()
+                ),
+                None::<String>,
+            ));
+        }
         entry
             .unpack_in(&extract_dir)
             .map_err(|e| VmError::general(e, "Failed to extract tar archive"))?;
@@ -88,7 +97,7 @@ pub async fn handle_import(
 
     // Load manifest
     let manifest_path = extract_dir.join("manifest.json");
-    if !manifest_path.exists() {
+    if !manifest_path.is_file() {
         return Err(VmError::validation(
             "Invalid snapshot file: manifest.json not found",
             None::<String>,
@@ -167,7 +176,7 @@ pub async fn handle_import(
 
     // Load snapshot metadata
     let metadata_path = extract_dir.join("metadata.json");
-    if !metadata_path.exists() {
+    if !metadata_path.is_file() {
         return Err(VmError::validation(
             "Invalid snapshot file: metadata.json not found",
             None::<String>,
@@ -192,7 +201,7 @@ pub async fn handle_import(
             async move {
                 let image_path = snapshot_file_path(&images_dir, &image_file, "image file")?;
 
-                if !image_path.exists() {
+                if !image_path.is_file() {
                     vm_warning!("Image file '{}' not found, skipping", image_file);
                     return Ok::<(), VmError>(());
                 }
@@ -313,7 +322,7 @@ fn validate_import_contents(
     let images_dir = extract_dir.join("images");
     for service in &metadata.services {
         let image_path = snapshot_file_path(&images_dir, &service.image_file, "image file")?;
-        if !image_path.exists() {
+        if !image_path.is_file() {
             return Err(VmError::validation(
                 format!("Snapshot image file is missing: {}", image_path.display()),
                 None::<String>,
@@ -325,7 +334,7 @@ fn validate_import_contents(
     for volume in &metadata.volumes {
         let archive_path =
             snapshot_file_path(&volumes_dir, &volume.archive_file, "volume archive")?;
-        if !archive_path.exists() {
+        if !archive_path.is_file() {
             return Err(VmError::validation(
                 format!(
                     "Snapshot volume archive is missing: {}",

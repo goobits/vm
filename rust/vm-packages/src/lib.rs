@@ -30,7 +30,7 @@ pub use consumer::{
     RolloutState, RolloutTransition, RolloutValidationRequest,
 };
 pub use credentials::authorization_token;
-pub use digest::{encode_hex, sha256_hex};
+pub use digest::{encode_hex, sha256_hex, sha256_reader};
 pub use ecosystem::{PackageEcosystem, ParsePackageEcosystemError};
 pub use environment::{ClientEnvironment, RegistryEndpoints};
 pub use release::{

@@ -1,10 +1,9 @@
 use std::collections::BTreeMap;
-use std::io::{BufReader, Read};
+use std::io::BufReader;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
-use sha2::{Digest, Sha256};
-use vm_packages::{encode_hex, validate_tool_name, PublishToolArtifact, ToolArtifactRecord};
+use vm_packages::{sha256_reader, validate_tool_name, PublishToolArtifact, ToolArtifactRecord};
 
 /// Inputs shared by tool publishers regardless of how their source archive was built.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,21 +31,12 @@ pub fn publication_request(
     }
     let file = std::fs::File::open(archive)
         .with_context(|| format!("read tool archive {}", archive.display()))?;
-    let mut reader = BufReader::new(file);
-    let mut buffer = [0_u8; 64 * 1024];
-    let mut hasher = Sha256::new();
-    loop {
-        let read = reader.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
-    }
+    let (artifact_digest, size_bytes) = sha256_reader(BufReader::new(file))?;
     let request = PublishToolArtifact {
         version: manifest.version,
         target: manifest.target,
-        artifact_digest: encode_hex(hasher.finalize()),
-        size_bytes: metadata.len(),
+        artifact_digest,
+        size_bytes,
         links: manifest.links,
         source_commit: manifest.source_commit,
         tag: manifest.tag,

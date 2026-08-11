@@ -9,3 +9,16 @@ pub fn confirm_select(prompt: &str, default: bool) -> VmResult<bool> {
     vm_core::prompts::confirm_select(prompt, default)
         .map_err(|e| VmError::general(e, "Failed to read user selection"))
 }
+
+pub fn configured_container_runtime() -> String {
+    vm_config::AppConfig::load(None, None, None)
+        .ok()
+        .and_then(|config| {
+            config
+                .vm
+                .provider
+                .or(config.global.defaults.provider)
+                .filter(|provider| matches!(provider.as_str(), "docker" | "podman"))
+        })
+        .unwrap_or_else(|| "docker".to_string())
+}

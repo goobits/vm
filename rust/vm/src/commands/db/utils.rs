@@ -22,7 +22,7 @@ pub async fn execute_psql_command(command: &str) -> VmResult<String> {
         ));
     }
 
-    let executable = detect_container_runtime();
+    let executable = crate::utils::configured_container_runtime();
     let output = tokio::process::Command::new(&executable)
         .arg("exec")
         .arg("-i")
@@ -46,17 +46,4 @@ pub async fn execute_psql_command(command: &str) -> VmResult<String> {
             stderr,
         ))
     }
-}
-
-fn detect_container_runtime() -> String {
-    vm_config::AppConfig::load(None, None, None)
-        .ok()
-        .and_then(|config| {
-            config
-                .vm
-                .provider
-                .or(config.global.defaults.provider)
-                .filter(|provider| matches!(provider.as_str(), "docker" | "podman"))
-        })
-        .unwrap_or_else(|| "docker".to_string())
 }

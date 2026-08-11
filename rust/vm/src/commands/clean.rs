@@ -23,7 +23,7 @@ pub struct CleanupResults {
 
 /// Handle cleanup for `vm doctor --clean`
 pub async fn handle_clean() -> VmResult<()> {
-    let executable = detect_container_runtime();
+    let executable = crate::utils::configured_container_runtime();
     vm_progress!("Cleaning unused resources...");
 
     let results = CleanupResults {
@@ -243,19 +243,6 @@ fn clean_dangling_images(executable: &str) -> VmResult<u32> {
         vm_println!("  Images: Removed {removed} VM-managed dangling image(s)");
     }
     Ok(removed)
-}
-
-fn detect_container_runtime() -> String {
-    vm_config::AppConfig::load(None, None, None)
-        .ok()
-        .and_then(|config| {
-            config
-                .vm
-                .provider
-                .or(config.global.defaults.provider)
-                .filter(|provider| matches!(provider.as_str(), "docker" | "podman"))
-        })
-        .unwrap_or_else(|| "docker".to_string())
 }
 
 /// Print cleanup summary

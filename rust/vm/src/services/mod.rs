@@ -8,6 +8,7 @@ use anyhow::Result;
 use vm_config::GlobalConfig;
 
 pub mod auth_proxy;
+mod container;
 pub mod mongodb;
 pub mod mysql;
 pub mod postgresql;
@@ -46,17 +47,4 @@ pub fn container_runtime(global_config: &GlobalConfig) -> &str {
         .as_deref()
         .filter(|provider| matches!(*provider, "docker" | "podman"))
         .unwrap_or("docker")
-}
-
-pub fn default_container_runtime() -> String {
-    vm_config::AppConfig::load(None, None, None)
-        .ok()
-        .and_then(|config| {
-            config
-                .vm
-                .provider
-                .or(config.global.defaults.provider)
-                .filter(|provider| matches!(provider.as_str(), "docker" | "podman"))
-        })
-        .unwrap_or_else(|| "docker".to_string())
 }

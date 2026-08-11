@@ -37,7 +37,7 @@ pub async fn handle_restore(
     let snapshot_dir = manager.get_snapshot_dir(scope, snapshot_name)?;
     let metadata_file = snapshot_dir.join("metadata.json");
 
-    if !metadata_file.exists() {
+    if !metadata_file.is_file() {
         let scope_desc = if matches!(scope, SnapshotScope::Global) {
             "global snapshots".to_string()
         } else {
@@ -247,7 +247,7 @@ fn validate_snapshot_contents(
     let images_dir = snapshot_dir.join("images");
     for service in &metadata.services {
         let image_path = snapshot_file_path(&images_dir, &service.image_file, "image file")?;
-        if !image_path.exists() {
+        if !image_path.is_file() {
             return Err(VmError::validation(
                 format!("Snapshot image file is missing: {}", image_path.display()),
                 None::<String>,
@@ -259,7 +259,7 @@ fn validate_snapshot_contents(
     for volume in &metadata.volumes {
         let archive_path =
             snapshot_file_path(&volumes_dir, &volume.archive_file, "volume archive")?;
-        if !archive_path.exists() {
+        if !archive_path.is_file() {
             return Err(VmError::validation(
                 format!(
                     "Snapshot volume archive is missing: {}",

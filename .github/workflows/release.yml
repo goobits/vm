@@ -123,7 +123,8 @@ jobs:
         Copy-Item rust/target/${{ matrix.target }}/release/vm.exe release_assets/vm-${{ matrix.target }}.exe
         cd release_assets
         Compress-Archive -Path vm-${{ matrix.target }}.exe -DestinationPath vm-${{ matrix.target }}.zip
-        Get-FileHash vm-${{ matrix.target }}.zip -Algorithm SHA256 | Select-Object -ExpandProperty Hash | Out-File vm-${{ matrix.target }}.zip.sha256
+        $hash = (Get-FileHash vm-${{ matrix.target }}.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+        "$hash  vm-${{ matrix.target }}.zip" | Out-File vm-${{ matrix.target }}.zip.sha256 -Encoding ascii
         cd ..
 
     - name: Upload release assets
