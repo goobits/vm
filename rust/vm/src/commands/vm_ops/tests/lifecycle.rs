@@ -22,6 +22,8 @@ struct FakeProvider {
     creates: Arc<AtomicUsize>,
     shells: Arc<AtomicUsize>,
     execs: Arc<AtomicUsize>,
+    command_ready_checks: Arc<AtomicUsize>,
+    shell_ready_checks: Arc<AtomicUsize>,
     fail_start_after_transition: bool,
 }
 
@@ -34,6 +36,8 @@ impl FakeProvider {
             creates: Arc::new(AtomicUsize::new(0)),
             shells: Arc::new(AtomicUsize::new(0)),
             execs: Arc::new(AtomicUsize::new(0)),
+            command_ready_checks: Arc::new(AtomicUsize::new(0)),
+            shell_ready_checks: Arc::new(AtomicUsize::new(0)),
             fail_start_after_transition: false,
         }
     }
@@ -137,6 +141,16 @@ impl Provider for FakeProvider {
         self.state.lock().unwrap().clone().ok_or_else(|| {
             ProviderError::NotFound("Environment 'demo-dev' does not exist".to_string())
         })
+    }
+
+    fn is_ready(&self, container: Option<&str>) -> ProviderResult<bool> {
+        self.command_ready_checks.fetch_add(1, Ordering::SeqCst);
+        Ok(self.instance_state(container)?.is_running())
+    }
+
+    fn is_shell_ready(&self, container: Option<&str>) -> ProviderResult<bool> {
+        self.shell_ready_checks.fetch_add(1, Ordering::SeqCst);
+        Ok(self.instance_state(container)?.is_running())
     }
 
     fn provision(&self, _container: Option<&str>) -> ProviderResult<()> {
@@ -306,6 +320,8 @@ async fn shell_starts_a_stopped_environment_before_connecting() {
     assert_eq!(provider.starts.load(Ordering::SeqCst), 1);
     assert_eq!(provider.shells.load(Ordering::SeqCst), 1);
     assert_eq!(provider.creates.load(Ordering::SeqCst), 0);
+    assert_eq!(provider.command_ready_checks.load(Ordering::SeqCst), 0);
+    assert_eq!(provider.shell_ready_checks.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
@@ -325,4 +341,6 @@ async fn exec_starts_a_stopped_environment_before_running() {
     assert_eq!(provider.starts.load(Ordering::SeqCst), 1);
     assert_eq!(provider.execs.load(Ordering::SeqCst), 1);
     assert_eq!(provider.creates.load(Ordering::SeqCst), 0);
+    assert_eq!(provider.command_ready_checks.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.shell_ready_checks.load(Ordering::SeqCst), 0);
 }

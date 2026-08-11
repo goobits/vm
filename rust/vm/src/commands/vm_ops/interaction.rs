@@ -9,7 +9,7 @@ use vm_config::{config::VmConfig, ConfigLoader, GlobalConfig};
 use vm_core::{vm_progress, vm_success};
 use vm_provider::Provider;
 
-use super::lifecycle::ensure_running;
+use super::lifecycle::{ensure_running, ensure_running_for_shell};
 
 fn detected_relative_path(path: Option<PathBuf>) -> PathBuf {
     if let Some(path) = path {
@@ -52,7 +52,7 @@ pub async fn handle_ssh(
         relative_path = %relative_path.display(),
         "Connecting to VM"
     );
-    ensure_running(provider.as_ref(), container, &config, &global_config, true).await?;
+    ensure_running_for_shell(provider.as_ref(), container, &config, &global_config).await?;
     crate::commands::tools::before_shell(provider.as_ref(), vm_name, &config);
     vm_progress!("Connecting to '{vm_name}'...");
     provider

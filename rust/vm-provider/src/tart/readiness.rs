@@ -1,8 +1,18 @@
 use super::{provider::TartProvider, provisioner::TartProvisioner};
 use crate::{resources::SHELL_CONFIG_VERSION, VmError};
+use std::net::{IpAddr, SocketAddr, TcpStream};
 use std::thread;
 use std::time::{Duration, Instant};
 use vm_core::error::Result;
+
+const SSH_IP_TIMEOUT: Duration = Duration::from_secs(2);
+const SSH_CONNECT_TIMEOUT: Duration = Duration::from_secs(1);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ShellTransport {
+    GuestAgent,
+    Ssh(IpAddr),
+}
 
 impl TartProvider {
     pub(super) fn is_guest_agent_ready(&self, instance_name: &str) -> bool {
@@ -12,6 +22,20 @@ impl TartProvider {
     fn run_guest_agent_probe(&self, instance_name: &str, timeout: Duration) -> bool {
         self.tart()
             .exec_probe(instance_name, ["echo", "ready"], timeout)
+    }
+
+    pub(super) fn shell_transport(&self, instance_name: &str) -> Option<ShellTransport> {
+        if self.is_guest_agent_ready(instance_name) {
+            return Some(ShellTransport::GuestAgent);
+        }
+        if !Self::is_macos_guest_config(&self.config) {
+            return None;
+        }
+
+        let ip = self.tart().ip_address(instance_name, SSH_IP_TIMEOUT)?;
+        TcpStream::connect_timeout(&SocketAddr::new(ip, 22), SSH_CONNECT_TIMEOUT)
+            .ok()
+            .map(|_| ShellTransport::Ssh(ip))
     }
 
     pub(super) fn wait_for_guest_agent_ready(

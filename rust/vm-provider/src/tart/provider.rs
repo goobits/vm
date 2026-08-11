@@ -234,7 +234,7 @@ impl TartProvider {
         configured.to_string()
     }
 
-    fn is_macos_guest_config(config: &VmConfig) -> bool {
+    pub(super) fn is_macos_guest_config(config: &VmConfig) -> bool {
         if matches!(config.os.as_deref(), Some("macos")) {
             return true;
         }
@@ -937,6 +937,15 @@ impl Provider for TartProvider {
         })?;
         Ok(InstanceState::from_runtime_status(&state).is_running()
             && self.is_guest_agent_ready(&instance_name))
+    }
+
+    fn is_shell_ready(&self, container: Option<&str>) -> Result<bool> {
+        let instance_name = self.resolve_instance_name(container)?;
+        let state = self.get_instance_state(&instance_name)?.ok_or_else(|| {
+            VmError::NotFound(format!("Tart VM '{instance_name}' does not exist"))
+        })?;
+        Ok(InstanceState::from_runtime_status(&state).is_running()
+            && self.shell_transport(&instance_name).is_some())
     }
 
     fn restart(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {

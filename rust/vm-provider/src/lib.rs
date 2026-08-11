@@ -416,9 +416,17 @@ pub trait Provider {
     /// Get lifecycle state without collecting metrics, services, or readiness.
     fn instance_state(&self, container: Option<&str>) -> Result<InstanceState>;
 
-    /// Check whether an instance is ready for shell and command execution.
+    /// Check whether an instance is ready for non-interactive command execution.
     fn is_ready(&self, container: Option<&str>) -> Result<bool> {
         Ok(self.instance_state(container)?.is_running())
+    }
+
+    /// Check whether an instance is ready for an interactive shell.
+    ///
+    /// Providers with a separate shell transport can override this without
+    /// weakening the readiness contract used by `exec`.
+    fn is_shell_ready(&self, container: Option<&str>) -> Result<bool> {
+        self.is_ready(container)
     }
 
     /// Restart a VM (stop then start).

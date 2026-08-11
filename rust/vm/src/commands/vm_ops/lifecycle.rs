@@ -17,13 +17,32 @@ use super::{
     target::canonical_instance_name,
 };
 
-const READY_ATTEMPTS: usize = 120;
+const READY_TIMEOUT: Duration = Duration::from_secs(60);
 const READY_INTERVAL: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::commands) enum StartOutcome {
     AlreadyRunning,
     Started,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ReadyFor {
+    Commands,
+    Shell,
+}
+
+impl ReadyFor {
+    fn check(
+        self,
+        provider: &dyn Provider,
+        container: Option<&str>,
+    ) -> vm_core::error::Result<bool> {
+        match self {
+            Self::Commands => provider.is_ready(container),
+            Self::Shell => provider.is_shell_ready(container),
+        }
+    }
 }
 
 fn project_name(config: &VmConfig) -> &str {
@@ -44,12 +63,14 @@ async fn wait_until_ready(
     provider: &dyn Provider,
     container: Option<&str>,
     display_name: &str,
+    ready_for: ReadyFor,
 ) -> VmResult<()> {
     let mut announced = false;
     let mut last_error = None;
+    let deadline = tokio::time::Instant::now() + READY_TIMEOUT;
 
-    for attempt in 0..READY_ATTEMPTS {
-        match provider.is_ready(container) {
+    loop {
+        match ready_for.check(provider, container) {
             Ok(true) => return Ok(()),
             Ok(false) => {}
             Err(error) => last_error = Some(error),
@@ -59,9 +80,12 @@ async fn wait_until_ready(
             vm_progress!("Waiting for '{display_name}' to be ready...");
             announced = true;
         }
-        if attempt + 1 < READY_ATTEMPTS {
-            tokio::time::sleep(READY_INTERVAL).await;
+
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            break;
         }
+        tokio::time::sleep(READY_INTERVAL.min(deadline - now)).await;
     }
 
     let source = last_error.unwrap_or_else(|| {
@@ -85,6 +109,39 @@ pub(in crate::commands) async fn ensure_running(
     config: &VmConfig,
     global_config: &GlobalConfig,
     wait: bool,
+) -> VmResult<StartOutcome> {
+    ensure_running_for(
+        provider,
+        container,
+        config,
+        global_config,
+        wait.then_some(ReadyFor::Commands),
+    )
+    .await
+}
+
+pub(in crate::commands) async fn ensure_running_for_shell(
+    provider: &dyn Provider,
+    container: Option<&str>,
+    config: &VmConfig,
+    global_config: &GlobalConfig,
+) -> VmResult<StartOutcome> {
+    ensure_running_for(
+        provider,
+        container,
+        config,
+        global_config,
+        Some(ReadyFor::Shell),
+    )
+    .await
+}
+
+async fn ensure_running_for(
+    provider: &dyn Provider,
+    container: Option<&str>,
+    config: &VmConfig,
+    global_config: &GlobalConfig,
+    ready_for: Option<ReadyFor>,
 ) -> VmResult<StartOutcome> {
     let display_name = target_name(provider, container, config);
     let state = provider.instance_state(container).map_err(VmError::from)?;
@@ -114,8 +171,8 @@ pub(in crate::commands) async fn ensure_running(
         }
     };
 
-    if wait {
-        wait_until_ready(provider, container, &display_name).await?;
+    if let Some(ready_for) = ready_for {
+        wait_until_ready(provider, container, &display_name, ready_for).await?;
     }
 
     if !should_start {
@@ -209,7 +266,13 @@ pub async fn handle_restart(
         }
     }
 
-    wait_until_ready(provider.as_ref(), container, &display_name).await?;
+    wait_until_ready(
+        provider.as_ref(),
+        container,
+        &display_name,
+        ReadyFor::Commands,
+    )
+    .await?;
     if has_enabled_services(&config, &global_config) {
         register_vm_services_helper(&display_name, &config, &global_config).await?;
     }
