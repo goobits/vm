@@ -98,9 +98,42 @@ pub(super) fn gateway_for_provider(state: &ApplianceState, provider: &str) -> Vm
     }
 }
 
-pub(super) fn checkout_root(checkout_id: &str) -> VmResult<String> {
+pub(super) fn checkout_root(subject: &RuntimeSubject, checkout_id: &str) -> VmResult<String> {
+    checkout_root_for(&subject.config, subject.provider.name(), checkout_id)
+}
+
+fn checkout_root_for(config: &VmConfig, provider: &str, checkout_id: &str) -> VmResult<String> {
     vm_packages::validate_managed_id("checkout ID", checkout_id).map_err(VmError::from)?;
-    Ok(format!("/tmp/vm-package-checkouts/{checkout_id}"))
+    let user = match provider {
+        "tart" => config
+            .tart
+            .as_ref()
+            .and_then(|tart| tart.ssh_user.as_deref())
+            .unwrap_or("admin"),
+        _ => config
+            .vm
+            .as_ref()
+            .and_then(|vm| vm.user.as_deref())
+            .unwrap_or("developer"),
+    };
+    vm_packages::validate_label("guest user", user).map_err(VmError::from)?;
+    let home = if user == "root" {
+        "/root".to_string()
+    } else if provider == "tart"
+        && (config.os.as_deref() == Some("macos")
+            || config
+                .tart
+                .as_ref()
+                .and_then(|tart| tart.guest_os.as_deref())
+                == Some("macos"))
+    {
+        format!("/Users/{user}")
+    } else {
+        format!("/home/{user}")
+    };
+    Ok(format!(
+        "{home}/.local/share/vm/package-checkouts/{checkout_id}"
+    ))
 }
 
 pub(super) fn exec<I, S>(subject: &RuntimeSubject, command: I) -> VmResult<()>
@@ -112,6 +145,18 @@ where
     subject
         .provider
         .exec(Some(subject.target.as_str()), &command)
+        .map_err(VmError::from)
+}
+
+pub(super) fn exec_output<I, S>(subject: &RuntimeSubject, command: I) -> VmResult<String>
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
+    let command = command.into_iter().map(Into::into).collect::<Vec<_>>();
+    subject
+        .provider
+        .exec_output(Some(subject.target.as_str()), &command)
         .map_err(VmError::from)
 }
 
@@ -163,8 +208,8 @@ fn workspace_path(config: &VmConfig) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_environment, checkout_root, client_environment, gateway_for_provider};
-    use vm_config::config::VmConfig;
+    use super::{apply_environment, checkout_root_for, client_environment, gateway_for_provider};
+    use vm_config::config::{TartConfig, VmConfig, VmSettings};
     use vm_packages::{
         ApplianceState, ClientEnvironment, InfrastructureRuntime, RegistryEndpoints,
     };
@@ -229,12 +274,31 @@ mod tests {
 
     #[test]
     fn checkout_roots_cannot_escape_guest_temporary_storage() {
+        let docker = VmConfig {
+            vm: Some(VmSettings {
+                user: Some("developer".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
         assert_eq!(
-            checkout_root("pkg-auth-20260811-000001").unwrap(),
-            "/tmp/vm-package-checkouts/pkg-auth-20260811-000001"
+            checkout_root_for(&docker, "docker", "pkg-auth-20260811-000001").unwrap(),
+            "/home/developer/.local/share/vm/package-checkouts/pkg-auth-20260811-000001"
         );
         for invalid in ["../workspace", "/workspace", "scope/auth", "."] {
-            assert!(checkout_root(invalid).is_err());
+            assert!(checkout_root_for(&docker, "docker", invalid).is_err());
         }
+
+        let tart = VmConfig {
+            tart: Some(TartConfig {
+                ssh_user: Some("admin".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            checkout_root_for(&tart, "tart", "pkg-auth-20260811-000001").unwrap(),
+            "/home/admin/.local/share/vm/package-checkouts/pkg-auth-20260811-000001"
+        );
     }
 }

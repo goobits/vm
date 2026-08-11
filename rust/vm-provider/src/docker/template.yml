@@ -72,6 +72,12 @@ services:
           # Seed the empty volume from the image so the project user owns it.
           nocopy: false
       {% endif %}
+      # Writable package worktrees are isolated to this worker instance.
+      - type: volume
+        source: package_checkouts
+        target: {{ package_checkout_target }}
+        volume:
+          nocopy: true
       {% for volume in storage_volumes %}
       - type: volume
         source: {{ volume.alias }}

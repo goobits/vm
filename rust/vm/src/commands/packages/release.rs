@@ -63,7 +63,6 @@ pub(super) async fn handle(
     if let Err(error) = checkout::cleanup_local(
         config_path,
         profile,
-        &client,
         &client.checkout(&published.checkout_id).await?,
     )
     .await

@@ -125,11 +125,13 @@ impl<'a> ComposeOperations<'a> {
         let cache_policy = GuestCachePolicy::new(base_project_name);
         let guest_cache_env = cache_policy.container_environment(&guest_home_dir, &final_config);
         let tool_cache_target = format!("{guest_home_dir}/.cache");
+        let package_checkout_target = format!("{guest_home_dir}/.local/share/vm/package-checkouts");
         let storage = RenderedStorage::new(
             &final_config,
             base_project_name,
             &final_project_name,
             &tool_cache_target,
+            &package_checkout_target,
         );
         let resources = RenderedResources::resolve(&final_config)?;
         let workspace_path = final_config
@@ -157,6 +159,7 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("named_volumes", &storage.named_volumes);
         tera_context.insert("tmpfs_mounts", &storage.tmpfs);
         tera_context.insert("tool_cache_target", &storage.tool_cache_target);
+        tera_context.insert("package_checkout_target", &storage.package_checkout_target);
         tera_context.insert("guest_cache_env", &guest_cache_env);
         tera_context.insert("resources", &resources);
         tera_context.insert("project_dir", &project_dir_str);

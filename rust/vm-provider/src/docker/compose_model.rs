@@ -44,6 +44,7 @@ pub(super) struct RenderedStorage {
     pub named_volumes: Vec<RenderedVolume>,
     pub tmpfs: Vec<RenderedTmpfs>,
     pub tool_cache_target: Option<String>,
+    pub package_checkout_target: String,
 }
 
 impl RenderedStorage {
@@ -52,6 +53,7 @@ impl RenderedStorage {
         base_project: &str,
         instance_project: &str,
         tool_cache_target: &str,
+        package_checkout_target: &str,
     ) -> Self {
         let mut mounts = config
             .storage
@@ -99,6 +101,7 @@ impl RenderedStorage {
         }
         let mut named_volumes = mounts.clone();
         named_volumes.push(builtin_volume(instance_project, "shell_history"));
+        named_volumes.push(builtin_volume(instance_project, "package_checkouts"));
         let tool_cache_target = (!config
             .storage
             .volumes
@@ -150,6 +153,7 @@ impl RenderedStorage {
             named_volumes,
             tmpfs,
             tool_cache_target,
+            package_checkout_target: package_checkout_target.to_string(),
         }
     }
 }
@@ -227,8 +231,13 @@ mod tests {
             },
         );
 
-        let storage =
-            RenderedStorage::new(&config, "codeatlas", "codeatlas", "/home/developer/.cache");
+        let storage = RenderedStorage::new(
+            &config,
+            "codeatlas",
+            "codeatlas",
+            "/home/developer/.cache",
+            "/home/developer/.local/share/vm/package-checkouts",
+        );
 
         assert!(storage.tool_cache_target.is_none());
         assert!(!storage

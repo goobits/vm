@@ -13,6 +13,7 @@ use crate::error::{VmError, VmResult};
 use super::{
     appliance::{configured_state_and_client, launch_review},
     files::ApplianceFiles,
+    overrides::cargo_patch,
     runtime::{checkout_root, exec, exec_in_workspace, gateway_for_provider},
 };
 
@@ -47,7 +48,7 @@ pub(super) async fn handle(
         ));
     }
     let definition = client.package_definition(&checkout.package).await?;
-    let root = checkout_root(&checkout_id)?;
+    let root = checkout_root(&subject, &checkout_id)?;
     let source = format!("{root}/source");
     ensure_clean(&subject, &source)?;
 
@@ -177,7 +178,7 @@ pub(super) fn run_consumer_check(
     match ecosystem {
         PackageEcosystem::Npm => exec_in_workspace(subject, ["npm", "test", "--if-present"]),
         PackageEcosystem::Cargo => {
-            let patch = format!("patch.crates-io.{package}.path=\"{source}\"");
+            let patch = cargo_patch(package, source);
             exec_in_workspace(subject, ["cargo", "test", "--config", &patch])
         }
         PackageEcosystem::Python => exec_in_workspace(subject, ["python", "-m", "pytest"]),

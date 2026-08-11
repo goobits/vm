@@ -6,6 +6,7 @@ mod discovery;
 mod docker;
 mod files;
 mod integration;
+mod overrides;
 mod process;
 mod release;
 mod runtime;
@@ -17,7 +18,7 @@ use std::path::PathBuf;
 
 use crate::cli::PackagesSubcommand;
 use crate::error::VmResult;
-use vm_core::{vm_hint, vm_success};
+use vm_core::vm_success;
 
 use appliance::configured_client;
 use files::ApplianceFiles;
@@ -155,6 +156,7 @@ async fn cleanup_checkout(
 ) -> VmResult<()> {
     let client = configured_client(files)?;
     let checkout = client.checkout(checkout_id).await?;
+    checkout::cleanup_local(config_path, profile, &checkout).await?;
     let closed = client
         .cleanup_checkout(
             checkout_id,
@@ -164,9 +166,6 @@ async fn cleanup_checkout(
             },
         )
         .await?;
-    if let Err(error) = checkout::cleanup_local(config_path, profile, &client, &checkout).await {
-        vm_hint!("Service checkout closed; local temporary data was unavailable: {error}");
-    }
     vm_success!("Checkout {} is {:?}", closed.checkout_id, closed.state);
     Ok(())
 }
