@@ -4,6 +4,6 @@
 
 ```bash
 vm plugin install ./plugins/vibe-dev
-vm config preset vibe-dev
+vm config preset vibe
 vm run linux as vibe
 ```

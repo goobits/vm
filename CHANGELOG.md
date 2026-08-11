@@ -24,7 +24,7 @@
 
 ### 🔧 Changed
 
-- ☁️ AI CLI provisioning replaces deprecated Gemini CLI with Antigravity and uses one shared runtime path for the current native Antigravity, Claude Code, and Codex installers.
+- ☁️ Vibe base builds replace deprecated Gemini CLI with Antigravity and use one shared native installer contract for Antigravity, Claude Code, and Codex; `agent-skills` remains managed by `vm tools`.
 - ☁️ Vibe presets no longer attach projects to the `spacebase` network unless explicitly configured.
 - 🪟 Environment listing is project-aware by default, with `vm list --all` providing the global inventory.
 - 🪟 Profile and target selection consistently prefer explicit names, configured defaults, canonical environments, sole matches, then an interactive choice.
@@ -44,12 +44,30 @@
 - ☁️ Generated Compose, container configuration, and port-registry files use atomic writes to avoid partial state after failures.
 - ☁️ Temporary-environment state locks time out with recovery guidance instead of hanging indefinitely.
 - 🌐 Package-registry commands no longer panic inside the async runtime.
+- 🌐 Docker package-appliance startup reuses present immutable image overrides, enabling local release acceptance without an unnecessary registry pull.
+- 🌐 Rust workspace Docker builds exclude platform-specific target trees and dependency directories from their build context.
+- 🌐 Package-service image builds use an explicit in-image Cargo target directory instead of inheriting the host workspace output path.
+- 🌐 Package-job images disable Node's preinstalled Corepack shims before installing pinned pnpm and Yarn versions.
+- 🌐 Package appliances attach only their credential-free gateway to a host-facing controller bridge, keeping registry and workflow storage internal while making the configured gateway port reachable.
+- 🌐 Package appliances retain explicit image overrides across same-version restarts while allowing a newer controller release to select its matching images.
+- 🌐 Source-installed Docker package appliances automatically build matching infrastructure images when unreleased image tags are unavailable; released installs remain pull-only.
+- 🌐 Source-installed package appliances recheck local service and job images through Docker's content-addressed build cache, preventing non-controller source edits from leaving stale infrastructure behind.
+- 🌐 Source checkout discovery follows the installed `vm` symlink, and a networkless initialization step repairs non-root package-volume ownership before services start.
+- 🌐 Managed collections now publish through a credential-isolated ephemeral job, and `vm tools update` bootstraps the built-in `agent-skills` source and initial immutable release.
+- 🌐 Ephemeral release jobs now receive the intended publish secret as a read-only file instead of an unresolved Compose mount.
+- 🌐 `vm packages auth --github` validates and imports the active GitHub CLI credential into controller-only storage without printing it or exposing it to project workers.
+- 🌐 Flat package source shelves can mark managed tool repositories with `vm-tool.yaml`, preventing recursive language-package registration from misclassifying them.
+- 🌐 Managed tool downloads receive read credentials over standard input, and collections merge into existing skill roots without replacing personal or system skills.
+- 🌐 Tart package-appliance startup accepts Tart 2.32.1's `Name` and `State` inventory fields.
 - 🌐 Docker image pulls retry transient transport failures while permanent authentication and image errors fail immediately.
 - 🌐 Single-port ranges and explicit create-time port mappings now validate correctly.
 - 🚀 Tart stop operations are idempotent, and resolved stopped guests start reliably before shell connections.
 - 🚀 Docker client and service provisioning no longer depends on Python APT bindings and avoids reinstalling tools that are already present.
 - 🚀 Generated zsh configuration initializes its prompt-hook array before testing membership, eliminating first-login math errors.
-- 🚀 Managed shell configuration keeps `yoclaude` and `yocodex` available before their binaries activate and reports the host-side recovery command when needed.
+- 🚀 Managed shell configuration keeps `yoclaude` and `yocodex` available and reports the Vibe-base recovery path when an older environment lacks their binaries.
+- 🚀 Docker Vibe builds keep Codex outside host-synced state, invalidate derived images when their base image changes, and build through the current snapshot API.
+- 🚀 Docker environment discovery excludes managed service containers, while creation safely reuses only the exact host ports owned by preserved services.
+- 🚀 `vm run` applies the same package client environment as other create paths.
 - 🚀 Tart guest-home sync and mount paths expand the intended guest home instead of creating literal `$HOME` paths.
 - 🚀 Missing standard Tart vibe bases are built by the installed binary when environment creation needs them, including through `vm ssh` and on another configured disk.
 - 📦 Preset-backed `vm config unset` operations materialize the effective preset before removal, so deleted profiles and fields stay removed.

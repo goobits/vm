@@ -1,5 +1,5 @@
 ---
-Status: Static implementation complete; live acceptance in progress
+Status: Docker base, tool, shelf, and appliance acceptance complete; data-plane acceptance remains
 Date: 2026-08-11
 Depends: docs/user-guide/package-infrastructure.md, docs/development/architecture.md
 ---
@@ -79,8 +79,48 @@ test, merge, or publish package source directly.
 
 ### Provisioning and runtime reliability
 
+- [x] Keep Antigravity, Claude Code, and Codex in Docker and Tart Vibe bases;
+  reserve managed-tool activation for `agent-skills` and other explicit tools.
+- [x] Keep Codex's immutable executable outside host-synced `~/.codex` state,
+  and include the base image ID in derived-image cache keys.
+- [x] Build Docker Vibe bases through the current snapshot API, exclude managed
+  service containers from environment discovery, and reuse only their exact
+  occupied host ports during environment creation.
 - [x] Replace duplicated AI-sync templates with one valid policy covering
   boolean and granular Claude, Codex, Antigravity, and legacy Gemini settings.
+- [x] Accept Tart 2.32.1's capitalized VM inventory fields when starting the
+  shared package appliance.
+- [x] Let Docker appliance acceptance use locally built immutable image
+  overrides without forcing a remote pull.
+- [x] Keep local build outputs and dependency directories out of package-image
+  Docker contexts.
+- [x] Keep package-image Cargo outputs inside the builder stage even when the
+  host workspace redirects its target directory.
+- [x] Build package-job images against current Node bases without conflicting
+  with their preinstalled Corepack package-manager shims.
+- [x] Publish the gateway through a dedicated controller bridge while keeping
+  registry and workflow services isolated on the internal appliance network.
+- [x] Persist explicit appliance image overrides for same-version restarts and
+  return to matching release images after a controller upgrade.
+- [x] Fall back to Docker-native local image builds for discoverable source
+  installs when matching unreleased images are not pullable.
+- [x] Recheck source-built appliance images through Docker's content-addressed
+  build cache so service- or job-only edits cannot leave stale local images.
+- [x] Resolve source-installed CLI symlinks and initialize package-volume roots
+  before non-root services start, including volumes introduced by upgrades.
+- [x] Publish registered collections through a credential-isolated ephemeral
+  job and bootstrap the built-in `agent-skills` definition and initial release
+  from `vm tools update`.
+- [x] Deliver artifact read credentials to running guests over standard input,
+  and merge collection skills without replacing existing agent skill roots.
+- [x] Define the shared publish secret explicitly for ephemeral package and
+  tool release jobs so Compose mounts the intended read-only token file.
+- [x] Let operators validate and explicitly import the active GitHub CLI
+  credential into controller-only storage without printing or forwarding it to
+  workers.
+- [x] Let one flat host source shelf mix language packages and explicitly marked
+  tool repositories without hardcoded names, paths, or accidental npm
+  registration.
 - [x] Keep tool update discovery off the interactive startup critical path.
 - [x] Bound streamed commands, terminate and reap timed-out children, cap error
   output, and keep broken pipes from panicking the CLI.
@@ -134,15 +174,26 @@ covered every crate with all features enabled and two compile jobs.
 ## Post-Recreation Acceptance
 
 The first Docker shell smoke test exposed and fixed an uninitialized zsh prompt
-hook and a silent managed-tool activation failure. Shell shortcuts now remain
-available while binaries are absent and point to `vm tools update`; the host
-correctly reports that the package appliance must be started before the first
-catalog refresh. Package appliance acceptance remains below.
+hook, then revealed that standard AI CLIs had been incorrectly coupled to the
+private package appliance. Vibe bases again own Antigravity, Claude Code, and
+Codex; only `agent-skills` remains selected through `vm tools`. Tart appliance
+startup now accepts the inventory format returned by Tart 2.32.1. Full package
+appliance acceptance remains below.
 
-These are the only remaining tasks:
+Docker appliance startup now succeeds with the source-installed CLI, remains
+healthy on a no-flags restart from outside the project, and retains its named
+volumes. The rebuilt Docker Vibe base now creates `vm-dev` while reusing its
+preserved PostgreSQL service, `yocodex` resolves Codex 0.147.0 outside synced
+state, and `agent-skills` 0.6.1 activates 26 skills across all five supported
+agent locations without replacing Codex system skills. The flat source shelf
+registered 13 npm packages while routing `agent-skills` to `vm tools`. These
+are the only remaining tasks:
 
-- [ ] Start the package appliance in Docker and a separate Docker worker on the
-  same managed network.
+- [x] Start and restart the central package appliance in Docker from outside a
+  project directory.
+- [x] Populate `goobits/agent-skills` from the clean local submodule history,
+  publish 0.6.1, and activate the collection in the running Docker worker.
+- [ ] Start a separate Docker worker on the same managed network.
 - [ ] Prove npm, Cargo, and Python public proxying, immutable internal artifacts,
   per-worker override isolation, persistent-cache restart recovery, and clear
   uncached-internal failure.
@@ -168,6 +219,10 @@ e3e162ba feat(packages): make checkout overrides durable
 64c9d473 fix(tart): harden shell recovery
 07394eb9 fix(runtime): bound provisioning resources
 e06f9554 fix(security): harden managed resources
+de09ccf5 docs(vm): finalize implementation handoff
+6fcb243a fix(shell): initialize zsh prompt hooks
+32a4f491 fix(shell): keep managed tool shortcuts available
+6b94ed93 feat(runtime): complete Vibe and package bootstrap
 ```
 
 The user's dirty `vm.yaml` is intentionally outside these commits.

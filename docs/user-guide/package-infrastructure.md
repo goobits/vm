@@ -37,13 +37,22 @@ Docker project             Linux Tart project
 The Mac stores controller configuration and launches Docker or Tart. It does
 not clone package repositories, run package checks, build releases, or publish
 artifacts. Project agents never receive Git credentials or registry storage.
+The credential-free gateway alone joins a host-facing controller bridge; all
+registry and workflow storage remains behind the appliance's internal network.
 
 ## Start the Appliance
 
+Run appliance commands on the controller host. The appliance is shared and is
+not scoped to the current project directory.
+
 ```bash
-vm packages up
+vm packages up --runtime docker  # one-time Docker choice on macOS
 vm packages doctor
 ```
+
+The selected runtime is stored in controller state, so later starts from any
+host directory are simply `vm packages up`. A Docker-only setup does not need a
+Tart package VM.
 
 On its first run, macOS selects Tart and prepares the versioned Linux base
 automatically. Later runs reuse the stored runtime. Other platforms select
@@ -51,6 +60,18 @@ Docker. Use `--runtime docker` only when every consumer is Docker-based, or
 `--runtime tart` to switch explicitly. The Docker gateway is loopback-bound and
 is deliberately rejected for Tart consumers. The Tart appliance exposes its
 gateway on the private VM address so both providers can reach it.
+Explicit appliance image overrides are also reused by later runs of the same
+controller version; upgrading the CLI selects that release's matching images.
+When a source-installed CLI cannot pull unreleased matching images, it discovers
+its checkout and builds those infrastructure images inside Docker automatically.
+Local source images re-enter Docker's content-addressed build cache on each
+appliance start, so service- or job-only edits cannot be hidden behind a stale
+controller fingerprint while unchanged layers remain reusable. Released
+installs remain pull-only and never depend on a source tree.
+Before the non-root registry and workflow services start, a networkless init
+step repairs only their named-volume roots to the package-service UID/GID. This
+keeps both fresh volumes and volumes added during an upgrade writable without
+granting the long-running services root access.
 
 VM injects the gateway and a read-only token through npm, Cargo, and pip
 environment settings whenever it creates or starts a project environment. It
@@ -87,12 +108,17 @@ inside the guest.
 Store Git and optional remote-registry tokens as controller secrets:
 
 ```bash
+vm packages auth --github
+# Or import a Git token from another provider/file:
 vm packages auth --token-file /secure/input/git-token
 vm packages auth --ci-token-file /secure/input/registry-token
 ```
 
-The input files are read once. The tokens are exposed only to the scoped
-service or release job that needs them.
+`--github` reads the active `gh auth token` directly into the private
+controller secret without printing it. If GitHub reports an invalid session,
+run `gh auth login --hostname github.com` once and retry. Input files are read
+once. The tokens are exposed only to the scoped service or release job that
+needs them. Public-only sources do not need a Git credential.
 
 Register each package repository and each consumer inventory:
 
@@ -110,11 +136,42 @@ vm packages consumer register project-a \
   --dependency auth@1.4.2
 ```
 
+The registration path may be an absolute host directory and appliance commands
+may be run from any host directory. For example, a shared source root can be
+discovered in one pass with:
+
+```bash
+vm packages register /Users/example/projects/packages --recursive
+```
+
+Keep that source shelf flat and make each child an independent Git repository:
+
+```text
+/Users/example/projects/packages/
+├── agent-skills/
+├── auth/
+└── shared-config/
+```
+
+The shelf itself should not be a Git repository. A repository with a valid
+root `vm-tool.yaml` (`kind: binary` or `kind: collection`) is reported as a tool
+source and skipped by language-package registration. This lets tool collections
+such as `agent-skills` live beside npm, Cargo, and Python sources without being
+misclassified by their metadata files. `vm tools` remains responsible for
+publishing and activating those repositories.
+
 Path registration detects `package.json`, `Cargo.toml`, or `pyproject.toml`,
 then reads each repository's `origin` and default branch. Every supplied path
 must be a Git repository root. Use `--ecosystem` when a repository intentionally
 contains more than one supported manifest. Discovery only registers metadata;
-it does not copy, mount, build, or publish the local source.
+it does not copy, mount, build, publish, or continuously watch the local source.
+The appliance clones the registered Git origins into its private `source-mirrors`
+Docker volume when package work requires them.
+
+The host path is intentionally not stored in project configuration or mounted
+into the appliance. Run the recursive registration again after adding a new
+repository; registration is idempotent. Wait until the directory contains Git
+repositories with `origin` remotes before running it.
 
 Supported ecosystems are `npm`, `cargo`, and `python`. A package has one
 canonical repository and immutable published versions.
@@ -125,21 +182,33 @@ Tool definitions use the same private appliance but remain separate from
 language-package protocols:
 
 ```bash
-vm tools register codex \
-  --kind binary \
-  --repository https://github.com/example/codex.git
 vm tools register agent-skills \
   --kind collection \
   --repository https://github.com/example/agent-skills.git
+vm tools publish agent-skills
 vm tools list
 vm tools show agent-skills
 ```
 
-Trusted infrastructure release jobs publish target-specific, immutable
-archives and receipts; project agents cannot publish them. Projects select
+`publish` launches a trusted ephemeral collection job. It clones the registered
+branch, reads the stable semantic version from `package.json`, archives the
+exact commit deterministically, and records an immutable artifact and receipt.
+The remote must already contain that branch; the job never creates or pushes
+source history. Project agents cannot publish it. Projects select
 versions through the one-level `tools:` map in `vm.yaml`. A collection such as
 `agent-skills` is one atomic version, even when it activates into several agent
 directories.
+
+The Vibe base owns Antigravity, Claude Code, and Codex executables. They do not
+require this appliance; `agent-skills` remains an intentionally managed tool.
+For the built-in `agent-skills` selection, `vm tools update` automatically
+registers the canonical Goobits repository and publishes its initial collection
+when the appliance is empty. No separate registration or publication command is
+needed on a fresh controller. Tool updates activate inside an already-running
+environment and do not require a base rebuild. Read credentials travel to the
+guest over standard input rather than command arguments. Collection activation
+merges individual skills into an existing agent skill directory, preserving
+unmanaged personal and system skills.
 
 ```bash
 vm tools refresh

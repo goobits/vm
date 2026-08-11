@@ -187,6 +187,7 @@ vm packages backups
 vm packages restore <backup-id>
 vm packages register <name> --ecosystem <npm|cargo|python> --repository <url>
 vm packages register <path>... [--recursive]
+vm packages auth --github
 vm packages list
 vm packages checkout <package> --agent <agent> --task <task>
 vm packages submit <checkout-id>
@@ -198,6 +199,9 @@ vm packages drift
 vm packages rollout <package>@<version> --to <consumer>
 ```
 
+Recursive registration skips repositories marked by `vm-tool.yaml`; those are
+published and activated through `vm tools`.
+
 See [Package Infrastructure](package-infrastructure.md) for the provider
 boundary, registration, credentials, release workflow, and recovery model.
 
@@ -207,6 +211,7 @@ boundary, registration, credentials, release workflow, and recovery model.
 vm tools register <name> --kind <binary|collection> --repository <url>
 vm tools list
 vm tools show <name>
+vm tools publish <name>
 vm tools refresh
 vm tools status [environment]
 vm tools update [environment] [--all] [--background]

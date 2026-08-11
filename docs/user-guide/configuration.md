@@ -234,18 +234,15 @@ use a Linux Tart guest or a controlled remote Docker daemon over SSH/TLS.
 
 ## Managed Tools And AI State
 
-Tools are immutable releases served by package infrastructure and activated
-inside each Docker container or Tart VM:
+Vibe bases ship Antigravity, Claude Code, and Codex. Package infrastructure is
+reserved for explicitly managed artifacts such as the shared agent-skills
+collection:
 
 ```yaml
 tools:
   updates: prompt
-  antigravity: {}       # omitted version tracks latest
-  claude: {}
-  codex:
-    version: 1.4.2      # semantic version pins exactly
   agent-skills:
-    updates: auto       # the whole collection updates atomically
+    updates: auto
 ```
 
 `updates` can be `prompt`, `auto`, or `off`, with an optional override per
@@ -253,7 +250,9 @@ tool. `vm start` never contacts package infrastructure or waits for tool
 updates. An interactive `vm shell`/`vm ssh` uses only a fresh local catalog,
 refreshes that catalog in the background, and starts selected guest downloads
 without delaying the shell. Use `vm tools update` when the command should wait,
-or `vm tools update --background` to return immediately.
+or `vm tools update --background` to return immediately. On a fresh controller,
+that command also registers and publishes the initial built-in `agent-skills`
+collection through the trusted package job.
 
 Host sync is separate: it retains supported CLI state and credentials but does
 not install executables:
@@ -270,7 +269,7 @@ host_sync:
 `ai_tools: true` syncs all three state areas. The old `gemini` key remains a
 deprecated compatibility alias for `antigravity`; new configs should use
 `antigravity`. Executables are never downloaded directly by project
-provisioning.
+provisioning; the Vibe base build owns the three standard AI CLI installers.
 
 ## Presets
 
