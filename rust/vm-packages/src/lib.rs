@@ -48,7 +48,8 @@ pub use tools::{
     ToolPublicationReceipt,
 };
 pub use validation::{
-    validate_label, validate_registry_url, validate_repository_url, PackageValidationError,
+    validate_label, validate_managed_id, validate_registry_url, validate_repository_url,
+    PackageValidationError,
 };
 pub use workflow::{
     CheckoutLease, CheckoutRecord, CleanupRequest, CreateCheckout, LeaseRecord, LeaseRequest,

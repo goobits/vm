@@ -63,8 +63,11 @@ pub(super) async fn handle(
     if let Err(error) = checkout::cleanup_local(
         config_path,
         profile,
+        &client,
         &client.checkout(&published.checkout_id).await?,
-    ) {
+    )
+    .await
+    {
         vm_hint!("Published successfully; local temporary checkout cleanup was skipped: {error}");
     }
     vm_success!(

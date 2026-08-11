@@ -156,10 +156,18 @@ vm packages publish <submission-id> --push-source
 
 Submission validates the exact bundle and selected consumers, then launches a
 credential-free ephemeral reviewer. Integration is serialized against the
-latest canonical commit. Publication requires explicit source-push authority,
-verifies the semantic version bump, pushes the matching commit and tag, and
-publishes the same immutable artifact locally and to the configured CI
-registry. A successful release closes and removes only its temporary checkout.
+latest canonical commit. After integrated checks pass, the appliance removes
+the mutable agent and integration worktrees and retains only the immutable
+integration bundle required for release. Publication requires explicit
+source-push authority, verifies the semantic version bump, pushes the matching
+commit and tag, and publishes the same immutable artifact locally and to the
+configured CI registry. A successful release removes that remaining bundle and
+the guest's temporary checkout.
+
+Cleanup is restricted to `/data/agents/<checkout-id>` inside the appliance and
+`/tmp/vm-package-checkouts/<checkout-id>` inside the project environment. It
+never removes the registered source repository, `/workspace`, or the persistent
+canonical Git mirror under `/data/sources`.
 
 Every mutating step is idempotent and writes a durable receipt. A retry resumes
 from the recorded state instead of creating a second merge, tag, or release.

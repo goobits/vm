@@ -164,7 +164,7 @@ async fn cleanup_checkout(
             },
         )
         .await?;
-    if let Err(error) = checkout::cleanup_local(config_path, profile, &checkout) {
+    if let Err(error) = checkout::cleanup_local(config_path, profile, &client, &checkout).await {
         vm_hint!("Service checkout closed; local temporary data was unavailable: {error}");
     }
     vm_success!("Checkout {} is {:?}", closed.checkout_id, closed.state);

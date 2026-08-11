@@ -33,6 +33,22 @@ pub fn validate_label(field: &str, value: &str) -> Result<(), PackageValidationE
     }
 }
 
+/// Validate an identifier before using it as one component of a managed path.
+pub fn validate_managed_id(field: &str, value: &str) -> Result<(), PackageValidationError> {
+    let valid = !value.is_empty()
+        && value.len() <= 160
+        && value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'));
+    if valid {
+        Ok(())
+    } else {
+        Err(PackageValidationError::new(format!(
+            "invalid managed {field}"
+        )))
+    }
+}
+
 pub fn validate_repository_url(value: &str) -> Result<(), PackageValidationError> {
     let repository = url::Url::parse(value)
         .map_err(|_| PackageValidationError::new("repository must be an absolute URL"))?;
@@ -69,7 +85,9 @@ pub fn validate_registry_url(value: &str) -> Result<(), PackageValidationError> 
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_label, validate_registry_url, validate_repository_url};
+    use super::{
+        validate_label, validate_managed_id, validate_registry_url, validate_repository_url,
+    };
 
     #[test]
     fn validates_shared_labels_and_urls() {
@@ -79,5 +97,13 @@ mod tests {
         assert!(validate_repository_url("https://token@example.com/auth.git").is_err());
         assert!(validate_registry_url("sparse+https://packages.example.com/cargo/").is_ok());
         assert!(validate_registry_url("file:///tmp/packages").is_err());
+    }
+
+    #[test]
+    fn managed_ids_are_single_safe_path_components() {
+        assert!(validate_managed_id("checkout ID", "pkg-auth-20260811-000001").is_ok());
+        for invalid in ["", ".", "../source", "scope/auth", "/workspace", "auth.git"] {
+            assert!(validate_managed_id("checkout ID", invalid).is_err());
+        }
     }
 }

@@ -47,7 +47,7 @@ pub(super) async fn handle(
         ));
     }
     let definition = client.package_definition(&checkout.package).await?;
-    let root = checkout_root(&checkout_id);
+    let root = checkout_root(&checkout_id)?;
     let source = format!("{root}/source");
     ensure_clean(&subject, &source)?;
 

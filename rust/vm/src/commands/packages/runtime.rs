@@ -52,12 +52,17 @@ pub(super) fn gateway_for_provider(state: &ApplianceState, provider: &str) -> Vm
     }
 }
 
-pub(super) fn checkout_root(checkout_id: &str) -> String {
-    format!("/tmp/vm-package-checkouts/{checkout_id}")
+pub(super) fn checkout_root(checkout_id: &str) -> VmResult<String> {
+    vm_packages::validate_managed_id("checkout ID", checkout_id).map_err(VmError::from)?;
+    Ok(format!("/tmp/vm-package-checkouts/{checkout_id}"))
 }
 
-pub(super) fn exec<const N: usize>(subject: &RuntimeSubject, command: [&str; N]) -> VmResult<()> {
-    let command = command.into_iter().map(str::to_string).collect::<Vec<_>>();
+pub(super) fn exec<I, S>(subject: &RuntimeSubject, command: I) -> VmResult<()>
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
+    let command = command.into_iter().map(Into::into).collect::<Vec<_>>();
     subject
         .provider
         .exec(Some(subject.target.as_str()), &command)
@@ -83,10 +88,11 @@ pub(super) fn copy_private(
     exec(subject, ["chmod", "600", destination])
 }
 
-pub(super) fn exec_in_workspace<const N: usize>(
-    subject: &RuntimeSubject,
-    command: [&str; N],
-) -> VmResult<()> {
+pub(super) fn exec_in_workspace<I, S>(subject: &RuntimeSubject, command: I) -> VmResult<()>
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
     let mut wrapped = vec![
         "/bin/sh".to_string(),
         "-c".to_string(),
@@ -94,7 +100,7 @@ pub(super) fn exec_in_workspace<const N: usize>(
         "vm-package-workspace".to_string(),
         workspace_path(&subject.config).to_string(),
     ];
-    wrapped.extend(command.into_iter().map(str::to_string));
+    wrapped.extend(command.into_iter().map(Into::into));
     subject
         .provider
         .exec(Some(subject.target.as_str()), &wrapped)
@@ -111,7 +117,7 @@ fn workspace_path(config: &VmConfig) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_environment, client_environment, gateway_for_provider};
+    use super::{apply_environment, checkout_root, client_environment, gateway_for_provider};
     use vm_config::config::VmConfig;
     use vm_packages::{
         ApplianceState, ClientEnvironment, InfrastructureRuntime, RegistryEndpoints,
@@ -158,5 +164,16 @@ mod tests {
             config.environment["CARGO_SOURCE_CRATES_IO_REPLACE_WITH"],
             "vm"
         );
+    }
+
+    #[test]
+    fn checkout_roots_cannot_escape_guest_temporary_storage() {
+        assert_eq!(
+            checkout_root("pkg-auth-20260811-000001").unwrap(),
+            "/tmp/vm-package-checkouts/pkg-auth-20260811-000001"
+        );
+        for invalid in ["../workspace", "/workspace", "scope/auth", "."] {
+            assert!(checkout_root(invalid).is_err());
+        }
     }
 }

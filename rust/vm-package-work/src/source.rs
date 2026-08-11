@@ -70,9 +70,7 @@ impl SourceManager {
             return Err(WorkError::Conflict("checkout source is not ready".into()));
         }
         let archive = self
-            .root
-            .join("agents")
-            .join(&checkout.checkout_id)
+            .agent_root(&checkout.checkout_id)?
             .join("source.bundle");
         if tokio::fs::try_exists(&archive).await? {
             tokio::fs::remove_file(&archive).await?;
@@ -96,12 +94,50 @@ impl SourceManager {
             .lock(&format!("checkout:{}", checkout.checkout_id))
             .await;
         let _guard = lock.lock().await;
-        let checkout_root = self.root.join("agents").join(&checkout.checkout_id);
+        let checkout_root = self.agent_root(&checkout.checkout_id)?;
         if checkout.worktree.is_some() {
             self.checkout_source(checkout)?;
         }
         if tokio::fs::try_exists(&checkout_root).await? {
             tokio::fs::remove_dir_all(&checkout_root).await?;
+        }
+        Ok(())
+    }
+
+    /// Remove mutable Git worktrees after integration while retaining the
+    /// immutable integration bundle required by the release job.
+    pub(crate) async fn compact_integrated_checkout(
+        &self,
+        submission: &SubmissionRecord,
+    ) -> WorkResult<()> {
+        let lock = self
+            .lock(&format!("checkout:{}", submission.checkout_id))
+            .await;
+        let _guard = lock.lock().await;
+        let bundle = self.integration_bundle(submission)?;
+        let integration_source = bundle
+            .parent()
+            .expect("managed integration bundle has a parent")
+            .join("source");
+        let checkout_root = self.agent_root(&submission.checkout_id)?;
+
+        for directory in [checkout_root.join("source"), integration_source] {
+            if tokio::fs::try_exists(&directory).await? {
+                tokio::fs::remove_dir_all(directory).await?;
+            }
+        }
+        for disposable in [
+            checkout_root.join("source.bundle"),
+            checkout_root.join("uploads"),
+        ] {
+            if !tokio::fs::try_exists(&disposable).await? {
+                continue;
+            }
+            if disposable.is_dir() {
+                tokio::fs::remove_dir_all(disposable).await?;
+            } else {
+                tokio::fs::remove_file(disposable).await?;
+            }
         }
         Ok(())
     }
@@ -290,11 +326,12 @@ impl SourceManager {
         )
         .await?;
         let integration_root = self
-            .root
-            .join("agents")
-            .join(&submission.checkout_id)
+            .agent_root(&submission.checkout_id)?
             .join("integrations")
-            .join(&submission.submission_id);
+            .join(managed_component(
+                "submission ID",
+                &submission.submission_id,
+            )?);
         let source = integration_root.join("source");
         tokio::fs::create_dir_all(&integration_root).await?;
         if tokio::fs::try_exists(&source).await? {
@@ -450,11 +487,12 @@ impl SourceManager {
             .ok_or_else(|| WorkError::Conflict("integration is not prepared".into()))?;
         let source = PathBuf::from(&integration.worktree);
         let expected = self
-            .root
-            .join("agents")
-            .join(&submission.checkout_id)
+            .agent_root(&submission.checkout_id)?
             .join("integrations")
-            .join(&submission.submission_id)
+            .join(managed_component(
+                "submission ID",
+                &submission.submission_id,
+            )?)
             .join("source");
         if source != expected {
             return Err(WorkError::Internal(
@@ -478,7 +516,7 @@ impl SourceManager {
         definition: &vm_packages::PackageDefinition,
     ) -> WorkResult<CheckoutRecord> {
         let mirrors = self.root.join("sources");
-        let checkout_root = self.root.join("agents").join(&checkout.checkout_id);
+        let checkout_root = self.agent_root(&checkout.checkout_id)?;
         let source = checkout_root.join("source");
         tokio::fs::create_dir_all(&mirrors).await?;
         tokio::fs::create_dir_all(&checkout_root).await?;
@@ -609,17 +647,20 @@ impl SourceManager {
             .as_deref()
             .map(PathBuf::from)
             .ok_or_else(|| WorkError::Conflict("checkout source is not ready".into()))?;
-        let expected = self
-            .root
-            .join("agents")
-            .join(&checkout.checkout_id)
-            .join("source");
+        let expected = self.agent_root(&checkout.checkout_id)?.join("source");
         if source != expected {
             return Err(WorkError::Internal(
                 "checkout source escaped its managed directory".into(),
             ));
         }
         Ok(source)
+    }
+
+    fn agent_root(&self, checkout_id: &str) -> WorkResult<PathBuf> {
+        Ok(self
+            .root
+            .join("agents")
+            .join(managed_component("checkout ID", checkout_id)?))
     }
 
     fn rollout_source(&self, rollout: &RolloutRecord) -> WorkResult<PathBuf> {
@@ -640,6 +681,11 @@ impl SourceManager {
         }
         Ok(source)
     }
+}
+
+fn managed_component<'a>(field: &str, value: &'a str) -> WorkResult<&'a str> {
+    vm_packages::validate_managed_id(field, value)?;
+    Ok(value)
 }
 
 fn allowed_rollout_path(ecosystem: vm_packages::PackageEcosystem, path: &str) -> bool {

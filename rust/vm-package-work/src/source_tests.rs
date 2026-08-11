@@ -2,8 +2,8 @@ use std::process::{Command as StdCommand, Stdio};
 
 use super::*;
 use vm_packages::{
-    CreateCheckout, CreateRollout, PackageEcosystem, PublicationRecord, RegisterConsumer,
-    RegisterPackage, ReleaseRecord, RolloutState,
+    CreateCheckout, CreateRollout, IntegrationRecord, PackageEcosystem, PublicationRecord,
+    RegisterConsumer, RegisterPackage, ReleaseRecord, RolloutState,
 };
 
 fn git(repository: &Path, args: &[&str]) {
@@ -19,7 +19,7 @@ fn git(repository: &Path, args: &[&str]) {
 }
 
 #[tokio::test]
-async fn source_checkout_stays_inside_managed_agent_storage() {
+async fn package_checkout_lifecycle_stays_inside_managed_agent_storage() {
     let directory = tempfile::tempdir().unwrap();
     let repository = directory.path().join("repository");
     std::fs::create_dir(&repository).unwrap();
@@ -122,15 +122,60 @@ async fn source_checkout_stays_inside_managed_agent_storage() {
             "--all",
         ],
     );
-    let submission = source
+    let mut submission = source
         .import_submission(&store, &active, &submitted_bundle)
         .await
         .unwrap();
     assert_eq!(submission.state, WorkflowState::Submitted);
     assert_ne!(submission.base_commit, submission.submitted_commit);
+
+    let integration_root = data
+        .join("agents")
+        .join(&active.checkout_id)
+        .join("integrations")
+        .join(&submission.submission_id);
+    let integration_source = integration_root.join("source");
+    std::fs::create_dir_all(&integration_source).unwrap();
+    std::fs::write(integration_source.join("temporary"), "worktree").unwrap();
+    std::fs::write(
+        integration_root.join("integration.bundle"),
+        "release bundle",
+    )
+    .unwrap();
+    submission.integration = Some(IntegrationRecord {
+        canonical_commit: submission.base_commit.clone(),
+        integration_commit: submission.submitted_commit.clone(),
+        strategy: "rebase".into(),
+        worktree: integration_source.to_string_lossy().into_owned(),
+        validation: None,
+        timestamp: chrono::Utc::now(),
+    });
+
+    source
+        .compact_integrated_checkout(&submission)
+        .await
+        .unwrap();
+    source
+        .compact_integrated_checkout(&submission)
+        .await
+        .unwrap();
+    assert!(!data
+        .join("agents")
+        .join(&active.checkout_id)
+        .join("source")
+        .exists());
+    assert!(!integration_source.exists());
+    assert!(integration_root.join("integration.bundle").is_file());
+    assert!(repository.join(".git").is_dir());
+    assert!(repository.join("Cargo.toml").is_file());
+    assert!(data.join("sources").is_dir());
+
     source.cleanup_checkout(&active).await.unwrap();
     source.cleanup_checkout(&active).await.unwrap();
     assert!(!data.join("agents").join(&active.checkout_id).exists());
+    assert!(repository.join(".git").is_dir());
+    assert!(repository.join("Cargo.toml").is_file());
+    assert!(data.join("sources").is_dir());
 }
 
 #[tokio::test]

@@ -69,7 +69,7 @@ pub(super) async fn handle(
         .integration
         .as_ref()
         .ok_or_else(|| VmError::validation("Integration record is missing", None::<String>))?;
-    let checkout_root = checkout_root(&checkout.checkout_id);
+    let checkout_root = checkout_root(&checkout.checkout_id)?;
     let root = format!("{checkout_root}/integration-{}", integrating.submission_id);
     let source = format!("{root}/source");
     let bundle = format!("{root}/integration.bundle");

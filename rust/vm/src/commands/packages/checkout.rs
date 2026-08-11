@@ -26,12 +26,14 @@ pub(super) struct CheckoutIntent {
     pub(super) task: String,
 }
 
-pub(super) fn cleanup_local(
+pub(super) async fn cleanup_local(
     config_path: Option<PathBuf>,
     profile: Option<String>,
+    client: &PackageInfrastructureClient,
     checkout: &vm_packages::CheckoutRecord,
 ) -> VmResult<()> {
     let subject = load_runtime_subject(config_path, profile, None)?;
+    let root = checkout_root(&checkout.checkout_id)?;
     let current_project = project_name(&subject.config);
     if !checkout
         .consumers
@@ -43,15 +45,20 @@ pub(super) fn cleanup_local(
             None::<String>,
         ));
     }
-    exec(
+    let definition = client.package_definition(&checkout.package).await?;
+    let pinned_version = client
+        .package_consumers(&checkout.package)
+        .await?
+        .into_iter()
+        .find(|usage| usage.consumer == current_project)
+        .map(|usage| usage.version);
+    restore_published_override(
         &subject,
-        [
-            "rm",
-            "-rf",
-            "--",
-            checkout_root(&checkout.checkout_id).as_str(),
-        ],
-    )
+        definition.ecosystem,
+        &checkout.package,
+        pinned_version.as_deref(),
+    )?;
+    exec(&subject, ["rm", "-rf", "--", root.as_str()])
 }
 
 pub(super) async fn handle(files: &ApplianceFiles, intent: CheckoutIntent) -> VmResult<()> {
@@ -67,6 +74,20 @@ pub(super) async fn handle(files: &ApplianceFiles, intent: CheckoutIntent) -> Vm
 
     let (state, client) = configured_state_and_client(files)?;
     let definition = client.package_definition(&intent.package).await?;
+    if !client
+        .package_consumers(&intent.package)
+        .await?
+        .iter()
+        .any(|usage| usage.consumer == consumer)
+    {
+        return Err(VmError::validation(
+            format!(
+                "Consumer '{consumer}' has no registered '{}' dependency",
+                intent.package
+            ),
+            Some("Register the consumer and its pinned dependency before creating a checkout"),
+        ));
+    }
     vm_progress!(
         "Preparing isolated '{}' checkout in package infrastructure...",
         intent.package
@@ -94,15 +115,9 @@ pub(super) async fn handle(files: &ApplianceFiles, intent: CheckoutIntent) -> Vm
         &consumer,
         definition.ecosystem,
     ) {
-        let _ = exec(
-            &subject,
-            [
-                "rm",
-                "-rf",
-                "--",
-                checkout_root(&checkout.checkout.checkout_id).as_str(),
-            ],
-        );
+        if let Ok(root) = checkout_root(&checkout.checkout.checkout_id) {
+            let _ = exec(&subject, ["rm", "-rf", "--", root.as_str()]);
+        }
         let _ = client
             .transition(
                 &checkout.checkout.checkout_id,
@@ -147,7 +162,7 @@ fn attach(
     consumer: &str,
     ecosystem: PackageEcosystem,
 ) -> VmResult<()> {
-    let root = checkout_root(&checkout.checkout_id);
+    let root = checkout_root(&checkout.checkout_id)?;
     let source = format!("{root}/source");
     let archive = format!("/tmp/{}.bundle", checkout.checkout_id);
     let gateway = gateway_for_provider(state, subject.provider.name())?;
@@ -200,37 +215,139 @@ fn apply_override(
     package: &str,
     source: &str,
 ) -> VmResult<()> {
-    match ecosystem {
-        PackageEcosystem::Npm => exec_in_workspace(
-            subject,
+    let command = override_command(ecosystem, package, DependencySource::Worktree(source));
+    exec_in_workspace(subject, command)?;
+    if ecosystem == PackageEcosystem::Cargo {
+        let patch = cargo_patch(package, source);
+        vm_println!("Cargo override: cargo --config '{patch}' <command>");
+    }
+    Ok(())
+}
+
+fn restore_published_override(
+    subject: &RuntimeSubject,
+    ecosystem: PackageEcosystem,
+    package: &str,
+    pinned_version: Option<&str>,
+) -> VmResult<()> {
+    let Some(version) = pinned_version else {
+        if ecosystem == PackageEcosystem::Cargo {
+            return Ok(());
+        }
+        return Err(VmError::validation(
+            format!("No registered version is available to restore for '{package}'"),
+            Some("The temporary checkout was retained to avoid breaking the consumer"),
+        ));
+    };
+    if ecosystem == PackageEcosystem::Cargo {
+        return Ok(());
+    }
+    exec_in_workspace(
+        subject,
+        override_command(ecosystem, package, DependencySource::Published(version)),
+    )
+}
+
+#[derive(Clone, Copy)]
+enum DependencySource<'a> {
+    Worktree(&'a str),
+    Published(&'a str),
+}
+
+fn override_command(
+    ecosystem: PackageEcosystem,
+    package: &str,
+    source: DependencySource<'_>,
+) -> Vec<String> {
+    match (ecosystem, source) {
+        (PackageEcosystem::Npm, DependencySource::Worktree(path)) => {
+            ["npm", "install", "--no-save", "--package-lock=false", path]
+                .into_iter()
+                .map(str::to_string)
+                .collect()
+        }
+        (PackageEcosystem::Npm, DependencySource::Published(version)) => vec![
+            "npm".into(),
+            "install".into(),
+            "--no-save".into(),
+            "--package-lock=false".into(),
+            format!("{package}@{version}"),
+        ],
+        (PackageEcosystem::Python, DependencySource::Worktree(path)) => {
+            ["python", "-m", "pip", "install", "--editable", path]
+                .into_iter()
+                .map(str::to_string)
+                .collect()
+        }
+        (PackageEcosystem::Python, DependencySource::Published(version)) => vec![
+            "python".into(),
+            "-m".into(),
+            "pip".into(),
+            "install".into(),
+            "--force-reinstall".into(),
+            "--no-deps".into(),
+            format!("{package}=={version}"),
+        ],
+        (PackageEcosystem::Cargo, DependencySource::Worktree(path)) => vec![
+            "cargo".into(),
+            "metadata".into(),
+            "--format-version".into(),
+            "1".into(),
+            "--no-deps".into(),
+            "--config".into(),
+            cargo_patch(package, path),
+        ],
+        (PackageEcosystem::Cargo, DependencySource::Published(_)) => Vec::new(),
+    }
+}
+
+fn cargo_patch(package: &str, source: &str) -> String {
+    format!("patch.crates-io.{package}.path=\"{source}\"")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{override_command, DependencySource};
+    use vm_packages::PackageEcosystem;
+
+    #[test]
+    fn ecosystem_overrides_share_one_adapter() {
+        assert_eq!(
+            override_command(
+                PackageEcosystem::Npm,
+                "@internal/auth",
+                DependencySource::Published("1.4.2")
+            ),
             [
                 "npm",
                 "install",
                 "--no-save",
                 "--package-lock=false",
-                source,
-            ],
-        ),
-        PackageEcosystem::Python => exec_in_workspace(
-            subject,
-            ["python", "-m", "pip", "install", "--editable", source],
-        ),
-        PackageEcosystem::Cargo => {
-            let patch = format!("patch.crates-io.{package}.path=\"{source}\"");
-            exec_in_workspace(
-                subject,
-                [
-                    "cargo",
-                    "metadata",
-                    "--format-version",
-                    "1",
-                    "--no-deps",
-                    "--config",
-                    &patch,
-                ],
-            )?;
-            vm_println!("Cargo override: cargo --config '{patch}' <command>");
-            Ok(())
-        }
+                "@internal/auth@1.4.2"
+            ]
+        );
+        assert_eq!(
+            override_command(
+                PackageEcosystem::Python,
+                "internal-auth",
+                DependencySource::Worktree("/tmp/auth")
+            ),
+            ["python", "-m", "pip", "install", "--editable", "/tmp/auth"]
+        );
+        assert!(override_command(
+            PackageEcosystem::Cargo,
+            "auth",
+            DependencySource::Worktree("/tmp/auth")
+        )
+        .ends_with(&[
+            "--config".to_string(),
+            "patch.crates-io.auth.path=\"/tmp/auth\"".to_string()
+        ]));
+        assert!(override_command(
+            PackageEcosystem::Cargo,
+            "auth",
+            DependencySource::Published("1.4.2")
+        )
+        .is_empty());
     }
 }

@@ -401,12 +401,14 @@ async fn complete_integration(
     Path(submission_id): Path<String>,
     Json(request): Json<ValidationRequest>,
 ) -> WorkResult<Json<SubmissionRecord>> {
-    Ok(Json(
-        state
-            .store
-            .complete_integration(&submission_id, request)
-            .await?,
-    ))
+    let completed = state
+        .store
+        .complete_integration(&submission_id, request)
+        .await?;
+    if completed.state == WorkflowState::ReadyToRelease {
+        state.source.compact_integrated_checkout(&completed).await?;
+    }
+    Ok(Json(completed))
 }
 
 async fn record_review(
