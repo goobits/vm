@@ -1,13 +1,14 @@
 use crate::cli::BaseSubcommand;
 use crate::error::{VmError, VmResult};
-use serde::Deserialize;
 use std::process::Command;
 use vm_config::{
     config::{BoxSpec, VmConfig},
     resolve_tool_path, AppConfig,
 };
 use vm_core::{vm_println, vm_warning};
-use vm_provider::tart_base;
+use vm_provider::{tart_base, TartCommand};
+
+mod tart_install;
 
 const DOCKER_BASE_NAME: &str = "@vibe-box";
 const TART_BASE_BUILDER: &str = include_str!("../../scripts/build-vibe-tart-base.sh");
@@ -25,12 +26,6 @@ impl TartVibeBase {
     fn prebuilt_image(self) -> Option<String> {
         (self.guest_os == "linux").then(tart_base::versioned_image)
     }
-}
-
-#[derive(Deserialize)]
-struct TartListEntry {
-    #[serde(rename = "Name")]
-    name: String,
 }
 
 pub async fn handle_base(command: BaseSubcommand) -> VmResult<()> {
@@ -73,7 +68,9 @@ fn handle_build(preset: &str, provider: &str, guest_os: &str) -> VmResult<()> {
             let guest_os = resolve_tart_guest_os(guest_os)?;
             let base_name = tart_base_local_name(guest_os);
             let config = VmConfig::load(None).ok();
-            build_tart_base(guest_os, &base_name, config.as_ref())?;
+            let command = TartCommand::from_config(config.as_ref());
+            tart_install::build(&command, guest_os, &base_name, TART_BASE_BUILDER)?;
+            vm_println!("Built Tart {guest_os} vibe base: {base_name}");
         }
         _ => unreachable!(),
     }
@@ -151,14 +148,24 @@ pub(super) fn ensure_configured_tart_base(config: &VmConfig) -> VmResult<()> {
     ensure_tart_vibe_base(base, Some(config)).map(|_| ())
 }
 
-pub(crate) fn ensure_tart_linux_base() -> VmResult<String> {
-    ensure_tart_vibe_base(TartVibeBase { guest_os: "linux" }, None)
+pub(crate) fn ensure_tart_linux_base(command: &TartCommand) -> VmResult<String> {
+    ensure_tart_vibe_base_with_command(TartVibeBase { guest_os: "linux" }, command)
 }
 
 fn ensure_tart_vibe_base(base: TartVibeBase, config: Option<&VmConfig>) -> VmResult<String> {
+    let command = TartCommand::from_config(config);
+    ensure_tart_vibe_base_with_command(base, &command)
+}
+
+fn ensure_tart_vibe_base_with_command(
+    base: TartVibeBase,
+    command: &TartCommand,
+) -> VmResult<String> {
     let local_name = base.local_name();
 
-    if tart_base_exists(config, &local_name)? {
+    if tart_install::exists(command, &local_name)?
+        && tart_install::receipt_matches(command, &local_name, base.guest_os)?
+    {
         return Ok(local_name);
     }
 
@@ -168,7 +175,7 @@ fn ensure_tart_vibe_base(base: TartVibeBase, config: Option<&VmConfig>) -> VmRes
             local_name,
             image
         );
-        if clone_tart_base(config, &image, &local_name)? {
+        if tart_install::pull(command, &image, &local_name, base.guest_os)? {
             vm_println!("Pulled Tart Linux vibe base: {}", local_name);
             return Ok(local_name);
         }
@@ -182,102 +189,20 @@ fn ensure_tart_vibe_base(base: TartVibeBase, config: Option<&VmConfig>) -> VmRes
         "Tart vibe base '{}' is missing; building it now...",
         local_name
     );
-    build_tart_base(base.guest_os, &local_name, config).map_err(|error| {
-        VmError::validation(
-            format!("Could not prepare Tart vibe base '{local_name}': {error}"),
-            Some("Run `vm system base build vibe --provider tart` to retry with full output"),
-        )
-    })?;
+    tart_install::build(command, base.guest_os, &local_name, TART_BASE_BUILDER).map_err(
+        |error| {
+            VmError::validation(
+                format!("Could not prepare Tart vibe base '{local_name}': {error}"),
+                Some("Run `vm system base build vibe --provider tart` to retry with full output"),
+            )
+        },
+    )?;
     Ok(local_name)
 }
 
-fn tart_base_exists(config: Option<&VmConfig>, base_name: &str) -> VmResult<bool> {
-    let output = tart_command(config)
-        .args(["list", "--format", "json"])
-        .output()
-        .map_err(|error| VmError::general(error, "Failed to list Tart bases"))?;
-
-    if !output.status.success() {
-        return Err(VmError::validation(
-            "Failed to list Tart bases",
-            Some("Run `tart list` to diagnose the Tart installation"),
-        ));
-    }
-
-    tart_list_contains_base(&output.stdout, base_name)
-}
-
-fn clone_tart_base(config: Option<&VmConfig>, image: &str, base_name: &str) -> VmResult<bool> {
-    let status = tart_command(config)
-        .args(["clone", image, base_name])
-        .status()
-        .map_err(|error| VmError::general(error, format!("Failed to pull Tart base '{image}'")))?;
-    Ok(status.success())
-}
-
-fn tart_command(config: Option<&VmConfig>) -> Command {
-    let mut command = Command::new("tart");
-    if let Some(config) = config {
-        apply_tart_home(&mut command, config);
-    }
-    command
-}
-
-fn tart_list_contains_base(output: &[u8], base_name: &str) -> VmResult<bool> {
-    let entries: Vec<TartListEntry> = serde_json::from_slice(output)
-        .map_err(|error| VmError::general(error, "Failed to parse Tart base list"))?;
-    Ok(entries.iter().any(|entry| entry.name == base_name))
-}
-
-fn build_tart_base(guest_os: &str, base_name: &str, config: Option<&VmConfig>) -> VmResult<()> {
-    let mut command = Command::new("bash");
-    if let Some(config) = config {
-        apply_tart_home(&mut command, config);
-    }
-    command.args([
-        "-c",
-        TART_BASE_BUILDER,
-        "vm-tart-base-builder",
-        "--guest-os",
-        guest_os,
-        "--name",
-        base_name,
-    ]);
-    run_command(command, "build Tart vibe base")?;
-    vm_println!("Built Tart {guest_os} vibe base: {base_name}");
-    Ok(())
-}
-
 fn apply_tart_home_from_config(command: &mut Command) {
-    let Ok(config) = VmConfig::load(None) else {
-        return;
-    };
-    apply_tart_home(command, &config);
-}
-
-fn apply_tart_home(command: &mut Command, config: &VmConfig) {
-    let Some(storage_path) = config
-        .tart
-        .as_ref()
-        .and_then(|tart| tart.storage_path.as_deref())
-        .filter(|path| !path.trim().is_empty())
-    else {
-        return;
-    };
-
-    command.env("TART_HOME", expand_tilde(storage_path));
-}
-
-fn expand_tilde(path: &str) -> String {
-    if path == "~" {
-        return std::env::var("HOME").unwrap_or_else(|_| path.to_string());
-    }
-    if let Some(rest) = path.strip_prefix("~/") {
-        if let Ok(home) = std::env::var("HOME") {
-            return format!("{home}/{rest}");
-        }
-    }
-    path.to_string()
+    let config = VmConfig::load(None).ok();
+    TartCommand::from_config(config.as_ref()).configure(command);
 }
 
 fn handle_validate(
@@ -350,13 +275,12 @@ fn run_command(mut command: Command, context: &str) -> VmResult<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_tart_home, configured_tart_vibe_base, resolve_tart_guest_os, tart_base_local_name,
-        tart_base_name, tart_list_contains_base, TartVibeBase, TART_BASE_BUILDER,
+        configured_tart_vibe_base, resolve_tart_guest_os, tart_base_local_name, tart_base_name,
+        TartVibeBase, TART_BASE_BUILDER,
     };
     use std::ffi::OsStr;
-    use std::process::Command;
     use vm_config::config::{BoxSpec, TartConfig, VmConfig, VmSettings};
-    use vm_provider::tart_base;
+    use vm_provider::{tart_base, TartCommand};
 
     fn config(provider: &str, box_name: &str) -> VmConfig {
         VmConfig {
@@ -387,6 +311,7 @@ mod tests {
         assert!(TART_BASE_BUILDER.starts_with("#!/usr/bin/env bash"));
         assert!(TART_BASE_BUILDER.contains("tart clone"));
         assert!(TART_BASE_BUILDER.contains("--guest-os"));
+        assert!(!TART_BASE_BUILDER.contains("tart delete \"$BASE_NAME\""));
     }
 
     #[test]
@@ -434,19 +359,7 @@ mod tests {
     }
 
     #[test]
-    fn tart_list_detection_matches_exact_base_name() {
-        let output = br#"[
-            {"Name":"vibe-tart-sequoia-base","State":"stopped","Source":"local"},
-            {"Name":"vm-mac","State":"stopped","Source":"local"}
-        ]"#;
-
-        assert!(tart_list_contains_base(output, tart_base::MACOS_NAME).unwrap());
-        assert!(!tart_list_contains_base(output, tart_base::LINUX_NAME).unwrap());
-    }
-
-    #[test]
     fn tart_storage_path_is_forwarded_to_commands() {
-        let mut command = Command::new("tart");
         let config = VmConfig {
             tart: Some(TartConfig {
                 storage_path: Some("/Volumes/ExternalSSD/Tart".to_string()),
@@ -455,7 +368,7 @@ mod tests {
             ..Default::default()
         };
 
-        apply_tart_home(&mut command, &config);
+        let command = TartCommand::from_config(Some(&config)).command();
 
         assert!(command.get_envs().any(|(key, value)| key == "TART_HOME"
             && value == Some(OsStr::new("/Volumes/ExternalSSD/Tart"))));

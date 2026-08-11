@@ -222,6 +222,7 @@ mod tests {
             registry_image: "registry/image:1".into(),
             job_image: "jobs/image:1".into(),
             controller_version: "1".into(),
+            tart_home: None,
         }
     }
 

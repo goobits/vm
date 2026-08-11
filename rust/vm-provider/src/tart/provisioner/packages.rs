@@ -504,12 +504,16 @@ fi"#,
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tart::TartCommand;
     use vm_config::config::{PackageEdgeConfig, TartConfig};
 
     #[test]
     fn linux_docker_activates_the_managed_oci_mirror() {
-        let provisioner =
-            TartProvisioner::new("vm-linux".to_string(), "/workspace".to_string(), None);
+        let provisioner = TartProvisioner::new(
+            "vm-linux".to_string(),
+            "/workspace".to_string(),
+            TartCommand::new(None),
+        );
         let mut config = VmConfig {
             os: Some("linux".to_string()),
             tart: Some(TartConfig {

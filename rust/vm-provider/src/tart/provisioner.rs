@@ -1,4 +1,4 @@
-use super::provider::tart_run_log_path;
+use super::{provider::tart_run_log_path, TartCommand};
 use crate::{
     project_plan::ProjectPlan,
     shell_session::{quote_posix_argument, quote_posix_home_path},
@@ -19,26 +19,22 @@ mod shell_config;
 pub struct TartProvisioner {
     instance_name: String,
     project_dir: String,
-    tart_home: Option<String>,
+    command: TartCommand,
 }
 
 pub(super) type GuestCommand = (&'static str, String);
 
 impl TartProvisioner {
-    pub fn new(instance_name: String, project_dir: String, tart_home: Option<String>) -> Self {
+    pub fn new(instance_name: String, project_dir: String, command: TartCommand) -> Self {
         Self {
             instance_name,
             project_dir,
-            tart_home,
+            command,
         }
     }
 
     fn host_shell(&self, command: &str) -> duct::Expression {
-        let mut expr = cmd!("sh", "-c", command);
-        if let Some(tart_home) = &self.tart_home {
-            expr = expr.env("TART_HOME", tart_home);
-        }
-        expr
+        self.command.with_env(cmd!("sh", "-c", command))
     }
 
     /// Run provisioning scripts over SSH
@@ -87,11 +83,12 @@ impl TartProvisioner {
 
         let log_path = tart_run_log_path(&self.instance_name);
         for _attempt in 1..=30 {
-            let mut expr = cmd!("tart", "exec", &self.instance_name, "echo", "ready");
-            if let Some(tart_home) = &self.tart_home {
-                expr = expr.env("TART_HOME", tart_home);
-            }
-            let result = expr.stderr_null().stdout_null().run();
+            let result = self
+                .command
+                .expr(&["exec", &self.instance_name, "echo", "ready"])
+                .stderr_null()
+                .stdout_null()
+                .run();
 
             if result.is_ok() {
                 info!("SSH is ready");
@@ -221,11 +218,9 @@ $SUDO chmod 0555 "$target""#
     }
 
     fn ssh_exec(&self, command: &str) -> Result<String> {
-        let mut expr = cmd!("tart", "exec", &self.instance_name, "bash", "-c", command);
-        if let Some(tart_home) = &self.tart_home {
-            expr = expr.env("TART_HOME", tart_home);
-        }
-        let output = expr
+        let output = self
+            .command
+            .expr(&["exec", &self.instance_name, "bash", "-c", command])
             .read()
             .map_err(|e| VmError::Provider(format!("Exec command failed: {}", e)))?;
 
@@ -326,6 +321,7 @@ mod tests {
     use super::TartProvisioner;
     use crate::project_plan::ProjectPlan;
     use indexmap::IndexMap;
+    use std::path::PathBuf;
     #[cfg(unix)]
     use std::process::Command;
     use vm_config::config::{
@@ -337,7 +333,7 @@ mod tests {
         let provisioner = TartProvisioner::new(
             "vm-mac".to_string(),
             "/workspace".to_string(),
-            Some("/Volumes/External SSD/Tart".to_string()),
+            crate::tart::TartCommand::new(Some(PathBuf::from("/Volumes/External SSD/Tart"))),
         );
 
         let output = provisioner
@@ -419,8 +415,11 @@ mod tests {
 
     #[test]
     fn linux_databases_share_one_package_transaction() {
-        let provisioner =
-            TartProvisioner::new("vm-linux".to_string(), "/workspace".to_string(), None);
+        let provisioner = TartProvisioner::new(
+            "vm-linux".to_string(),
+            "/workspace".to_string(),
+            crate::tart::TartCommand::new(None),
+        );
         let mut config = VmConfig {
             os: Some("linux".to_string()),
             ..Default::default()
@@ -448,8 +447,11 @@ mod tests {
         let project = tempfile::tempdir().unwrap();
         std::fs::write(project.path().join("package.json"), "{}\n").unwrap();
         std::fs::write(project.path().join("package-lock.json"), "{}\n").unwrap();
-        let provisioner =
-            TartProvisioner::new("vm-linux".to_string(), "/workspace".to_string(), None);
+        let provisioner = TartProvisioner::new(
+            "vm-linux".to_string(),
+            "/workspace".to_string(),
+            crate::tart::TartCommand::new(None),
+        );
         let mut config = VmConfig {
             os: Some("linux".to_string()),
             tart: Some(TartConfig {
@@ -505,8 +507,11 @@ mod tests {
 
     #[test]
     fn custom_provision_paths_are_shell_quoted() {
-        let provisioner =
-            TartProvisioner::new("vm-linux".to_string(), "/work/it's here".to_string(), None);
+        let provisioner = TartProvisioner::new(
+            "vm-linux".to_string(),
+            "/work/it's here".to_string(),
+            crate::tart::TartCommand::new(None),
+        );
 
         let command = provisioner.custom_provision_command();
 
@@ -528,7 +533,11 @@ mod tests {
 
     #[test]
     fn read_only_linux_workspace_uses_guest_dependency_overlay() {
-        let provisioner = TartProvisioner::new("demo".to_string(), "/workspace".to_string(), None);
+        let provisioner = TartProvisioner::new(
+            "demo".to_string(),
+            "/workspace".to_string(),
+            crate::tart::TartCommand::new(None),
+        );
         let config: VmConfig = serde_yaml_ng::from_str(
             "provider: tart\nos: linux\nproject:\n  name: demo\n  workspace_access: read_only\n",
         )

@@ -3866,6 +3866,7 @@ dependencies = [
  "base64",
  "chrono",
  "duct",
+ "fs2",
  "indexmap",
  "indicatif",
  "rayon",

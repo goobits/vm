@@ -144,6 +144,10 @@ pub(super) async fn up(
         registry_image: config.registry_image,
         job_image: config.job_image,
         controller_version: env!("CARGO_PKG_VERSION").to_string(),
+        tart_home: (runtime == InfrastructureRuntime::Tart)
+            .then(|| tart::storage_home(files))
+            .transpose()?
+            .flatten(),
     })?;
 
     vm_success!("Package infrastructure is ready");
@@ -184,7 +188,8 @@ pub(super) async fn status(
     let gateway_url = match runtime {
         InfrastructureRuntime::Docker => state.gateway_url.clone(),
         InfrastructureRuntime::Tart if runtime_status == "running" => {
-            tart::gateway_url(state.gateway_port).unwrap_or_else(|_| state.gateway_url.clone())
+            tart::gateway_url(files, state.gateway_port)
+                .unwrap_or_else(|_| state.gateway_url.clone())
         }
         InfrastructureRuntime::Tart => state.gateway_url.clone(),
     };

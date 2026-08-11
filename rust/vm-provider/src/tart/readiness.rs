@@ -65,7 +65,7 @@ impl TartProvider {
         TartProvisioner::new(
             instance_name.to_string(),
             sync_dir.to_string(),
-            self.tart_home(),
+            self.command.clone(),
         )
         .ensure_workspace_mount(&self.config)
         .map_err(|e| {
@@ -83,7 +83,7 @@ impl TartProvider {
         let provisioner = TartProvisioner::new(
             instance_name.to_string(),
             sync_dir.to_string(),
-            self.tart_home(),
+            self.command.clone(),
         );
         provisioner.repair_home_state()?;
         if !self.is_shell_config_ready(instance_name) {

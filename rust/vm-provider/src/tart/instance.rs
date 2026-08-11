@@ -3,6 +3,7 @@
 //! This module provides instance resolution and management for Tart VMs,
 //! enabling multi-instance support through native Tart commands.
 
+use super::TartCommand;
 use crate::common::instance::{
     create_tart_instance_info, extract_project_name, fuzzy_match_instances, InstanceInfo,
     InstanceResolver,
@@ -13,11 +14,12 @@ use vm_core::error::{Result, VmError};
 /// Tart instance manager
 pub struct TartInstanceManager<'a> {
     config: &'a VmConfig,
+    command: TartCommand,
 }
 
 impl<'a> TartInstanceManager<'a> {
-    pub fn new(config: &'a VmConfig) -> Self {
-        Self { config }
+    pub fn new(config: &'a VmConfig, command: TartCommand) -> Self {
+        Self { config, command }
     }
 
     /// Get the project name from config
@@ -27,18 +29,9 @@ impl<'a> TartInstanceManager<'a> {
 
     /// Parse `tart list --format json` output into InstanceInfo
     pub fn parse_tart_list(&self) -> Result<Vec<InstanceInfo>> {
-        let mut command = std::process::Command::new("tart");
-        if let Some(storage_path) = self
-            .config
-            .tart
-            .as_ref()
-            .and_then(|tart| tart.storage_path.as_deref())
-            .filter(|path| !path.trim().is_empty())
-        {
-            command.env("TART_HOME", expand_tilde(storage_path));
-        }
-
-        let output = command
+        let output = self
+            .command
+            .command()
             .args(["list", "--format", "json"])
             .output()
             .map_err(|e| {
@@ -81,6 +74,7 @@ impl<'a> TartInstanceManager<'a> {
 
             // Only include VMs that belong to this project
             if name.starts_with(&project_prefix) || name == self.project_name() {
+                self.command.remember_instance(&name)?;
                 let (created_at, uptime) = self.get_vm_metadata(&name);
                 instances.push(create_tart_instance_info(
                     &name,
@@ -114,18 +108,6 @@ impl<'a> TartInstanceManager<'a> {
         // Return None for both to keep implementation simple.
         (None, None)
     }
-}
-
-fn expand_tilde(path: &str) -> String {
-    if path == "~" {
-        return std::env::var("HOME").unwrap_or_else(|_| path.to_string());
-    }
-    if let Some(rest) = path.strip_prefix("~/") {
-        if let Ok(home) = std::env::var("HOME") {
-            return format!("{home}/{rest}");
-        }
-    }
-    path.to_string()
 }
 
 impl<'a> InstanceResolver for TartInstanceManager<'a> {
@@ -179,7 +161,7 @@ mod tests {
     #[test]
     fn test_project_instance_name() {
         let config = create_test_config();
-        let manager = TartInstanceManager::new(&config);
+        let manager = TartInstanceManager::new(&config, TartCommand::new(None));
 
         assert_eq!(manager.project_instance_name("dev"), "testproject-dev");
         assert_eq!(
@@ -191,7 +173,7 @@ mod tests {
     #[test]
     fn test_project_name_fallback() {
         let config = VmConfig::default(); // No project name
-        let manager = TartInstanceManager::new(&config);
+        let manager = TartInstanceManager::new(&config, TartCommand::new(None));
 
         assert_eq!(manager.project_name(), "vm-project");
         assert_eq!(manager.project_instance_name("dev"), "vm-project-dev");
@@ -200,7 +182,7 @@ mod tests {
     #[test]
     fn test_default_instance_name() {
         let config = create_test_config();
-        let manager = TartInstanceManager::new(&config);
+        let manager = TartInstanceManager::new(&config, TartCommand::new(None));
 
         assert_eq!(manager.default_instance_name(), "testproject");
     }
@@ -208,7 +190,7 @@ mod tests {
     #[test]
     fn test_resolve_instance_name_default() {
         let config = create_test_config();
-        let manager = TartInstanceManager::new(&config);
+        let manager = TartInstanceManager::new(&config, TartCommand::new(None));
 
         let result = manager.resolve_instance_name(None);
         assert!(result.is_ok());

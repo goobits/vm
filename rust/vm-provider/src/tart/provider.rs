@@ -1,7 +1,8 @@
 use super::{
-    command::TartCommand, host_sync::collect_host_sync_mounts, instance::TartInstanceManager,
-    mounts::TartDirShare, provisioner::TartProvisioner,
+    host_sync::collect_host_sync_mounts, instance::TartInstanceManager, mounts::TartDirShare,
+    provisioner::TartProvisioner, TartCommand,
 };
+use crate::tart_storage as storage;
 use crate::{
     common::instance::{extract_project_name, InstanceInfo, InstanceResolver},
     context::ProviderContext,
@@ -49,6 +50,7 @@ pub(crate) fn tart_run_log_path(vm_name: &str) -> String {
 #[derive(Clone)]
 pub struct TartProvider {
     pub(super) config: VmConfig,
+    pub(super) command: TartCommand,
 }
 
 impl TartProvider {
@@ -56,36 +58,27 @@ impl TartProvider {
         if !is_tool_installed("tart") {
             return Err(VmError::Dependency("Tart".into()));
         }
-        Ok(Self { config })
+        Self::from_config(config)
+    }
+
+    fn from_config(config: VmConfig) -> Result<Self> {
+        let project = extract_project_name(&config);
+        let command = TartCommand::for_project(&config, project)?;
+        Ok(Self { config, command })
     }
 
     pub(super) fn tart_home(&self) -> Option<String> {
-        self.config
-            .tart
-            .as_ref()
-            .and_then(|tart| tart.storage_path.as_deref())
-            .filter(|path| !path.trim().is_empty())
-            .map(Self::expand_tart_home)
-    }
-
-    fn expand_tart_home(path: &str) -> String {
-        if path == "~" {
-            return std::env::var("HOME").unwrap_or_else(|_| path.to_string());
-        }
-        if let Some(rest) = path.strip_prefix("~/") {
-            if let Ok(home) = std::env::var("HOME") {
-                return format!("{home}/{rest}");
-            }
-        }
-        path.to_string()
+        self.command
+            .home()
+            .map(|path| path.to_string_lossy().into_owned())
     }
 
     pub(super) fn tart_expr<A: AsRef<OsStr>>(&self, args: &[A]) -> duct::Expression {
         self.tart().expr(args)
     }
 
-    pub(super) fn tart(&self) -> TartCommand {
-        TartCommand::new(self.tart_home())
+    pub(super) fn tart(&self) -> &TartCommand {
+        &self.command
     }
 
     fn stream_tart_command<A: AsRef<OsStr>>(&self, args: &[A]) -> Result<()> {
@@ -470,7 +463,7 @@ impl TartProvider {
 
     /// Create instance manager for multi-instance operations
     fn instance_manager(&self) -> TartInstanceManager<'_> {
-        TartInstanceManager::new(&self.config)
+        TartInstanceManager::new(&self.config, self.command.clone())
     }
 
     /// Resolve VM name with instance support
@@ -592,6 +585,7 @@ impl TartProvider {
             return clone_result;
         }
         ProgressReporter::task(&main_phase, "Image cloned successfully.");
+        self.command.remember_instance(vm_name)?;
 
         // Resolve percentages once and apply the same host-relative values used by
         // container providers. Tart still enforces a small host-safety margin.
@@ -647,7 +641,7 @@ impl TartProvider {
         let provisioner = TartProvisioner::new(
             vm_name.to_string(),
             self.get_sync_directory(),
-            self.tart_home(),
+            self.command.clone(),
         );
         let project_plan = ProjectPlan::detect(&self.host_workspace_path()?, config);
         if let Err(e) = provisioner.provision(config, &project_plan) {
@@ -762,7 +756,8 @@ impl Provider for TartProvider {
             })?;
         }
 
-        self.stream_tart_command(&["delete", &vm_name])
+        self.stream_tart_command(&["delete", &vm_name])?;
+        storage::forget_instance(&vm_name)
     }
 
     fn ssh(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
@@ -959,7 +954,7 @@ impl Provider for TartProvider {
         let provisioner = TartProvisioner::new(
             instance_name.clone(),
             self.get_sync_directory(),
-            self.tart_home(),
+            self.command.clone(),
         );
 
         let project_plan = ProjectPlan::detect(&self.host_workspace_path()?, &self.config);
@@ -1009,11 +1004,13 @@ mod tests {
     use crate::{tart_base, Provider};
     use vm_config::config::{BoxSpec, ProjectConfig, TartConfig, VmConfig, VmSettings};
 
+    fn provider(config: VmConfig) -> TartProvider {
+        TartProvider::from_config(config).unwrap()
+    }
+
     #[test]
     fn managed_linux_alias_resolves_to_the_versioned_cache() {
-        let provider = TartProvider {
-            config: VmConfig::default(),
-        };
+        let provider = provider(VmConfig::default());
         let config = VmConfig {
             vm: Some(VmSettings {
                 r#box: Some(BoxSpec::String(tart_base::LINUX_NAME.to_string())),
@@ -1044,12 +1041,10 @@ mod tests {
         let config_path = project_dir.join("vm.yaml");
         std::fs::write(&config_path, "provider: tart\n").unwrap();
 
-        let provider = TartProvider {
-            config: VmConfig {
-                source_path: Some(config_path),
-                ..Default::default()
-            },
-        };
+        let provider = provider(VmConfig {
+            source_path: Some(config_path),
+            ..Default::default()
+        });
 
         let resolved = provider.host_workspace_path().unwrap();
         assert_eq!(resolved, project_dir.canonicalize().unwrap());
@@ -1080,76 +1075,68 @@ mod tests {
 
     #[test]
     fn macos_guest_uses_writable_default_workspace() {
-        let provider = TartProvider {
-            config: VmConfig {
-                project: Some(ProjectConfig {
-                    workspace_path: Some("/workspace".to_string()),
-                    ..Default::default()
-                }),
-                tart: Some(TartConfig {
-                    guest_os: Some("macos".to_string()),
-                    ssh_user: Some("admin".to_string()),
-                    ..Default::default()
-                }),
+        let provider = provider(VmConfig {
+            project: Some(ProjectConfig {
+                workspace_path: Some("/workspace".to_string()),
                 ..Default::default()
-            },
-        };
+            }),
+            tart: Some(TartConfig {
+                guest_os: Some("macos".to_string()),
+                ssh_user: Some("admin".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
 
         assert_eq!(provider.get_sync_directory(), "/Users/admin/workspace");
     }
 
     #[test]
     fn linux_guest_keeps_default_workspace() {
-        let provider = TartProvider {
-            config: VmConfig {
-                project: Some(ProjectConfig {
-                    workspace_path: Some("/workspace".to_string()),
-                    ..Default::default()
-                }),
-                tart: Some(TartConfig {
-                    guest_os: Some("linux".to_string()),
-                    ssh_user: Some("admin".to_string()),
-                    ..Default::default()
-                }),
+        let provider = provider(VmConfig {
+            project: Some(ProjectConfig {
+                workspace_path: Some("/workspace".to_string()),
                 ..Default::default()
-            },
-        };
+            }),
+            tart: Some(TartConfig {
+                guest_os: Some("linux".to_string()),
+                ssh_user: Some("admin".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
 
         assert_eq!(provider.get_sync_directory(), "/workspace");
     }
 
     #[test]
     fn macos_guest_respects_custom_workspace() {
-        let provider = TartProvider {
-            config: VmConfig {
-                project: Some(ProjectConfig {
-                    workspace_path: Some("/Volumes/work/project".to_string()),
-                    ..Default::default()
-                }),
-                tart: Some(TartConfig {
-                    guest_os: Some("macos".to_string()),
-                    ssh_user: Some("admin".to_string()),
-                    ..Default::default()
-                }),
+        let provider = provider(VmConfig {
+            project: Some(ProjectConfig {
+                workspace_path: Some("/Volumes/work/project".to_string()),
                 ..Default::default()
-            },
-        };
+            }),
+            tart: Some(TartConfig {
+                guest_os: Some("macos".to_string()),
+                ssh_user: Some("admin".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
 
         assert_eq!(provider.get_sync_directory(), "/Volumes/work/project");
     }
 
     #[test]
     fn tart_run_includes_nested_flag_when_configured() {
-        let provider = TartProvider {
-            config: VmConfig {
-                tart: Some(TartConfig {
-                    nested: Some(true),
-                    guest_os: Some("linux".to_string()),
-                    ..Default::default()
-                }),
+        let provider = provider(VmConfig {
+            tart: Some(TartConfig {
+                nested: Some(true),
+                guest_os: Some("linux".to_string()),
                 ..Default::default()
-            },
-        };
+            }),
+            ..Default::default()
+        });
 
         assert!(provider
             .build_run_command("vm-mac", "/tmp/vm-tart-vm_mac.log", &[])
@@ -1158,16 +1145,14 @@ mod tests {
 
     #[test]
     fn tart_run_omits_nested_flag_for_macos_guests() {
-        let provider = TartProvider {
-            config: VmConfig {
-                tart: Some(TartConfig {
-                    nested: Some(true),
-                    guest_os: Some("macos".to_string()),
-                    ..Default::default()
-                }),
+        let provider = provider(VmConfig {
+            tart: Some(TartConfig {
+                nested: Some(true),
+                guest_os: Some("macos".to_string()),
                 ..Default::default()
-            },
-        };
+            }),
+            ..Default::default()
+        });
 
         assert!(!provider
             .build_run_command("vm-mac", "/tmp/vm-tart-vm_mac.log", &[])

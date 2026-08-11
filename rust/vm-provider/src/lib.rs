@@ -152,6 +152,11 @@ pub mod resources;
 mod shell_session;
 mod stable_name;
 pub mod tart_base;
+#[path = "tart/command.rs"]
+mod tart_command;
+#[path = "tart/storage.rs"]
+mod tart_storage;
+pub use tart_command::TartCommand;
 
 // Re-export template constants for testing
 pub use resources::THEMES_JSON;

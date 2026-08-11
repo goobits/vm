@@ -31,6 +31,9 @@ pub struct ApplianceState {
     #[serde(default, alias = "review_image")]
     pub job_image: String,
     pub controller_version: String,
+    /// Stable Tart storage context for the package appliance.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tart_home: Option<String>,
 }
 
 impl ApplianceState {
@@ -162,10 +165,28 @@ mod tests {
             registry_image: "registry.example/vm-packages:1".into(),
             job_image: "registry.example/vm-package-jobs:1".into(),
             controller_version: "1.0.0".into(),
+            tart_home: Some("/Volumes/External/Tart".into()),
         };
         assert_eq!(
             ApplianceState::from_json(&state.to_json().unwrap()).unwrap(),
             state
         );
+    }
+
+    #[test]
+    fn older_state_without_tart_home_remains_readable() {
+        let state = ApplianceState::from_json(
+            br#"{
+                "runtime": "tart",
+                "gateway_url": "http://192.0.2.2:3080",
+                "gateway_port": 3080,
+                "registry_image": "registry:1",
+                "job_image": "jobs:1",
+                "controller_version": "1"
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(state.tart_home, None);
     }
 }

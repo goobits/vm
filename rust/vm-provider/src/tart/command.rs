@@ -1,38 +1,73 @@
 use std::ffi::{OsStr, OsString};
 use std::io::Read;
 use std::net::IpAddr;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use vm_config::config::VmConfig;
+use vm_core::error::Result;
+
+use crate::tart_storage as storage;
+
 #[derive(Clone, Debug)]
-pub(super) struct TartCommand {
-    tart_home: Option<String>,
+pub struct TartCommand {
+    tart_home: Option<PathBuf>,
 }
 
 impl TartCommand {
-    pub(super) fn new(tart_home: Option<String>) -> Self {
+    pub fn new(tart_home: Option<PathBuf>) -> Self {
         Self { tart_home }
     }
 
-    pub(super) fn command(&self) -> Command {
-        let mut command = Command::new("tart");
-        if let Some(tart_home) = &self.tart_home {
-            command.env("TART_HOME", tart_home);
+    /// Resolve the command context from explicit config, then `TART_HOME`.
+    pub fn from_config(config: Option<&VmConfig>) -> Self {
+        Self::new(storage::configured_home(config))
+    }
+
+    /// Resolve a project command context, including a recorded or narrowly
+    /// recovered home for existing instances.
+    pub fn for_project(config: &VmConfig, project: &str) -> Result<Self> {
+        Ok(Self::new(storage::resolve_project_home(config, project)?))
+    }
+
+    pub fn home(&self) -> Option<&Path> {
+        self.tart_home.as_deref()
+    }
+
+    pub fn remember_instance(&self, instance: &str) -> Result<()> {
+        if let Some(home) = self.home() {
+            storage::remember_instance(instance, home)?;
         }
+        Ok(())
+    }
+
+    pub fn command(&self) -> Command {
+        let mut command = Command::new("tart");
+        self.configure(&mut command);
         command
     }
 
-    pub(super) fn expr<A: AsRef<OsStr>>(&self, args: &[A]) -> duct::Expression {
+    pub fn configure(&self, command: &mut Command) {
+        if let Some(tart_home) = &self.tart_home {
+            command.env("TART_HOME", tart_home);
+        }
+    }
+
+    pub fn expr<A: AsRef<OsStr>>(&self, args: &[A]) -> duct::Expression {
         let args: Vec<OsString> = args.iter().map(|arg| arg.as_ref().to_os_string()).collect();
-        let mut expr = duct::cmd("tart", args);
+        self.with_env(duct::cmd("tart", args))
+    }
+
+    pub fn with_env(&self, mut expr: duct::Expression) -> duct::Expression {
         if let Some(tart_home) = &self.tart_home {
             expr = expr.env("TART_HOME", tart_home);
         }
         expr
     }
 
-    pub(super) fn exec_probe<I, S>(&self, instance: &str, args: I, timeout: Duration) -> bool
+    pub fn exec_probe<I, S>(&self, instance: &str, args: I, timeout: Duration) -> bool
     where
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
@@ -66,7 +101,7 @@ impl TartCommand {
         }
     }
 
-    pub(super) fn ip_address(&self, instance: &str, timeout: Duration) -> Option<IpAddr> {
+    pub fn ip_address(&self, instance: &str, timeout: Duration) -> Option<IpAddr> {
         let Ok(mut child) = self
             .command()
             .args(["ip", instance, "--wait", "0"])
@@ -110,10 +145,11 @@ fn parse_ip_address(output: &str) -> Option<IpAddr> {
 mod tests {
     use super::{parse_ip_address, TartCommand};
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+    use std::path::PathBuf;
 
     #[test]
     fn command_applies_tart_home_when_present() {
-        let command = TartCommand::new(Some("/tmp/tart-home".to_string())).command();
+        let command = TartCommand::new(Some(PathBuf::from("/tmp/tart-home"))).command();
         let tart_home = command
             .get_envs()
             .find_map(|(key, value)| (key == "TART_HOME").then_some(value))

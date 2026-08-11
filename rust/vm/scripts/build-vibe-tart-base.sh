@@ -89,9 +89,10 @@ cleanup_running_vm() {
 
 trap cleanup_running_vm EXIT
 
-echo "[1/5] Recreating local Tart base '${BASE_NAME}' from '${BASE_IMAGE}'..."
+echo "[1/5] Creating staged Tart base '${BASE_NAME}' from '${BASE_IMAGE}'..."
 if tart list | awk '{print $1}' | grep -Fxq "$BASE_NAME"; then
-  tart delete "$BASE_NAME" >/dev/null
+  echo "Refusing to overwrite existing staged base: ${BASE_NAME}" >&2
+  exit 1
 fi
 tart clone "$BASE_IMAGE" "$BASE_NAME"
 
