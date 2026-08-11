@@ -1,6 +1,6 @@
 use assert_cmd::cargo::cargo_bin;
 use std::fs;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 use tempfile::TempDir;
 
 fn run(temp_dir: &TempDir, args: &[&str]) -> Output {
@@ -94,6 +94,77 @@ host_sync:
     assert!(!stdout.contains(temp_dir.path().to_str().unwrap()));
     assert!(!stdout.contains("\u{1b}["));
     assert!(stderr.is_empty(), "{stderr}");
+}
+
+#[test]
+fn config_show_never_materializes_package_credentials() {
+    let temp_dir = TempDir::new().unwrap();
+    let config = temp_dir.path().join("vm.yaml");
+    fs::write(
+        &config,
+        "version: '2.0'\nprovider: docker\nproject:\n  name: output-test\n",
+    )
+    .unwrap();
+    let appliance = temp_dir.path().join(".vm/infrastructure/packages");
+    fs::create_dir_all(&appliance).unwrap();
+    fs::write(
+        appliance.join("state.json"),
+        r#"{
+  "runtime": "docker",
+  "gateway_url": "http://127.0.0.1:3080",
+  "gateway_port": 3080,
+  "registry_image": "registry/image:1",
+  "job_image": "jobs/image:1",
+  "controller_version": "1"
+}
+"#,
+    )
+    .unwrap();
+    fs::write(appliance.join("read-token"), "do-not-print-package-token").unwrap();
+
+    let output = run(
+        &temp_dir,
+        &["--config", config.to_str().unwrap(), "config", "show"],
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(output.status.success(), "{stderr}");
+    assert!(!stdout.contains("do-not-print-package-token"));
+    assert!(!stdout.contains("NPM_CONFIG_REGISTRY"));
+    assert!(!stdout.contains("CARGO_REGISTRIES_VM_TOKEN"));
+}
+
+#[test]
+fn config_show_tolerates_a_closed_stdout_pipe() {
+    let temp_dir = TempDir::new().unwrap();
+    let config = temp_dir.path().join("vm.yaml");
+    let mut contents = String::from(
+        "version: '2.0'\nprovider: docker\nproject:\n  name: output-test\nenvironment:\n",
+    );
+    for index in 0..5_000 {
+        contents.push_str(&format!("  OUTPUT_{index}: '{}'\n", "x".repeat(100)));
+    }
+    fs::write(&config, contents).unwrap();
+
+    let mut child = Command::new(cargo_bin!("vm"))
+        .args(["--config", config.to_str().unwrap(), "config", "show"])
+        .current_dir(temp_dir.path())
+        .env("HOME", temp_dir.path())
+        .env("VM_TOOL_DIR", temp_dir.path().join(".vm"))
+        .env("VM_TEST_MODE", "1")
+        .env("CI", "1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    drop(child.stdout.take());
+    let output = child.wait_with_output().unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(output.status.success(), "{stderr}");
+    assert!(!stderr.contains("Broken pipe"), "{stderr}");
+    assert!(!stderr.contains("panicked"), "{stderr}");
 }
 
 #[test]

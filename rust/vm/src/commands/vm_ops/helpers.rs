@@ -27,7 +27,7 @@ pub fn handle_get_sync_directory(provider: Box<dyn Provider>) {
     debug!("Getting sync directory for provider '{}'", provider.name());
     let sync_dir = provider.get_sync_directory();
     debug!("Sync directory: '{}'", sync_dir);
-    println!("{sync_dir}");
+    vm_println!("{sync_dir}");
 }
 
 /// Helper function to register VM services

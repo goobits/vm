@@ -3,56 +3,99 @@
 //! Requested data is written to stdout. Progress, warnings, hints, and errors
 //! are written to stderr so commands can be composed safely.
 
+use std::fmt;
+use std::io::{self, Write};
+
+fn write_output(mut writer: impl Write, arguments: fmt::Arguments<'_>, newline: bool) {
+    let result = writer.write_fmt(arguments).and_then(|()| {
+        if newline {
+            writer.write_all(b"\n")?;
+        }
+        writer.flush()
+    });
+
+    // A downstream command may close its pipe after receiving enough data.
+    // Terminal output is best-effort, so that must never turn a successful VM
+    // operation into a panic.
+    let _ = result;
+}
+
+#[doc(hidden)]
+pub fn write_stdout(arguments: fmt::Arguments<'_>, newline: bool) {
+    write_output(io::stdout().lock(), arguments, newline);
+}
+
+#[doc(hidden)]
+pub fn write_stderr(arguments: fmt::Arguments<'_>, newline: bool) {
+    write_output(io::stderr().lock(), arguments, newline);
+}
+
+#[macro_export]
+macro_rules! vm_print {
+    ($($arg:tt)*) => {{
+        $crate::output_macros::write_stdout(format_args!($($arg)*), false);
+    }}
+}
+
 #[macro_export]
 macro_rules! vm_println {
-    () => {
-        println!();
-    };
-    ($($arg:tt)*) => {
-        println!($($arg)*);
-    }
+    () => {{
+        $crate::output_macros::write_stdout(format_args!(""), true);
+    }};
+    ($($arg:tt)*) => {{
+        $crate::output_macros::write_stdout(format_args!($($arg)*), true);
+    }}
 }
 
 #[macro_export]
 macro_rules! vm_error {
-    ($($arg:tt)*) => {
-        eprintln!($($arg)*);
-    }
+    ($($arg:tt)*) => {{
+        $crate::output_macros::write_stderr(format_args!($($arg)*), true);
+    }}
 }
 
 #[macro_export]
 macro_rules! vm_hint {
-    ($($arg:tt)*) => {
-        eprintln!("Hint: {}", format_args!($($arg)*));
-    };
+    ($($arg:tt)*) => {{
+        $crate::output_macros::write_stderr(
+            format_args!("Hint: {}", format_args!($($arg)*)),
+            true,
+        );
+    }}
 }
 
 #[macro_export]
 macro_rules! vm_success {
-    ($($arg:tt)*) => {
-        println!("✓ {}", format_args!($($arg)*));
-    };
+    ($($arg:tt)*) => {{
+        $crate::output_macros::write_stdout(
+            format_args!("✓ {}", format_args!($($arg)*)),
+            true,
+        );
+    }}
 }
 
 #[macro_export]
 macro_rules! vm_info {
-    ($($arg:tt)*) => {
-        println!($($arg)*);
-    };
+    ($($arg:tt)*) => {{
+        $crate::output_macros::write_stdout(format_args!($($arg)*), true);
+    }}
 }
 
 #[macro_export]
 macro_rules! vm_warning {
-    ($($arg:tt)*) => {
-        eprintln!("Warning: {}", format_args!($($arg)*));
-    };
+    ($($arg:tt)*) => {{
+        $crate::output_macros::write_stderr(
+            format_args!("Warning: {}", format_args!($($arg)*)),
+            true,
+        );
+    }}
 }
 
 #[macro_export]
 macro_rules! vm_progress {
-    ($($arg:tt)*) => {
-        eprintln!($($arg)*);
-    };
+    ($($arg:tt)*) => {{
+        $crate::output_macros::write_stderr(format_args!($($arg)*), true);
+    }}
 }
 
 #[macro_export]

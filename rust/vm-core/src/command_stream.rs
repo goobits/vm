@@ -80,7 +80,7 @@ pub fn stream_command_visible<A: AsRef<OsStr>>(command: &str, args: &[A]) -> Res
     let reader = with_buildkit(command, args).stderr_to_stdout().reader()?;
     let lines = BufReader::new(reader).lines();
     for line in lines {
-        println!("{}", line?);
+        crate::vm_println!("{}", line?);
     }
     Ok(())
 }
@@ -104,7 +104,7 @@ where
     let reader = expr.stderr_to_stdout().reader()?;
     let lines = BufReader::new(reader).lines();
     for line in lines {
-        println!("{}", line?);
+        crate::vm_println!("{}", line?);
     }
     Ok(())
 }

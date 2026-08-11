@@ -10,7 +10,7 @@ use serde_yaml_ng as serde_yaml;
 use vm_config::ports::{PortRange, PortRegistry};
 use vm_config::{config::VmConfig, AppConfig, ConfigOps};
 use vm_core::msg;
-use vm_core::{vm_println, vm_progress, vm_success, vm_warning};
+use vm_core::{vm_print, vm_println, vm_progress, vm_success, vm_warning};
 use vm_messages::messages::MESSAGES;
 
 fn load_selected_config(
@@ -39,8 +39,7 @@ fn handle_validate_command(config_path: Option<PathBuf>, profile: Option<String>
 /// Handle the `vm config show` command.
 fn handle_show_command(config_path: Option<PathBuf>, profile: Option<String>) -> VmResult<()> {
     let app_config = load_selected_config(config_path, profile)?;
-    let mut config = app_config.vm;
-    super::packages::apply_client_environment(&mut config)?;
+    let config = app_config.vm;
 
     if let Some(source) = &config.source_path {
         vm_println!("Config source: {}", source.display());
@@ -87,7 +86,7 @@ fn handle_render_command(
     let context = vm_provider::ProviderContext::default().with_config(app_config.global);
     let rendered =
         vm_provider::docker::render_compose_preview(&config, &project_dir, instance, &context)?;
-    print!("{rendered}");
+    vm_print!("{rendered}");
     Ok(())
 }
 
