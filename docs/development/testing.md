@@ -12,6 +12,7 @@ The root `Makefile` owns the supported test and quality commands. It uses
 | Unit and integration tests | `make test` |
 | Network-dependent tests | `make test-network` |
 | Formatting check | `make fmt` |
+| Compile check | `cd rust && cargo check -j 2 --workspace --all-features` |
 | Clippy | `make clippy` |
 | Full local gate | `make quality-gates` |
 
@@ -48,6 +49,10 @@ cargo test -p goobits-vm --test vm_ops test_name -- --ignored --test-threads=1
 
 Do not run provider-mutating tests against a development environment that
 contains uncheckpointed work or unique writable-layer data.
+
+When a host is under file-descriptor or VM pressure, use formatting plus
+`cargo check -j 2` as the non-mutating gate. Do not substitute a Docker/Tart
+smoke test until the host has been recreated and its source mounts verified.
 
 ### Network Tests
 

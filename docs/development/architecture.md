@@ -25,11 +25,26 @@ vm/
 - `rust/vm-snapshot/` owns snapshot creation, restoration, import, and export.
 - `rust/vm-core/` owns shared filesystem, command, prompt, and message-format
   utilities.
+- `rust/vm-packages/` owns package identities, resolver policy, client
+  environment, and shared workflow contracts.
+- `rust/vm-package-server/` owns native npm, Cargo, and Python protocol adapters
+  plus the worker-local read-only cache/proxy edge.
+- `rust/vm-package-work/` owns durable checkout, lease, submission, integration,
+  rollout, and receipt state.
+- `rust/vm-package-jobs/` owns ephemeral source, validation, review, release,
+  and rollout execution inside infrastructure containers.
 - `configs/` owns embedded configuration; `examples/` must not be treated as
   runtime defaults.
 
 Command modules should not duplicate provider behavior. Providers should not
 own user interaction or top-level command routing.
+
+Package control and data planes remain separate. The central appliance owns
+mutable workflow state and immutable releases. Each worker edge exposes native
+package protocols, delegates all source selection to the shared resolver, and
+holds only read credentials and persistent read-through cache. Development
+overrides use explicit checkout-scoped package-manager configuration; they
+never make one published name/version return different bytes.
 
 ## CLI Output
 

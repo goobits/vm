@@ -55,6 +55,25 @@ vm exec -- pwd
 starts it when stopped. `vm exec` starts an existing stopped environment but
 does not create one.
 
+For Tart, `vm ssh` prefers the guest agent. A running macOS guest can fall back
+to native SSH. The first recovery of an older guest may ask for the `admin`
+password while installing `~/.vm/ssh/tart_ed25519.pub`; repeat connections must
+be passwordless. If both transports fail, run `vm doctor` and inspect the Tart
+run log named in the error.
+
+If `tart list` and `vm list` disagree, check whether the VM uses a nondefault
+storage volume:
+
+```bash
+echo "${TART_HOME:-<default>}"
+vm doctor
+tart list --format json
+```
+
+Managed instances now retain their creation storage in
+`~/.vm/tart/instances.json`. Do not move or delete the underlying Tart VM
+directory while it is running.
+
 ## Docker In Tart
 
 The `vibe-tart` default is a Linux guest. Docker Engine runs directly inside
@@ -128,6 +147,12 @@ vm doctor --prune-pnpm-store --container dev
 
 Pruning is never part of startup.
 
+If macOS reports `too many open files in system`, stop spawning new providers
+and run `vm doctor`. It reports host descriptor use and warns at 85%. Stop stale
+VM, container, browser, or helper processes before retrying. Timed VM commands
+now terminate and reap their child process instead of leaving output threads and
+pipes behind.
+
 ## Safe Recreation
 
 Before recreating an older environment, inventory credentials, documents,
@@ -145,6 +170,13 @@ source binds.
 vm packages status
 vm packages doctor
 ```
+
+The central appliance and each worker edge have separate failure behavior. If
+the appliance is down, a warmed edge can serve cached locked internal artifacts
+and proxy known-external packages publicly. Uncached internal packages fail
+closed. If the worker edge itself is down, restart the project environment;
+package clients intentionally do not bypass it because doing so could leak an
+internal name to a public registry.
 
 ## Secrets
 

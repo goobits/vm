@@ -14,7 +14,7 @@ Mac
   vm CLI + Tart only
         |
         v
-Dedicated Linux Tart VM
+Dedicated Linux Tart VM (or Docker appliance)
   Docker Compose package appliance
     + gateway         one private URL
     + registry        npm + Cargo + PyPI + tool artifacts + cache/proxy
@@ -26,9 +26,12 @@ Dedicated Linux Tart VM
         +-----------------------+
         |                       |
         v                       v
-Docker project             Tart project
-versioned packages         versioned packages
-or one leased checkout     or one leased checkout
+Docker project             Linux Tart project
+  read-only edge             read-only edge
+  persistent cache           persistent cache
+  package clients            package clients
+        |                       |
+        +---- immutable releases / one leased checkout
 ```
 
 The Mac stores controller configuration and launches Docker or Tart. It does
@@ -55,6 +58,23 @@ also exports `VM_OCI_MIRROR`; Linux Tart guests with managed Docker activate
 that mirror in Docker Engine automatically.
 Projects keep ordinary versioned dependencies; no local/remote branch belongs
 in application code.
+
+Each worker gets a small read-only package edge. Docker runs it as a Compose
+sidecar; Linux Tart runs the same image in the guest's Docker Engine. Package
+clients talk only to that stable local endpoint. The edge keeps a persistent,
+last-known-good internal catalog and separate internal/public caches, while the
+central appliance remains authoritative for new internal artifacts and package
+work.
+
+If the central appliance is temporarily unavailable, installed dependencies
+keep working, cached locked internal artifacts remain available, and packages
+classified as external can still reach their public upstream. An uncached
+internal package fails clearly and never falls back to a similarly named public
+package. Before the edge has obtained its first catalog snapshot, all cache
+misses fail closed. If the local edge itself is stopped, new package-manager
+requests fail until the project stack restarts it; the sidecar uses
+`restart: unless-stopped` and does not hold up an interactive shell with update
+checks.
 
 The OCI cache shares the private gateway's `/v2/` route but has its own named
 volume. It accepts pulls only; Distribution proxy mode rejects pushes. VM never
@@ -142,9 +162,10 @@ vm packages checkout auth \
 ```
 
 The work service records the canonical base commit, creates a unique branch,
-and returns a bundle to an isolated checkout under the project environment's
-`/tmp`. Only that project receives the unpublished override. Other consumers
-remain on their published versions.
+and returns a bundle to an isolated checkout under
+`~/.local/share/vm/package-checkouts/<checkout-id>` in the project environment.
+Only that project receives the unpublished override. Other consumers remain on
+their published versions.
 
 Commit the intended package changes inside the project environment, then run:
 
@@ -164,10 +185,14 @@ commit and tag, and publishes the same immutable artifact locally and to the
 configured CI registry. A successful release removes that remaining bundle and
 the guest's temporary checkout.
 
-Cleanup is restricted to `/data/agents/<checkout-id>` inside the appliance and
-`/tmp/vm-package-checkouts/<checkout-id>` inside the project environment. It
-never removes the registered source repository, `/workspace`, or the persistent
-canonical Git mirror under `/data/sources`.
+Cleanup is restricted to validated task data under `/data/agents/<checkout-id>`
+inside the appliance and
+`~/.local/share/vm/package-checkouts/<checkout-id>` inside the project
+environment. Successful integration removes agent and integration worktrees;
+successful publication removes the final immutable release bundle after its
+receipt is durable. Cleanup never removes the registered source repository,
+its `.git` data, `/workspace`, or the persistent canonical mirror under
+`/data/sources`.
 
 Every mutating step is idempotent and writes a durable receipt. A retry resumes
 from the recorded state instead of creating a second merge, tag, or release.
@@ -225,3 +250,8 @@ your infrastructure backup system to protect against physical disk loss.
 
 Use `vm packages status` for runtime health and `vm packages doctor` for the
 gateway, Compose definition, credentials, and workflow service checks.
+
+Restarting a Docker project is sufficient to add or recover its edge sidecar;
+the project image does not need rebuilding. A pre-existing Linux Tart guest
+needs one provisioning/start pass to install the edge definition, then ordinary
+restarts reuse it.

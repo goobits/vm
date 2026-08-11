@@ -90,8 +90,32 @@ not local, `vm` pulls it into the Tart cache or builds it when the published
 image is unavailable. Docker runs directly against the Linux guest kernel, so
 Colima is not part of this path.
 
+All Tart commands use the same storage context. `vm` records the `TART_HOME`
+that owns each managed instance under `~/.vm/tart/instances.json`, so `list`,
+`ssh`, lifecycle operations, and package infrastructure do not lose an instance
+created on another volume. Base replacement is staged and renamed only after
+validation; a failed pull or local fallback keeps the previous usable base.
+
+Interactive shells prefer Tart's guest agent. For a running macOS guest whose
+guest-agent transport is unavailable, `vm ssh` falls back to native SSH using
+`~/.vm/ssh/tart_ed25519`. New guests receive that public key during
+provisioning; an existing guest may request its password once to install the
+key. Later connections are key-only. Linux guests keep the stricter guest-agent
+path.
+
+Before opening a shell, `vm` verifies the workspace, host-sync directories, and
+configured VirtioFS shares and remounts missing shares with their declared
+read-only or read-write access. Recovery never deletes or replaces host source.
+
 No custom network is required. Vibe presets do not add `spacebase`; configure
 `networking` only when the project explicitly needs a named network.
+
+Percentage CPU and memory values are resolved once against host capacity. At
+high allocations, `vm` warns about concurrent Docker Desktop/Tart
+oversubscription rather than silently changing explicit limits. `vm doctor`
+also reports host file-descriptor pressure. On the affected macOS host, keep
+Tart at 2.32.1; Tart 2.35.0 is diagnosed as incompatible because its Swift
+compatibility runtime is missing.
 
 ## Project Mounts
 
