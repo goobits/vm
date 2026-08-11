@@ -39,6 +39,8 @@ async fn execute_docker_command(args: &[&str], input: Option<&[u8]>) -> VmResult
     if let (Some(input_data), Some(mut stdin)) = (input, child.stdin.take()) {
         use tokio::io::AsyncWriteExt;
         if let Err(e) = stdin.write_all(input_data).await {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
             return Err(VmError::general(
                 e,
                 "Failed to write to docker command stdin",

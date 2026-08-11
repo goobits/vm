@@ -4,6 +4,11 @@ use vm_config::config::{BoxSpec, VmConfig, VmSettings};
 use vm_config::detector::git::GitConfig;
 
 #[test]
+fn generated_images_are_marked_as_vm_managed() {
+    assert!(include_str!("Dockerfile.j2").contains("LABEL com.vm.managed=\"true\""));
+}
+
+#[test]
 fn test_docker_pull_error_message_explains_unprivileged_nested_docker() {
     let stderr = "failed to register layer: unshare: operation not permitted";
     let message = BuildOperations::docker_pull_error_message("ubuntu:jammy", stderr);

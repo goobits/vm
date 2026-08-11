@@ -184,6 +184,7 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("is_macos", &cfg!(target_os = "macos"));
         tera_context.insert("service_env_vars", &service_environment);
         tera_context.insert("extra_mounts", &rendered_mounts);
+        tera_context.insert("is_temporary", &extra_mounts.is_some());
         if let Some(mut edge) = final_config.package_edge.clone() {
             if mode == RenderMode::Preview {
                 edge.read_token = "<redacted>".to_string();
@@ -688,6 +689,27 @@ mod tests {
                 .get("com.vm.instance")
                 .and_then(serde_yaml_ng::Value::as_str),
             Some("sketch-api")
+        );
+        assert!(!labels.contains_key("com.vm.temporary"));
+
+        let temp_state = TempVmState::new(
+            "vm-temp-dev".to_string(),
+            "docker".to_string(),
+            project_dir.clone(),
+            false,
+        );
+        let temp_rendered = compose
+            .render_docker_compose_with_mounts(&temp_state)
+            .unwrap();
+        let temp_yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(&temp_rendered).unwrap();
+        let temp_labels = yaml_mapping(&temp_yaml, "services")["sketch-api-dev"]["labels"]
+            .as_mapping()
+            .unwrap();
+        assert_eq!(
+            temp_labels
+                .get("com.vm.temporary")
+                .and_then(serde_yaml_ng::Value::as_str),
+            Some("true")
         );
 
         let logging = dev

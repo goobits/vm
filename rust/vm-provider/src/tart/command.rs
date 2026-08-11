@@ -112,7 +112,11 @@ impl TartCommand {
         else {
             return None;
         };
-        let mut stdout = child.stdout.take()?;
+        let Some(mut stdout) = child.stdout.take() else {
+            let _ = child.kill();
+            let _ = child.wait();
+            return None;
+        };
         let deadline = Instant::now() + timeout;
 
         loop {

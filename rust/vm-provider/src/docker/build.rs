@@ -458,6 +458,8 @@ Thumbs.db
             r#"# Generated Dockerfile wrapper for custom base image
 FROM {base_image}
 
+LABEL com.vm.managed="true"
+
 ARG PROJECT_UID={uid}
 ARG PROJECT_GID={gid}
 ARG PROJECT_USER={user}

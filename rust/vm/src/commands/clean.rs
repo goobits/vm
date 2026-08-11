@@ -2,10 +2,9 @@
 //!
 //! This command cleans up unused Docker resources:
 //! - VM-managed disposable volumes
-//! - Stopped temp containers
+//! - Stopped VM temporary containers
 //! - Old log files
-//! - Dangling images
-//! - Build cache
+//! - VM-managed dangling images
 
 use crate::error::{VmError, VmResult};
 use std::process::Command as StdCommand;
@@ -20,7 +19,6 @@ pub struct CleanupResults {
     pub temp_containers: u32,
     pub log_files: u32,
     pub dangling_images: u32,
-    pub build_cache_mb: u64,
 }
 
 /// Handle cleanup for `vm doctor --clean`
@@ -33,7 +31,6 @@ pub async fn handle_clean() -> VmResult<()> {
         temp_containers: clean_stopped_temp_containers(&executable)?,
         log_files: clean_old_logs(30)?,
         dangling_images: clean_dangling_images(&executable)?,
-        build_cache_mb: clean_build_cache(&executable)?,
     };
 
     print_cleanup_summary(&results);
@@ -45,6 +42,14 @@ const MANAGED_DISPOSABLE_VOLUME_FILTERS: [&str; 3] = [
     "label=com.vm.managed=true",
     "label=com.vm.retention=disposable",
 ];
+
+const STOPPED_TEMP_CONTAINER_FILTERS: [&str; 3] = [
+    "label=com.vm.managed=true",
+    "label=com.vm.temporary=true",
+    "status=exited",
+];
+
+const MANAGED_DANGLING_IMAGE_FILTERS: [&str; 2] = ["dangling=true", "label=com.vm.managed=true"];
 
 /// Clean dangling volumes that VM explicitly marked as disposable.
 fn clean_dangling_volumes(executable: &str) -> VmResult<u32> {
@@ -99,18 +104,13 @@ fn clean_dangling_volumes(executable: &str) -> VmResult<u32> {
 fn clean_stopped_temp_containers(executable: &str) -> VmResult<u32> {
     debug!("Cleaning stopped temp containers");
 
-    // Look for containers with vm-temp label that are stopped
-    let output = StdCommand::new(executable)
-        .args([
-            "ps",
-            "-a",
-            "--filter",
-            "name=vm-temp",
-            "--filter",
-            "status=exited",
-            "--format",
-            "{{.ID}}\t{{.Names}}",
-        ])
+    let mut command = StdCommand::new(executable);
+    command.args(["ps", "-a"]);
+    for filter in STOPPED_TEMP_CONTAINER_FILTERS {
+        command.args(["--filter", filter]);
+    }
+    let output = command
+        .args(["--format", "{{.ID}}\t{{.Names}}"])
         .output()
         .map_err(|e| VmError::general(e, "Failed to list stopped temp containers"))?;
 
@@ -201,99 +201,48 @@ fn clean_old_logs(days: u32) -> VmResult<u32> {
     Ok(count)
 }
 
-/// Clean dangling Docker images
+/// Clean dangling images that VM explicitly marked as managed.
 fn clean_dangling_images(executable: &str) -> VmResult<u32> {
-    debug!("Cleaning dangling images");
+    debug!("Cleaning VM-managed dangling images");
 
-    // Get count of dangling images
-    let output = StdCommand::new(executable)
-        .args(["image", "ls", "--filter", "dangling=true", "--quiet"])
+    let mut command = StdCommand::new(executable);
+    command.args(["image", "ls"]);
+    for filter in MANAGED_DANGLING_IMAGE_FILTERS {
+        command.args(["--filter", filter]);
+    }
+    let output = command
+        .arg("--quiet")
         .output()
-        .map_err(|e| VmError::general(e, "Failed to list dangling images"))?;
+        .map_err(|e| VmError::general(e, "Failed to list VM-managed dangling images"))?;
 
     if !output.status.success() {
         return Ok(0);
     }
 
-    let count = std::str::from_utf8(&output.stdout)
+    let images = std::str::from_utf8(&output.stdout)
         .unwrap_or("")
         .lines()
         .filter(|s| !s.is_empty())
-        .count() as u32;
+        .collect::<Vec<_>>();
 
-    if count == 0 {
+    if images.is_empty() {
         return Ok(0);
     }
 
-    let removed = StdCommand::new(executable)
-        .args(["image", "prune", "-f"])
-        .output()
-        .is_ok_and(|output| output.status.success());
-    if removed {
-        vm_println!("  Images: Removed {count} dangling image(s)");
-        Ok(count)
-    } else {
-        Ok(0)
-    }
-}
-
-/// Clean Docker build cache
-fn clean_build_cache(executable: &str) -> VmResult<u64> {
-    debug!("Cleaning build cache");
-
-    let df_output = StdCommand::new(executable)
-        .args([
-            "builder",
-            "du",
-            "--filter",
-            "type=regular",
-            "--format",
-            "{{.Size}}",
-        ])
-        .output();
-
-    let cache_mb = if let Ok(out) = df_output {
-        if out.status.success() {
-            let size_str = std::str::from_utf8(&out.stdout).unwrap_or("0");
-            parse_size_to_mb(size_str.trim())
-        } else {
-            0
+    let mut removed = 0;
+    for image in images {
+        if StdCommand::new(executable)
+            .args(["image", "rm", image])
+            .output()
+            .is_ok_and(|output| output.status.success())
+        {
+            removed += 1;
         }
-    } else {
-        0
-    };
-
-    if cache_mb == 0 {
-        return Ok(0);
     }
-
-    let reclaimed = StdCommand::new(executable)
-        .args(["builder", "prune", "-f"])
-        .output()
-        .is_ok_and(|output| output.status.success());
-    if reclaimed {
-        vm_println!("  Build cache: Reclaimed ~{cache_mb} MB");
-        Ok(cache_mb)
-    } else {
-        Ok(0)
+    if removed > 0 {
+        vm_println!("  Images: Removed {removed} VM-managed dangling image(s)");
     }
-}
-
-/// Parse Docker size string to MB
-fn parse_size_to_mb(size_str: &str) -> u64 {
-    let size_str = size_str.to_uppercase();
-
-    if size_str.contains("GB") {
-        let num: f64 = size_str.replace("GB", "").trim().parse().unwrap_or(0.0);
-        (num * 1024.0) as u64
-    } else if size_str.contains("MB") {
-        size_str.replace("MB", "").trim().parse().unwrap_or(0)
-    } else if size_str.contains("KB") {
-        let num: u64 = size_str.replace("KB", "").trim().parse().unwrap_or(0);
-        num / 1024
-    } else {
-        0
-    }
+    Ok(removed)
 }
 
 fn detect_container_runtime() -> String {
@@ -314,7 +263,7 @@ fn print_cleanup_summary(results: &CleanupResults) {
     let total =
         results.volumes + results.temp_containers + results.log_files + results.dangling_images;
 
-    if total == 0 && results.build_cache_mb == 0 {
+    if total == 0 {
         vm_success!("Nothing to clean; system is already tidy");
     } else {
         vm_success!("Cleanup complete");
@@ -325,18 +274,15 @@ fn print_cleanup_summary(results: &CleanupResults) {
             results.log_files,
             results.dangling_images
         );
-        if results.build_cache_mb > 0 {
-            vm_println!(
-                "   Reclaimed: ~{} MB of build cache",
-                results.build_cache_mb
-            );
-        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::MANAGED_DISPOSABLE_VOLUME_FILTERS;
+    use super::{
+        MANAGED_DANGLING_IMAGE_FILTERS, MANAGED_DISPOSABLE_VOLUME_FILTERS,
+        STOPPED_TEMP_CONTAINER_FILTERS,
+    };
 
     #[test]
     fn volume_cleanup_requires_vm_ownership_and_disposable_retention() {
@@ -347,6 +293,22 @@ mod tests {
                 "label=com.vm.managed=true",
                 "label=com.vm.retention=disposable",
             ]
+        );
+    }
+
+    #[test]
+    fn container_and_image_cleanup_require_vm_ownership() {
+        assert_eq!(
+            STOPPED_TEMP_CONTAINER_FILTERS,
+            [
+                "label=com.vm.managed=true",
+                "label=com.vm.temporary=true",
+                "status=exited",
+            ]
+        );
+        assert_eq!(
+            MANAGED_DANGLING_IMAGE_FILTERS,
+            ["dangling=true", "label=com.vm.managed=true"]
         );
     }
 }

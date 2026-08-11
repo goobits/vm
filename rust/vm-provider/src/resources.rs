@@ -104,6 +104,20 @@ mod tests {
     }
 
     #[test]
+    fn ansible_normalizes_ai_sync_policy_once() {
+        assert_eq!(
+            ANSIBLE_PLAYBOOK
+                .matches("name: Normalize AI sync configuration")
+                .count(),
+            1
+        );
+        assert!(ANSIBLE_PLAYBOOK.contains("ai_sync_all_enabled"));
+        assert!(ANSIBLE_PLAYBOOK.contains("ai_sync_tools.get('antigravity'"));
+        assert!(ANSIBLE_PLAYBOOK.contains("ai_sync_tools.get('gemini', false)"));
+        assert!(!ANSIBLE_PLAYBOOK.contains("project_config.host_sync.ai_tools is defined"));
+    }
+
+    #[test]
     fn managed_tool_path_precedes_shell_wrapper_detection() {
         let path = ZSHRC_TEMPLATE
             .find("export PATH=\"$HOME/.local/bin:$PATH\"")

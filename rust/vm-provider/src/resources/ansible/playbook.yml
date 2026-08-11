@@ -80,6 +80,11 @@
                         bright_black: '#6272a4'
         when: not themes_file_stat.stat.exists
 
+      - name: Normalize AI sync configuration
+        set_fact:
+            ai_sync_all_enabled: "{{ project_config.get('host_sync', {}).get('ai_tools', false) == true }}"
+            ai_sync_tools: "{{ project_config.get('host_sync', {}).get('ai_tools', {}) if project_config.get('host_sync', {}).get('ai_tools', {}) is mapping else {} }}"
+
       - name: Set derived variables
         set_fact:
             project_name: "{{ project_config.project.name | default('project') }}"
@@ -97,10 +102,10 @@
             terminal_colors: "{{ terminal_themes[project_config.terminal.theme | default('dracula')].colors | default(terminal_themes.dracula.colors) }}"
             project_ports: "{{ project_config.ports | default({}) | dict2items }}"
             home_dir: "/home/{{ project_config.vm.user | default(default_user) }}"
-            # AI sync config: host_sync.ai_tools can be boolean or granular.
-            claude_sync_enabled: "{{ (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and project_config.host_sync.ai_tools.claude | default(false)))) | bool }}"
-            antigravity_sync_enabled: "{{ (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and (project_config.host_sync.ai_tools.antigravity | default(project_config.host_sync.ai_tools.gemini | default(false))))))) | bool }}"
-            codex_sync_enabled: "{{ (project_config.host_sync.ai_tools is defined and (project_config.host_sync.ai_tools == true or (project_config.host_sync.ai_tools is mapping and project_config.host_sync.ai_tools.codex | default(false)))) | bool }}"
+            # Gemini remains a deprecated input alias for Antigravity.
+            claude_sync_enabled: "{{ (ai_sync_all_enabled or ai_sync_tools.get('claude', false)) | bool }}"
+            antigravity_sync_enabled: "{{ (ai_sync_all_enabled or ai_sync_tools.get('antigravity', ai_sync_tools.get('gemini', false))) | bool }}"
+            codex_sync_enabled: "{{ (ai_sync_all_enabled or ai_sync_tools.get('codex', false)) | bool }}"
             # Package manager installation requirements
             nodejs_required: "{{ (project_config.npm_packages is defined and project_config.npm_packages is not none and project_config.npm_packages | length > 0) | bool }}"
             pip_packages_required: "{{ (project_config.pip_packages is defined and project_config.pip_packages | length > 0) | bool }}"

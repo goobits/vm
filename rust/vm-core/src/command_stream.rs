@@ -1,9 +1,10 @@
 // Standard library
 use std::ffi::OsStr;
 use std::io::{BufRead, BufReader};
-use std::sync::{Arc, Mutex};
+use std::process::{Child, Command, Stdio};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 // External crates
 use crate::error::{Result, VmError};
@@ -156,128 +157,222 @@ pub fn stream_command_with_progress_and_timeout<A: AsRef<OsStr>>(
             Ok(())
         }
         Some(secs) => {
-            // With timeout - stream output in real-time using a thread
-            let start = std::time::Instant::now();
-            let timeout = Duration::from_secs(secs);
+            run_with_timeout(
+                command,
+                args,
+                &mut parser,
+                Duration::from_secs(secs),
+                &full_command,
+            )?;
+            if let Some(parser) = parser.take() {
+                parser.finish();
+            }
+            Ok(())
+        }
+    }
+}
 
-            // Convert args to owned strings for thread safety
-            let command_owned = command.to_string();
-            let args_owned: Vec<String> = args
-                .iter()
-                .map(|a| a.as_ref().to_string_lossy().to_string())
-                .collect();
+enum StreamMessage {
+    Line(String),
+    Error(String),
+}
 
-            // Shared state for collecting output and tracking completion
-            let output_lines = Arc::new(Mutex::new(Vec::new()));
-            let output_lines_clone = Arc::clone(&output_lines);
+fn run_with_timeout<A: AsRef<OsStr>>(
+    executable: &str,
+    args: &[A],
+    parser: &mut Option<Box<dyn ProgressParser>>,
+    timeout: Duration,
+    full_command: &str,
+) -> Result<()> {
+    let mut command = Command::new(executable);
+    command
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    apply_buildkit_environment(&mut command, executable);
+    let mut child = command.spawn()?;
+    let Some(stdout) = child.stdout.take() else {
+        terminate_and_wait(&mut child);
+        return Err(VmError::Internal(format!(
+            "Could not capture stdout for {full_command}"
+        )));
+    };
+    let Some(stderr) = child.stderr.take() else {
+        terminate_and_wait(&mut child);
+        return Err(VmError::Internal(format!(
+            "Could not capture stderr for {full_command}"
+        )));
+    };
+    let (sender, receiver) = mpsc::channel();
+    let stdout_reader = spawn_reader(stdout, sender.clone());
+    let stderr_reader = spawn_reader(stderr, sender);
+    let deadline = Instant::now() + timeout;
+    let mut recent = std::collections::VecDeque::with_capacity(50);
+    let mut stream_error = None;
 
-            // Spawn thread to stream output
-            let parser_arc = Arc::new(Mutex::new(parser));
-            let parser_clone = Arc::clone(&parser_arc);
+    loop {
+        drain_message(
+            &receiver,
+            parser,
+            &mut recent,
+            &mut stream_error,
+            Duration::from_millis(50).min(deadline.saturating_duration_since(Instant::now())),
+        );
 
-            let handle = thread::spawn(move || {
-                let reader = with_buildkit(&command_owned, &args_owned)
-                    .stderr_to_stdout()
-                    .reader()?;
-                let lines = BufReader::new(reader).lines();
+        let status = match child.try_wait() {
+            Ok(status) => status,
+            Err(error) => {
+                terminate_and_wait(&mut child);
+                join_readers(stdout_reader, stderr_reader, full_command)?;
+                return Err(error.into());
+            }
+        };
+        if let Some(status) = status {
+            join_readers(stdout_reader, stderr_reader, full_command)?;
+            drain_remaining(&receiver, parser, &mut recent, &mut stream_error);
+            if let Some(error) = stream_error {
+                return Err(VmError::Internal(format!(
+                    "Command output failed for {full_command}: {error}"
+                )));
+            }
+            if status.success() {
+                return Ok(());
+            }
+            return Err(VmError::Command(format!(
+                "Command failed with {status}: {full_command}\n\nOutput (last 50 lines):\n{}",
+                recent.iter().cloned().collect::<Vec<_>>().join("\n")
+            )));
+        }
 
-                for line in lines {
-                    let line = line?;
+        if Instant::now() >= deadline {
+            terminate_and_wait(&mut child);
+            join_readers(stdout_reader, stderr_reader, full_command)?;
+            drain_remaining(&receiver, parser, &mut recent, &mut stream_error);
+            return Err(VmError::Timeout(format!(
+                "Command timed out after {}s: {}\n\nOutput (last 50 lines):\n{}\n\nTo debug, try running manually:\n  {}",
+                timeout.as_secs(),
+                full_command,
+                recent.iter().cloned().collect::<Vec<_>>().join("\n"),
+                full_command
+            )));
+        }
+    }
+}
 
-                    // Store for error reporting
-                    if let Ok(mut buf) = output_lines_clone.lock() {
-                        buf.push(line.clone());
-                    }
+fn apply_buildkit_environment(command: &mut Command, executable: &str) {
+    if executable == "docker" {
+        command
+            .env("DOCKER_BUILDKIT", "1")
+            .env("COMPOSE_DOCKER_CLI_BUILD", "1")
+            .env("BUILDKIT_PROGRESS", "plain");
+    }
+}
 
-                    // Parse/log the line
-                    parse_or_log_line(&parser_clone, &line);
-                }
-
-                Ok::<(), std::io::Error>(())
-            });
-
-            // Monitor for timeout
-            loop {
-                if start.elapsed() >= timeout {
-                    let error_context = get_last_n_lines(&output_lines, 50);
-                    return Err(VmError::Timeout(format!(
-                        "Command timed out after {}s: {}\n\nOutput (last 50 lines):\n{}\n\nTo debug, try running manually:\n  {}",
-                        secs, full_command, error_context.join("\n"), full_command
-                    )));
-                }
-
-                // Check if thread finished
-                if handle.is_finished() {
-                    match handle.join() {
-                        Ok(Ok(())) => {
-                            // Success - finish parser
-                            finish_parser(&parser_arc);
-                            return Ok(());
-                        }
-                        Ok(Err(_e)) => {
-                            // IO error - show context
-                            let error_context = get_last_n_lines(&output_lines, 50);
-                            return Err(VmError::Internal(format!(
-                                "Command failed: {}\n\nOutput (last 50 lines):\n{}",
-                                full_command,
-                                error_context.join("\n")
-                            )));
-                        }
-                        Err(_) => {
-                            return Err(VmError::Internal(format!(
-                                "Thread panicked while running command: {}",
-                                full_command
-                            )));
-                        }
-                    }
-                }
-
-                thread::sleep(Duration::from_millis(100));
+fn spawn_reader<R: std::io::Read + Send + 'static>(
+    reader: R,
+    sender: Sender<StreamMessage>,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        for line in BufReader::new(reader).lines() {
+            let message = match line {
+                Ok(line) => StreamMessage::Line(line),
+                Err(error) => StreamMessage::Error(error.to_string()),
+            };
+            if sender.send(message).is_err() {
+                break;
             }
         }
+    })
+}
+
+fn drain_message(
+    receiver: &Receiver<StreamMessage>,
+    parser: &mut Option<Box<dyn ProgressParser>>,
+    recent: &mut std::collections::VecDeque<String>,
+    stream_error: &mut Option<String>,
+    wait: Duration,
+) {
+    match receiver.recv_timeout(wait) {
+        Ok(message) => record_message(message, parser, recent, stream_error),
+        Err(RecvTimeoutError::Timeout | RecvTimeoutError::Disconnected) => {}
+    }
+}
+
+fn drain_remaining(
+    receiver: &Receiver<StreamMessage>,
+    parser: &mut Option<Box<dyn ProgressParser>>,
+    recent: &mut std::collections::VecDeque<String>,
+    stream_error: &mut Option<String>,
+) {
+    while let Ok(message) = receiver.try_recv() {
+        record_message(message, parser, recent, stream_error);
+    }
+}
+
+fn record_message(
+    message: StreamMessage,
+    parser: &mut Option<Box<dyn ProgressParser>>,
+    recent: &mut std::collections::VecDeque<String>,
+    stream_error: &mut Option<String>,
+) {
+    match message {
+        StreamMessage::Line(line) => {
+            if recent.len() == 50 {
+                recent.pop_front();
+            }
+            recent.push_back(line.clone());
+            if let Some(parser) = parser.as_deref_mut() {
+                parser.parse_line(&line);
+            } else {
+                info!("{}", line);
+            }
+        }
+        StreamMessage::Error(error) => *stream_error = Some(error),
+    }
+}
+
+fn terminate_and_wait(child: &mut Child) {
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+fn join_readers(
+    stdout: thread::JoinHandle<()>,
+    stderr: thread::JoinHandle<()>,
+    full_command: &str,
+) -> Result<()> {
+    let stdout_result = stdout.join();
+    let stderr_result = stderr.join();
+    if stdout_result.is_err() || stderr_result.is_err() {
+        return Err(VmError::Internal(format!(
+            "Output reader panicked while running {full_command}"
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::stream_command_with_progress_and_timeout;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn timeout_reaps_the_command_before_returning() {
+        let started = Instant::now();
+        let error = stream_command_with_progress_and_timeout(
+            "/bin/sh",
+            &["-c", "while :; do printf 'waiting\\n'; sleep 0.05; done"],
+            None,
+            Some(1),
+        )
+        .unwrap_err();
+
+        assert!(started.elapsed() < Duration::from_secs(3));
+        assert!(error.to_string().contains("timed out"));
     }
 }
 
 /// Checks if a command-line tool is available in the system's PATH.
 pub fn is_tool_installed(tool_name: &str) -> bool {
     which(tool_name).is_ok()
-}
-
-/// Helper to parse or log a line based on parser availability
-fn parse_or_log_line(parser_arc: &Arc<Mutex<Option<Box<dyn ProgressParser>>>>, line: &str) {
-    let Ok(mut p) = parser_arc.lock() else {
-        return;
-    };
-
-    match p.as_mut() {
-        Some(parser) => parser.parse_line(line),
-        None => info!("{}", line),
-    }
-}
-
-/// Helper to finish the parser if available
-fn finish_parser(parser_arc: &Arc<Mutex<Option<Box<dyn ProgressParser>>>>) {
-    let Ok(mut p) = parser_arc.lock() else {
-        return;
-    };
-
-    if let Some(parser) = p.take() {
-        parser.finish();
-    }
-}
-
-/// Helper to get the last N lines from the output buffer
-fn get_last_n_lines(output_lines: &Arc<Mutex<Vec<String>>>, n: usize) -> Vec<String> {
-    let Ok(buf) = output_lines.lock() else {
-        return Vec::new();
-    };
-
-    buf.iter()
-        .rev()
-        .take(n)
-        .cloned()
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect()
 }

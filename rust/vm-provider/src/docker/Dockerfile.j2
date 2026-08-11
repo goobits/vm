@@ -2,6 +2,8 @@
 ARG base_image=ubuntu:24.04
 FROM ${base_image}
 
+LABEL com.vm.managed="true"
+
 # Build arguments for users, and package versions
 ARG PROJECT_USER=developer
 ARG PROJECT_UID=1000

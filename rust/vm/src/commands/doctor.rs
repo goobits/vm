@@ -104,6 +104,16 @@ fn run_diagnostics(fix: bool, provider: &str) -> Result<()> {
         vm_println!("  Common ports in use: {:?}", port_conflicts);
     }
 
+    if let Some((used, limit)) = host_file_descriptor_usage() {
+        let percent = used.saturating_mul(100).checked_div(limit).unwrap_or(0);
+        vm_println!("  Host file descriptors: {used}/{limit} ({percent}%)");
+        if percent >= 85 {
+            vm_warning!("Host file descriptors are near exhaustion");
+            vm_hint!("Stop stale VMs, containers, browsers, or helper processes before retrying");
+            all_ok = false;
+        }
+    }
+
     vm_println!("  vm binary: ok");
 
     match check_config_directory() {
@@ -179,6 +189,47 @@ fn tart_version_number(output: &str) -> Option<&str> {
             .next()
             .is_some_and(|first| first.is_ascii_digit())
     })
+}
+
+#[cfg(target_os = "macos")]
+fn host_file_descriptor_usage() -> Option<(u64, u64)> {
+    let output = Command::new("/usr/sbin/sysctl")
+        .args(["-n", "kern.num_files", "kern.maxfiles"])
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| parse_descriptor_values(&String::from_utf8_lossy(&output.stdout)))?
+}
+
+#[cfg(target_os = "linux")]
+fn host_file_descriptor_usage() -> Option<(u64, u64)> {
+    let values = std::fs::read_to_string("/proc/sys/fs/file-nr").ok()?;
+    parse_linux_descriptor_values(&values)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn host_file_descriptor_usage() -> Option<(u64, u64)> {
+    None
+}
+
+fn parse_descriptor_values(values: &str) -> Option<(u64, u64)> {
+    let mut values = values
+        .split_whitespace()
+        .filter_map(|value| value.parse().ok());
+    Some((values.next()?, values.next()?))
+}
+
+#[cfg(target_os = "linux")]
+fn parse_linux_descriptor_values(values: &str) -> Option<(u64, u64)> {
+    let mut values = values
+        .split_whitespace()
+        .filter_map(|value| value.parse::<u64>().ok());
+    let allocated = values.next()?;
+    let unused = values.next()?;
+    let limit = values.next()?;
+    Some((allocated.saturating_sub(unused), limit))
 }
 
 /// Check SSH directory and key permissions
@@ -392,12 +443,21 @@ fn try_create_config_directory() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::tart_version_number;
+    use super::{parse_descriptor_values, tart_version_number};
 
     #[test]
     fn parses_tart_version_output_without_assuming_a_prefix() {
         assert_eq!(tart_version_number("tart 2.32.1\n"), Some("2.32.1"));
         assert_eq!(tart_version_number("2.35.0\n"), Some("2.35.0"));
         assert_eq!(tart_version_number("tart unknown\n"), None);
+    }
+
+    #[test]
+    fn parses_macos_file_descriptor_counters() {
+        assert_eq!(
+            parse_descriptor_values("8000\n10000\n"),
+            Some((8000, 10000))
+        );
+        assert_eq!(parse_descriptor_values("unknown"), None);
     }
 }
