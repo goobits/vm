@@ -286,6 +286,13 @@ downloads, and repair therefore do not hold up the terminal. In an older broken
 environment, `yocodex` can remain unavailable briefly while that first repair
 finishes.
 
+Shell-triggered work is single-flight. Concurrent terminals share the active
+catalog refresh, Codex reconciliation, and managed-tool installer instead of
+starting duplicate work. After a successful pass, further shell-triggered
+checks reuse it for 60 seconds. Explicit `vm tools refresh` and `vm tools
+update` are not suppressed by that success window; they still honor an active
+lock so state cannot be updated concurrently.
+
 Use `vm tools update` for deterministic foreground reconciliation. The
 `--background` variant still reconciles the package edge and Codex first, then
 returns after launching managed-tool downloads. On a fresh controller, the
@@ -320,7 +327,8 @@ provisioning; the Vibe base build owns the three standard AI CLI installers.
 The base runtime also owns Codex repair. Shell-triggered repairs share one
 per-guest lock and append diagnostics inside the guest at
 `${XDG_STATE_HOME:-$HOME/.local/state}/vm-runtime/codex.log`; concurrent shell
-starts coalesce, while explicit `vm tools update` waits for an in-flight repair.
+starts coalesce and reuse a successful check for 60 seconds, while explicit
+`vm tools update` waits for an in-flight repair.
 Replacement is staged, validated, and rolled back on failure without writing
 executable content through host-synced `~/.codex` state or overwriting an
 unmanaged `/usr/local/bin/codex` launcher.

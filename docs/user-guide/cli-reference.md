@@ -233,7 +233,9 @@ requested guest when necessary, updates only stale runtime sidecar
 infrastructure, repairs incomplete Codex state before checking publication, and
 validates managed-tool activation without a base rebuild. These commands must
 run on the controller host; a managed guest prints the exact host command and
-exits.
+exits. Automatic shell-triggered refresh and activation are single-flight and
+reuse a successful pass for 60 seconds; explicit `refresh` and `update`
+commands bypass that recent-success window.
 
 ## Plugins
 

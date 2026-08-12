@@ -215,6 +215,13 @@ For a foreground result, run `vm tools update [environment] --all` on the host.
 It waits for any repair already in flight and returns an error if Codex is still
 not consumable.
 
+Opening several terminals at once should produce only one active catalog,
+Codex, or managed-tool reconciliation job for that environment. Successful
+shell-triggered work is reused for 60 seconds. If a deterministic immediate
+check is needed, run `vm tools refresh` followed by `vm tools update
+[environment] --all` on the host; explicit commands are not delayed by that
+shell cooldown.
+
 If a package/tool command was run inside a managed guest, do not try to operate
 the controller from there. The error prints the exact shell-safe host command,
 such as `Run on the host: vm packages up`; run that command in the host terminal.

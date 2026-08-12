@@ -265,6 +265,13 @@ shell-triggered repair already in flight, before it verifies managed-tool links.
 A matching installed release with broken links is treated as non-consumable and
 retried, including by the cached background startup path.
 
+Interactive-shell reconciliation is single-flight at each ownership boundary:
+one controller catalog refresh may run at a time, as may one job of each guest
+reconciliation type. A successful shell-triggered pass is reused for 60
+seconds, so a burst of `vm ssh` sessions does not repeat downloads or probes.
+Explicit `refresh` and `update` commands bypass the recent-success window while
+still respecting active locks.
+
 Package and tool controller commands are host-only. When invoked inside a
 managed guest, the CLI exits without changing state and prints the exact
 shell-safe command to run on the host, for example

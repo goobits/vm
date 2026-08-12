@@ -130,6 +130,9 @@ test, merge, or publish package source directly.
 - [x] Launch base-owned Codex repair and cached automatic tool downloads as
   detached jobs during interactive shell setup, coalescing Codex work with a
   guest-local lock while keeping explicit update reconciliation deterministic.
+- [x] Coalesce concurrent shell-triggered catalog refresh, Codex repair, and
+  managed-tool activation at their existing ownership boundaries, reusing a
+  successful pass for 60 seconds while leaving explicit commands authoritative.
 - [x] Bound streamed commands, terminate and reap timed-out children, cap error
   output, and keep broken pipes from panicking the CLI.
 - [x] Diagnose host file-descriptor pressure and allocation oversubscription.
@@ -208,9 +211,11 @@ Latest result on 2026-08-12: formatting, the serial all-feature workspace check,
 the complete unit suite, the supported non-network integration suite, and
 `git diff --check` passed from an isolated container-local Cargo target. Focused
 tests also cover the concurrent Codex repair lock, prompt-free shell startup,
-stable and legacy source-image markers, repeat fake-Docker reconciliation, and
-a fatal fake-Tart sentinel that Docker paths never invoked. Scoped VM Clippy
-passed with warnings denied. Full workspace Clippy remains blocked by
+the Codex/tool recent-success gates, the managed-tool single-flight lock, the
+controller refresh lock/cooldown, stable and legacy source-image markers,
+repeat fake-Docker reconciliation, and a fatal fake-Tart sentinel that Docker
+paths never invoked. Scoped VM Clippy passed after allowing the recorded
+unrelated dead-code warning. Full workspace Clippy remains blocked by
 pre-existing Tart storage warnings and the existing unused Linux doctor parser.
 Duplicate detection could not run because `jscpd` is not installed in this
 container. No Docker, Tart, host VM, network, or publication action was run.
@@ -262,6 +267,12 @@ a non-destructive ownership warning instead of implying that project submodules
 are synchronized. VM continues to own guest-home activation and never mutates
 mounted project Git.
 
+Burst-shell reconciliation now holds the controller catalog lock before a
+background task is launched and uses guest-local single-flight locks for Codex
+and managed tools. Successful shell-triggered work is reused for 60 seconds;
+explicit refresh/update commands bypass that recent-success window. This is
+implemented but awaiting host acceptance.
+
 Live Zoop acceptance on 2026-08-12 detected its legacy `.agents/skills` and
 `.claude/skills` repository copies, then reported `PROJECT_COPY=no` after their
 scoped Git removal. In-place `vm tools update zoop-io-dev --all` changed Codex
@@ -275,6 +286,10 @@ Docker worker, while managed `agent-skills` remained consumable at 0.6.1.
 - [ ] Host-accept repeated source-installed `vm packages up` without recreating
   registry/work containers when their effective image content is unchanged
   (implemented but awaiting host acceptance).
+- [ ] Open several concurrent `vm ssh` sessions to one existing worker and
+  verify only one catalog/Codex/tool reconciliation does work, then reconnect
+  within 60 seconds and verify no duplicate job starts (implemented but awaiting
+  host acceptance).
 - [ ] Start a separate Docker worker on the same managed network.
 - [ ] Prove npm, Cargo, and Python public proxying, immutable internal artifacts,
   per-worker override isolation, persistent-cache restart recovery, and clear
@@ -322,6 +337,7 @@ eadfb08b docs(cli): clarify collection publication
 c16747bc fix(tools): report project collection overrides
 b5ad97f0 feat(runtime): reconcile codex without blocking shells
 fcc24a56 fix(packages): stabilize local appliance images
+9fc3b84b fix(shell): coalesce background reconciliation
 ```
 
 The user's dirty `vm.yaml` is intentionally outside these commits.
