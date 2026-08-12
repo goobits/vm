@@ -1,5 +1,5 @@
 ---
-Status: Docker reconciliation partially accepted; repeat appliance no-op pending
+Status: Container implementation complete; final host acceptance pending
 Date: 2026-08-12
 Depends: docs/user-guide/package-infrastructure.md, docs/development/architecture.md
 ---
@@ -7,10 +7,11 @@ Depends: docs/user-guide/package-infrastructure.md, docs/development/architectur
 # VM Tool Completion Tracker
 
 This is the single remaining-work tracker for the active VM-tool release. The
-base implementation and scoped first-run/upgrade reconciliation are complete.
-Live Docker acceptance passed for source discovery, tool state, guest updates,
-and data preservation. A repeat source-installed appliance start still
-recreates unchanged registry/work containers and remains open below.
+base implementation and scoped first-run/upgrade reconciliation are complete in
+the development container. Prior live Docker acceptance passed for source
+discovery, tool state, guest updates, and data preservation. Stable source-image
+identity and nonblocking shell reconciliation are implemented but awaiting host
+acceptance.
 
 Package development and release work runs in Docker or Linux VMs. The Mac only
 launches those runtimes and holds controller credentials; it does not build,
@@ -108,6 +109,8 @@ test, merge, or publish package source directly.
   installs when matching unreleased images are not pullable.
 - [x] Recheck source-built appliance images through Docker's content-addressed
   build cache so service- or job-only edits cannot leave stale local images.
+- [x] Mark source-built appliance images with stable metadata rather than the
+  changing controller binary hash, while recognizing legacy images once.
 - [x] Resolve source-installed CLI symlinks and initialize package-volume roots
   before non-root services start, including volumes introduced by upgrades.
 - [x] Publish registered collections through a credential-isolated ephemeral
@@ -124,6 +127,9 @@ test, merge, or publish package source directly.
   tool repositories without hardcoded names, paths, or accidental npm
   registration.
 - [x] Keep tool update discovery off the interactive startup critical path.
+- [x] Launch base-owned Codex repair and cached automatic tool downloads as
+  detached jobs during interactive shell setup, coalescing Codex work with a
+  guest-local lock while keeping explicit update reconciliation deterministic.
 - [x] Bound streamed commands, terminate and reap timed-out children, cap error
   output, and keep broken pipes from panicking the CLI.
 - [x] Diagnose host file-descriptor pressure and allocation oversubscription.
@@ -200,9 +206,10 @@ No Docker image, Tart base, guest, or release binary is built by this gate.
 
 Latest result on 2026-08-12: formatting, the serial all-feature workspace check,
 the complete unit suite, the supported non-network integration suite, and
-`git diff --check` passed from an isolated container-local Cargo target. The
-integration wrapper now enables the package server's declared
-`standalone-binary` feature in both runner paths. Scoped package/tool Clippy
+`git diff --check` passed from an isolated container-local Cargo target. Focused
+tests also cover the concurrent Codex repair lock, prompt-free shell startup,
+stable and legacy source-image markers, repeat fake-Docker reconciliation, and
+a fatal fake-Tart sentinel that Docker paths never invoked. Scoped VM Clippy
 passed with warnings denied. Full workspace Clippy remains blocked by
 pre-existing Tart storage warnings and the existing unused Linux doctor parser.
 Duplicate detection could not run because `jscpd` is not installed in this
@@ -240,6 +247,8 @@ volumes, and rediscovered all 13 npm sources while routing `agent-skills` to
 `vm tools`. The second source-installed start reused every Docker build layer,
 but changing local image identity caused Compose to recreate the registry/work
 containers. State safety passed; literal steady-state no-op acceptance did not.
+The controller-derived image label has since been replaced by a stable
+source-build marker. That fix is implemented but awaiting host acceptance.
 
 The first container-local Codex agent then exposed that the base installer had
 copied only the main Codex executable out of its canonical standalone package.
@@ -263,8 +272,9 @@ Docker worker, while managed `agent-skills` remained consumable at 0.6.1.
   project directory.
 - [x] Populate `goobits/agent-skills` from the clean local submodule history,
   publish 0.6.1, and activate the collection in the running Docker worker.
-- [ ] Keep a repeated source-installed `vm packages up` from recreating
-  registry/work containers when their effective image content is unchanged.
+- [ ] Host-accept repeated source-installed `vm packages up` without recreating
+  registry/work containers when their effective image content is unchanged
+  (implemented but awaiting host acceptance).
 - [ ] Start a separate Docker worker on the same managed network.
 - [ ] Prove npm, Cargo, and Python public proxying, immutable internal artifacts,
   per-worker override isolation, persistent-cache restart recovery, and clear
@@ -309,6 +319,9 @@ eadfb08b docs(cli): clarify collection publication
 7a7129cd fix(tools): preserve partial Codex backups
 77027272 docs(packages): record final transaction fix
 207e06c0 fix(runtime): preserve complete Codex package
+c16747bc fix(tools): report project collection overrides
+b5ad97f0 feat(runtime): reconcile codex without blocking shells
+fcc24a56 fix(packages): stabilize local appliance images
 ```
 
 The user's dirty `vm.yaml` is intentionally outside these commits.

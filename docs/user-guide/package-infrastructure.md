@@ -74,8 +74,10 @@ When a source-installed CLI cannot pull unreleased matching images, it discovers
 its checkout and builds those infrastructure images inside Docker automatically.
 Local source images re-enter Docker's content-addressed build cache on each
 appliance start, so service- or job-only edits cannot be hidden behind a stale
-controller fingerprint while unchanged layers remain reusable. Released
-installs remain pull-only and never depend on a source tree.
+image. They carry a stable source-build marker instead of the changing controller
+binary hash, so an unrelated CLI rebuild does not by itself change the effective
+service image identity or force Compose recreation. Released installs remain
+pull-only and never depend on a source tree.
 Before the non-root registry and workflow services start, a networkless init
 step repairs only their named-volume roots to the package-service UID/GID. This
 keeps both fresh volumes and volumes added during an upgrade writable without
@@ -218,9 +220,9 @@ For the built-in `agent-skills` selection, `vm tools update` automatically
 registers the canonical Goobits repository when it is missing. Publication is
 always explicit: a fresh controller stops with the exact
 `vm tools publish agent-skills` command, after which the operator reruns
-`vm tools update`. Runtime and Codex reconciliation happens before that
-publication check, so an unpublished collection does not prevent targeted
-infrastructure repair. Tool updates activate inside an already-running
+`vm tools update`. Worker-edge and base-runtime reconciliation happen before
+that publication check, so an unpublished collection does not prevent targeted
+repair. Tool updates activate inside an already-running
 environment and do not require a base rebuild. Read credentials travel to the
 guest over standard input rather than command arguments. Collection activation
 merges individual skills into an existing agent skill directory, preserving
@@ -235,7 +237,11 @@ vm tools update [environment] --all --background
 ```
 
 Omitted versions track the latest release. Explicit semantic versions remain
-pinned. Normal startup never waits for the registry or an update check.
+pinned. Normal startup never waits for the registry, an update prompt, a guest
+download, or base-owned Codex repair. It launches only cached automatic tool
+work and the Vibe runtime probe/repair in the background. Prompt-policy upgrades
+remain pending for an explicit `vm tools update`; full Codex ownership, locking,
+and repair behavior is documented under [Managed Tools And AI State](configuration.md#managed-tools-and-ai-state).
 
 `vm packages list` reports registered and published package state; installation
 is environment-specific, and a published package is consumable through the
@@ -253,15 +259,11 @@ one owner for overlapping collection content.
 entry point. For Docker it regenerates current Compose metadata and updates only
 a missing or stale `package-edge` sidecar with `--no-deps`. For Linux Tart it
 reconciles only the guest edge container. Both paths preserve the edge cache
-named volume and leave the primary environment and base image intact. An absent
-or incomplete Codex runtime in a Vibe environment is staged under `/usr/local`
-from a temporary home, validated, and swapped with rollback; host-synced
-`~/.codex` state is not used as an executable destination. The transaction
-preserves both the prior package and launcher links, refuses to replace an
-unmanaged `/usr/local/bin` launcher, and restores the complete prior runtime if
-validation fails. Managed tool links are then verified before the command
-reports success. A matching installed release with broken links is treated as
-non-consumable and retried, including by the cached background startup path.
+named volume and leave the primary environment and base image intact. It then
+invokes base-owned Codex reconciliation in the foreground, waiting for any
+shell-triggered repair already in flight, before it verifies managed-tool links.
+A matching installed release with broken links is treated as non-consumable and
+retried, including by the cached background startup path.
 
 Package and tool controller commands are host-only. When invoked inside a
 managed guest, the CLI exits without changing state and prints the exact
@@ -371,4 +373,5 @@ gateway, Compose definition, credentials, and workflow service checks.
 Run `vm tools update [environment]` to add or refresh a missing/stale worker
 edge and reconcile Codex/managed tools. The project image and base do not need
 rebuilding, unrelated services are not recreated, and edge cache volumes are
-preserved. Host behavior is implemented but awaiting host acceptance.
+preserved. Stable source-image identity and background shell reconciliation are
+implemented but awaiting host acceptance.

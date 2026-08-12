@@ -198,13 +198,13 @@ pub enum ToolsSubcommand {
     },
     /// Show registered, published, installed, and consumable tool state
     Status { environment: Option<String> },
-    /// Reconcile runtime infrastructure, Codex, and configured managed tools
+    /// Reconcile the package edge, base-owned Codex, and configured managed tools
     Update {
         environment: Option<String>,
         /// Select every available update without showing the checklist
         #[arg(long)]
         all: bool,
-        /// Return after starting concurrent guest downloads
+        /// Reconcile prerequisites, then return after launching managed-tool downloads
         #[arg(long)]
         background: bool,
     },

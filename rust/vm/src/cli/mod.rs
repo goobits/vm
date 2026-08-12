@@ -109,7 +109,7 @@ pub enum Command {
         #[arg(long)]
         raw: bool,
     },
-    /// Open a shell, creating it when missing or starting it when stopped
+    /// Open a shell promptly; safe runtime updates continue in the background
     #[command(visible_alias = "ssh")]
     Shell {
         /// Environment name; omit to use the project default

@@ -202,7 +202,18 @@ package, and broken managed-tool links. Docker updates only the sidecar; Linux
 Tart updates only its edge container. Neither path rebuilds the base or removes
 the persistent edge cache volume. Codex replacement is transactional and
 refuses to overwrite an unmanaged `/usr/local/bin/codex`; inspect and resolve
-that ownership explicitly before retrying.
+that ownership explicitly before retrying. Interactive shell startup launches
+this Codex probe/repair in the background, so a broken legacy environment can
+open before `yocodex` becomes usable. Inside that guest, inspect the append-only
+job log with:
+
+```bash
+tail -n 50 "${XDG_STATE_HOME:-$HOME/.local/state}/vm-runtime/codex.log"
+```
+
+For a foreground result, run `vm tools update [environment] --all` on the host.
+It waits for any repair already in flight and returns an error if Codex is still
+not consumable.
 
 If a package/tool command was run inside a managed guest, do not try to operate
 the controller from there. The error prints the exact shell-safe host command,

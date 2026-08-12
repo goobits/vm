@@ -276,14 +276,23 @@ tools:
 
 `updates` can be `prompt`, `auto`, or `off`, with an optional override per
 tool. `vm start` never contacts package infrastructure or waits for tool
-updates. An interactive `vm shell`/`vm ssh` uses only a fresh local catalog,
-refreshes that catalog in the background, and starts selected guest downloads
-without delaying the shell. Use `vm tools update` when the command should wait,
-or `vm tools update --background` to return immediately. On a fresh controller,
-that command registers the built-in `agent-skills` definition when needed, but
+updates. An interactive `vm shell`/`vm ssh` attaches as soon as the shell is
+ready. From a fresh local catalog it starts required installs, pin repairs, and
+`auto` updates as detached guest downloads, while catalog refresh also runs in
+the background. A `prompt` update never opens a checklist during shell startup;
+it waits for an explicit update command. Vibe environments also launch their
+base-owned Codex probe/repair as a locked background guest job. Registry access,
+downloads, and repair therefore do not hold up the terminal. In an older broken
+environment, `yocodex` can remain unavailable briefly while that first repair
+finishes.
+
+Use `vm tools update` for deterministic foreground reconciliation. The
+`--background` variant still reconciles the package edge and Codex first, then
+returns after launching managed-tool downloads. On a fresh controller, the
+command registers the built-in `agent-skills` definition when needed, but
 publication remains an explicit `vm tools publish agent-skills` operation.
-Rerunning `vm tools update` reconciles a stale package edge, incomplete Codex
-runtime, and non-consumable managed links without rebuilding the base.
+Rerunning it reconciles a stale package edge, incomplete Codex runtime, and
+non-consumable managed links without rebuilding the base.
 Managed collections activate under the guest user's home; VM never rewrites the
 mounted project repository. A collection checkout or submodule at the matching
 project path is therefore a separate copy that can take precedence over the
@@ -308,9 +317,13 @@ host_sync:
 deprecated compatibility alias for `antigravity`; new configs should use
 `antigravity`. Executables are never downloaded directly by ordinary project
 provisioning; the Vibe base build owns the three standard AI CLI installers.
-The explicit host-side `vm tools update` reconciliation can repair an incomplete
-standalone Codex package in place without writing executable content through
-host-synced `~/.codex` state.
+The base runtime also owns Codex repair. Shell-triggered repairs share one
+per-guest lock and append diagnostics inside the guest at
+`${XDG_STATE_HOME:-$HOME/.local/state}/vm-runtime/codex.log`; concurrent shell
+starts coalesce, while explicit `vm tools update` waits for an in-flight repair.
+Replacement is staged, validated, and rolled back on failure without writing
+executable content through host-synced `~/.codex` state or overwriting an
+unmanaged `/usr/local/bin/codex` launcher.
 
 ## Presets
 
