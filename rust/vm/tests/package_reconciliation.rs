@@ -180,6 +180,22 @@ fi
     (executable, log)
 }
 
+fn fake_tart(directory: &Path) -> PathBuf {
+    let executable = directory.join("tart");
+    let log = directory.join("tart.log");
+    fs::write(
+        &executable,
+        r#"#!/bin/sh
+set -eu
+printf '%s\n' "$*" >> "${VM_FAKE_TART_LOG:?}"
+exit 97
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).unwrap();
+    log
+}
+
 fn configure_source_roots(directory: &TempDir, roots: &[&Path]) {
     fs::create_dir_all(directory.path().join(".vm")).unwrap();
     let mut config = String::from("packages:\n  source_roots:\n");
@@ -228,6 +244,7 @@ fn packages_up(
         .env("HOME", directory.path())
         .env("PATH", path)
         .env("VM_FAKE_DOCKER_LOG", docker_log)
+        .env("VM_FAKE_TART_LOG", fake_bin.join("tart.log"))
         .env("VM_TEST_MODE", "1")
         .env("CI", "1")
         .env_remove("VM_MANAGED_GUEST")
@@ -243,6 +260,7 @@ fn fresh_setup_and_existing_state_reconciliation_are_idempotent() {
     let fake_bin = directory.path().join("bin");
     fs::create_dir_all(&fake_bin).unwrap();
     let (_, docker_log) = fake_docker(&fake_bin);
+    let tart_log = fake_tart(&fake_bin);
     let source_root = directory.path().join("package-sources");
     fixture_package(&source_root);
 
@@ -293,6 +311,7 @@ fn fresh_setup_and_existing_state_reconciliation_are_idempotent() {
         .lines()
         .any(|line| line.split_whitespace().any(|argument| argument == "down")));
     assert!(!commands.lines().any(|line| line.contains("volume rm")));
+    assert!(!tart_log.exists(), "Docker reconciliation invoked Tart");
 }
 
 #[test]

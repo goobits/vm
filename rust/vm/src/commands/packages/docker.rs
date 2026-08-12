@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
-use std::fs::{self, File};
-use std::io::BufReader;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -8,17 +7,13 @@ use serde::Deserialize;
 
 use crate::error::VmResult;
 use vm_core::{vm_println, vm_progress, vm_warning};
-use vm_packages::{sha256_reader, ApplianceConfig, COMPOSE_PROJECT};
+use vm_packages::{ApplianceConfig, COMPOSE_PROJECT};
 
 use super::appliance::{MaintenanceTask, PackageJob};
 use super::{files::ApplianceFiles, process};
 
-const SOURCE_FINGERPRINT_LABEL: &str = "org.goobits.vm.controller-binary-sha256";
-
-struct SourceBuild {
-    workspace: PathBuf,
-    fingerprint: String,
-}
+const SOURCE_BUILD_LABEL: &str = "org.goobits.vm.source-build";
+const LEGACY_SOURCE_FINGERPRINT_LABEL: &str = "org.goobits.vm.controller-binary-sha256";
 
 #[derive(Deserialize)]
 struct ImageInspect {
@@ -148,16 +143,16 @@ fn up_command(files: &ApplianceFiles) -> Command {
 }
 
 fn ensure_images(config: &ApplianceConfig, allow_source_build: bool) -> VmResult<()> {
-    let source = discover_source_build()?;
+    let source = discover_source_workspace();
     ensure_image(
         &config.registry_image,
-        source.as_ref(),
+        source.as_deref(),
         allow_source_build,
         "vm-package-server/docker/server/Dockerfile",
     )?;
     ensure_image(
         &config.job_image,
-        source.as_ref(),
+        source.as_deref(),
         allow_source_build,
         "vm-package-jobs/Dockerfile",
     )
@@ -165,16 +160,12 @@ fn ensure_images(config: &ApplianceConfig, allow_source_build: bool) -> VmResult
 
 fn ensure_image(
     image: &str,
-    source: Option<&SourceBuild>,
+    source: Option<&Path>,
     allow_source_fallback: bool,
     dockerfile: &str,
 ) -> VmResult<()> {
     if let Some(inspect) = image_inspect(image)? {
-        let source_built = inspect
-            .config
-            .as_ref()
-            .and_then(|config| config.labels.as_ref())
-            .is_some_and(|labels| labels.contains_key(SOURCE_FINGERPRINT_LABEL));
+        let source_built = is_source_built(&inspect);
         if let Some(source) = source.filter(|_| source_built || is_local_source_image(image)) {
             vm_progress!("Refreshing local package image {image} through Docker's build cache...");
             return build_source_image(source, dockerfile, image);
@@ -207,8 +198,8 @@ fn is_local_source_image(image: &str) -> bool {
             .is_some_and(|(_, tag)| tag.ends_with("-local"))
 }
 
-fn build_source_image(source: &SourceBuild, dockerfile: &str, image: &str) -> VmResult<()> {
-    let mut build = source_build_command(&source.workspace, dockerfile, image, &source.fingerprint);
+fn build_source_image(source: &Path, dockerfile: &str, image: &str) -> VmResult<()> {
+    let mut build = source_build_command(source, dockerfile, image);
     process::run(
         &mut build,
         &format!("build package appliance image {image}"),
@@ -228,34 +219,32 @@ fn image_inspect(image: &str) -> VmResult<Option<ImageInspect>> {
     Ok(images.pop())
 }
 
-fn source_build_command(
-    workspace: &Path,
-    dockerfile: &str,
-    image: &str,
-    fingerprint: &str,
-) -> Command {
+fn is_source_built(inspect: &ImageInspect) -> bool {
+    inspect
+        .config
+        .as_ref()
+        .and_then(|config| config.labels.as_ref())
+        .is_some_and(|labels| {
+            labels.get(SOURCE_BUILD_LABEL).map(String::as_str) == Some("true")
+                || labels.contains_key(LEGACY_SOURCE_FINGERPRINT_LABEL)
+        })
+}
+
+fn source_build_command(workspace: &Path, dockerfile: &str, image: &str) -> Command {
     let mut command = Command::new("docker");
     command
         .current_dir(workspace)
         .args(["build", "--label"])
-        .arg(format!("{SOURCE_FINGERPRINT_LABEL}={fingerprint}"))
+        .arg(format!("{SOURCE_BUILD_LABEL}=true"))
         .args(["--tag", image, "--file", dockerfile, "."]);
     command
 }
 
-fn discover_source_build() -> VmResult<Option<SourceBuild>> {
+fn discover_source_workspace() -> Option<PathBuf> {
     let Ok(executable) = std::env::current_exe() else {
-        return Ok(None);
+        return None;
     };
-    let Some(workspace) = source_workspace_for_executable(&executable) else {
-        return Ok(None);
-    };
-    let resolved = fs::canonicalize(&executable).unwrap_or(executable);
-    let (fingerprint, _) = sha256_reader(BufReader::new(File::open(resolved)?))?;
-    Ok(Some(SourceBuild {
-        workspace,
-        fingerprint,
-    }))
+    source_workspace_for_executable(&executable)
 }
 
 fn source_workspace_for_executable(executable: &Path) -> Option<PathBuf> {
@@ -278,10 +267,12 @@ fn source_workspace_from(executable: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_local_source_image, source_build_command, source_workspace_for_executable,
-        source_workspace_from, up_command,
+        is_local_source_image, is_source_built, source_build_command,
+        source_workspace_for_executable, source_workspace_from, up_command, ImageConfig,
+        ImageInspect, LEGACY_SOURCE_FINGERPRINT_LABEL, SOURCE_BUILD_LABEL,
     };
     use crate::commands::packages::files::ApplianceFiles;
+    use std::collections::BTreeMap;
     use std::fs;
 
     #[test]
@@ -353,7 +344,6 @@ mod tests {
             workspace,
             "vm-package-jobs/Dockerfile",
             "registry.example/jobs:1",
-            "abc123",
         );
         let arguments = command
             .get_args()
@@ -366,7 +356,7 @@ mod tests {
             [
                 "build",
                 "--label",
-                "org.goobits.vm.controller-binary-sha256=abc123",
+                "org.goobits.vm.source-build=true",
                 "--tag",
                 "registry.example/jobs:1",
                 "--file",
@@ -374,6 +364,28 @@ mod tests {
                 ".",
             ]
         );
+    }
+
+    #[test]
+    fn source_image_marker_is_stable_and_recognizes_legacy_builds() {
+        let inspect = |labels| ImageInspect {
+            config: Some(ImageConfig {
+                labels: Some(labels),
+            }),
+        };
+
+        assert!(is_source_built(&inspect(BTreeMap::from([(
+            SOURCE_BUILD_LABEL.into(),
+            "true".into(),
+        )]))));
+        assert!(is_source_built(&inspect(BTreeMap::from([(
+            LEGACY_SOURCE_FINGERPRINT_LABEL.into(),
+            "abc123".into(),
+        )]))));
+        assert!(!is_source_built(&inspect(BTreeMap::from([(
+            SOURCE_BUILD_LABEL.into(),
+            "false".into(),
+        )]))));
     }
 
     #[test]
