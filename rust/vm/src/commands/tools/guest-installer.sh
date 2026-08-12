@@ -7,6 +7,97 @@ releases="$root/releases"
 states="$root/state"
 temporary="$root/tmp"
 mkdir -p "$releases" "$states" "$temporary"
+mode=${1:-}
+case "$mode" in
+  background-if-idle|background|wait) shift ;;
+  *)
+    printf "Unknown tool reconciliation mode '%s'\n" "$mode" >&2
+    exit 1
+    ;;
+esac
+lock="$root/update.lock"
+reaper="$root/update.lock-reaper"
+owns_lock=no
+owns_reaper=no
+
+cleanup() {
+  status=$?
+  trap - EXIT HUP INT TERM
+  if test "$owns_lock" = yes; then
+    owner="$(cat "$lock/pid" 2>/dev/null || true)"
+    if test "$owner" = "$$"; then
+      rm -rf "$lock"
+    fi
+  fi
+  if test "$owns_reaper" = yes; then
+    rmdir "$reaper" >/dev/null 2>&1 || true
+  fi
+  exit "$status"
+}
+trap cleanup EXIT HUP INT TERM
+
+owner_is_running() {
+  owner=$1
+  case "$owner" in
+    ''|*[!0-9]*) return 1 ;;
+    *) kill -0 "$owner" >/dev/null 2>&1 ;;
+  esac
+}
+
+acquire_lock() {
+  if mkdir "$lock" 2>/dev/null; then
+    printf '%s\n' "$$" > "$lock/pid"
+    owns_lock=yes
+    return 0
+  fi
+
+  owner="$(cat "$lock/pid" 2>/dev/null || true)"
+  if owner_is_running "$owner"; then
+    return 1
+  fi
+  if ! mkdir "$reaper" 2>/dev/null; then
+    return 1
+  fi
+  owns_reaper=yes
+
+  owner="$(cat "$lock/pid" 2>/dev/null || true)"
+  if test -z "$owner"; then
+    sleep 1
+    owner="$(cat "$lock/pid" 2>/dev/null || true)"
+  fi
+  if owner_is_running "$owner"; then
+    rmdir "$reaper"
+    owns_reaper=no
+    return 1
+  fi
+
+  stale="$root/update.lock-stale.$$"
+  if mv "$lock" "$stale" 2>/dev/null; then
+    rm -rf "$stale"
+  fi
+  rmdir "$reaper"
+  owns_reaper=no
+
+  if mkdir "$lock" 2>/dev/null; then
+    printf '%s\n' "$$" > "$lock/pid"
+    owns_lock=yes
+    return 0
+  fi
+  return 1
+}
+
+attempt=0
+until acquire_lock; do
+  if test "$mode" != wait; then
+    exit 0
+  fi
+  attempt=$((attempt + 1))
+  if test "$attempt" -ge 900; then
+    printf '%s\n' 'Timed out waiting for another tool reconciliation' >&2
+    exit 1
+  fi
+  sleep 1
+done
 
 verify_digest() {
   archive=$1
@@ -219,4 +310,18 @@ result=0
 for pid in $pids; do
   wait "$pid" || result=1
 done
+if test "$result" -eq 0; then
+  completed="$(date +%s 2>/dev/null || true)"
+  case "$completed" in
+    ''|*[!0-9]*) ;;
+    *)
+      marker="$root/.update.last-success.$$"
+      if printf '%s\n' "$completed" > "$marker"; then
+        mv -f "$marker" "$root/update.last-success"
+      else
+        rm -f "$marker"
+      fi
+      ;;
+  esac
+fi
 exit "$result"

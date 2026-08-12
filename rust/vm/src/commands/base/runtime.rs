@@ -328,9 +328,25 @@ probe_state() {
   sh "$root/codex-probe.sh" | sed -n 's/^VM_CODEX_STATE=//p'
 }
 
+mark_success() {
+  completed="$(date +%s 2>/dev/null || true)"
+  case "$completed" in
+    ''|*[!0-9]*) return 0 ;;
+  esac
+  marker="$root/.codex.last-success.$$"
+  if printf '%s\n' "$completed" > "$marker"; then
+    mv "$marker" "$root/codex.last-success"
+  else
+    rm -f "$marker"
+  fi
+}
+
 state="$(probe_state)"
 case "$state" in
-  consumable) exit 0 ;;
+  consumable)
+    mark_success
+    exit 0
+    ;;
   absent)
     if test "$expected" != yes; then
       exit 0
@@ -354,6 +370,7 @@ if test "$(probe_state)" != consumable; then
     "$environment" >&2
   exit 1
 fi
+mark_success
 printf '%s\n' 'Codex standalone runtime is consumable'
 "#;
 
@@ -370,6 +387,31 @@ environment=$6
 root="${XDG_STATE_HOME:-$HOME/.local/state}/vm-runtime"
 mkdir -p "$root"
 temporary=
+
+owner_is_running() {
+  owner="$(cat "$root/codex.lock/pid" 2>/dev/null || true)"
+  case "$owner" in
+    ''|*[!0-9]*) return 1 ;;
+    *) kill -0 "$owner" >/dev/null 2>&1 ;;
+  esac
+}
+
+recently_completed() {
+  completed="$(cat "$root/codex.last-success" 2>/dev/null || true)"
+  now="$(date +%s 2>/dev/null || true)"
+  case "$completed" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  case "$now" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  age=$((now - completed))
+  test "$age" -ge 0 && test "$age" -lt 60
+}
+
+if test "$mode" = background && { owner_is_running || recently_completed; }; then
+  exit 0
+fi
 
 cleanup() {
   status=$?
@@ -539,6 +581,8 @@ mod tests {
     #[cfg(unix)]
     use std::process::Output;
     use std::sync::{Arc, Mutex};
+    #[cfg(unix)]
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[cfg(unix)]
     use tempfile::TempDir;
@@ -823,6 +867,55 @@ ln -s "$target/bin/codex" "$HOME/.local/bin/codex"
 
         assert!(!reconcile_codex_in_background(&provider, "demo", &VmConfig::default()).unwrap());
         assert!(provider.calls().is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn background_launcher_reuses_active_and_recent_reconciliation() {
+        let directory = TempDir::new().unwrap();
+        let state_home = directory.path().join("state");
+        let root = state_home.join("vm-runtime");
+        let launched = directory.path().join("launched");
+        fs::create_dir_all(root.join("codex.lock")).unwrap();
+        fs::write(
+            root.join("codex.lock/pid"),
+            format!("{}\n", std::process::id()),
+        )
+        .unwrap();
+
+        let run = |mode: &str| {
+            Command::new("/bin/sh")
+                .args([
+                    "-c",
+                    CODEX_RECONCILE_LAUNCHER,
+                    "vm-codex-launcher-test",
+                    "#!/bin/sh\nexit 0",
+                    "#!/bin/sh\nexit 0",
+                    "#!/bin/sh\n: > \"$VM_CODEX_TEST_LAUNCHED\"",
+                    mode,
+                    "yes",
+                    "demo",
+                ])
+                .env("XDG_STATE_HOME", &state_home)
+                .env("VM_CODEX_TEST_LAUNCHED", &launched)
+                .output()
+                .unwrap()
+        };
+
+        assert!(run("background").status.success());
+        assert!(!launched.exists());
+
+        fs::remove_dir_all(root.join("codex.lock")).unwrap();
+        let completed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        fs::write(root.join("codex.last-success"), format!("{completed}\n")).unwrap();
+        assert!(run("background").status.success());
+        assert!(!launched.exists());
+
+        assert!(run("wait").status.success());
+        assert!(launched.exists());
     }
 
     #[cfg(unix)]

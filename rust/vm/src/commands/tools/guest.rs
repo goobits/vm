@@ -17,18 +17,57 @@ test -n "$CARGO_REGISTRIES_VM_TOKEN"
 export CARGO_REGISTRIES_VM_TOKEN
 root="${XDG_DATA_HOME:-$HOME/.local/share}/vm-tools"
 mkdir -p "$root"
+mode=$2
+case "$mode" in
+  background-if-idle|background|wait) ;;
+  *)
+    printf "Unknown tool reconciliation mode '%s'\n" "$mode" >&2
+    exit 1
+    ;;
+esac
+
+owner_is_running() {
+  owner="$(cat "$root/update.lock/pid" 2>/dev/null || true)"
+  case "$owner" in
+    ''|*[!0-9]*) return 1 ;;
+    *) kill -0 "$owner" >/dev/null 2>&1 ;;
+  esac
+}
+
+recently_completed() {
+  completed="$(cat "$root/update.last-success" 2>/dev/null || true)"
+  now="$(date +%s 2>/dev/null || true)"
+  case "$completed" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  case "$now" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  age=$((now - completed))
+  test "$age" -ge 0 && test "$age" -lt 60
+}
+
+if test "$mode" != wait && owner_is_running; then
+  exit 0
+fi
+if test "$mode" = background-if-idle && recently_completed; then
+  exit 0
+fi
+
 script="$root/installer.sh"
 temporary="$root/.installer.$$.tmp"
 printf '%s\n' "$1" > "$temporary"
 chmod 700 "$temporary"
 mv -f "$temporary" "$script"
-mode=$2
 shift 2
-if test "$mode" = background; then
-  nohup "$script" "$@" > "$root/update.log" 2>&1 </dev/null &
-else
-  exec "$script" "$@"
-fi
+case "$mode" in
+  background-if-idle|background)
+    nohup "$script" "$mode" "$@" > "$root/update.log" 2>&1 </dev/null &
+    ;;
+  wait)
+    exec "$script" "$mode" "$@"
+    ;;
+esac
 "#;
 const STATE_SCRIPT: &str = r#"
 root="${XDG_DATA_HOME:-$HOME/.local/share}/vm-tools/state"
@@ -122,6 +161,7 @@ pub(super) struct InstalledTool {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum InstallMode {
+    BackgroundIfIdle,
     Background,
     Wait,
 }
@@ -129,6 +169,7 @@ pub(super) enum InstallMode {
 impl InstallMode {
     fn as_str(self) -> &'static str {
         match self {
+            Self::BackgroundIfIdle => "background-if-idle",
             Self::Background => "background",
             Self::Wait => "wait",
         }
@@ -359,6 +400,12 @@ mod tests {
     use super::*;
     use chrono::Utc;
     use std::{fs, process::Command};
+    #[cfg(unix)]
+    use std::{
+        io::Write,
+        process::Stdio,
+        time::{SystemTime, UNIX_EPOCH},
+    };
     use vm_packages::ToolKind;
 
     #[test]
@@ -456,6 +503,82 @@ mod tests {
         assert_eq!(overrides["agent-skills"].len(), 1);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn shell_tool_reconciliation_reuses_active_and_recent_work() {
+        for script in [LAUNCHER, INSTALLER] {
+            assert!(Command::new("/bin/sh")
+                .args(["-n", "-c", script])
+                .status()
+                .unwrap()
+                .success());
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        let data = directory.path().join("data");
+        let root = data.join("vm-tools");
+        let launched = directory.path().join("launched");
+        fs::create_dir_all(root.join("update.lock")).unwrap();
+        fs::write(
+            root.join("update.lock/pid"),
+            format!("{}\n", std::process::id()),
+        )
+        .unwrap();
+
+        let inner = Command::new("/bin/sh")
+            .args([
+                "-c",
+                INSTALLER,
+                "vm-tool-installer-test",
+                "background-if-idle",
+                "invalid manifest",
+            ])
+            .env("XDG_DATA_HOME", &data)
+            .status()
+            .unwrap();
+        assert!(inner.success());
+
+        let run_launcher = |mode: &str| {
+            let mut child = Command::new("/bin/sh")
+                .args([
+                    "-c",
+                    LAUNCHER,
+                    "vm-tool-launcher-test",
+                    "#!/bin/sh\n: > \"$VM_TOOL_TEST_LAUNCHED\"",
+                    mode,
+                ])
+                .env("XDG_DATA_HOME", &data)
+                .env("VM_TOOL_TEST_LAUNCHED", &launched)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            child
+                .stdin
+                .take()
+                .unwrap()
+                .write_all(b"test-token\n")
+                .unwrap();
+            child.wait_with_output().unwrap()
+        };
+
+        assert!(run_launcher("background-if-idle").status.success());
+        assert!(!launched.exists());
+
+        fs::remove_dir_all(root.join("update.lock")).unwrap();
+        let completed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        fs::write(root.join("update.last-success"), format!("{completed}\n")).unwrap();
+        assert!(run_launcher("background-if-idle").status.success());
+        assert!(!launched.exists());
+
+        assert!(run_launcher("wait").status.success());
+        assert!(launched.exists());
+    }
+
     #[test]
     fn manifest_keeps_a_collection_as_one_artifact() {
         let artifact = ToolArtifactRecord {
@@ -511,6 +634,7 @@ mod tests {
 
         let output = Command::new("sh")
             .arg(&installer)
+            .arg("wait")
             .arg(&manifest)
             .env("HOME", &home)
             .env("XDG_DATA_HOME", &data)
@@ -539,6 +663,7 @@ mod tests {
             .unwrap();
             let retry = Command::new("sh")
                 .arg(&installer)
+                .arg("wait")
                 .arg(&manifest)
                 .env("HOME", &home)
                 .env("XDG_DATA_HOME", &data)

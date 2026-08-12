@@ -16,6 +16,8 @@ use super::files::ApplianceFiles;
 use super::runtime::gateway_for_provider;
 
 const CACHE_MAX_AGE: Duration = Duration::from_secs(6 * 60 * 60);
+const BACKGROUND_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
+const REFRESH_MARKER: &str = "last-refresh";
 const TOOL_TARGETS: [&str; 3] = ["linux-arm64", "linux-amd64", "darwin-arm64"];
 
 #[derive(Debug, Clone)]
@@ -32,10 +34,36 @@ pub(in crate::commands) enum RefreshOutcome {
 
 pub(in crate::commands) async fn refresh(config: &VmConfig) -> VmResult<RefreshOutcome> {
     let files = ApplianceFiles::discover()?;
-    let Some(_lock) = files.acquire_tool_cache_lock()? else {
+    let Some(lock) = files.acquire_tool_cache_lock()? else {
         return Ok(RefreshOutcome::AlreadyRunning);
     };
-    let (_, client) = configured_state_and_client(&files)?;
+    refresh_locked(&files, config, lock).await?;
+    Ok(RefreshOutcome::Refreshed)
+}
+
+pub(in crate::commands) fn refresh_in_background(config: VmConfig) -> VmResult<()> {
+    let files = ApplianceFiles::discover()?;
+    let Some(lock) = files.acquire_tool_cache_lock()? else {
+        return Ok(());
+    };
+    if !background_refresh_due(&files)? {
+        return Ok(());
+    }
+
+    tokio::spawn(async move {
+        if let Err(error) = refresh_locked(&files, &config, lock).await {
+            tracing::debug!(%error, "Background tool catalog refresh failed");
+        }
+    });
+    Ok(())
+}
+
+async fn refresh_locked(
+    files: &ApplianceFiles,
+    config: &VmConfig,
+    lock: std::fs::File,
+) -> VmResult<()> {
+    let (_, client) = configured_state_and_client(files)?;
 
     let indexes = join_all(TOOL_TARGETS.into_iter().map(|target| {
         let client = client.clone();
@@ -47,7 +75,7 @@ pub(in crate::commands) async fn refresh(config: &VmConfig) -> VmResult<RefreshO
     for (target, result) in indexes {
         match result {
             Ok(index) => {
-                write_json(&files, &index_cache_name(target), &index)?;
+                write_json(files, &index_cache_name(target), &index)?;
                 refreshed += 1;
             }
             Err(error) => last_error = Some(error),
@@ -86,13 +114,15 @@ pub(in crate::commands) async fn refresh(config: &VmConfig) -> VmResult<RefreshO
     for (name, version, target, result) in resolutions {
         if let Ok(artifact) = result {
             write_json(
-                &files,
+                files,
                 &resolution_cache_name(&name, &version, target)?,
                 &artifact,
             )?;
         }
     }
-    Ok(RefreshOutcome::Refreshed)
+    files.write_tool_cache(REFRESH_MARKER, b"ok\n")?;
+    drop(lock);
+    Ok(())
 }
 
 pub(in crate::commands) fn cached(
@@ -104,13 +134,24 @@ pub(in crate::commands) fn cached(
 }
 
 pub(in crate::commands) fn has_fresh_catalog() -> bool {
-    ApplianceFiles::discover().is_ok_and(|files| {
-        TOOL_TARGETS.iter().any(|target| {
-            files
-                .read_tool_cache(&index_cache_name(target), CACHE_MAX_AGE)
-                .is_ok_and(|content| content.is_some())
-        })
+    ApplianceFiles::discover().is_ok_and(|files| has_fresh_catalog_in(&files))
+}
+
+fn has_fresh_catalog_in(files: &ApplianceFiles) -> bool {
+    TOOL_TARGETS.iter().any(|target| {
+        files
+            .read_tool_cache(&index_cache_name(target), CACHE_MAX_AGE)
+            .is_ok_and(|content| content.is_some())
     })
+}
+
+fn background_refresh_due(files: &ApplianceFiles) -> VmResult<bool> {
+    if !has_fresh_catalog_in(files) {
+        return Ok(true);
+    }
+    Ok(files
+        .read_tool_cache(REFRESH_MARKER, BACKGROUND_REFRESH_INTERVAL)?
+        .is_none())
 }
 
 fn cached_from(
@@ -239,6 +280,25 @@ mod tests {
             "resolution-agent-skills-1.2.3-linux-arm64.json"
         );
         assert!(resolution_cache_name("../skills", "1.2.3", "linux-arm64").is_err());
+    }
+
+    #[test]
+    fn background_refresh_reuses_recent_success_and_one_lock() {
+        let directory = tempfile::tempdir().unwrap();
+        let files = ApplianceFiles::at(directory.path().join("packages"));
+
+        assert!(background_refresh_due(&files).unwrap());
+        files.write_tool_cache(REFRESH_MARKER, b"ok\n").unwrap();
+        assert!(background_refresh_due(&files).unwrap());
+        files
+            .write_tool_cache(&index_cache_name("linux-arm64"), b"cached\n")
+            .unwrap();
+        assert!(!background_refresh_due(&files).unwrap());
+
+        let lock = files.acquire_tool_cache_lock().unwrap().unwrap();
+        assert!(files.acquire_tool_cache_lock().unwrap().is_none());
+        drop(lock);
+        assert!(files.acquire_tool_cache_lock().unwrap().is_some());
     }
 
     #[test]

@@ -265,10 +265,9 @@ pub(in crate::commands) fn before_shell(
         return;
     }
     let has_catalog = tooling::has_fresh_catalog();
-    let refresh_config = config.clone();
-    tokio::spawn(async move {
-        let _ = tooling::refresh(&refresh_config).await;
-    });
+    if let Err(error) = tooling::refresh_in_background(config.clone()) {
+        tracing::debug!(%error, "Could not schedule tool catalog refresh");
+    }
     if !has_catalog {
         return;
     }
@@ -286,20 +285,14 @@ pub(in crate::commands) fn before_shell(
         if selected.is_empty() {
             return Ok(());
         }
-        let names = selected
-            .iter()
-            .map(|artifact| artifact.tool.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
         guest::install(
             provider,
             environment,
             &selected,
             &tooling::gateway(provider.name())?,
             &tooling::read_token()?,
-            InstallMode::Background,
+            InstallMode::BackgroundIfIdle,
         )?;
-        vm_println!("Tool updates started in the background: {names}");
         Ok(())
     })();
     if let Err(error) = result {
@@ -363,7 +356,9 @@ fn apply_updates(
         }
     }
     match mode {
-        InstallMode::Background => vm_success!("Started {count} tool update(s) in the background"),
+        InstallMode::Background | InstallMode::BackgroundIfIdle => {
+            vm_success!("Tool reconciliation is running in the background ({count} selected)")
+        }
         InstallMode::Wait => vm_success!("Activated {count} tool update(s)"),
     }
     Ok(())
