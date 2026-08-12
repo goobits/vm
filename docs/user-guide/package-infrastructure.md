@@ -241,11 +241,13 @@ Omitted versions track the latest release. Explicit semantic versions remain
 pinned. An explicit `update` installs every eligible configured change without a
 checklist. An `off` policy disables newer-release upgrades, but not a required
 first install or pinned-version repair. Normal startup never waits for the
-registry, an update prompt, a guest
-download, or base-owned Codex repair. It launches only cached automatic tool
+registry, an update prompt, a guest download, or base-owned Codex repair. It
+launches only cached automatic tool
 work and the Vibe runtime probe/repair in the background. Prompt-policy upgrades
 remain pending for an explicit `vm tools update`; full Codex ownership, locking,
 and repair behavior is documented under [Managed Tools And AI State](configuration.md#managed-tools-and-ai-state).
+When no managed tools are selected, update can repair base-owned Codex without
+requiring a tool catalog or package-appliance connection.
 
 `vm packages list` reports registered and published package state; installation
 is environment-specific, and a published package is consumable through the

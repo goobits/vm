@@ -172,6 +172,9 @@ async fn reconcile_subject(subject: &RuntimeSubject) -> VmResult<()> {
 }
 
 async fn prepare_tool_catalog(config: &VmConfig) -> VmResult<()> {
+    if config.tools.entries.is_empty() {
+        return Ok(());
+    }
     ensure_builtin_releases(config).await?;
     tooling::refresh(config).await?;
     Ok(())
@@ -184,8 +187,7 @@ async fn update_fleet(
     mode: InstallMode,
 ) -> VmResult<()> {
     let app_config = AppConfig::load(config_path, profile, None)?;
-    let mut config = app_config.vm;
-    packages::apply_client_environment(&mut config)?;
+    let config = app_config.vm;
     let instances = vm_ops::resolve_fleet_targets(fleet, InstanceStateFilter::Any)?;
     if instances.is_empty() {
         vm_println!("No managed environments found");
@@ -371,6 +373,10 @@ fn apply_updates(
     config: &VmConfig,
     mode: InstallMode,
 ) -> VmResult<()> {
+    if config.tools.entries.is_empty() {
+        vm_success!("No managed tools are configured");
+        return Ok(());
+    }
     let target = guest::platform_target(provider, environment)?;
     let catalog = tooling::cached(config, &target)?.ok_or_else(|| {
         VmError::validation(

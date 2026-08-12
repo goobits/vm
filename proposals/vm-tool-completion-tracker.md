@@ -287,6 +287,8 @@ starts stopped targets in place, continues on per-target failures, and reports a
 summary. It does not project the invoking project's service or package-edge
 configuration onto unrelated targets. The former `vm fleet` and tool `--all`
 surfaces are removed. This is implemented but awaiting host acceptance.
+With no managed tools selected, base-owned Codex reconciliation no longer
+requires a tool catalog or package-appliance connection.
 
 - [x] Start and restart the central package appliance in Docker from outside a
   project directory.
