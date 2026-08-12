@@ -57,9 +57,10 @@ pub(super) async fn handle(
             registry_image,
             job_image,
         } => {
-            appliance::up(&files, runtime, port, registry_image, job_image).await?;
             let global_config = vm_config::GlobalConfig::load()?;
-            catalog::reconcile_source_roots(&files, &global_config.packages.source_roots).await?;
+            let source_roots = catalog::prepare_source_roots(&global_config.packages.source_roots)?;
+            appliance::up(&files, runtime, port, registry_image, job_image).await?;
+            catalog::reconcile_source_roots(&files, source_roots).await?;
             if let Ok(config) = vm_config::AppConfig::load(config_path, profile, None) {
                 let _ = tooling::refresh(&config.vm).await;
             }

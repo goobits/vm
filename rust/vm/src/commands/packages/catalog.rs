@@ -20,6 +20,11 @@ pub(super) struct RegistrationIntent {
     pub(super) recursive: bool,
 }
 
+pub(super) struct SourceRootPlan {
+    root_count: usize,
+    discovery: discovery::Discovery,
+}
+
 pub(super) async fn register(files: &ApplianceFiles, intent: RegistrationIntent) -> VmResult<()> {
     let ecosystem = intent
         .ecosystem
@@ -66,6 +71,14 @@ pub(super) async fn register(files: &ApplianceFiles, intent: RegistrationIntent)
         (discovery.packages, discovery.tools)
     };
 
+    apply_registration(files, requests, tool_repositories).await
+}
+
+async fn apply_registration(
+    files: &ApplianceFiles,
+    requests: Vec<RegisterPackage>,
+    tool_repositories: Vec<PathBuf>,
+) -> VmResult<()> {
     for repository in tool_repositories {
         vm_println!(
             "Tool source: {} (managed by `vm tools`)",
@@ -88,30 +101,31 @@ pub(super) async fn register(files: &ApplianceFiles, intent: RegistrationIntent)
     Ok(())
 }
 
+pub(super) fn prepare_source_roots(source_roots: &[String]) -> VmResult<SourceRootPlan> {
+    let source_roots = validated_source_roots(source_roots)?;
+    let discovery = if source_roots.is_empty() {
+        discovery::Discovery::default()
+    } else {
+        discovery::discover_configured(&source_roots)?
+    };
+    Ok(SourceRootPlan {
+        root_count: source_roots.len(),
+        discovery,
+    })
+}
+
 pub(super) async fn reconcile_source_roots(
     files: &ApplianceFiles,
-    source_roots: &[String],
+    plan: SourceRootPlan,
 ) -> VmResult<()> {
-    let source_roots = validated_source_roots(source_roots)?;
-    if source_roots.is_empty() {
+    if plan.root_count == 0 {
         return Ok(());
     }
     vm_println!(
         "Reconciling package sources from {} configured root(s)",
-        source_roots.len()
+        plan.root_count
     );
-    register(
-        files,
-        RegistrationIntent {
-            targets: source_roots,
-            ecosystem: None,
-            repository: None,
-            branch: None,
-            ci_registry: None,
-            recursive: true,
-        },
-    )
-    .await
+    apply_registration(files, plan.discovery.packages, plan.discovery.tools).await
 }
 
 pub(super) async fn list(files: &ApplianceFiles) -> VmResult<()> {

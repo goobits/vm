@@ -12,6 +12,7 @@ use crate::error::{VmError, VmResult};
 
 const TOOL_MANIFEST: &str = "vm-tool.yaml";
 
+#[derive(Default)]
 pub(super) struct Discovery {
     pub(super) packages: Vec<RegisterPackage>,
     pub(super) tools: Vec<PathBuf>,
@@ -35,7 +36,22 @@ pub(super) fn discover(
     branch: Option<&str>,
     ci_registry: Option<&str>,
 ) -> VmResult<Discovery> {
-    let roots = repository_roots(targets, recursive)?;
+    discover_with_policy(targets, recursive, ecosystem, branch, ci_registry, false)
+}
+
+pub(super) fn discover_configured(targets: &[String]) -> VmResult<Discovery> {
+    discover_with_policy(targets, true, None, None, None, true)
+}
+
+fn discover_with_policy(
+    targets: &[String],
+    recursive: bool,
+    ecosystem: Option<PackageEcosystem>,
+    branch: Option<&str>,
+    ci_registry: Option<&str>,
+    allow_empty: bool,
+) -> VmResult<Discovery> {
+    let roots = repository_roots(targets, recursive, allow_empty)?;
     let packages = roots
         .packages
         .iter()
@@ -47,7 +63,11 @@ pub(super) fn discover(
     })
 }
 
-fn repository_roots(targets: &[String], recursive: bool) -> VmResult<RepositoryRoots> {
+fn repository_roots(
+    targets: &[String],
+    recursive: bool,
+    allow_empty: bool,
+) -> VmResult<RepositoryRoots> {
     let mut roots = RepositoryRoots::default();
     for target in targets {
         let path = fs::canonicalize(target).map_err(|error| {
@@ -72,7 +92,7 @@ fn repository_roots(targets: &[String], recursive: bool) -> VmResult<RepositoryR
             roots.packages.insert(path);
         }
     }
-    if roots.packages.is_empty() && roots.tools.is_empty() {
+    if !allow_empty && roots.packages.is_empty() && roots.tools.is_empty() {
         return Err(VmError::validation(
             "No Git package repositories were found",
             Some("Pass package repository roots, or use --recursive on their parent directory"),
@@ -329,7 +349,7 @@ mod tests {
     use git2::Repository;
     use vm_packages::PackageEcosystem;
 
-    use super::{discover, normalize_repository_url, TOOL_MANIFEST};
+    use super::{discover, discover_configured, normalize_repository_url, TOOL_MANIFEST};
 
     fn package(root: &Path, directory: &str, manifest: &str, content: &str) -> PathBuf {
         let path = root.join(directory);
@@ -456,6 +476,18 @@ mod tests {
         assert!(discovery.packages.is_empty());
         assert_eq!(discovery.tools.len(), 1);
         assert!(discovery.tools[0].ends_with("agent-skills"));
+    }
+
+    #[test]
+    fn only_configured_source_shelves_may_be_empty() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().to_string_lossy().into_owned();
+
+        assert!(discover(std::slice::from_ref(&target), true, None, None, None).is_err());
+        let configured = discover_configured(&[target]).unwrap();
+
+        assert!(configured.packages.is_empty());
+        assert!(configured.tools.is_empty());
     }
 
     #[test]

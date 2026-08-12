@@ -180,6 +180,25 @@ fi
     (executable, log)
 }
 
+fn configure_source_roots(directory: &TempDir, roots: &[&Path]) {
+    fs::create_dir_all(directory.path().join(".vm")).unwrap();
+    let mut config = String::from("packages:\n  source_roots:\n");
+    for root in roots {
+        config.push_str(&format!("    - {}\n", root.display()));
+    }
+    fs::write(directory.path().join(".vm/config.yaml"), config).unwrap();
+}
+
+fn project_config(directory: &TempDir) -> PathBuf {
+    let config = directory.path().join("vm.yaml");
+    fs::write(
+        &config,
+        "version: '2.0'\nprovider: docker\nproject:\n  name: package-test\n",
+    )
+    .unwrap();
+    config
+}
+
 fn packages_up(
     directory: &TempDir,
     config: &Path,
@@ -227,21 +246,8 @@ fn fresh_setup_and_existing_state_reconciliation_are_idempotent() {
     let source_root = directory.path().join("package-sources");
     fixture_package(&source_root);
 
-    fs::create_dir_all(directory.path().join(".vm")).unwrap();
-    fs::write(
-        directory.path().join(".vm/config.yaml"),
-        format!(
-            "packages:\n  source_roots:\n    - {}\n",
-            source_root.display()
-        ),
-    )
-    .unwrap();
-    let config = directory.path().join("vm.yaml");
-    fs::write(
-        &config,
-        "version: '2.0'\nprovider: docker\nproject:\n  name: package-test\n",
-    )
-    .unwrap();
+    configure_source_roots(&directory, &[&source_root]);
+    let config = project_config(&directory);
 
     let first = packages_up(&directory, &config, &fake_bin, &docker_log, gateway.port);
     assert!(
@@ -287,4 +293,52 @@ fn fresh_setup_and_existing_state_reconciliation_are_idempotent() {
         .lines()
         .any(|line| line.split_whitespace().any(|argument| argument == "down")));
     assert!(!commands.lines().any(|line| line.contains("volume rm")));
+}
+
+#[test]
+fn configured_empty_shelf_is_a_successful_noop() {
+    let directory = TempDir::new().unwrap();
+    let gateway = FakeGateway::start();
+    let fake_bin = directory.path().join("bin");
+    fs::create_dir_all(&fake_bin).unwrap();
+    let (_, docker_log) = fake_docker(&fake_bin);
+    let source_root = directory.path().join("empty-package-sources");
+    fs::create_dir_all(&source_root).unwrap();
+    configure_source_roots(&directory, &[&source_root]);
+    let config = project_config(&directory);
+
+    let output = packages_up(&directory, &config, &fake_bin, &docker_log, gateway.port);
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8(output.stdout)
+        .unwrap()
+        .contains("Package source scan complete; no language packages found"));
+    assert_eq!(gateway.package_registrations(), 0);
+}
+
+#[test]
+fn invalid_configured_root_fails_before_appliance_mutation() {
+    let directory = TempDir::new().unwrap();
+    let fake_bin = directory.path().join("bin");
+    fs::create_dir_all(&fake_bin).unwrap();
+    let (_, docker_log) = fake_docker(&fake_bin);
+    let missing_root = directory.path().join("missing-package-sources");
+    configure_source_roots(&directory, &[&missing_root]);
+    let config = project_config(&directory);
+
+    let output = packages_up(&directory, &config, &fake_bin, &docker_log, 3080);
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8(output.stderr)
+        .unwrap()
+        .contains("resolve package registration path"));
+    assert!(!docker_log.exists());
+    assert!(!directory
+        .path()
+        .join(".vm/infrastructure/packages/state.json")
+        .exists());
 }
