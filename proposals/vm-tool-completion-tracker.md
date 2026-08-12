@@ -284,8 +284,9 @@ than a duplicate top-level workflow. `vm tools update --fleet` applies the
 loaded declarative tool selection to matching managed environments, includes
 prompt-policy upgrades without a checklist, respects `off` for newer releases,
 starts stopped targets in place, continues on per-target failures, and reports a
-summary. The former `vm fleet` and tool `--all` surfaces are removed. This is
-implemented but awaiting host acceptance.
+summary. It does not project the invoking project's service or package-edge
+configuration onto unrelated targets. The former `vm fleet` and tool `--all`
+surfaces are removed. This is implemented but awaiting host acceptance.
 
 - [x] Start and restart the central package appliance in Docker from outside a
   project directory.

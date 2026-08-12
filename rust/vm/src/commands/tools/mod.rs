@@ -6,7 +6,7 @@ use std::{
     path::PathBuf,
 };
 
-use vm_config::{config::VmConfig, AppConfig, GlobalConfig};
+use vm_config::{config::VmConfig, AppConfig};
 use vm_core::{vm_hint, vm_println, vm_success};
 use vm_packages::{RegisterTool, ToolKind};
 use vm_provider::{InstanceInfo, Provider, ProviderContext};
@@ -195,7 +195,7 @@ async fn update_fleet(
     prepare_tool_catalog(&config).await?;
     let mut progress = FleetProgress::default();
     for instance in instances {
-        match update_fleet_target(&config, &app_config.global, &instance, mode).await {
+        match update_fleet_target(&config, &instance, mode).await {
             Ok(()) => progress.success(&instance.name),
             Err(error) => progress.failure(&instance.name, &error),
         }
@@ -205,7 +205,6 @@ async fn update_fleet(
 
 async fn update_fleet_target(
     config: &VmConfig,
-    global_config: &GlobalConfig,
     instance: &InstanceInfo,
     mode: InstallMode,
 ) -> VmResult<()> {
@@ -216,19 +215,8 @@ async fn update_fleet_target(
         .map_err(VmError::from)?;
     vm_ops::wait_until_commands_ready(provider.as_ref(), Some(&instance.name), &instance.name)
         .await?;
-    let subject = RuntimeSubject {
-        provider,
-        config,
-        global_config: global_config.clone(),
-        target: instance.name.clone(),
-    };
-    reconcile_environment(&subject)?;
-    apply_updates(
-        subject.provider.as_ref(),
-        &subject.target,
-        &subject.config,
-        mode,
-    )
+    base::reconcile_codex(provider.as_ref(), &instance.name, &config)?;
+    apply_updates(provider.as_ref(), &instance.name, &config, mode)
 }
 
 fn config_for_fleet_target(config: &VmConfig, instance: &InstanceInfo) -> VmConfig {

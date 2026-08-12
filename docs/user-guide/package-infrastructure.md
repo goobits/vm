@@ -276,6 +276,13 @@ seconds, so a burst of `vm ssh` sessions does not repeat downloads or probes.
 Explicit `refresh` and `update` commands bypass the recent-success window while
 still respecting active locks.
 
+`vm tools update --fleet` starts matching managed environments in place and
+reconciles only their base-owned Codex runtime and the loaded managed-tool
+selection. It deliberately does not apply the invoking project's services or
+package-edge configuration to unrelated environments. Run the targeted
+`vm tools update [environment]` from a project's configuration context when its
+edge also needs reconciliation.
+
 Package and tool controller commands are host-only. When invoked inside a
 managed guest, the CLI exits without changing state and prints the exact
 shell-safe command to run on the host, for example

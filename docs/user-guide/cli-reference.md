@@ -237,10 +237,13 @@ rebuild. Newer releases configured as `off` remain disabled; required installs
 and pinned-version repairs still reconcile. `--fleet` applies the
 loaded tool configuration to every matching managed environment, starts stopped
 targets without recreating them, continues after individual failures, and
-prints a summary. These commands must run on the controller host; a managed
-guest prints the exact host command and exits. Automatic shell-triggered refresh
-and activation are single-flight and reuse a successful pass for 60 seconds;
-explicit `refresh` and `update` commands bypass that recent-success window.
+prints a summary. It reconciles only base-owned Codex and managed tools, so it
+cannot project the invoking project's service configuration onto unrelated
+environments; use a targeted update within a project to reconcile its package
+edge. These commands must run on the controller host; a managed guest prints the
+exact host command and exits. Automatic shell-triggered refresh and activation
+are single-flight and reuse a successful pass for 60 seconds; explicit
+`refresh` and `update` commands bypass that recent-success window.
 
 ## Plugins
 
