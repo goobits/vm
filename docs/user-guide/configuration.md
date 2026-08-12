@@ -299,7 +299,9 @@ returns after launching managed-tool downloads. On a fresh controller, the
 command registers the built-in `agent-skills` definition when needed, but
 publication remains an explicit `vm tools publish agent-skills` operation.
 Rerunning it reconciles a stale package edge, incomplete Codex runtime, and
-non-consumable managed links without rebuilding the base.
+non-consumable managed links without rebuilding the base. Use `vm tools update
+--fleet` to apply this loaded tool configuration to all matching managed
+environments; `--provider` and `--pattern` narrow that bulk target set.
 Managed collections activate under the guest user's home; VM never rewrites the
 mounted project repository. A collection checkout or submodule at the matching
 project path is therefore a separate copy that can take precedence over the

@@ -221,7 +221,8 @@ vm tools show <name>
 vm tools publish <name>
 vm tools refresh
 vm tools status [environment]
-vm tools update [environment] [--all] [--background]
+vm tools update [environment] [--background]
+vm tools update --fleet [--provider <provider>] [--pattern <pattern>] [--background]
 ```
 
 Tool sources and immutable releases live in package infrastructure. `status`
@@ -231,11 +232,15 @@ Publication is always an explicit `vm tools publish <name>` operation; the
 generic publisher currently accepts collections. `update` creates or starts the
 requested guest when necessary, updates only stale runtime sidecar
 infrastructure, repairs incomplete Codex state before checking publication, and
-validates managed-tool activation without a base rebuild. These commands must
-run on the controller host; a managed guest prints the exact host command and
-exits. Automatic shell-triggered refresh and activation are single-flight and
-reuse a successful pass for 60 seconds; explicit `refresh` and `update`
-commands bypass that recent-success window.
+validates every eligible managed-tool activation without a prompt or base
+rebuild. Newer releases configured as `off` remain disabled; required installs
+and pinned-version repairs still reconcile. `--fleet` applies the
+loaded tool configuration to every matching managed environment, starts stopped
+targets without recreating them, continues after individual failures, and
+prints a summary. These commands must run on the controller host; a managed
+guest prints the exact host command and exits. Automatic shell-triggered refresh
+and activation are single-flight and reuse a successful pass for 60 seconds;
+explicit `refresh` and `update` commands bypass that recent-success window.
 
 ## Plugins
 
@@ -253,11 +258,20 @@ Plugin-backed commands are flat at the top level:
 ```bash
 vm db ls
 vm db backup <database>
-vm fleet exec [--provider <provider>] -- <command>
 vm secret add <name> <value>
 vm secret ls
 vm secret rm <name>
 vm secret interactive
+```
+
+Bulk lifecycle and interaction use `--fleet` on the normal command:
+
+```bash
+vm exec --fleet [--provider <provider>] [--pattern <pattern>] -- <command>
+vm start --fleet [--provider <provider>] [--pattern <pattern>]
+vm stop --fleet [--provider <provider>] [--pattern <pattern>]
+vm restart --fleet [--provider <provider>] [--pattern <pattern>]
+vm copy --fleet [--provider <provider>] [--pattern <pattern>] <source> <destination>
 ```
 
 Prefer `vm secret interactive` when a value should not appear in shell history.

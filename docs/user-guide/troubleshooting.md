@@ -187,7 +187,8 @@ For an existing environment, run this on the controller host:
 
 ```bash
 vm tools status [environment]
-vm tools update [environment] --all
+vm tools update [environment]
+vm tools update --fleet [--provider docker] [--pattern 'project-*']
 ```
 
 `status` distinguishes registered, published, installed, and consumable tools,
@@ -211,7 +212,7 @@ job log with:
 tail -n 50 "${XDG_STATE_HOME:-$HOME/.local/state}/vm-runtime/codex.log"
 ```
 
-For a foreground result, run `vm tools update [environment] --all` on the host.
+For a foreground result, run `vm tools update [environment]` on the host.
 It waits for any repair already in flight and returns an error if Codex is still
 not consumable.
 
@@ -219,7 +220,7 @@ Opening several terminals at once should produce only one active catalog,
 Codex, or managed-tool reconciliation job for that environment. Successful
 shell-triggered work is reused for 60 seconds. If a deterministic immediate
 check is needed, run `vm tools refresh` followed by `vm tools update
-[environment] --all` on the host; explicit commands are not delayed by that
+[environment]` on the host; explicit commands are not delayed by that
 shell cooldown.
 
 If a package/tool command was run inside a managed guest, do not try to operate

@@ -275,9 +275,17 @@ implemented but awaiting host acceptance.
 
 Live Zoop acceptance on 2026-08-12 detected its legacy `.agents/skills` and
 `.claude/skills` repository copies, then reported `PROJECT_COPY=no` after their
-scoped Git removal. In-place `vm tools update zoop-io-dev --all` changed Codex
+scoped Git removal. In-place `vm tools update zoop-io-dev` changed Codex
 from installed/non-consumable to installed/consumable without recreating the
 Docker worker, while managed `agent-skills` remained consumable at 0.6.1.
+
+Bulk reconciliation is now exposed through ordinary command ownership rather
+than a duplicate top-level workflow. `vm tools update --fleet` applies the
+loaded declarative tool selection to matching managed environments, includes
+prompt-policy upgrades without a checklist, respects `off` for newer releases,
+starts stopped targets in place, continues on per-target failures, and reports a
+summary. The former `vm fleet` and tool `--all` surfaces are removed. This is
+implemented but awaiting host acceptance.
 
 - [x] Start and restart the central package appliance in Docker from outside a
   project directory.
@@ -290,6 +298,10 @@ Docker worker, while managed `agent-skills` remained consumable at 0.6.1.
   verify only one catalog/Codex/tool reconciliation does work, then reconnect
   within 60 seconds and verify no duplicate job starts (implemented but awaiting
   host acceptance).
+- [ ] Run `vm tools update --fleet --provider docker` twice and verify all
+  matching workers reconcile in place, the second pass is a no-op, and no
+  primary container ID or service volume changes (implemented but awaiting host
+  acceptance).
 - [ ] Start a separate Docker worker on the same managed network.
 - [ ] Prove npm, Cargo, and Python public proxying, immutable internal artifacts,
   per-worker override isolation, persistent-cache restart recovery, and clear
