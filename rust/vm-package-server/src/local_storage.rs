@@ -43,8 +43,13 @@ fn list_npm_packages(data_dir: &Path) -> Result<Vec<String>> {
     let mut packages = Vec::new();
     for entry in fs::read_dir(metadata_dir)? {
         let entry = entry?;
-        if entry.file_type()?.is_dir() {
-            packages.push(entry.file_name().to_string_lossy().into_owned());
+        if entry.file_type()?.is_file() {
+            let file_name = entry.file_name();
+            if let Some(package) =
+                crate::npm::package_from_metadata_file_name(&file_name.to_string_lossy())
+            {
+                packages.push(package);
+            }
         }
     }
     packages.sort();
@@ -116,5 +121,27 @@ mod tests {
         let inventory = list_local_packages(directory.path()).unwrap();
         assert_eq!(inventory.len(), 3);
         assert!(inventory.values().all(Vec::is_empty));
+    }
+
+    #[test]
+    fn npm_inventory_reads_plain_and_scoped_metadata_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let metadata = directory.path().join("npm/metadata");
+        std::fs::create_dir_all(&metadata).unwrap();
+        for file_name in [
+            "plain-package.json",
+            "@goobits%2Fagent-skills.json",
+            "ignored.txt",
+        ] {
+            std::fs::write(metadata.join(file_name), "{}\n").unwrap();
+        }
+        std::fs::create_dir(metadata.join("legacy-directory.json")).unwrap();
+
+        let inventory = list_local_packages(directory.path()).unwrap();
+
+        assert_eq!(
+            inventory.get("npm").unwrap(),
+            &["@goobits/agent-skills", "plain-package"]
+        );
     }
 }

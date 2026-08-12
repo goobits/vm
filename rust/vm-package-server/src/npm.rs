@@ -67,9 +67,20 @@ async fn merge_metadata(path: &Path, incoming: &Value) -> AppResult<Value> {
     Ok(merged)
 }
 
+fn metadata_file_name(package: &str) -> String {
+    format!("{}.json", package.replace('/', "%2F"))
+}
+
+pub(crate) fn package_from_metadata_file_name(file_name: &str) -> Option<String> {
+    let encoded = file_name.strip_suffix(".json")?;
+    let package = encoded.replace("%2F", "/").replace("%2f", "/");
+    validation::validate_package_name(&package, "npm").ok()?;
+    Some(package)
+}
+
 pub(crate) fn metadata_path(data_dir: &Path, package: &str) -> AppResult<PathBuf> {
     let package = validate_package(package)?;
-    let file_name = format!("{}.json", package.replace('/', "%2F"));
+    let file_name = metadata_file_name(&package);
     Ok(data_dir.join("npm/metadata").join(file_name))
 }
 
@@ -543,6 +554,10 @@ mod tests {
         assert_eq!(
             metadata_path(root, "@scope/package").unwrap(),
             root.join("npm/metadata/@scope%2Fpackage.json")
+        );
+        assert_eq!(
+            package_from_metadata_file_name("@scope%2Fpackage.json").as_deref(),
+            Some("@scope/package")
         );
         for package in ["..", "../outside", "@scope/../outside", "/tmp/outside"] {
             assert!(metadata_path(root, package).is_err());
