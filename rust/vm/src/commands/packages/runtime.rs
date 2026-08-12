@@ -8,6 +8,10 @@ use crate::error::{VmError, VmResult};
 
 use super::files::ApplianceFiles;
 
+// Bump when edge labels, environment, mounts, or lifecycle policy change
+// without requiring a new registry image.
+const PACKAGE_EDGE_POLICY_REVISION: &str = "2";
+
 pub(in crate::commands) fn apply_client_environment(config: &mut VmConfig) -> VmResult<()> {
     let files = ApplianceFiles::discover()?;
     let Some(state) = files.read_state()? else {
@@ -59,10 +63,7 @@ fn client_environment(
             ))
         }
     };
-    let revision = vm_packages::sha256_hex(format!(
-        "{}\0{}\0{}",
-        state.registry_image, internal_gateway, read_token
-    ));
+    let revision = package_edge_revision(state, &internal_gateway, &read_token);
     let edge = PackageEdgeConfig {
         image: state.registry_image.clone(),
         internal_gateway: internal_gateway.clone(),
@@ -77,6 +78,22 @@ fn client_environment(
     .and_then(|client| client.with_oci_mirror(internal_gateway))
     .map_err(VmError::from)?;
     Ok((client, edge))
+}
+
+fn package_edge_revision(
+    state: &ApplianceState,
+    internal_gateway: &str,
+    read_token: &str,
+) -> String {
+    vm_packages::sha256_hex(format!(
+        "{}\0{}\0{}\0{}\0{}\0{}",
+        PACKAGE_EDGE_POLICY_REVISION,
+        env!("CARGO_PKG_VERSION"),
+        state.controller_version,
+        state.registry_image,
+        internal_gateway,
+        read_token
+    ))
 }
 
 pub(super) fn gateway_for_provider(state: &ApplianceState, provider: &str) -> VmResult<String> {
@@ -208,7 +225,10 @@ fn workspace_path(config: &VmConfig) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_environment, checkout_root_for, client_environment, gateway_for_provider};
+    use super::{
+        apply_environment, checkout_root_for, client_environment, gateway_for_provider,
+        package_edge_revision,
+    };
     use vm_config::config::{TartConfig, VmConfig, VmSettings};
     use vm_packages::{
         ApplianceState, ClientEnvironment, InfrastructureRuntime, RegistryEndpoints,
@@ -247,6 +267,21 @@ mod tests {
         assert_eq!(docker_edge.client_gateway, "http://package-edge:3080");
         assert_eq!(tart_edge.client_gateway, "http://127.0.0.1:3080");
         assert_eq!(docker_edge.internal_gateway, state.gateway_url);
+    }
+
+    #[test]
+    fn edge_revision_tracks_controller_and_runtime_policy() {
+        let mut first = state(InfrastructureRuntime::Tart);
+        let initial = package_edge_revision(&first, &first.gateway_url, "read-token");
+
+        first.controller_version = "2".into();
+        let upgraded = package_edge_revision(&first, &first.gateway_url, "read-token");
+
+        assert_ne!(initial, upgraded);
+        assert_eq!(
+            upgraded,
+            package_edge_revision(&first, &first.gateway_url, "read-token")
+        );
     }
 
     #[test]
