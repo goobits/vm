@@ -41,11 +41,33 @@ const CONSUMABLE_SCRIPT: &str = r#"
 root="${XDG_DATA_HOME:-$HOME/.local/share}/vm-tools"
 states="$root/state"
 releases="$root/releases"
+canonical_path() {
+  candidate=$1
+  if command -v realpath >/dev/null 2>&1; then
+    realpath "$candidate" 2>/dev/null && return 0
+  fi
+  if readlink -f "$candidate" >/dev/null 2>&1; then
+    readlink -f "$candidate"
+    return
+  fi
+  depth=0
+  while test -L "$candidate"; do
+    depth=$((depth + 1))
+    test "$depth" -le 40 || return 1
+    target=$(readlink "$candidate") || return 1
+    case "$target" in
+      /*) candidate=$target ;;
+      *) candidate="$(dirname "$candidate")/$target" ;;
+    esac
+  done
+  parent=$(CDPATH= cd -P "$(dirname "$candidate")" 2>/dev/null && pwd) || return 1
+  printf '%s/%s\n' "$parent" "$(basename "$candidate")"
+}
 resolved_below() {
   expected=$1
   candidate=$2
-  expected="$(readlink -f "$expected" 2>/dev/null || true)"
-  candidate="$(readlink -f "$candidate" 2>/dev/null || true)"
+  expected="$(canonical_path "$expected" 2>/dev/null || true)"
+  candidate="$(canonical_path "$candidate" 2>/dev/null || true)"
   test -n "$expected" && test -n "$candidate" || return 1
   case "$candidate" in
     "$expected"|"$expected"/*) return 0 ;;
@@ -293,6 +315,12 @@ mod tests {
         assert_eq!(states.get("agent-skills"), Some(&true));
         assert_eq!(states.get("broken"), Some(&false));
         assert_eq!(states.len(), 2);
+        #[cfg(unix)]
+        assert!(std::process::Command::new("/bin/sh")
+            .args(["-n", "-c", CONSUMABLE_SCRIPT])
+            .status()
+            .unwrap()
+            .success());
     }
 
     #[test]

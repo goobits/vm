@@ -36,16 +36,34 @@ safe_archive() {
   done < "$listing"
 }
 
+canonical_path() {
+  candidate=$1
+  if command -v realpath >/dev/null 2>&1; then
+    realpath "$candidate" 2>/dev/null && return 0
+  fi
+  if readlink -f "$candidate" >/dev/null 2>&1; then
+    readlink -f "$candidate"
+    return
+  fi
+  depth=0
+  while test -L "$candidate"; do
+    depth=$((depth + 1))
+    test "$depth" -le 40 || return 1
+    target=$(readlink "$candidate") || return 1
+    case "$target" in
+      /*) candidate=$target ;;
+      *) candidate="$(dirname "$candidate")/$target" ;;
+    esac
+  done
+  parent=$(CDPATH= cd -P "$(dirname "$candidate")" 2>/dev/null && pwd) || return 1
+  printf '%s/%s\n' "$parent" "$(basename "$candidate")"
+}
+
 resolved_below() {
   root_path=$1
   candidate=$2
-  if command -v realpath >/dev/null 2>&1; then
-    root_resolved=$(realpath "$root_path") || return 1
-    resolved=$(realpath "$candidate") || return 1
-  else
-    root_resolved=$(readlink -f "$root_path") || return 1
-    resolved=$(readlink -f "$candidate") || return 1
-  fi
+  root_resolved=$(canonical_path "$root_path") || return 1
+  resolved=$(canonical_path "$candidate") || return 1
   case "$resolved" in
     "$root_resolved"|"$root_resolved"/*) return 0 ;;
     *) return 1 ;;

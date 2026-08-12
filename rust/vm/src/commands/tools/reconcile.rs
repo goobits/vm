@@ -7,6 +7,28 @@ use crate::error::{VmError, VmResult};
 use super::super::command_context::RuntimeSubject;
 
 const CODEX_PROBE: &str = r#"
+resolve_path() {
+  candidate=$1
+  if command -v realpath >/dev/null 2>&1; then
+    realpath "$candidate" 2>/dev/null && return 0
+  fi
+  if readlink -f "$candidate" >/dev/null 2>&1; then
+    readlink -f "$candidate"
+    return
+  fi
+  depth=0
+  while test -L "$candidate"; do
+    depth=$((depth + 1))
+    test "$depth" -le 40 || return 1
+    target=$(readlink "$candidate") || return 1
+    case "$target" in
+      /*) candidate=$target ;;
+      *) candidate="$(dirname "$candidate")/$target" ;;
+    esac
+  done
+  parent=$(CDPATH= cd -P "$(dirname "$candidate")" 2>/dev/null && pwd) || return 1
+  printf '%s/%s\n' "$parent" "$(basename "$candidate")"
+}
 codex_path="$(command -v codex 2>/dev/null || true)"
 if test -z "$codex_path"; then
   printf '%s\n' VM_CODEX_STATE=absent
@@ -16,7 +38,7 @@ if test ! -x "$codex_path"; then
   printf '%s\n' VM_CODEX_STATE=incomplete
   exit 0
 fi
-resolved="$(readlink -f "$codex_path" 2>/dev/null || printf '%s' "$codex_path")"
+resolved="$(resolve_path "$codex_path" 2>/dev/null || printf '%s' "$codex_path")"
 bin_dir="$(dirname "$resolved")"
 package_dir="$(dirname "$bin_dir")"
 if test -f "$package_dir/codex-package.json" \
@@ -30,6 +52,29 @@ fi
 
 const CODEX_REPAIR: &str = r#"
 set -eu
+
+resolve_path() {
+  candidate=$1
+  if command -v realpath >/dev/null 2>&1; then
+    realpath "$candidate" 2>/dev/null && return 0
+  fi
+  if readlink -f "$candidate" >/dev/null 2>&1; then
+    readlink -f "$candidate"
+    return
+  fi
+  depth=0
+  while test -L "$candidate"; do
+    depth=$((depth + 1))
+    test "$depth" -le 40 || return 1
+    target=$(readlink "$candidate") || return 1
+    case "$target" in
+      /*) candidate=$target ;;
+      *) candidate="$(dirname "$candidate")/$target" ;;
+    esac
+  done
+  parent=$(CDPATH= cd -P "$(dirname "$candidate")" 2>/dev/null && pwd) || return 1
+  printf '%s/%s\n' "$parent" "$(basename "$candidate")"
+}
 
 as_root() {
   if test "$(id -u)" -eq 0; then
@@ -75,7 +120,7 @@ sh "$installer"
 hash -r
 
 codex_path="$(command -v codex)"
-resolved="$(readlink -f "$codex_path")"
+resolved="$(resolve_path "$codex_path")"
 bin_dir="$(dirname "$resolved")"
 package_source="$(dirname "$bin_dir")"
 test -f "$package_source/codex-package.json"
@@ -215,7 +260,9 @@ mod tests {
     use vm_config::GlobalConfig;
     use vm_provider::{InstanceInfo, InstanceState, Provider, ProviderContext, VmStatusReport};
 
-    use super::{codex_expected, parse_codex_state, reconcile_for, CodexState, CODEX_REPAIR};
+    use super::{
+        codex_expected, parse_codex_state, reconcile_for, CodexState, CODEX_PROBE, CODEX_REPAIR,
+    };
 
     #[derive(Clone)]
     struct FakeProvider {
@@ -374,11 +421,13 @@ mod tests {
         assert!(CODEX_REPAIR.contains(".codex-stage.XXXXXX"));
         assert!(!CODEX_REPAIR.contains("$HOME/.codex"));
         #[cfg(unix)]
-        assert!(Command::new("/bin/sh")
-            .args(["-n", "-c", CODEX_REPAIR])
-            .status()
-            .unwrap()
-            .success());
+        for script in [CODEX_PROBE, CODEX_REPAIR] {
+            assert!(Command::new("/bin/sh")
+                .args(["-n", "-c", script])
+                .status()
+                .unwrap()
+                .success());
+        }
     }
 
     #[test]

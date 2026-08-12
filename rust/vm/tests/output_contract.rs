@@ -34,6 +34,26 @@ fn dry_run_redacts_secret_values_and_changes_nothing() {
 }
 
 #[test]
+fn managed_guest_guard_precedes_dry_run_and_prints_the_exact_host_command() {
+    let temp_dir = TempDir::new().unwrap();
+    let output = Command::new(cargo_bin!("vm"))
+        .args(["--dry-run", "tools", "update", "dev", "--all"])
+        .current_dir(temp_dir.path())
+        .env("HOME", temp_dir.path())
+        .env("VM_MANAGED_GUEST", "1")
+        .env("VM_TEST_MODE", "1")
+        .env("CI", "1")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(!output.status.success());
+    assert!(stdout.is_empty(), "{stdout}");
+    assert!(stderr.contains("Run on the host: vm --dry-run tools update dev --all"));
+}
+
+#[test]
 fn application_errors_are_rendered_once_on_stderr() {
     let temp_dir = TempDir::new().unwrap();
     for (name, contents) in [

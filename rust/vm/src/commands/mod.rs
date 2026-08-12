@@ -35,12 +35,12 @@ pub mod vm_ops;
 
 #[must_use = "command execution results should be handled"]
 pub async fn execute_command(args: Args) -> VmResult<()> {
+    command_context::ensure_controller_host(&args.command)?;
+
     if args.dry_run {
         print_dry_run_summary(&args);
         return Ok(());
     }
-
-    command_context::ensure_controller_host(&args.command)?;
 
     match args.command {
         Command::Doctor {
