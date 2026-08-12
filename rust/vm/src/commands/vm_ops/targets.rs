@@ -8,6 +8,7 @@ use vm_provider::InstanceInfo;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InstanceStateFilter {
+    Any,
     Running,
     Stopped,
 }
@@ -27,6 +28,10 @@ pub fn resolve_targets(query: TargetQuery<'_>) -> VmResult<Vec<InstanceInfo>> {
         get_all_instances()?
     };
 
+    Ok(filter_targets(instances, query))
+}
+
+fn filter_targets(instances: Vec<InstanceInfo>, query: TargetQuery<'_>) -> Vec<InstanceInfo> {
     let mut filtered: Vec<InstanceInfo> = if let Some(pattern_str) = query.pattern {
         instances
             .into_iter()
@@ -37,6 +42,7 @@ pub fn resolve_targets(query: TargetQuery<'_>) -> VmResult<Vec<InstanceInfo>> {
     };
 
     match query.state {
+        InstanceStateFilter::Any => {}
         InstanceStateFilter::Running => {
             filtered.retain(|instance| is_running_status(&instance.status));
         }
@@ -45,7 +51,7 @@ pub fn resolve_targets(query: TargetQuery<'_>) -> VmResult<Vec<InstanceInfo>> {
         }
     }
 
-    Ok(filtered)
+    filtered
 }
 
 pub fn is_running_status(status: &str) -> bool {
@@ -163,5 +169,46 @@ pub fn match_pattern(name: &str, pattern: &str) -> bool {
         }
     } else {
         name == pattern
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{filter_targets, InstanceStateFilter, TargetQuery};
+    use vm_provider::InstanceInfo;
+
+    fn instance(name: &str, status: &str) -> InstanceInfo {
+        InstanceInfo {
+            name: name.into(),
+            id: format!("{name}-id"),
+            status: status.into(),
+            provider: "mock".into(),
+            project: Some("fixture".into()),
+            uptime: None,
+            created_at: None,
+        }
+    }
+
+    #[test]
+    fn any_state_keeps_running_and_stopped_fixture_targets() {
+        let targets = filter_targets(
+            vec![
+                instance("api-dev", "running"),
+                instance("web-dev", "exited"),
+            ],
+            TargetQuery {
+                provider: None,
+                pattern: Some("*-dev"),
+                state: InstanceStateFilter::Any,
+            },
+        );
+
+        assert_eq!(
+            targets
+                .into_iter()
+                .map(|target| target.name)
+                .collect::<Vec<_>>(),
+            ["api-dev", "web-dev"]
+        );
     }
 }

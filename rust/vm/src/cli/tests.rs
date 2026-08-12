@@ -453,16 +453,35 @@ fn tool_refresh_status_and_batch_update_commands_parse() {
         } if environment == "backend"
     ));
     assert!(matches!(
-        Args::parse_from(["vm", "tools", "update", "backend", "--all", "--background"])
-            .command,
+        Args::parse_from(["vm", "tools", "update", "backend", "--background"]).command,
         Command::Tools {
             command: ToolsSubcommand::Update {
                 environment: Some(environment),
-                all: true,
-                background: true
+                background: true,
+                ..
             }
         } if environment == "backend"
     ));
+    assert!(matches!(
+        Args::parse_from([
+            "vm",
+            "tools",
+            "update",
+            "--fleet",
+            "--provider",
+            "docker",
+        ])
+        .command,
+        Command::Tools {
+            command: ToolsSubcommand::Update {
+                environment: None,
+                fleet,
+                background: false,
+            }
+        } if fleet.fleet && fleet.provider.as_deref() == Some("docker")
+    ));
+    assert!(Args::try_parse_from(["vm", "tools", "update", "--all"]).is_err());
+    assert!(Args::try_parse_from(["vm", "tools", "update", "backend", "--fleet"]).is_err());
 }
 
 #[test]

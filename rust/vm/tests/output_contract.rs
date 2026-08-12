@@ -37,7 +37,7 @@ fn dry_run_redacts_secret_values_and_changes_nothing() {
 fn managed_guest_guard_precedes_dry_run_and_prints_the_exact_host_command() {
     let temp_dir = TempDir::new().unwrap();
     let output = Command::new(cargo_bin!("vm"))
-        .args(["--dry-run", "tools", "update", "dev", "--all"])
+        .args(["--dry-run", "tools", "update", "dev"])
         .current_dir(temp_dir.path())
         .env("HOME", temp_dir.path())
         .env("VM_MANAGED_GUEST", "1")
@@ -50,7 +50,7 @@ fn managed_guest_guard_precedes_dry_run_and_prints_the_exact_host_command() {
 
     assert!(!output.status.success());
     assert!(stdout.is_empty(), "{stdout}");
-    assert!(stderr.contains("Run on the host: vm --dry-run tools update dev --all"));
+    assert!(stderr.contains("Run on the host: vm --dry-run tools update dev"));
 }
 
 #[test]
@@ -193,7 +193,7 @@ fn every_public_command_has_clean_help() {
     for command in [
         "start", "run", "list", "shell", "exec", "logs", "copy", "stop", "status", "restart",
         "remove", "save", "revert", "package", "config", "tunnel", "doctor", "plugin", "system",
-        "db", "fleet", "secret",
+        "db", "secret",
     ] {
         let output = run(&temp_dir, &[command, "--help"]);
         let stdout = String::from_utf8(output.stdout).unwrap();

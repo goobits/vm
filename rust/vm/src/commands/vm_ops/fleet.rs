@@ -6,6 +6,7 @@ use tracing::{debug, info_span};
 
 use crate::cli::FleetArgs;
 use crate::error::{VmError, VmResult};
+use vm_config::config::VmConfig;
 use vm_core::{vm_println, vm_success, vm_warning};
 use vm_provider::{get_provider, InstanceInfo, Provider, ProviderContext};
 
@@ -22,19 +23,56 @@ fn query_for(targets: &FleetArgs, state: InstanceStateFilter) -> TargetQuery<'_>
     }
 }
 
+pub(in crate::commands) fn resolve_fleet_targets(
+    targets: &FleetArgs,
+    state: InstanceStateFilter,
+) -> VmResult<Vec<InstanceInfo>> {
+    resolve_targets(query_for(targets, state))
+}
+
+pub(in crate::commands) fn configured_provider(
+    config: &VmConfig,
+    provider_name: &str,
+) -> VmResult<Box<dyn Provider>> {
+    let mut config = config.clone();
+    config.provider = Some(provider_name.to_string());
+    get_provider(config).map_err(VmError::from)
+}
+
+#[derive(Debug, Default)]
+pub(in crate::commands) struct FleetProgress {
+    succeeded: usize,
+    failed: usize,
+}
+
+impl FleetProgress {
+    pub(in crate::commands) fn success(&mut self, name: &str) {
+        vm_success!("{name}");
+        self.succeeded += 1;
+    }
+
+    pub(in crate::commands) fn failure(&mut self, name: &str, error: &dyn std::fmt::Display) {
+        vm_warning!("{name}: {error}");
+        self.failed += 1;
+    }
+
+    pub(in crate::commands) fn finish(self) -> VmResult<()> {
+        summary(self.succeeded, self.failed)
+    }
+}
+
 pub fn handle_fleet_exec(targets: &FleetArgs, command: &[String]) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "fleet_exec");
     let _enter = span.enter();
 
-    let instances = resolve_targets(query_for(targets, InstanceStateFilter::Running))?;
+    let instances = resolve_fleet_targets(targets, InstanceStateFilter::Running)?;
 
     if instances.is_empty() {
         vm_println!("No instances found");
         return Ok(());
     }
 
-    let mut success = 0;
-    let mut failed = 0;
+    let mut progress = FleetProgress::default();
 
     for (provider_name, provider_instances) in group_by_provider(instances) {
         let provider = provider_for(&provider_name)?;
@@ -45,33 +83,30 @@ pub fn handle_fleet_exec(targets: &FleetArgs, command: &[String]) -> VmResult<()
             );
             match provider.exec(Some(&instance.name), command) {
                 Ok(()) => {
-                    vm_success!("{}", instance.name);
-                    success += 1;
+                    progress.success(&instance.name);
                 }
                 Err(e) => {
-                    vm_warning!("{}: {}", instance.name, e);
-                    failed += 1;
+                    progress.failure(&instance.name, &e);
                 }
             }
         }
     }
 
-    summary(success, failed)
+    progress.finish()
 }
 
 pub fn handle_fleet_copy(targets: &FleetArgs, source: &str, destination: &str) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "fleet_copy");
     let _enter = span.enter();
 
-    let instances = resolve_targets(query_for(targets, InstanceStateFilter::Running))?;
+    let instances = resolve_fleet_targets(targets, InstanceStateFilter::Running)?;
 
     if instances.is_empty() {
         vm_println!("No instances found");
         return Ok(());
     }
 
-    let mut success = 0;
-    let mut failed = 0;
+    let mut progress = FleetProgress::default();
 
     for (provider_name, provider_instances) in group_by_provider(instances) {
         let provider = provider_for(&provider_name)?;
@@ -82,18 +117,16 @@ pub fn handle_fleet_copy(targets: &FleetArgs, source: &str, destination: &str) -
             );
             match provider.copy(source, destination, Some(&instance.name)) {
                 Ok(()) => {
-                    vm_success!("{}", instance.name);
-                    success += 1;
+                    progress.success(&instance.name);
                 }
                 Err(e) => {
-                    vm_warning!("{}: {}", instance.name, e);
-                    failed += 1;
+                    progress.failure(&instance.name, &e);
                 }
             }
         }
     }
 
-    summary(success, failed)
+    progress.finish()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -115,15 +148,14 @@ pub async fn handle_fleet_lifecycle(
         FleetAction::Start => InstanceStateFilter::Stopped,
         FleetAction::Stop | FleetAction::Restart => InstanceStateFilter::Running,
     };
-    let instances = resolve_targets(query_for(targets, default_state))?;
+    let instances = resolve_fleet_targets(targets, default_state)?;
 
     if instances.is_empty() {
         vm_println!("No instances found");
         return Ok(());
     }
 
-    let mut success = 0;
-    let mut failed = 0;
+    let mut progress = FleetProgress::default();
     let context = ProviderContext::default();
 
     for (provider_name, provider_instances) in group_by_provider(instances) {
@@ -151,38 +183,28 @@ pub async fn handle_fleet_lifecycle(
                         .await
                         {
                             Ok(()) => {
-                                vm_success!("{}", instance.name);
-                                success += 1;
+                                progress.success(&instance.name);
                             }
                             Err(error) => {
-                                vm_warning!("{}: {}", instance.name, error);
-                                failed += 1;
+                                progress.failure(&instance.name, &error);
                             }
                         }
                     } else {
-                        vm_success!("{}", instance.name);
-                        success += 1;
+                        progress.success(&instance.name);
                     }
                 }
                 Err(e) => {
-                    vm_warning!("{}: {}", instance.name, e);
-                    failed += 1;
+                    progress.failure(&instance.name, &e);
                 }
             }
         }
     }
 
-    summary(success, failed)
+    progress.finish()
 }
 
 fn provider_for(provider_name: &str) -> VmResult<Box<dyn Provider>> {
-    use vm_config::config::VmConfig;
-
-    let config = VmConfig {
-        provider: Some(provider_name.to_string()),
-        ..Default::default()
-    };
-    get_provider(config).map_err(VmError::from)
+    configured_provider(&VmConfig::default(), provider_name)
 }
 
 fn group_by_provider(instances: Vec<InstanceInfo>) -> BTreeMap<String, Vec<InstanceInfo>> {

@@ -23,8 +23,10 @@ pub(super) use create::resolve_or_create_target;
 pub use destroy::handle_destroy;
 pub use helpers::handle_get_sync_directory;
 pub use interaction::{handle_copy, handle_exec, handle_logs, handle_ssh};
-pub(in crate::commands) use lifecycle::ensure_running;
+pub(in crate::commands) use lifecycle::{ensure_running, wait_until_commands_ready};
 pub use lifecycle::{handle_restart, handle_start, handle_stop};
 
+pub(in crate::commands) use fleet::{configured_provider, resolve_fleet_targets, FleetProgress};
 pub use fleet::{handle_fleet_copy, handle_fleet_exec, handle_fleet_lifecycle, FleetAction};
 pub use list::handle_list_enhanced;
+pub(in crate::commands) use targets::InstanceStateFilter;

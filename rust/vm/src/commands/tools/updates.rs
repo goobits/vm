@@ -4,69 +4,24 @@ use semver::Version;
 use vm_config::config::{ToolUpdatePolicy, VmConfig};
 use vm_packages::ToolArtifactRecord;
 
-use crate::error::{VmError, VmResult};
-
 use super::guest::InstalledTool;
-
-#[derive(Debug, Clone)]
-pub(super) struct ToolChange {
-    pub(super) artifact: ToolArtifactRecord,
-    pub(super) current_version: Option<String>,
-}
-
-impl ToolChange {
-    pub(super) fn label(&self) -> String {
-        self.current_version.as_ref().map_or_else(
-            || format!("{} {} (install)", self.artifact.tool, self.artifact.version),
-            |current| {
-                format!(
-                    "{} {} → {}",
-                    self.artifact.tool, current, self.artifact.version
-                )
-            },
-        )
-    }
-}
 
 #[derive(Debug, Default)]
 pub(super) struct UpdatePlan {
-    pub(super) automatic: Vec<ToolChange>,
-    pub(super) prompt: Vec<ToolChange>,
+    pub(super) automatic: Vec<ToolArtifactRecord>,
+    pub(super) prompt: Vec<ToolArtifactRecord>,
 }
 
 impl UpdatePlan {
     pub(super) fn automatic(self) -> Vec<ToolArtifactRecord> {
         self.automatic
-            .into_iter()
-            .map(|change| change.artifact)
-            .collect()
     }
 
-    pub(super) fn selected(self, all: bool) -> VmResult<Vec<ToolArtifactRecord>> {
-        let mut selected = self
-            .automatic
-            .into_iter()
-            .map(|change| change.artifact)
-            .collect::<Vec<_>>();
-        if all {
-            selected.extend(self.prompt.into_iter().map(|change| change.artifact));
-            return Ok(selected);
-        }
-        let labels = self
-            .prompt
-            .iter()
-            .map(ToolChange::label)
-            .collect::<Vec<_>>();
-        let defaults = vec![true; labels.len()];
-        let indexes = vm_core::prompts::multi_select("Tool updates", &labels, &defaults)
-            .map_err(|error| VmError::general(error, "Could not read the tool update checklist"))?;
-        selected.extend(
-            indexes
-                .into_iter()
-                .filter_map(|index| self.prompt.get(index))
-                .map(|change| change.artifact.clone()),
-        );
-        Ok(selected)
+    /// All changes allowed by an explicit update command. `Off` updates never
+    /// enter either collection, while required installs and pin repairs do.
+    pub(super) fn eligible(mut self) -> Vec<ToolArtifactRecord> {
+        self.automatic.append(&mut self.prompt);
+        self.automatic
     }
 }
 
@@ -85,10 +40,7 @@ pub(super) fn plan(
             continue;
         }
         let selection = &config.tools.entries[name];
-        let change = ToolChange {
-            artifact: artifact.clone(),
-            current_version: current.map(|current| current.version.clone()),
-        };
+        let change = artifact.clone();
 
         let is_install = current.is_none();
         let is_pin_reconciliation = !selection.tracks_latest();
@@ -266,5 +218,38 @@ mod tests {
         .automatic();
 
         assert!(selected.is_empty());
+    }
+
+    #[test]
+    fn explicit_update_selects_prompt_changes_but_respects_off() {
+        let available = BTreeMap::from([("codex".into(), artifact("codex", "2.0.0", 'b'))]);
+        let installed = BTreeMap::from([(
+            "codex".into(),
+            InstalledTool {
+                name: "codex".into(),
+                version: "1.0.0".into(),
+                target: "linux-arm64".into(),
+                digest: "a".repeat(64),
+            },
+        )]);
+        let consumable = BTreeMap::from([("codex".into(), true)]);
+
+        let selected = plan(
+            &config(ToolUpdatePolicy::Prompt, false),
+            &available,
+            &installed,
+            &consumable,
+        )
+        .eligible();
+        let disabled = plan(
+            &config(ToolUpdatePolicy::Off, false),
+            &available,
+            &installed,
+            &consumable,
+        )
+        .eligible();
+
+        assert_eq!(selected.len(), 1);
+        assert!(disabled.is_empty());
     }
 }

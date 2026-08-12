@@ -184,9 +184,8 @@ mod tests {
             "tools".to_string(),
             "update".to_string(),
             "name with space".to_string(),
-            "--all".to_string(),
         ]);
 
-        assert_eq!(command, "vm tools update 'name with space' --all");
+        assert_eq!(command, "vm tools update 'name with space'");
     }
 }

@@ -200,10 +200,10 @@ pub enum ToolsSubcommand {
     Status { environment: Option<String> },
     /// Reconcile the package edge, base-owned Codex, and configured managed tools
     Update {
+        #[arg(conflicts_with = "fleet")]
         environment: Option<String>,
-        /// Select every available update without showing the checklist
-        #[arg(long)]
-        all: bool,
+        #[command(flatten)]
+        fleet: FleetArgs,
         /// Reconcile prerequisites, then return after launching managed-tool downloads
         #[arg(long)]
         background: bool,

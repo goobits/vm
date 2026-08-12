@@ -6,19 +6,19 @@ use std::{
     path::PathBuf,
 };
 
-use vm_config::config::VmConfig;
+use vm_config::{config::VmConfig, AppConfig, GlobalConfig};
 use vm_core::{vm_hint, vm_println, vm_success};
 use vm_packages::{RegisterTool, ToolKind};
-use vm_provider::{Provider, ProviderContext};
+use vm_provider::{InstanceInfo, Provider, ProviderContext};
 
-use crate::cli::ToolsSubcommand;
+use crate::cli::{FleetArgs, ToolsSubcommand};
 use crate::error::{VmError, VmResult};
 
 use super::command_context::{
     load_or_create_runtime_subject, load_runtime_subject, RuntimeSubject,
 };
 use super::packages::tooling::{self, CachedToolCatalog, RefreshOutcome};
-use super::vm_ops::ensure_running;
+use super::vm_ops::{self, ensure_running, FleetProgress, InstanceStateFilter};
 use super::{base, packages};
 
 use guest::InstallMode;
@@ -133,34 +133,111 @@ pub(super) async fn handle(
         }
         ToolsSubcommand::Update {
             environment,
-            all,
+            fleet,
             background,
         } => {
-            let subject = load_or_create_runtime_subject(config_path, profile, environment).await?;
-            ensure_running(
-                subject.provider.as_ref(),
-                Some(subject.target.as_str()),
-                &subject.config,
-                &subject.global_config,
-                true,
-            )
-            .await?;
-            reconcile_environment(&subject)?;
-            ensure_builtin_releases(&subject.config).await?;
-            tooling::refresh(&subject.config).await?;
-            apply_updates(
-                subject.provider.as_ref(),
-                &subject.target,
-                &subject.config,
-                all,
-                if background {
-                    InstallMode::Background
-                } else {
-                    InstallMode::Wait
-                },
-            )
+            let mode = if background {
+                InstallMode::Background
+            } else {
+                InstallMode::Wait
+            };
+            if fleet.fleet {
+                update_fleet(config_path, profile, &fleet, mode).await
+            } else {
+                let subject =
+                    load_or_create_runtime_subject(config_path, profile, environment).await?;
+                reconcile_subject(&subject).await?;
+                prepare_tool_catalog(&subject.config).await?;
+                apply_updates(
+                    subject.provider.as_ref(),
+                    &subject.target,
+                    &subject.config,
+                    mode,
+                )
+            }
         }
     }
+}
+
+async fn reconcile_subject(subject: &RuntimeSubject) -> VmResult<()> {
+    ensure_running(
+        subject.provider.as_ref(),
+        Some(subject.target.as_str()),
+        &subject.config,
+        &subject.global_config,
+        true,
+    )
+    .await?;
+    reconcile_environment(subject)
+}
+
+async fn prepare_tool_catalog(config: &VmConfig) -> VmResult<()> {
+    ensure_builtin_releases(config).await?;
+    tooling::refresh(config).await?;
+    Ok(())
+}
+
+async fn update_fleet(
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+    fleet: &FleetArgs,
+    mode: InstallMode,
+) -> VmResult<()> {
+    let app_config = AppConfig::load(config_path, profile, None)?;
+    let mut config = app_config.vm;
+    packages::apply_client_environment(&mut config)?;
+    let instances = vm_ops::resolve_fleet_targets(fleet, InstanceStateFilter::Any)?;
+    if instances.is_empty() {
+        vm_println!("No managed environments found");
+        return Ok(());
+    }
+
+    prepare_tool_catalog(&config).await?;
+    let mut progress = FleetProgress::default();
+    for instance in instances {
+        match update_fleet_target(&config, &app_config.global, &instance, mode).await {
+            Ok(()) => progress.success(&instance.name),
+            Err(error) => progress.failure(&instance.name, &error),
+        }
+    }
+    progress.finish()
+}
+
+async fn update_fleet_target(
+    config: &VmConfig,
+    global_config: &GlobalConfig,
+    instance: &InstanceInfo,
+    mode: InstallMode,
+) -> VmResult<()> {
+    let config = config_for_fleet_target(config, instance);
+    let provider = vm_ops::configured_provider(&config, &instance.provider)?;
+    provider
+        .start(Some(&instance.name), &ProviderContext::default())
+        .map_err(VmError::from)?;
+    vm_ops::wait_until_commands_ready(provider.as_ref(), Some(&instance.name), &instance.name)
+        .await?;
+    let subject = RuntimeSubject {
+        provider,
+        config,
+        global_config: global_config.clone(),
+        target: instance.name.clone(),
+    };
+    reconcile_environment(&subject)?;
+    apply_updates(
+        subject.provider.as_ref(),
+        &subject.target,
+        &subject.config,
+        mode,
+    )
+}
+
+fn config_for_fleet_target(config: &VmConfig, instance: &InstanceInfo) -> VmConfig {
+    let mut config = config.clone();
+    config.provider = Some(instance.provider.clone());
+    if let Some(project_name) = &instance.project {
+        config.project.get_or_insert_with(Default::default).name = Some(project_name.clone());
+    }
+    config
 }
 
 fn reconcile_environment(subject: &RuntimeSubject) -> VmResult<()> {
@@ -304,7 +381,6 @@ fn apply_updates(
     provider: &dyn Provider,
     environment: &str,
     config: &VmConfig,
-    all: bool,
     mode: InstallMode,
 ) -> VmResult<()> {
     let target = guest::platform_target(provider, environment)?;
@@ -324,8 +400,7 @@ fn apply_updates(
     report_project_overrides(&project_overrides);
     let installed = guest::installed(provider, environment)?;
     let consumable = guest::consumable(provider, environment)?;
-    let selected =
-        updates::plan(config, &catalog.artifacts, &installed, &consumable).selected(all)?;
+    let selected = updates::plan(config, &catalog.artifacts, &installed, &consumable).eligible();
     if selected.is_empty() {
         vm_success!("Configured tools are current");
         return Ok(());
@@ -349,9 +424,7 @@ fn apply_updates(
         if !broken.is_empty() {
             return Err(VmError::validation(
                 format!("Tool activation is not consumable: {}", broken.join(", ")),
-                Some(format!(
-                    "Run `vm tools update {environment} --all` to retry"
-                )),
+                Some(format!("Run `vm tools update {environment}` to retry")),
             ));
         }
     }
@@ -494,10 +567,13 @@ fn report_project_overrides(overrides: &BTreeMap<String, BTreeSet<String>>) {
 
 #[cfg(test)]
 mod tests {
-    use super::{project_workspace, tool_status_names, ControllerToolState};
+    use super::{
+        config_for_fleet_target, project_workspace, tool_status_names, ControllerToolState,
+    };
     use crate::commands::tools::guest::InstalledTool;
     use std::collections::BTreeMap;
     use vm_config::config::{ToolConfig, VmConfig};
+    use vm_provider::InstanceInfo;
 
     #[test]
     fn status_includes_controller_and_stale_guest_state() {
@@ -546,5 +622,32 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(project_workspace(&config), "/source");
+    }
+
+    #[test]
+    fn fleet_target_uses_its_provider_and_project_identity() {
+        let mut config = VmConfig::default();
+        config
+            .tools
+            .entries
+            .insert("agent-skills".into(), ToolConfig::default());
+        let target = InstanceInfo {
+            name: "store-dev".into(),
+            id: "container-1".into(),
+            status: "running".into(),
+            provider: "docker".into(),
+            project: Some("store".into()),
+            uptime: None,
+            created_at: None,
+        };
+
+        let resolved = config_for_fleet_target(&config, &target);
+
+        assert_eq!(resolved.provider.as_deref(), Some("docker"));
+        assert_eq!(
+            resolved.project.and_then(|project| project.name),
+            Some("store".into())
+        );
+        assert!(resolved.tools.entries.contains_key("agent-skills"));
     }
 }
