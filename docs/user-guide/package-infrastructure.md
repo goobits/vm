@@ -46,13 +46,16 @@ Run appliance commands on the controller host. The appliance is shared and is
 not scoped to the current project directory.
 
 ```bash
+vm config set packages.source_roots /absolute/path/to/packages --global
 vm packages up --runtime docker  # one-time Docker choice on macOS
 vm packages doctor
 ```
 
 The selected runtime is stored in controller state, so later starts from any
-host directory are simply `vm packages up`. A Docker-only setup does not need a
-Tart package VM.
+host directory are simply `vm packages up`. Every run safely reconciles the
+appliance and recursively registers repositories below the configured absolute
+source roots. Existing credentials and named volumes are retained. A
+Docker-only setup does not need a Tart package VM.
 
 On its first run, macOS selects Tart and prepares the versioned Linux base
 automatically. Later runs reuse the stored runtime. Other platforms select
@@ -137,17 +140,21 @@ vm packages consumer register project-a \
 ```
 
 The registration path may be an absolute host directory and appliance commands
-may be run from any host directory. For example, a shared source root can be
-discovered in one pass with:
+may be run from any host directory. Configure any number of controller-wide
+source roots when they should be reconciled on every `vm packages up`:
 
 ```bash
-vm packages register /Users/example/projects/packages --recursive
+vm config set packages.source_roots \
+  /absolute/path/to/packages \
+  /another/absolute/source-root \
+  --global
+vm packages up
 ```
 
 Keep that source shelf flat and make each child an independent Git repository:
 
 ```text
-/Users/example/projects/packages/
+/absolute/path/to/packages/
 ├── agent-skills/
 ├── auth/
 └── shared-config/
@@ -202,13 +209,14 @@ directories.
 The Vibe base owns Antigravity, Claude Code, and Codex executables. They do not
 require this appliance; `agent-skills` remains an intentionally managed tool.
 For the built-in `agent-skills` selection, `vm tools update` automatically
-registers the canonical Goobits repository and publishes its initial collection
-when the appliance is empty. No separate registration or publication command is
-needed on a fresh controller. Tool updates activate inside an already-running
-environment and do not require a base rebuild. Read credentials travel to the
-guest over standard input rather than command arguments. Collection activation
-merges individual skills into an existing agent skill directory, preserving
-unmanaged personal and system skills.
+registers the canonical Goobits repository when it is missing. Publication is
+always explicit: a fresh controller stops with the exact
+`vm tools publish agent-skills` command, after which the operator reruns
+`vm tools update`. Tool updates activate inside an already-running environment
+and do not require a base rebuild. Read credentials travel to the guest over
+standard input rather than command arguments. Collection activation merges
+individual skills into an existing agent skill directory, preserving unmanaged
+personal and system skills.
 
 ```bash
 vm tools refresh
@@ -219,6 +227,27 @@ vm tools update [environment] --all --background
 
 Omitted versions track the latest release. Explicit semantic versions remain
 pinned. Normal startup never waits for the registry or an update check.
+
+`vm packages list` reports registered and published package state; installation
+is environment-specific, and a published package is consumable through the
+gateway. `vm tools list` reports controller registration/publication only.
+`vm tools status [environment]` adds installed and consumable guest state and
+reports the base-owned Codex runtime separately.
+
+`vm tools update [environment]` is also the idempotent upgrade reconciliation
+entry point. For Docker it regenerates current Compose metadata and updates only
+a missing or stale `package-edge` sidecar with `--no-deps`. For Linux Tart it
+reconciles only the guest edge container. Both paths preserve the edge cache
+named volume and leave the primary environment and base image intact. An absent
+or incomplete Codex runtime in a Vibe environment is staged under `/usr/local`
+from a temporary home, validated, and swapped with rollback; host-synced
+`~/.codex` state is not used as an executable destination. Managed tool links
+are then verified before the command reports success.
+
+Package and tool controller commands are host-only. When invoked inside a
+managed guest, the CLI exits without changing state and prints the exact
+shell-safe command to run on the host, for example
+`Run on the host: vm tools update dev --all`.
 
 ## Develop and Release a Package
 
@@ -320,7 +349,7 @@ your infrastructure backup system to protect against physical disk loss.
 Use `vm packages status` for runtime health and `vm packages doctor` for the
 gateway, Compose definition, credentials, and workflow service checks.
 
-Restarting a Docker project is sufficient to add or recover its edge sidecar;
-the project image does not need rebuilding. A pre-existing Linux Tart guest
-needs one provisioning/start pass to install the edge definition, then ordinary
-restarts reuse it.
+Run `vm tools update [environment]` to add or refresh a missing/stale worker
+edge and reconcile Codex/managed tools. The project image and base do not need
+rebuilding, unrelated services are not recreated, and edge cache volumes are
+preserved. Host behavior is implemented but awaiting host acceptance.

@@ -232,6 +232,35 @@ docker run --rm busybox echo run-ok
 This uses QEMU TCG and is slower than native virtualization. For faster Docker,
 use a Linux Tart guest or a controlled remote Docker daemon over SSH/TLS.
 
+## Controller Package Sources
+
+Package source discovery is controller-wide rather than tied to a project or a
+username-specific path. Configure one or more absolute host roots in the global
+configuration:
+
+```bash
+vm config set packages.source_roots \
+  /absolute/path/to/packages \
+  /another/absolute/source-root \
+  --global
+vm config get packages.source_roots --global
+vm packages up
+```
+
+Equivalent `~/.vm/config.yaml`:
+
+```yaml
+packages:
+  source_roots:
+    - /absolute/path/to/packages
+    - /another/absolute/source-root
+```
+
+Each `vm packages up` scans these roots recursively and idempotently registers
+detected Git package repositories. The paths are used only for controller-side
+discovery; they are not copied into `vm.yaml`, mounted into the appliance, or
+treated as publication authorization.
+
 ## Managed Tools And AI State
 
 Vibe bases ship Antigravity, Claude Code, and Codex. Package infrastructure is
@@ -251,8 +280,10 @@ updates. An interactive `vm shell`/`vm ssh` uses only a fresh local catalog,
 refreshes that catalog in the background, and starts selected guest downloads
 without delaying the shell. Use `vm tools update` when the command should wait,
 or `vm tools update --background` to return immediately. On a fresh controller,
-that command also registers and publishes the initial built-in `agent-skills`
-collection through the trusted package job.
+that command registers the built-in `agent-skills` definition when needed, but
+publication remains an explicit `vm tools publish agent-skills` operation.
+Rerunning `vm tools update` reconciles a stale package edge, incomplete Codex
+runtime, and non-consumable managed links without rebuilding the base.
 
 Host sync is separate: it retains supported CLI state and credentials but does
 not install executables:
@@ -268,8 +299,11 @@ host_sync:
 
 `ai_tools: true` syncs all three state areas. The old `gemini` key remains a
 deprecated compatibility alias for `antigravity`; new configs should use
-`antigravity`. Executables are never downloaded directly by project
+`antigravity`. Executables are never downloaded directly by ordinary project
 provisioning; the Vibe base build owns the three standard AI CLI installers.
+The explicit host-side `vm tools update` reconciliation can repair an incomplete
+standalone Codex package in place without writing executable content through
+host-synced `~/.codex` state.
 
 ## Presets
 

@@ -202,6 +202,30 @@ fn packages_up_parses_tart_appliance() {
 }
 
 #[test]
+fn package_source_roots_parse_as_global_string_array() {
+    assert!(matches!(
+        Args::parse_from([
+            "vm",
+            "config",
+            "set",
+            "packages.source_roots",
+            "/srv/packages",
+            "/opt/shared",
+            "--global",
+        ])
+        .command,
+        Command::Config {
+            command: ConfigSubcommand::Set {
+                field,
+                values,
+                global: true,
+            }
+        } if field == "packages.source_roots"
+            && values == ["/srv/packages", "/opt/shared"]
+    ));
+}
+
+#[test]
 fn package_registration_parses_explicit_and_discovery_modes() {
     assert!(matches!(
         Args::parse_from([

@@ -178,6 +178,27 @@ closed. If the worker edge itself is down, restart the project environment;
 package clients intentionally do not bypass it because doing so could leak an
 internal name to a public registry.
 
+For an existing environment, run this on the controller host:
+
+```bash
+vm tools status [environment]
+vm tools update [environment] --all
+```
+
+`status` distinguishes registered, published, installed, and consumable tools.
+`update` repairs a missing/stale package edge, incomplete standalone Codex
+package, and broken managed-tool links. Docker updates only the sidecar; Linux
+Tart updates only its edge container. Neither path rebuilds the base or removes
+the persistent edge cache volume.
+
+If a package/tool command was run inside a managed guest, do not try to operate
+the controller from there. The error prints the exact shell-safe host command,
+such as `Run on the host: vm packages up`; run that command in the host terminal.
+
+A built-in tool can be registered but not published on a fresh controller. That
+is intentional. Run the reported explicit command, normally
+`vm tools publish agent-skills`, then rerun `vm tools update`.
+
 ## Secrets
 
 ```bash

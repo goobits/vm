@@ -31,7 +31,7 @@ pub enum PackageConsumerSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum PackagesSubcommand {
-    /// Create or update the shared package-infrastructure appliance
+    /// Prepare or reconcile the shared package-infrastructure appliance and configured sources
     Up {
         #[arg(long, value_enum, default_value = "auto")]
         runtime: PackageInfrastructureRuntime,
@@ -95,7 +95,7 @@ pub enum PackagesSubcommand {
         #[arg(long)]
         recursive: bool,
     },
-    /// List registered shared-package repositories
+    /// List registered packages and their publication/consumability state
     List,
     /// Manage consumer repositories tracked by the package infrastructure
     Consumer {
@@ -185,20 +185,20 @@ pub enum ToolsSubcommand {
         #[arg(long, default_value = "binary", value_parser = ["binary", "collection"])]
         kind: String,
     },
-    /// List registered tool sources
+    /// List registered tools and whether an artifact has been published
     List,
     /// Show one registered tool and its published releases
     Show { name: String },
-    /// Publish the current source of one registered collection
+    /// Explicitly publish the current source of one registered tool
     Publish { name: String },
     /// Refresh the appliance-generated tool catalog cache
     Refresh {
         #[arg(long, hide = true)]
         quiet: bool,
     },
-    /// Show tools active inside one environment
+    /// Show registered, published, installed, and consumable tool state
     Status { environment: Option<String> },
-    /// Install configured tools and apply selected updates
+    /// Reconcile runtime infrastructure, Codex, and configured managed tools
     Update {
         environment: Option<String>,
         /// Select every available update without showing the checklist

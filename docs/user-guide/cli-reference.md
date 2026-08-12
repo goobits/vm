@@ -179,6 +179,7 @@ pnpm pruning is explicit and never runs during create, start, or bootstrap.
 ## Package Infrastructure
 
 ```bash
+vm config set packages.source_roots <absolute-path>... --global
 vm packages up [--runtime <auto|docker|tart>]
 vm packages status
 vm packages doctor
@@ -200,7 +201,11 @@ vm packages rollout <package>@<version> --to <consumer>
 ```
 
 Recursive registration skips repositories marked by `vm-tool.yaml`; those are
-published and activated through `vm tools`.
+published and activated through `vm tools`. `packages.source_roots` is a
+controller-wide list; `vm packages up` reconciles those roots on fresh and
+existing appliance state without replacing credentials or named volumes.
+`vm packages list` separates registered, published, installed, and consumable
+state; environment-only states are reported as not applicable.
 
 See [Package Infrastructure](package-infrastructure.md) for the provider
 boundary, registration, credentials, release workflow, and recovery model.
@@ -218,7 +223,13 @@ vm tools update [environment] [--all] [--background]
 ```
 
 Tool sources and immutable releases live in package infrastructure. `status`
-reads one guest; `update` creates or starts that guest when necessary.
+reads one guest and separates controller registration/publication from guest
+installation/consumability. Publication is always an explicit
+`vm tools publish <name>` operation. `update` creates or starts the requested
+guest when necessary, updates only stale runtime sidecar infrastructure,
+repairs incomplete Codex state, and validates managed-tool activation without a
+base rebuild. These commands must run on the controller host; a managed guest
+prints the exact host command and exits.
 
 ## Plugins
 

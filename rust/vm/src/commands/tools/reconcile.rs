@@ -206,11 +206,141 @@ pub(super) fn codex_expected(config: &VmConfig) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
+    use std::path::Path;
     use std::process::Command;
+    use std::sync::{Arc, Mutex};
 
     use vm_config::config::{BoxSpec, VmConfig, VmSettings};
+    use vm_config::GlobalConfig;
+    use vm_provider::{InstanceInfo, InstanceState, Provider, ProviderContext, VmStatusReport};
 
-    use super::{codex_expected, parse_codex_state, CodexState, CODEX_REPAIR};
+    use super::{codex_expected, parse_codex_state, reconcile_for, CodexState, CODEX_REPAIR};
+
+    #[derive(Clone)]
+    struct FakeProvider {
+        states: Arc<Mutex<VecDeque<&'static str>>>,
+        calls: Arc<Mutex<Vec<&'static str>>>,
+    }
+
+    impl FakeProvider {
+        fn new(states: impl IntoIterator<Item = &'static str>) -> Self {
+            Self {
+                states: Arc::new(Mutex::new(states.into_iter().collect())),
+                calls: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+
+        fn calls(&self) -> Vec<&'static str> {
+            self.calls.lock().unwrap().clone()
+        }
+    }
+
+    impl Provider for FakeProvider {
+        fn name(&self) -> &'static str {
+            "fake"
+        }
+
+        fn create(&self, _context: &ProviderContext) -> vm_core::error::Result<()> {
+            Ok(())
+        }
+
+        fn start(
+            &self,
+            _container: Option<&str>,
+            _context: &ProviderContext,
+        ) -> vm_core::error::Result<()> {
+            Ok(())
+        }
+
+        fn stop(&self, _container: Option<&str>) -> vm_core::error::Result<()> {
+            Ok(())
+        }
+
+        fn destroy(
+            &self,
+            _container: Option<&str>,
+            _context: &ProviderContext,
+        ) -> vm_core::error::Result<()> {
+            Ok(())
+        }
+
+        fn ssh(
+            &self,
+            _container: Option<&str>,
+            _relative_path: &Path,
+        ) -> vm_core::error::Result<()> {
+            Ok(())
+        }
+
+        fn exec(
+            &self,
+            _container: Option<&str>,
+            _command: &[String],
+        ) -> vm_core::error::Result<()> {
+            self.calls.lock().unwrap().push("repair");
+            Ok(())
+        }
+
+        fn exec_output(
+            &self,
+            _container: Option<&str>,
+            _command: &[String],
+        ) -> vm_core::error::Result<String> {
+            self.calls.lock().unwrap().push("probe");
+            let state = self.states.lock().unwrap().pop_front().unwrap();
+            Ok(format!("VM_CODEX_STATE={state}\n"))
+        }
+
+        fn logs(&self, _container: Option<&str>) -> vm_core::error::Result<()> {
+            Ok(())
+        }
+
+        fn copy(
+            &self,
+            _source: &str,
+            _destination: &str,
+            _container: Option<&str>,
+        ) -> vm_core::error::Result<()> {
+            Ok(())
+        }
+
+        fn status(&self, _container: Option<&str>) -> vm_core::error::Result<VmStatusReport> {
+            Ok(VmStatusReport::default())
+        }
+
+        fn instance_state(
+            &self,
+            _container: Option<&str>,
+        ) -> vm_core::error::Result<InstanceState> {
+            Ok(InstanceState::Running)
+        }
+
+        fn provision(&self, _container: Option<&str>) -> vm_core::error::Result<()> {
+            Ok(())
+        }
+
+        fn reconcile_runtime(
+            &self,
+            _container: Option<&str>,
+            _context: &ProviderContext,
+        ) -> vm_core::error::Result<()> {
+            self.calls.lock().unwrap().push("runtime");
+            Ok(())
+        }
+
+        fn get_sync_directory(&self) -> String {
+            "/workspace".into()
+        }
+
+        fn list_instances(&self) -> vm_core::error::Result<Vec<InstanceInfo>> {
+            Ok(Vec::new())
+        }
+
+        fn clone_box(&self) -> Box<dyn Provider> {
+            Box::new(self.clone())
+        }
+    }
 
     #[test]
     fn parses_only_explicit_codex_probe_states() {
@@ -249,5 +379,22 @@ mod tests {
             .status()
             .unwrap()
             .success());
+    }
+
+    #[test]
+    fn fake_provider_reconciles_fresh_state_then_becomes_idempotent() {
+        let provider = FakeProvider::new(["absent", "consumable", "consumable"]);
+        let config = VmConfig {
+            preset: Some("vibe".into()),
+            ..Default::default()
+        };
+
+        reconcile_for(&provider, "demo", &config, &GlobalConfig::default()).unwrap();
+        reconcile_for(&provider, "demo", &config, &GlobalConfig::default()).unwrap();
+
+        assert_eq!(
+            provider.calls(),
+            ["runtime", "probe", "repair", "probe", "runtime", "probe"]
+        );
     }
 }
