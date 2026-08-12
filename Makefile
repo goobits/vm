@@ -1,6 +1,7 @@
 .PHONY: help build build-no-bump test test-unit test-integration test-network clippy fmt fmt-fix check-duplicates check bump-version quality-gates deny watch dev udeps
 
 CARGO_JOBS ?= 1
+INTEGRATION_FEATURES := integration,vm-package-server/standalone-binary
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -50,8 +51,8 @@ test-unit:
 
 test-integration:
 	@command -v cargo-nextest >/dev/null 2>&1 && \
-		cd rust && cargo nextest run --workspace --test '*' --features integration --test-threads=2 || \
-		(echo "⚠️  cargo-nextest not found, falling back to cargo test" && cd rust && cargo test --workspace --test '*' --features integration -j $(CARGO_JOBS) -- --test-threads=2)
+		cd rust && cargo nextest run --workspace --test '*' --features $(INTEGRATION_FEATURES) --test-threads=2 || \
+		(echo "⚠️  cargo-nextest not found, falling back to cargo test" && cd rust && cargo test --workspace --test '*' --features $(INTEGRATION_FEATURES) -j $(CARGO_JOBS) -- --test-threads=2)
 
 test-integration-conditional:
 ifndef SKIP_INTEGRATION_TESTS

@@ -50,6 +50,11 @@ cargo test -p goobits-vm --test vm_ops test_name -- --ignored --test-threads=1
 Do not run provider-mutating tests against a development environment that
 contains uncheckpointed work or unique writable-layer data.
 
+The supported integration target enables the package server's
+`standalone-binary` feature so its CLI fixtures compile and run with the rest of
+the non-network suite. Keep that feature in both the nextest and `cargo test`
+paths when changing the root `Makefile`.
+
 When a host is under file-descriptor or VM pressure, use formatting plus
 `cargo check -j 2` as the non-mutating gate. Do not substitute a Docker/Tart
 smoke test until the host has been recreated and its source mounts verified.
