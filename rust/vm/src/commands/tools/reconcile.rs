@@ -145,16 +145,20 @@ backup_path() {
   backup_name=$2
   if path_exists "$source_path"; then
     run_install mv "$source_path" "$backup/$backup_name"
+  else
+    run_install touch "$backup/.absent-$backup_name"
   fi
 }
 
 restore_path() {
   backup_name=$1
   destination=$2
-  run_install rm -rf "$destination" >/dev/null 2>&1 || true
   if path_exists "$backup/$backup_name"; then
+    run_install rm -rf "$destination" >/dev/null 2>&1 || true
     run_install mv "$backup/$backup_name" "$destination" \
       >/dev/null 2>&1 || true
+  elif path_exists "$backup/.absent-$backup_name"; then
+    run_install rm -rf "$destination" >/dev/null 2>&1 || true
   fi
 }
 
@@ -699,5 +703,29 @@ ln -s "$target/bin/codex" "$HOME/.local/bin/codex"
         assert!(String::from_utf8(fs::read(&launcher).unwrap())
             .unwrap()
             .contains("unmanaged"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failed_initial_codex_repair_leaves_no_partial_runtime() {
+        let directory = TempDir::new().unwrap();
+        let prefix = directory.path().join("prefix");
+        fs::create_dir_all(&prefix).unwrap();
+        let installer = fake_codex_installer(&directory);
+        let package = fake_codex_package(&directory, "1.0.0");
+        let launcher = prefix.join("bin/codex");
+
+        let output = run_codex_repair(&directory, &prefix, &installer, &package, Some(&launcher));
+
+        assert!(!output.status.success());
+        for path in [
+            prefix.join("lib/vm-ai-tools/codex-package"),
+            prefix.join("lib/vm-ai-tools/codex"),
+            prefix.join("lib/vm-ai-tools/codex-code-mode-host"),
+            launcher,
+            prefix.join("bin/codex-code-mode-host"),
+        ] {
+            assert!(fs::symlink_metadata(path).is_err());
+        }
     }
 }
