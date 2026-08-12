@@ -16,7 +16,8 @@ pub(super) fn ensure_controller_host(command: &Command) -> VmResult<()> {
             std::env::var("VM_MANAGED_GUEST").ok().as_deref(),
             std::env::var("VM_IMAGE_IDENTITY").ok().as_deref(),
             std::path::Path::new("/.dockerenv").exists(),
-            std::path::Path::new("/etc/vm/managed-guest").exists(),
+            std::path::Path::new("/etc/vm/managed-guest").exists()
+                || std::path::Path::new("/etc/vm/package-edge.env").exists(),
         )
     {
         return Ok(());

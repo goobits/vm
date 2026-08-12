@@ -1003,6 +1003,16 @@ impl Provider for TartProvider {
         Ok(())
     }
 
+    fn reconcile_runtime(&self, container: Option<&str>, _context: &ProviderContext) -> Result<()> {
+        let instance_name = self.resolve_instance_name(container)?;
+        let provisioner = TartProvisioner::new(
+            instance_name,
+            self.get_sync_directory(),
+            self.command.clone(),
+        );
+        provisioner.reconcile_runtime(&self.config)
+    }
+
     fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
         Some(self)
     }

@@ -37,6 +37,42 @@ for state in "$root"/*.state; do
   cat "$state"
 done
 "#;
+const CONSUMABLE_SCRIPT: &str = r#"
+root="${XDG_DATA_HOME:-$HOME/.local/share}/vm-tools"
+states="$root/state"
+releases="$root/releases"
+resolved_below() {
+  expected=$1
+  candidate=$2
+  expected="$(readlink -f "$expected" 2>/dev/null || true)"
+  candidate="$(readlink -f "$candidate" 2>/dev/null || true)"
+  test -n "$expected" && test -n "$candidate" || return 1
+  case "$candidate" in
+    "$expected"|"$expected"/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+for state in "$states"/*.state; do
+  test -f "$state" || continue
+  tab="$(printf '\t')"
+  IFS="$tab" read -r name _version _target _digest < "$state"
+  links="$states/$name.links"
+  result=yes
+  if test ! -s "$links"; then
+    result=no
+  else
+    while IFS= read -r destination; do
+      if test -z "$destination" || test ! -L "$destination" \
+        || test ! -e "$destination" \
+        || ! resolved_below "$releases/$name" "$destination"; then
+        result=no
+        break
+      fi
+    done < "$links"
+  fi
+  printf '%s\t%s\n' "$name" "$result"
+done
+"#;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct InstalledTool {
@@ -82,6 +118,19 @@ pub(super) fn installed(
         )
         .map_err(VmError::from)?;
     Ok(parse_installed(&output))
+}
+
+pub(super) fn consumable(
+    provider: &dyn Provider,
+    environment: &str,
+) -> VmResult<BTreeMap<String, bool>> {
+    let output = provider
+        .exec_output(
+            Some(environment),
+            &["sh".into(), "-c".into(), CONSUMABLE_SCRIPT.into()],
+        )
+        .map_err(VmError::from)?;
+    Ok(parse_consumable(&output))
 }
 
 pub(super) fn install(
@@ -192,6 +241,23 @@ fn parse_installed(output: &str) -> BTreeMap<String, InstalledTool> {
         .collect()
 }
 
+fn parse_consumable(output: &str) -> BTreeMap<String, bool> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let (name, state) = line.split_once('\t')?;
+            if validate_tool_name(name).is_err() {
+                return None;
+            }
+            match state {
+                "yes" => Some((name.to_string(), true)),
+                "no" => Some((name.to_string(), false)),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,6 +284,15 @@ mod tests {
         let installed = parse_installed(&output);
         assert_eq!(installed["codex"].version, "1.2.3");
         assert_eq!(installed.len(), 1);
+    }
+
+    #[test]
+    fn parses_consumability_without_trusting_unknown_rows() {
+        let states = parse_consumable("agent-skills\tyes\nbroken\tno\nnoise\nother\tmaybe\n");
+
+        assert_eq!(states.get("agent-skills"), Some(&true));
+        assert_eq!(states.get("broken"), Some(&false));
+        assert_eq!(states.len(), 2);
     }
 
     #[test]
@@ -274,8 +349,8 @@ mod tests {
         );
 
         let output = Command::new("sh")
-            .arg(installer)
-            .arg(manifest)
+            .arg(&installer)
+            .arg(&manifest)
             .env("HOME", &home)
             .env("XDG_DATA_HOME", &data)
             .env("CARGO_REGISTRIES_VM_TOKEN", "test-token")
@@ -292,5 +367,29 @@ mod tests {
         assert!(home.join(".codex/skills/x-two").is_symlink());
         let links = fs::read_to_string(data.join("vm-tools/state/agent-skills.links")).unwrap();
         assert_eq!(links.lines().count(), 2);
+
+        #[cfg(unix)]
+        {
+            fs::remove_file(home.join(".codex/skills/x-one")).unwrap();
+            std::os::unix::fs::symlink(
+                data.join("vm-tools/releases/agent-skills/missing/skills/x-one"),
+                home.join(".codex/skills/x-one"),
+            )
+            .unwrap();
+            let retry = Command::new("sh")
+                .arg(&installer)
+                .arg(&manifest)
+                .env("HOME", &home)
+                .env("XDG_DATA_HOME", &data)
+                .env("CARGO_REGISTRIES_VM_TOKEN", "test-token")
+                .output()
+                .unwrap();
+            assert!(
+                retry.status.success(),
+                "{}",
+                String::from_utf8_lossy(&retry.stderr)
+            );
+            assert!(home.join(".codex/skills/x-one/SKILL.md").is_file());
+        }
     }
 }

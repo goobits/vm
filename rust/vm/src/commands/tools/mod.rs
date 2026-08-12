@@ -1,7 +1,8 @@
 mod guest;
+mod reconcile;
 mod updates;
 
-use std::path::PathBuf;
+use std::{collections::BTreeMap, path::PathBuf};
 
 use vm_config::config::VmConfig;
 use vm_core::{vm_hint, vm_println, vm_success};
@@ -126,7 +127,7 @@ pub(super) async fn handle(
         }
         ToolsSubcommand::Status { environment } => {
             let subject = load_runtime_subject(config_path, profile, environment)?;
-            show_status(&subject)
+            show_status(&subject).await
         }
         ToolsSubcommand::Update {
             environment,
@@ -143,6 +144,7 @@ pub(super) async fn handle(
                 true,
             )
             .await?;
+            reconcile::environment(&subject)?;
             tooling::refresh(&subject.config).await?;
             apply_updates(
                 subject.provider.as_ref(),
@@ -307,7 +309,9 @@ fn apply_updates(
         )
     })?;
     report_missing(&catalog);
-    let installed = guest::installed(provider, environment)?;
+    let mut installed = guest::installed(provider, environment)?;
+    let consumable = guest::consumable(provider, environment)?;
+    installed.retain(|name, _| consumable.get(name).copied().unwrap_or(false));
     let selected = updates::plan(config, &catalog.artifacts, &installed).selected(all)?;
     if selected.is_empty() {
         vm_success!("Configured tools are current");
@@ -322,6 +326,22 @@ fn apply_updates(
         &tooling::read_token()?,
         mode,
     )?;
+    if mode == InstallMode::Wait {
+        let consumable = guest::consumable(provider, environment)?;
+        let broken = selected
+            .iter()
+            .filter(|artifact| !consumable.get(&artifact.tool).copied().unwrap_or(false))
+            .map(|artifact| artifact.tool.as_str())
+            .collect::<Vec<_>>();
+        if !broken.is_empty() {
+            return Err(VmError::validation(
+                format!("Tool activation is not consumable: {}", broken.join(", ")),
+                Some(format!(
+                    "Run `vm tools update {environment} --all` to retry"
+                )),
+            ));
+        }
+    }
     match mode {
         InstallMode::Background => vm_success!("Started {count} tool update(s) in the background"),
         InstallMode::Wait => vm_success!("Activated {count} tool update(s)"),
@@ -329,16 +349,63 @@ fn apply_updates(
     Ok(())
 }
 
-fn show_status(subject: &RuntimeSubject) -> VmResult<()> {
+#[derive(Debug, Clone, Copy, Default)]
+struct ControllerToolState {
+    registered: bool,
+    published: bool,
+}
+
+async fn controller_tool_states() -> VmResult<BTreeMap<String, ControllerToolState>> {
+    let client = tooling::client()?;
+    let definitions = client.tools().await?;
+    let mut states = BTreeMap::new();
+    for definition in definitions {
+        let published = !client.tool(&definition.name).await?.artifacts.is_empty();
+        states.insert(
+            definition.name,
+            ControllerToolState {
+                registered: true,
+                published,
+            },
+        );
+    }
+    Ok(states)
+}
+
+async fn show_status(subject: &RuntimeSubject) -> VmResult<()> {
     let target = guest::platform_target(subject.provider.as_ref(), &subject.target)?;
     let installed = guest::installed(subject.provider.as_ref(), &subject.target)?;
-    vm_println!("Guest tools ({target})");
-    if installed.is_empty() {
-        vm_println!("  No managed tools are active");
-    } else {
-        for tool in installed.values() {
-            vm_println!("  {} {} ({})", tool.name, tool.version, tool.target);
+    let consumable = guest::consumable(subject.provider.as_ref(), &subject.target)?;
+    let controller = match controller_tool_states().await {
+        Ok(states) => Some(states),
+        Err(error) => {
+            vm_hint!("Controller package state is unavailable: {error}");
+            None
         }
+    };
+    let codex = reconcile::codex_state(subject.provider.as_ref(), &subject.target)?;
+
+    vm_println!("Guest tools ({target})");
+    vm_println!("NAME\tOWNER\tREGISTERED\tPUBLISHED\tINSTALLED\tCONSUMABLE\tVERSION");
+    if reconcile::codex_expected(&subject.config) || codex != reconcile::CodexState::Absent {
+        vm_println!(
+            "codex\tbase\tn/a\tn/a\t{}\t{}\t-",
+            yes_no(codex != reconcile::CodexState::Absent),
+            yes_no(codex == reconcile::CodexState::Consumable)
+        );
+    }
+    for name in subject.config.tools.entries.keys() {
+        let controller_state = controller.as_ref().and_then(|states| states.get(name));
+        let installed_tool = installed.get(name);
+        vm_println!(
+            "{}\tmanaged\t{}\t{}\t{}\t{}\t{}",
+            name,
+            controller_state.map_or("unknown", |state| yes_no(state.registered)),
+            controller_state.map_or("unknown", |state| yes_no(state.published)),
+            yes_no(installed_tool.is_some()),
+            yes_no(consumable.get(name).copied().unwrap_or(false)),
+            installed_tool.map_or("-", |tool| tool.version.as_str())
+        );
     }
     Ok(())
 }

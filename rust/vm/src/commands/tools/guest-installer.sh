@@ -52,6 +52,18 @@ resolved_below() {
   esac
 }
 
+managed_link() {
+  managed_root=$1
+  candidate=$2
+  resolved_below "$managed_root" "$candidate" && return 0
+  test -L "$candidate" || return 1
+  raw_target=$(readlink "$candidate") || return 1
+  case "$raw_target" in
+    "$managed_root"|"$managed_root"/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 install_tool() (
   manifest=$1
   task=$(mktemp -d "$temporary/task.XXXXXX")
@@ -116,7 +128,7 @@ install_tool() (
     link_source=$1
     link_destination=$2
     if test -e "$link_destination" || test -L "$link_destination"; then
-      if test ! -L "$link_destination" || ! resolved_below "$releases/$name" "$link_destination"; then
+      if ! managed_link "$releases/$name" "$link_destination"; then
         echo "Refusing to replace unmanaged path: $link_destination" >&2
         exit 1
       fi
@@ -164,7 +176,7 @@ install_tool() (
       test -n "$old_destination" || continue
       if ! grep -Fqx "$old_destination" "$new_links" \
         && test -L "$old_destination" \
-        && resolved_below "$releases/$name" "$old_destination"; then
+        && managed_link "$releases/$name" "$old_destination"; then
         rm -f "$old_destination"
       fi
     done < "$old_links"

@@ -156,6 +156,10 @@ impl Provider for PodmanProvider {
         self.docker_provider.provision(container)
     }
 
+    fn reconcile_runtime(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
+        self.docker_provider.reconcile_runtime(container, context)
+    }
+
     fn status(&self, container: Option<&str>) -> Result<VmStatusReport> {
         // Get the report from docker provider and update the provider name
         let mut report = self.docker_provider.status(container)?;

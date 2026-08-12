@@ -360,6 +360,10 @@ impl Provider for DockerProvider {
         Ok(())
     }
 
+    fn reconcile_runtime(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
+        self.lifecycle_ops().reconcile_runtime(container, context)
+    }
+
     fn status(&self, container: Option<&str>) -> Result<VmStatusReport> {
         let lifecycle = self.lifecycle_ops();
         lifecycle.status_report(container)

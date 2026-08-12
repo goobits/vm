@@ -456,6 +456,16 @@ pub trait Provider {
     /// Re-run provisioning on existing VM.
     fn provision(&self, container: Option<&str>) -> Result<()>;
 
+    /// Reconcile mutable runtime infrastructure without rebuilding the base or
+    /// recreating the primary environment.
+    fn reconcile_runtime(
+        &self,
+        _container: Option<&str>,
+        _context: &ProviderContext,
+    ) -> Result<()> {
+        Ok(())
+    }
+
     /// Get workspace directory.
     fn get_sync_directory(&self) -> String;
 

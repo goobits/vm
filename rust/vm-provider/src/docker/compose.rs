@@ -426,23 +426,9 @@ impl<'a> ComposeOperations<'a> {
         }
 
         // The package edge is runtime infrastructure rather than part of the
-        // derived image, so a restart can add it without rebuilding the worker.
-        if self.config.package_edge.is_some() && compose_path.exists() {
-            let edge_container = container_name.strip_suffix("-dev").map_or_else(
-                || format!("{container_name}-package-edge"),
-                |name| format!("{name}-package-edge"),
-            );
-            if !DockerOps::container_exists(Some(self.executable), &edge_container).unwrap_or(false)
-            {
-                let args = super::ComposeCommand::build_args(
-                    &compose_path,
-                    "up",
-                    &["--detach", "--no-deps", "package-edge"],
-                )?;
-                let args = args.iter().map(String::as_str).collect::<Vec<_>>();
-                stream_command(self.executable, &args)?;
-            }
-        }
+        // derived image, so a restart can add or refresh it without rebuilding
+        // the worker.
+        self.reconcile_package_edge(container_name)?;
 
         // Start existing services directly to avoid Compose name conflicts.
         let expected_services = self.get_expected_service_containers(instance_name.as_deref());
@@ -466,6 +452,35 @@ impl<'a> ComposeOperations<'a> {
         }
 
         DockerOps::start_container(Some(self.executable), container_name)
+    }
+
+    pub fn reconcile_package_edge(&self, container_name: &str) -> Result<()> {
+        let Some(edge) = self.config.package_edge.as_ref() else {
+            return Ok(());
+        };
+        let instance_name = self.instance_name_from_container(container_name);
+        let compose_path = compose_path(self.generated_dir, instance_name.as_deref());
+        if !compose_path.exists() {
+            return Err(VmError::Internal(format!(
+                "Generated Compose file is unavailable for package-edge reconciliation: {}",
+                compose_path.display()
+            )));
+        }
+        let edge_container = container_name.strip_suffix("-dev").map_or_else(
+            || format!("{container_name}-package-edge"),
+            |name| format!("{name}-package-edge"),
+        );
+        if package_edge_is_current(self.executable, &edge_container, &edge.revision) {
+            return Ok(());
+        }
+
+        let args = super::ComposeCommand::build_args(
+            &compose_path,
+            "up",
+            &["--detach", "--no-deps", "package-edge"],
+        )?;
+        let args = args.iter().map(String::as_str).collect::<Vec<_>>();
+        stream_command(self.executable, &args)
     }
 
     pub(super) fn instance_name_from_container(&self, container_name: &str) -> Option<String> {
@@ -533,6 +548,28 @@ impl<'a> ComposeOperations<'a> {
 
         expected
     }
+}
+
+fn package_edge_is_current(executable: &str, container: &str, revision: &str) -> bool {
+    let Ok(output) = std::process::Command::new(executable)
+        .args([
+            "inspect",
+            "--format",
+            "{{.State.Status}}\t{{index .Config.Labels \"com.vm.package-edge.revision\"}}",
+            container,
+        ])
+        .output()
+    else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    let value = String::from_utf8_lossy(&output.stdout);
+    let Some((state, installed_revision)) = value.trim().split_once('\t') else {
+        return false;
+    };
+    state == "running" && installed_revision == revision
 }
 
 #[cfg(test)]
@@ -926,6 +963,11 @@ mod tests {
         let edge = services["package-edge"].as_mapping().unwrap();
 
         assert!(!dev.contains_key("depends_on"));
+        assert!(dev["environment"]
+            .as_sequence()
+            .unwrap()
+            .iter()
+            .any(|value| value.as_str() == Some("VM_MANAGED_GUEST=1")));
         assert_eq!(edge["read_only"].as_bool(), Some(true));
         assert_eq!(edge["restart"].as_str(), Some("unless-stopped"));
         assert!(edge["environment"]
@@ -942,6 +984,30 @@ mod tests {
             .render_docker_compose_preview(&project_dir, None, &ProviderContext::default())
             .unwrap();
         assert!(!preview.contains("read-token"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn package_edge_probe_requires_matching_running_revision() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let runtime = directory.path().join("runtime");
+        std::fs::write(&runtime, "#!/bin/sh\nprintf 'running\\trevision-1\\n'\n").unwrap();
+        let mut permissions = std::fs::metadata(&runtime).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&runtime, permissions).unwrap();
+
+        assert!(package_edge_is_current(
+            runtime.to_str().unwrap(),
+            "demo-package-edge",
+            "revision-1"
+        ));
+        assert!(!package_edge_is_current(
+            runtime.to_str().unwrap(),
+            "demo-package-edge",
+            "revision-2"
+        ));
     }
 
     #[test]

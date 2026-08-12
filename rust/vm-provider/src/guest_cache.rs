@@ -35,8 +35,10 @@ impl GuestCachePolicy {
 
     #[cfg(any(feature = "tart", test))]
     pub(crate) fn shell_exports(&self) -> String {
-        let mut exports =
-            vec![r#"export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}""#.to_string()];
+        let mut exports = vec![
+            "export VM_MANAGED_GUEST=1".to_string(),
+            r#"export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}""#.to_string(),
+        ];
         exports.extend(
             self.paths("${XDG_CACHE_HOME}")
                 .into_iter()
@@ -133,6 +135,7 @@ mod tests {
     fn shell_defaults_preserve_explicit_guest_values() {
         let exports = GuestCachePolicy::new("codeatlas").shell_exports();
 
+        assert!(exports.contains("export VM_MANAGED_GUEST=1"));
         assert!(exports.contains("${XDG_CACHE_HOME:-$HOME/.cache}"));
         assert!(
             exports.contains("${CARGO_TARGET_DIR:-${XDG_CACHE_HOME}/vm/cargo-target/codeatlas}")

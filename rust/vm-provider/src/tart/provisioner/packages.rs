@@ -6,6 +6,22 @@ use vm_config::config::{MountAccess, VmConfig};
 use vm_core::vm_warning;
 
 impl TartProvisioner {
+    pub(crate) fn reconcile_runtime(&self, config: &VmConfig) -> vm_core::error::Result<()> {
+        self.apply_shell_config(config)?;
+        let Some(edge_command) = Self::package_edge_command(config) else {
+            return Ok(());
+        };
+        let mut commands = Vec::new();
+        if let Some(docker_command) = self.docker_install_command(config) {
+            commands.push((
+                "Docker runtime",
+                format!("if ! command -v docker >/dev/null 2>&1; then\n{docker_command}\nfi"),
+            ));
+        }
+        commands.push(("package edge", edge_command));
+        self.ssh_exec_batch(commands)
+    }
+
     pub(super) fn guest_software_commands(
         &self,
         config: &VmConfig,
@@ -173,7 +189,7 @@ docker info >/dev/null 2>&1 || sudo docker info >/dev/null 2>&1"#
         ))
     }
 
-    fn package_edge_command(config: &VmConfig) -> Option<String> {
+    pub(crate) fn package_edge_command(config: &VmConfig) -> Option<String> {
         let edge = config.package_edge.as_ref()?;
         let image = quote_posix_argument(&edge.image);
         let gateway = quote_posix_argument(&format!(
@@ -563,6 +579,8 @@ mod tests {
         assert!(command.contains("chmod 0600 /etc/vm/package-edge.env"));
         assert!(command.contains("com.vm.package-edge.revision="));
         assert!(command.contains("abc123"));
+        assert!(command.contains("sudo docker rm -f vm-package-edge"));
+        assert!(!command.contains("docker volume rm"));
         assert!(!command.contains("PKG_SERVER_PUBLISH_TOKEN"));
         #[cfg(unix)]
         assert!(std::process::Command::new("/bin/bash")
