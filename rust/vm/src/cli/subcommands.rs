@@ -290,54 +290,17 @@ pub enum ConfigProfileSubcommand {
     Set { name: String },
 }
 
-#[derive(Debug, Clone, clap::Args)]
-pub struct FleetTargetArgs {
-    /// Provider filter (docker, podman, tart)
+#[derive(Debug, Clone, Default, clap::Args)]
+pub struct FleetArgs {
+    /// Apply the command across matching managed environments
     #[arg(long)]
+    pub fleet: bool,
+    /// Provider filter (docker, podman, tart)
+    #[arg(long, requires = "fleet", value_parser = ["docker", "podman", "tart"])]
     pub provider: Option<String>,
     /// Match pattern for instance names
-    #[arg(long)]
+    #[arg(long, requires = "fleet")]
     pub pattern: Option<String>,
-    /// Only include running instances
-    #[arg(long)]
-    pub running: bool,
-    /// Only include stopped instances
-    #[arg(long)]
-    pub stopped: bool,
-}
-
-#[derive(Debug, Clone, Subcommand)]
-pub enum FleetSubcommand {
-    /// Run a command across instances
-    #[command(trailing_var_arg = true)]
-    Exec {
-        #[command(flatten)]
-        targets: FleetTargetArgs,
-        #[arg(required = true, num_args = 1..)]
-        command: Vec<String>,
-    },
-    /// Copy files to/from instances
-    Copy {
-        #[command(flatten)]
-        targets: FleetTargetArgs,
-        source: String,
-        destination: String,
-    },
-    /// Start instances
-    Start {
-        #[command(flatten)]
-        targets: FleetTargetArgs,
-    },
-    /// Stop instances
-    Stop {
-        #[command(flatten)]
-        targets: FleetTargetArgs,
-    },
-    /// Restart instances
-    Restart {
-        #[command(flatten)]
-        targets: FleetTargetArgs,
-    },
 }
 
 #[derive(Debug, Clone, Subcommand)]

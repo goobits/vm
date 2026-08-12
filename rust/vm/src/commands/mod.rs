@@ -72,7 +72,6 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         }
         Command::Plugin { command } => handle_plugin_command(&command),
         Command::Db { command } => db::handle_db(command).await,
-        Command::Fleet { command } => vm_ops::handle_fleet_command(&command).await,
         Command::Secret { command } => {
             handle_secret_command(&command, args.config, args.profile).await
         }
@@ -103,16 +102,21 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         Command::Start {
             environment,
             no_wait,
+            fleet,
         } => {
-            let subject = load_runtime_subject(args.config, args.profile, environment)?;
-            vm_ops::handle_start(
-                subject.provider,
-                Some(subject.target.as_str()),
-                subject.config,
-                subject.global_config,
-                no_wait,
-            )
-            .await
+            if fleet.fleet {
+                vm_ops::handle_fleet_lifecycle(&fleet, vm_ops::FleetAction::Start, no_wait).await
+            } else {
+                let subject = load_runtime_subject(args.config, args.profile, environment)?;
+                vm_ops::handle_start(
+                    subject.provider,
+                    Some(subject.target.as_str()),
+                    subject.config,
+                    subject.global_config,
+                    no_wait,
+                )
+                .await
+            }
         }
         Command::Run {
             kind,
@@ -175,6 +179,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         }
         Command::Exec {
             environment,
+            fleet,
             command,
         } => {
             if command.is_empty() {
@@ -183,15 +188,19 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
                     Some("Use: vm exec [environment] -- <command>"),
                 ));
             }
-            let subject = load_runtime_subject(args.config, args.profile, environment)?;
-            vm_ops::handle_exec(
-                subject.provider,
-                Some(subject.target.as_str()),
-                command,
-                subject.config,
-                subject.global_config,
-            )
-            .await
+            if fleet.fleet {
+                vm_ops::handle_fleet_exec(&fleet, &command)
+            } else {
+                let subject = load_runtime_subject(args.config, args.profile, environment)?;
+                vm_ops::handle_exec(
+                    subject.provider,
+                    Some(subject.target.as_str()),
+                    command,
+                    subject.config,
+                    subject.global_config,
+                )
+                .await
+            }
         }
         Command::Logs {
             environment,
@@ -210,29 +219,38 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             )
         }
         Command::Copy {
+            fleet,
             source,
             destination,
         } => {
-            let requested = vm_ops::target::copy_target(&source, &destination)?;
-            let subject =
-                load_runtime_context(args.config, args.profile, None, requested.as_deref())?;
-            vm_ops::handle_copy(
-                subject.provider,
-                &source,
-                &destination,
-                Some(subject.target.as_str()),
-                subject.config,
-            )
+            if fleet.fleet {
+                vm_ops::handle_fleet_copy(&fleet, &source, &destination)
+            } else {
+                let requested = vm_ops::target::copy_target(&source, &destination)?;
+                let subject =
+                    load_runtime_context(args.config, args.profile, None, requested.as_deref())?;
+                vm_ops::handle_copy(
+                    subject.provider,
+                    &source,
+                    &destination,
+                    Some(subject.target.as_str()),
+                    subject.config,
+                )
+            }
         }
-        Command::Stop { environment } => {
-            let subject = load_runtime_subject(args.config, args.profile, environment)?;
-            vm_ops::handle_stop(
-                subject.provider,
-                Some(subject.target.as_str()),
-                subject.config,
-                subject.global_config,
-            )
-            .await
+        Command::Stop { environment, fleet } => {
+            if fleet.fleet {
+                vm_ops::handle_fleet_lifecycle(&fleet, vm_ops::FleetAction::Stop, false).await
+            } else {
+                let subject = load_runtime_subject(args.config, args.profile, environment)?;
+                vm_ops::handle_stop(
+                    subject.provider,
+                    Some(subject.target.as_str()),
+                    subject.config,
+                    subject.global_config,
+                )
+                .await
+            }
         }
         Command::Status { environment } => {
             let subject = load_runtime_subject(args.config, args.profile, environment)?;
@@ -243,15 +261,19 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             status::display(&report);
             Ok(())
         }
-        Command::Restart { environment } => {
-            let subject = load_runtime_subject(args.config, args.profile, environment)?;
-            vm_ops::handle_restart(
-                subject.provider,
-                Some(subject.target.as_str()),
-                subject.config,
-                subject.global_config,
-            )
-            .await
+        Command::Restart { environment, fleet } => {
+            if fleet.fleet {
+                vm_ops::handle_fleet_lifecycle(&fleet, vm_ops::FleetAction::Restart, false).await
+            } else {
+                let subject = load_runtime_subject(args.config, args.profile, environment)?;
+                vm_ops::handle_restart(
+                    subject.provider,
+                    Some(subject.target.as_str()),
+                    subject.config,
+                    subject.global_config,
+                )
+                .await
+            }
         }
         Command::Remove { environment, force } => {
             let subject = load_runtime_subject(args.config, args.profile, environment)?;
@@ -381,7 +403,15 @@ fn dry_run_description(command: &Command) -> String {
             if *force { "recreate" } else { "create" },
             target(environment)
         ),
-        Command::Start { environment, .. } => format!("start {}", target(environment)),
+        Command::Start {
+            environment, fleet, ..
+        } => {
+            if fleet.fleet {
+                "start matching managed environments".to_string()
+            } else {
+                format!("start {}", target(environment))
+            }
+        }
         Command::Run { kind, words, .. } => {
             let name = words
                 .last()
@@ -405,14 +435,42 @@ fn dry_run_description(command: &Command) -> String {
             },
             target(environment)
         ),
-        Command::Exec { environment, .. } => {
-            format!("execute a command in {}", target(environment))
+        Command::Exec {
+            environment, fleet, ..
+        } => {
+            if fleet.fleet {
+                "execute a command in matching managed environments".to_string()
+            } else {
+                format!("execute a command in {}", target(environment))
+            }
         }
         Command::Logs { environment, .. } => format!("read logs from {}", target(environment)),
-        Command::Copy { .. } => "copy files without changing lifecycle state".to_string(),
-        Command::Stop { environment } => format!("stop {}", target(environment)),
+        Command::Copy { fleet, .. } => {
+            if fleet.fleet {
+                "copy files across matching managed environments".to_string()
+            } else {
+                "copy files without changing lifecycle state".to_string()
+            }
+        }
+        Command::Stop {
+            environment, fleet, ..
+        } => {
+            if fleet.fleet {
+                "stop matching managed environments".to_string()
+            } else {
+                format!("stop {}", target(environment))
+            }
+        }
         Command::Status { environment } => format!("inspect {}", target(environment)),
-        Command::Restart { environment } => format!("restart {}", target(environment)),
+        Command::Restart {
+            environment, fleet, ..
+        } => {
+            if fleet.fleet {
+                "restart matching managed environments".to_string()
+            } else {
+                format!("restart {}", target(environment))
+            }
+        }
         Command::Remove { environment, .. } => format!("remove {}", target(environment)),
         Command::Save { .. } => "save an environment snapshot".to_string(),
         Command::Revert { .. } => "restore an environment snapshot".to_string(),
@@ -425,7 +483,6 @@ fn dry_run_description(command: &Command) -> String {
         Command::Plugin { .. } => "run a plugin operation".to_string(),
         Command::System { .. } => "run a system operation".to_string(),
         Command::Db { .. } => "run a database operation".to_string(),
-        Command::Fleet { .. } => "run a fleet operation".to_string(),
         Command::Secret { .. } => "run a secret operation (values redacted)".to_string(),
         Command::InternalCompletion { .. } => "generate shell completions".to_string(),
         Command::GetSyncDirectory => "print the workspace directory".to_string(),

@@ -36,7 +36,8 @@ fn start_and_ssh_accept_the_project_default() {
         Args::parse_from(["vm", "start"]).command,
         Command::Start {
             environment: None,
-            no_wait: false
+            no_wait: false,
+            ..
         }
     ));
     assert!(matches!(
@@ -98,7 +99,8 @@ fn lifecycle_commands_parse() {
         Args::parse_from(["vm", "start", "backend", "--no-wait"]).command,
         Command::Start {
             environment: Some(environment),
-            no_wait: true
+            no_wait: true,
+            ..
         } if environment == "backend"
     ));
     assert!(matches!(
@@ -115,7 +117,8 @@ fn stop_legacy_aliases_parse() {
         assert!(matches!(
             Args::parse_from(["vm", alias, "backend"]).command,
             Command::Stop {
-                environment: Some(environment)
+                environment: Some(environment),
+                ..
             } if environment == "backend"
         ));
     }
@@ -127,7 +130,8 @@ fn exec_parses_command() {
         Args::parse_from(["vm", "exec", "backend", "--", "npm", "test"]).command,
         Command::Exec {
             environment: Some(environment),
-            command
+            command,
+            ..
         } if environment == "backend" && command == ["npm", "test"]
     ));
 }
@@ -138,9 +142,36 @@ fn exec_uses_default_environment_when_omitted() {
         Args::parse_from(["vm", "exec", "--", "npm", "test"]).command,
         Command::Exec {
             environment: None,
-            command
+            command,
+            ..
         } if command == ["npm", "test"]
     ));
+}
+
+#[test]
+fn fleet_is_a_shared_targeting_flag() {
+    assert!(matches!(
+        Args::parse_from([
+            "vm",
+            "exec",
+            "--fleet",
+            "--provider",
+            "docker",
+            "--pattern",
+            "app-*",
+            "--",
+            "npm",
+            "test",
+        ])
+        .command,
+        Command::Exec { fleet, command, .. }
+            if fleet.fleet
+                && fleet.provider.as_deref() == Some("docker")
+                && fleet.pattern.as_deref() == Some("app-*")
+                && command == ["npm", "test"]
+    ));
+    assert!(Args::try_parse_from(["vm", "stop", "backend", "--fleet"]).is_err());
+    assert!(Args::try_parse_from(["vm", "fleet", "stop"]).is_err());
 }
 
 #[test]

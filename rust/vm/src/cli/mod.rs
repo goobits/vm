@@ -62,10 +62,13 @@ pub enum Command {
     /// Start an existing environment
     Start {
         /// Environment name, not provider; omit to use the project default
+        #[arg(conflicts_with = "fleet")]
         environment: Option<String>,
         /// Return after requesting startup instead of waiting for readiness
         #[arg(long)]
         no_wait: bool,
+        #[command(flatten)]
+        fleet: FleetArgs,
     },
     /// Create and start an environment
     Run {
@@ -124,7 +127,10 @@ pub enum Command {
     /// Run a single command inside an environment
     Exec {
         /// Environment name; omit it before `--` to use and start the project default
+        #[arg(conflicts_with = "fleet")]
         environment: Option<String>,
+        #[command(flatten)]
+        fleet: FleetArgs,
         #[arg(last = true, num_args = 1..)]
         command: Vec<String>,
     },
@@ -139,17 +145,32 @@ pub enum Command {
         service: Option<String>,
     },
     /// Move files between host and environment
-    Copy { source: String, destination: String },
+    Copy {
+        #[command(flatten)]
+        fleet: FleetArgs,
+        source: String,
+        destination: String,
+    },
     /// Gracefully halt an environment
     #[command(alias = "down", alias = "halt")]
-    Stop { environment: Option<String> },
+    Stop {
+        #[arg(conflicts_with = "fleet")]
+        environment: Option<String>,
+        #[command(flatten)]
+        fleet: FleetArgs,
+    },
     /// Check environment status
     Status {
         /// Environment name; defaults to this project's canonical environment
         environment: Option<String>,
     },
     /// Stop and start an environment
-    Restart { environment: Option<String> },
+    Restart {
+        #[arg(conflicts_with = "fleet")]
+        environment: Option<String>,
+        #[command(flatten)]
+        fleet: FleetArgs,
+    },
     /// Remove an environment while preserving saved snapshots
     #[command(alias = "rm", alias = "destroy")]
     Remove {
@@ -235,11 +256,6 @@ pub enum Command {
     Db {
         #[command(subcommand)]
         command: DbSubcommand,
-    },
-    /// Plugin-backed fleet workflows
-    Fleet {
-        #[command(subcommand)]
-        command: FleetSubcommand,
     },
     /// Plugin-backed secret workflows
     Secret {

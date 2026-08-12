@@ -26,5 +26,5 @@ pub use interaction::{handle_copy, handle_exec, handle_logs, handle_ssh};
 pub(in crate::commands) use lifecycle::ensure_running;
 pub use lifecycle::{handle_restart, handle_start, handle_stop};
 
-pub use fleet::handle_fleet_command;
+pub use fleet::{handle_fleet_copy, handle_fleet_exec, handle_fleet_lifecycle, FleetAction};
 pub use list::handle_list_enhanced;

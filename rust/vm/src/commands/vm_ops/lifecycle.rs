@@ -76,6 +76,14 @@ async fn wait_until_ready(
     .await
 }
 
+pub(in crate::commands) async fn wait_until_commands_ready(
+    provider: &dyn Provider,
+    container: Option<&str>,
+    display_name: &str,
+) -> VmResult<()> {
+    wait_until_ready(provider, container, display_name, ReadyFor::Commands).await
+}
+
 async fn wait_until_ready_for(
     provider: &dyn Provider,
     container: Option<&str>,

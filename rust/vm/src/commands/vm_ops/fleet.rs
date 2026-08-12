@@ -1,39 +1,20 @@
-//! Fleet command handlers for cross-provider bulk operations
+//! Shared cross-provider targeting for `--fleet` operations.
 
 use std::collections::BTreeMap;
 
 use tracing::{debug, info_span};
 
-use crate::cli::{FleetSubcommand, FleetTargetArgs};
+use crate::cli::FleetArgs;
 use crate::error::{VmError, VmResult};
 use vm_core::{vm_println, vm_success, vm_warning};
 use vm_provider::{get_provider, InstanceInfo, Provider, ProviderContext};
 
-use super::targets::{resolve_targets, InstanceStateFilter, TargetQuery};
+use super::{
+    lifecycle::wait_until_commands_ready,
+    targets::{resolve_targets, InstanceStateFilter, TargetQuery},
+};
 
-pub async fn handle_fleet_command(command: &FleetSubcommand) -> VmResult<()> {
-    match command {
-        FleetSubcommand::Exec { targets, command } => handle_exec(targets, command),
-        FleetSubcommand::Copy {
-            targets,
-            source,
-            destination,
-        } => handle_copy(targets, source, destination),
-        FleetSubcommand::Start { targets } => handle_start_stop(targets, Action::Start),
-        FleetSubcommand::Stop { targets } => handle_start_stop(targets, Action::Stop),
-        FleetSubcommand::Restart { targets } => handle_start_stop(targets, Action::Restart),
-    }
-}
-
-fn query_for(targets: &FleetTargetArgs, default_state: InstanceStateFilter) -> TargetQuery<'_> {
-    let state = if targets.running {
-        InstanceStateFilter::Running
-    } else if targets.stopped {
-        InstanceStateFilter::Stopped
-    } else {
-        default_state
-    };
-
+fn query_for(targets: &FleetArgs, state: InstanceStateFilter) -> TargetQuery<'_> {
     TargetQuery {
         provider: targets.provider.as_deref(),
         pattern: targets.pattern.as_deref(),
@@ -41,7 +22,7 @@ fn query_for(targets: &FleetTargetArgs, default_state: InstanceStateFilter) -> T
     }
 }
 
-fn handle_exec(targets: &FleetTargetArgs, command: &[String]) -> VmResult<()> {
+pub fn handle_fleet_exec(targets: &FleetArgs, command: &[String]) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "fleet_exec");
     let _enter = span.enter();
 
@@ -78,7 +59,7 @@ fn handle_exec(targets: &FleetTargetArgs, command: &[String]) -> VmResult<()> {
     summary(success, failed)
 }
 
-fn handle_copy(targets: &FleetTargetArgs, source: &str, destination: &str) -> VmResult<()> {
+pub fn handle_fleet_copy(targets: &FleetArgs, source: &str, destination: &str) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "fleet_copy");
     let _enter = span.enter();
 
@@ -115,19 +96,24 @@ fn handle_copy(targets: &FleetTargetArgs, source: &str, destination: &str) -> Vm
     summary(success, failed)
 }
 
-enum Action {
+#[derive(Debug, Clone, Copy)]
+pub enum FleetAction {
     Start,
     Stop,
     Restart,
 }
 
-fn handle_start_stop(targets: &FleetTargetArgs, action: Action) -> VmResult<()> {
+pub async fn handle_fleet_lifecycle(
+    targets: &FleetArgs,
+    action: FleetAction,
+    no_wait: bool,
+) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "fleet_lifecycle");
     let _enter = span.enter();
 
     let default_state = match action {
-        Action::Start => InstanceStateFilter::Stopped,
-        Action::Stop | Action::Restart => InstanceStateFilter::Running,
+        FleetAction::Start => InstanceStateFilter::Stopped,
+        FleetAction::Stop | FleetAction::Restart => InstanceStateFilter::Running,
     };
     let instances = resolve_targets(query_for(targets, default_state))?;
 
@@ -144,15 +130,39 @@ fn handle_start_stop(targets: &FleetTargetArgs, action: Action) -> VmResult<()> 
         let provider = provider_for(&provider_name)?;
         for instance in provider_instances {
             let result = match action {
-                Action::Start => provider.start(Some(&instance.name), &context),
-                Action::Stop => provider.stop(Some(&instance.name)),
-                Action::Restart => provider.restart(Some(&instance.name), &context),
+                FleetAction::Start => provider.start(Some(&instance.name), &context),
+                FleetAction::Stop => provider.stop(Some(&instance.name)),
+                FleetAction::Restart => provider.restart(Some(&instance.name), &context),
             };
 
             match result {
                 Ok(()) => {
-                    vm_success!("{}", instance.name);
-                    success += 1;
+                    let should_wait = match action {
+                        FleetAction::Start => !no_wait,
+                        FleetAction::Restart => true,
+                        FleetAction::Stop => false,
+                    };
+                    if should_wait {
+                        match wait_until_commands_ready(
+                            provider.as_ref(),
+                            Some(&instance.name),
+                            &instance.name,
+                        )
+                        .await
+                        {
+                            Ok(()) => {
+                                vm_success!("{}", instance.name);
+                                success += 1;
+                            }
+                            Err(error) => {
+                                vm_warning!("{}: {}", instance.name, error);
+                                failed += 1;
+                            }
+                        }
+                    } else {
+                        vm_success!("{}", instance.name);
+                        success += 1;
+                    }
                 }
                 Err(e) => {
                     vm_warning!("{}: {}", instance.name, e);
@@ -207,14 +217,13 @@ fn summary(success: usize, failed: usize) -> VmResult<()> {
 #[cfg(test)]
 mod tests {
     use super::{query_for, InstanceStateFilter};
-    use crate::cli::FleetTargetArgs;
+    use crate::cli::FleetArgs;
 
-    fn targets() -> FleetTargetArgs {
-        FleetTargetArgs {
+    fn targets() -> FleetArgs {
+        FleetArgs {
+            fleet: true,
             provider: None,
             pattern: None,
-            running: false,
-            stopped: false,
         }
     }
 
@@ -227,12 +236,14 @@ mod tests {
     }
 
     #[test]
-    fn explicit_state_filter_overrides_command_default() {
+    fn query_uses_explicit_provider_and_pattern_filters() {
         let mut targets = targets();
-        targets.stopped = true;
+        targets.provider = Some("docker".into());
+        targets.pattern = Some("app-*".into());
 
         let query = query_for(&targets, InstanceStateFilter::Running);
 
-        assert_eq!(query.state, InstanceStateFilter::Stopped);
+        assert_eq!(query.provider, Some("docker"));
+        assert_eq!(query.pattern, Some("app-*"));
     }
 }
