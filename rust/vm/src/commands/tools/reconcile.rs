@@ -53,6 +53,19 @@ fi
 const CODEX_REPAIR: &str = r#"
 set -eu
 
+system_prefix=${1:-/usr/local}
+installer_override=${2:-}
+case "$system_prefix" in
+  /*) ;;
+  *)
+    printf '%s\n' 'Codex repair requires an absolute installation prefix' >&2
+    exit 1
+    ;;
+esac
+root="$system_prefix/lib/vm-ai-tools"
+bin_root="$system_prefix/bin"
+target="$root/codex-package"
+
 resolve_path() {
   candidate=$1
   if command -v realpath >/dev/null 2>&1; then
@@ -76,8 +89,12 @@ resolve_path() {
   printf '%s/%s\n' "$parent" "$(basename "$candidate")"
 }
 
-as_root() {
-  if test "$(id -u)" -eq 0; then
+run_install() {
+  if test -d "$system_prefix" && test -w "$system_prefix"; then
+    "$@"
+  elif test ! -e "$system_prefix" && test -w "$(dirname "$system_prefix")"; then
+    "$@"
+  elif test "$(id -u)" -eq 0; then
     "$@"
   elif command -v sudo >/dev/null 2>&1; then
     sudo -n "$@"
@@ -87,23 +104,76 @@ as_root() {
   fi
 }
 
+path_exists() {
+  run_install test -e "$1" || run_install test -L "$1"
+}
+
+require_managed_launcher() {
+  launcher=$1
+  shift
+  if ! path_exists "$launcher"; then
+    return 0
+  fi
+  if ! run_install test -L "$launcher"; then
+    printf 'Refusing to replace unmanaged launcher: %s\n' "$launcher" >&2
+    return 1
+  fi
+  launcher_target="$(run_install readlink "$launcher")"
+  for managed_target in "$@"; do
+    if test "$launcher_target" = "$managed_target"; then
+      return 0
+    fi
+  done
+  printf 'Refusing to replace unmanaged launcher: %s -> %s\n' \
+    "$launcher" "$launcher_target" >&2
+  return 1
+}
+
+require_managed_launcher \
+  "$bin_root/codex" "$root/codex" "$target/bin/codex"
+require_managed_launcher \
+  "$bin_root/codex-code-mode-host" \
+  "$root/codex-code-mode-host" "$target/bin/codex-code-mode-host"
+
 temporary="$(mktemp -d "${TMPDIR:-/tmp}/vm-codex-reconcile.XXXXXX")"
 stage=""
 backup=""
 rollback_needed=no
+
+backup_path() {
+  source_path=$1
+  backup_name=$2
+  if path_exists "$source_path"; then
+    run_install mv "$source_path" "$backup/$backup_name"
+  fi
+}
+
+restore_path() {
+  backup_name=$1
+  destination=$2
+  run_install rm -rf "$destination" >/dev/null 2>&1 || true
+  if path_exists "$backup/$backup_name"; then
+    run_install mv "$backup/$backup_name" "$destination" \
+      >/dev/null 2>&1 || true
+  fi
+}
+
 cleanup() {
   status=$?
   trap - EXIT HUP INT TERM
   if test "$rollback_needed" = yes; then
-    as_root rm -rf /usr/local/lib/vm-ai-tools/codex-package >/dev/null 2>&1 || true
-    if test -n "$backup"; then
-      as_root mv "$backup" /usr/local/lib/vm-ai-tools/codex-package \
-        >/dev/null 2>&1 || true
-    fi
+    restore_path package "$target"
+    restore_path root-codex "$root/codex"
+    restore_path root-code-mode "$root/codex-code-mode-host"
+    restore_path bin-codex "$bin_root/codex"
+    restore_path bin-code-mode "$bin_root/codex-code-mode-host"
   fi
   rm -rf "$temporary"
   if test -n "$stage"; then
-    as_root rm -rf "$stage" >/dev/null 2>&1 || true
+    run_install rm -rf "$stage" >/dev/null 2>&1 || true
+  fi
+  if test -n "$backup"; then
+    run_install rm -rf "$backup" >/dev/null 2>&1 || true
   fi
   exit "$status"
 }
@@ -113,9 +183,13 @@ export HOME="$temporary/home"
 mkdir -p "$HOME/.local/bin"
 export PATH="$HOME/.local/bin:$PATH"
 installer="$temporary/install-codex.sh"
-curl --fail --silent --show-error --location \
-  --connect-timeout 10 --max-time 600 --retry 2 \
-  --output "$installer" https://chatgpt.com/codex/install.sh
+if test -n "$installer_override"; then
+  cp "$installer_override" "$installer"
+else
+  curl --fail --silent --show-error --location \
+    --connect-timeout 10 --max-time 600 --retry 2 \
+    --output "$installer" https://chatgpt.com/codex/install.sh
+fi
 sh "$installer"
 hash -r
 
@@ -125,35 +199,37 @@ bin_dir="$(dirname "$resolved")"
 package_source="$(dirname "$bin_dir")"
 test -f "$package_source/codex-package.json"
 test -x "$bin_dir/codex-code-mode-host"
+"$resolved" --version >/dev/null
 
-root=/usr/local/lib/vm-ai-tools
-target="$root/codex-package"
-as_root install -d -m 0755 "$root"
-stage="$(as_root mktemp -d "$root/.codex-stage.XXXXXX")"
-as_root cp -R "$package_source/." "$stage/"
-as_root test -f "$stage/codex-package.json"
-as_root test -x "$stage/bin/codex"
-as_root test -x "$stage/bin/codex-code-mode-host"
+run_install install -d -m 0755 "$root" "$bin_root"
+stage="$(run_install mktemp -d "$root/.codex-stage.XXXXXX")"
+run_install cp -R "$package_source/." "$stage/"
+run_install chmod -R go-w,a+rX "$stage"
+test -f "$stage/codex-package.json"
+test -x "$stage/bin/codex"
+test -x "$stage/bin/codex-code-mode-host"
+"$stage/bin/codex" --version >/dev/null
 
-if as_root test -e "$target"; then
-  backup="$root/.codex-previous.$$"
-  as_root mv "$target" "$backup"
-fi
+backup="$(run_install mktemp -d "$root/.codex-backup.XXXXXX")"
 rollback_needed=yes
-as_root mv "$stage" "$target"
+backup_path "$target" package
+backup_path "$root/codex" root-codex
+backup_path "$root/codex-code-mode-host" root-code-mode
+backup_path "$bin_root/codex" bin-codex
+backup_path "$bin_root/codex-code-mode-host" bin-code-mode
+
+run_install mv "$stage" "$target"
 stage=""
 
-as_root ln -sfn "$target/bin/codex" "$root/codex"
-as_root ln -sfn "$target/bin/codex-code-mode-host" "$root/codex-code-mode-host"
-as_root ln -sfn "$root/codex" /usr/local/bin/codex
-as_root ln -sfn "$root/codex-code-mode-host" /usr/local/bin/codex-code-mode-host
-test -x /usr/local/bin/codex-code-mode-host
-/usr/local/bin/codex --version >/dev/null
+run_install ln -s "$target/bin/codex" "$root/codex"
+run_install ln -s "$target/bin/codex-code-mode-host" "$root/codex-code-mode-host"
+run_install ln -s "$root/codex" "$bin_root/codex"
+run_install ln -s "$root/codex-code-mode-host" "$bin_root/codex-code-mode-host"
+test -x "$bin_root/codex-code-mode-host"
+"$bin_root/codex" --version >/dev/null
 rollback_needed=no
-if test -n "$backup"; then
-  as_root rm -rf "$backup"
-  backup=""
-fi
+run_install rm -rf "$backup"
+backup=""
 "#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -252,10 +328,18 @@ pub(super) fn codex_expected(config: &VmConfig) -> bool {
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
+    #[cfg(unix)]
+    use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
     use std::process::Command;
+    #[cfg(unix)]
+    use std::process::Output;
     use std::sync::{Arc, Mutex};
 
+    #[cfg(unix)]
+    use tempfile::TempDir;
     use vm_config::config::{BoxSpec, VmConfig, VmSettings};
     use vm_config::GlobalConfig;
     use vm_provider::{InstanceInfo, InstanceState, Provider, ProviderContext, VmStatusReport};
@@ -389,6 +473,79 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
+    fn write_executable(path: &Path, contents: &str) {
+        fs::write(path, contents).unwrap();
+        let mut permissions = fs::metadata(path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).unwrap();
+    }
+
+    #[cfg(unix)]
+    fn fake_codex_package(directory: &TempDir, version: &str) -> std::path::PathBuf {
+        let package = directory.path().join(format!("package-{version}"));
+        let bin = package.join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        fs::write(package.join("codex-package.json"), "{}\n").unwrap();
+        fs::write(package.join("version.txt"), version).unwrap();
+        write_executable(
+            &bin.join("codex"),
+            &format!(
+                "#!/bin/sh\n\
+                 if test \"${{VM_CODEX_FAIL_LAUNCHER:-}}\" = \"$0\"; then exit 42; fi\n\
+                 printf '%s\\n' 'codex-test {version}'\n"
+            ),
+        );
+        write_executable(
+            &bin.join("codex-code-mode-host"),
+            "#!/bin/sh\nprintf '%s\\n' code-mode-test\n",
+        );
+        package
+    }
+
+    #[cfg(unix)]
+    fn fake_codex_installer(directory: &TempDir) -> std::path::PathBuf {
+        let installer = directory.path().join("install-codex.sh");
+        write_executable(
+            &installer,
+            r#"#!/bin/sh
+set -eu
+target="$HOME/.local/share/codex-package"
+mkdir -p "$target" "$HOME/.local/bin"
+cp -R "$VM_FAKE_CODEX_PACKAGE/." "$target/"
+ln -s "$target/bin/codex" "$HOME/.local/bin/codex"
+"#,
+        );
+        installer
+    }
+
+    #[cfg(unix)]
+    fn run_codex_repair(
+        directory: &TempDir,
+        prefix: &Path,
+        installer: &Path,
+        package: &Path,
+        fail_launcher: Option<&Path>,
+    ) -> Output {
+        let temporary = directory.path().join("tmp");
+        fs::create_dir_all(&temporary).unwrap();
+        let mut command = Command::new("/bin/sh");
+        command
+            .args([
+                "-c",
+                CODEX_REPAIR,
+                "vm-codex-repair-test",
+                prefix.to_str().unwrap(),
+                installer.to_str().unwrap(),
+            ])
+            .env("TMPDIR", temporary)
+            .env("VM_FAKE_CODEX_PACKAGE", package);
+        if let Some(launcher) = fail_launcher {
+            command.env("VM_CODEX_FAIL_LAUNCHER", launcher);
+        }
+        command.output().unwrap()
+    }
+
     #[test]
     fn parses_only_explicit_codex_probe_states() {
         assert_eq!(
@@ -445,5 +602,102 @@ mod tests {
             provider.calls(),
             ["runtime", "probe", "repair", "probe", "runtime", "probe"]
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn codex_repair_is_consumable_and_rolls_back_the_complete_runtime() {
+        let directory = TempDir::new().unwrap();
+        let prefix = directory.path().join("prefix");
+        fs::create_dir_all(&prefix).unwrap();
+        let installer = fake_codex_installer(&directory);
+        let first_package = fake_codex_package(&directory, "1.0.0");
+
+        let first = run_codex_repair(&directory, &prefix, &installer, &first_package, None);
+        assert!(
+            first.status.success(),
+            "{}",
+            String::from_utf8_lossy(&first.stderr)
+        );
+
+        let managed_root = prefix.join("lib/vm-ai-tools");
+        let installed_package = managed_root.join("codex-package");
+        assert_eq!(
+            fs::read_link(prefix.join("bin/codex")).unwrap(),
+            managed_root.join("codex")
+        );
+        assert_eq!(
+            fs::metadata(&installed_package)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o005,
+            0o005
+        );
+        assert_eq!(
+            fs::metadata(&installed_package)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o022,
+            0
+        );
+        let repeated = run_codex_repair(&directory, &prefix, &installer, &first_package, None);
+        assert!(
+            repeated.status.success(),
+            "{}",
+            String::from_utf8_lossy(&repeated.stderr)
+        );
+
+        let second_package = fake_codex_package(&directory, "2.0.0");
+        let launcher = prefix.join("bin/codex");
+        let second = run_codex_repair(
+            &directory,
+            &prefix,
+            &installer,
+            &second_package,
+            Some(&launcher),
+        );
+        assert!(!second.status.success());
+        assert_eq!(
+            fs::read_to_string(installed_package.join("version.txt")).unwrap(),
+            "1.0.0"
+        );
+        let version = Command::new(&launcher).arg("--version").output().unwrap();
+        assert!(version.status.success());
+        assert_eq!(
+            String::from_utf8(version.stdout).unwrap(),
+            "codex-test 1.0.0\n"
+        );
+        assert!(fs::read_dir(&managed_root).unwrap().all(|entry| {
+            !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".codex-")
+        }));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn codex_repair_refuses_an_unmanaged_launcher() {
+        let directory = TempDir::new().unwrap();
+        let prefix = directory.path().join("prefix");
+        let bin = prefix.join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        let launcher = bin.join("codex");
+        write_executable(&launcher, "#!/bin/sh\nprintf '%s\\n' unmanaged\n");
+        let installer = fake_codex_installer(&directory);
+        let package = fake_codex_package(&directory, "1.0.0");
+
+        let output = run_codex_repair(&directory, &prefix, &installer, &package, None);
+
+        assert!(!output.status.success());
+        assert!(String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("Refusing to replace unmanaged launcher"));
+        assert!(String::from_utf8(fs::read(&launcher).unwrap())
+            .unwrap()
+            .contains("unmanaged"));
     }
 }
