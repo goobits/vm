@@ -1,10 +1,7 @@
-use vm_config::{config::BoxSpec, config::VmConfig, GlobalConfig};
-use vm_core::{vm_progress, vm_success};
-use vm_provider::{Provider, ProviderContext};
+use vm_config::{config::BoxSpec, config::VmConfig};
+use vm_provider::Provider;
 
 use crate::error::{VmError, VmResult};
-
-use super::super::command_context::RuntimeSubject;
 
 const CODEX_PROBE: &str = r#"
 resolve_path() {
@@ -236,59 +233,260 @@ run_install rm -rf "$backup"
 backup=""
 "#;
 
+const CODEX_RECONCILE_WORKER: &str = r#"
+set -eu
+
+root=$1
+expected=$2
+environment=$3
+mode=$4
+lock="$root/codex.lock"
+reaper="$root/codex.lock-reaper"
+owns_lock=no
+owns_reaper=no
+
+cleanup() {
+  status=$?
+  trap - EXIT HUP INT TERM
+  if test "$owns_lock" = yes; then
+    owner="$(cat "$lock/pid" 2>/dev/null || true)"
+    if test "$owner" = "$$"; then
+      rm -rf "$lock"
+    fi
+  fi
+  if test "$owns_reaper" = yes; then
+    rmdir "$reaper" >/dev/null 2>&1 || true
+  fi
+  exit "$status"
+}
+trap cleanup EXIT HUP INT TERM
+
+owner_is_running() {
+  owner=$1
+  case "$owner" in
+    ''|*[!0-9]*) return 1 ;;
+    *) kill -0 "$owner" >/dev/null 2>&1 ;;
+  esac
+}
+
+acquire_lock() {
+  if mkdir "$lock" 2>/dev/null; then
+    printf '%s\n' "$$" > "$lock/pid"
+    owns_lock=yes
+    return 0
+  fi
+
+  owner="$(cat "$lock/pid" 2>/dev/null || true)"
+  if owner_is_running "$owner"; then
+    return 1
+  fi
+  if ! mkdir "$reaper" 2>/dev/null; then
+    return 1
+  fi
+  owns_reaper=yes
+
+  owner="$(cat "$lock/pid" 2>/dev/null || true)"
+  if test -z "$owner"; then
+    sleep 1
+    owner="$(cat "$lock/pid" 2>/dev/null || true)"
+  fi
+  if owner_is_running "$owner"; then
+    rmdir "$reaper"
+    owns_reaper=no
+    return 1
+  fi
+
+  stale="$root/codex.lock-stale.$$"
+  if mv "$lock" "$stale" 2>/dev/null; then
+    rm -rf "$stale"
+  fi
+  rmdir "$reaper"
+  owns_reaper=no
+
+  if mkdir "$lock" 2>/dev/null; then
+    printf '%s\n' "$$" > "$lock/pid"
+    owns_lock=yes
+    return 0
+  fi
+  return 1
+}
+
+attempt=0
+until acquire_lock; do
+  if test "$mode" = background; then
+    exit 0
+  fi
+  attempt=$((attempt + 1))
+  if test "$attempt" -ge 900; then
+    printf '%s\n' 'Timed out waiting for another Codex reconciliation' >&2
+    exit 1
+  fi
+  sleep 1
+done
+
+probe_state() {
+  sh "$root/codex-probe.sh" | sed -n 's/^VM_CODEX_STATE=//p'
+}
+
+state="$(probe_state)"
+case "$state" in
+  consumable) exit 0 ;;
+  absent)
+    if test "$expected" != yes; then
+      exit 0
+    fi
+    ;;
+  incomplete) ;;
+  *)
+    printf "Codex runtime probe returned an unknown state '%s'\n" "$state" >&2
+    exit 1
+    ;;
+esac
+
+printf "Repairing the Codex standalone runtime in '%s'...\n" "$environment"
+if ! sh "$root/codex-repair.sh"; then
+  printf "Codex repair failed. Run on the host: vm tools update %s --all\n" \
+    "$environment" >&2
+  exit 1
+fi
+if test "$(probe_state)" != consumable; then
+  printf "Codex repair did not produce a consumable runtime. Run on the host: vm tools update %s --all\n" \
+    "$environment" >&2
+  exit 1
+fi
+printf '%s\n' 'Codex standalone runtime is consumable'
+"#;
+
+const CODEX_RECONCILE_LAUNCHER: &str = r#"
+set -eu
+umask 077
+
+probe_contents=$1
+repair_contents=$2
+worker_contents=$3
+mode=$4
+expected=$5
+environment=$6
+root="${XDG_STATE_HOME:-$HOME/.local/state}/vm-runtime"
+mkdir -p "$root"
+temporary=
+
+cleanup() {
+  status=$?
+  trap - EXIT HUP INT TERM
+  if test -n "$temporary"; then
+    rm -f "$temporary"
+  fi
+  exit "$status"
+}
+trap cleanup EXIT HUP INT TERM
+
+write_script() {
+  name=$1
+  contents=$2
+  destination="$root/$name"
+  temporary="$(mktemp "$root/.$name.XXXXXX")"
+  printf '%s\n' "$contents" > "$temporary"
+  chmod 0700 "$temporary"
+  mv "$temporary" "$destination"
+  temporary=
+}
+
+write_script codex-probe.sh "$probe_contents"
+write_script codex-repair.sh "$repair_contents"
+write_script codex-reconcile.sh "$worker_contents"
+
+case "$mode" in
+  wait)
+    exec "$root/codex-reconcile.sh" "$root" "$expected" "$environment" "$mode"
+    ;;
+  background)
+    nohup "$root/codex-reconcile.sh" "$root" "$expected" "$environment" "$mode" \
+      >> "$root/codex.log" 2>&1 </dev/null &
+    ;;
+  *)
+    printf "Unknown Codex reconciliation mode '%s'\n" "$mode" >&2
+    exit 1
+    ;;
+esac
+"#;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum CodexState {
+pub(in crate::commands) enum CodexState {
     Absent,
     Incomplete,
     Consumable,
 }
 
-pub(super) fn environment(subject: &RuntimeSubject) -> VmResult<()> {
-    reconcile_for(
-        subject.provider.as_ref(),
-        &subject.target,
-        &subject.config,
-        &subject.global_config,
-    )
+#[derive(Debug, Clone, Copy)]
+enum ReconcileMode {
+    Background,
+    Wait,
 }
 
-fn reconcile_for(
+impl ReconcileMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Background => "background",
+            Self::Wait => "wait",
+        }
+    }
+}
+
+pub(in crate::commands) fn reconcile_codex(
     provider: &dyn Provider,
     environment: &str,
     config: &VmConfig,
-    global_config: &GlobalConfig,
 ) -> VmResult<()> {
-    let context = ProviderContext::default().with_config(global_config.clone());
-    provider
-        .reconcile_runtime(Some(environment), &context)
-        .map_err(VmError::from)?;
+    launch_reconciliation(
+        provider,
+        environment,
+        codex_expected(config),
+        ReconcileMode::Wait,
+    )
+}
 
-    let before = codex_state(provider, environment)?;
-    if before == CodexState::Consumable || (before == CodexState::Absent && !codex_expected(config))
-    {
-        return Ok(());
+pub(in crate::commands) fn reconcile_codex_in_background(
+    provider: &dyn Provider,
+    environment: &str,
+    config: &VmConfig,
+) -> VmResult<bool> {
+    if !codex_expected(config) {
+        return Ok(false);
     }
+    launch_reconciliation(provider, environment, true, ReconcileMode::Background)?;
+    Ok(true)
+}
 
-    vm_progress!("Repairing the Codex standalone runtime in '{environment}'...");
+fn launch_reconciliation(
+    provider: &dyn Provider,
+    environment: &str,
+    expected: bool,
+    mode: ReconcileMode,
+) -> VmResult<()> {
     provider
         .exec(
             Some(environment),
-            &["sh".into(), "-c".into(), CODEX_REPAIR.into()],
+            &[
+                "sh".into(),
+                "-c".into(),
+                CODEX_RECONCILE_LAUNCHER.into(),
+                "vm-codex-reconcile-launcher".into(),
+                CODEX_PROBE.into(),
+                CODEX_REPAIR.into(),
+                CODEX_RECONCILE_WORKER.into(),
+                mode.as_str().into(),
+                if expected { "yes" } else { "no" }.into(),
+                environment.into(),
+            ],
         )
-        .map_err(VmError::from)?;
-    if codex_state(provider, environment)? != CodexState::Consumable {
-        return Err(VmError::validation(
-            "Codex repair completed without a consumable standalone runtime",
-            Some(format!(
-                "Run `vm exec {environment} -- sh -lc 'command -v codex && command -v codex-code-mode-host'`"
-            )),
-        ));
-    }
-    vm_success!("Codex standalone runtime is consumable");
-    Ok(())
+        .map_err(VmError::from)
 }
 
-pub(super) fn codex_state(provider: &dyn Provider, environment: &str) -> VmResult<CodexState> {
+pub(in crate::commands) fn codex_state(
+    provider: &dyn Provider,
+    environment: &str,
+) -> VmResult<CodexState> {
     let output = provider
         .exec_output(
             Some(environment),
@@ -314,7 +512,7 @@ fn parse_codex_state(output: &str) -> VmResult<CodexState> {
     }
 }
 
-pub(super) fn codex_expected(config: &VmConfig) -> bool {
+pub(in crate::commands) fn codex_expected(config: &VmConfig) -> bool {
     config.preset.as_deref().is_some_and(|presets| {
         presets
             .split(',')
@@ -345,17 +543,18 @@ mod tests {
     #[cfg(unix)]
     use tempfile::TempDir;
     use vm_config::config::{BoxSpec, VmConfig, VmSettings};
-    use vm_config::GlobalConfig;
     use vm_provider::{InstanceInfo, InstanceState, Provider, ProviderContext, VmStatusReport};
 
     use super::{
-        codex_expected, parse_codex_state, reconcile_for, CodexState, CODEX_PROBE, CODEX_REPAIR,
+        codex_expected, parse_codex_state, reconcile_codex, reconcile_codex_in_background,
+        CodexState, CODEX_PROBE, CODEX_RECONCILE_LAUNCHER, CODEX_RECONCILE_WORKER, CODEX_REPAIR,
     };
 
     #[derive(Clone)]
     struct FakeProvider {
         states: Arc<Mutex<VecDeque<&'static str>>>,
         calls: Arc<Mutex<Vec<&'static str>>>,
+        commands: Arc<Mutex<Vec<Vec<String>>>>,
     }
 
     impl FakeProvider {
@@ -363,11 +562,16 @@ mod tests {
             Self {
                 states: Arc::new(Mutex::new(states.into_iter().collect())),
                 calls: Arc::new(Mutex::new(Vec::new())),
+                commands: Arc::new(Mutex::new(Vec::new())),
             }
         }
 
         fn calls(&self) -> Vec<&'static str> {
             self.calls.lock().unwrap().clone()
+        }
+
+        fn commands(&self) -> Vec<Vec<String>> {
+            self.commands.lock().unwrap().clone()
         }
     }
 
@@ -408,12 +612,9 @@ mod tests {
             Ok(())
         }
 
-        fn exec(
-            &self,
-            _container: Option<&str>,
-            _command: &[String],
-        ) -> vm_core::error::Result<()> {
-            self.calls.lock().unwrap().push("repair");
+        fn exec(&self, _container: Option<&str>, command: &[String]) -> vm_core::error::Result<()> {
+            self.calls.lock().unwrap().push("exec");
+            self.commands.lock().unwrap().push(command.to_vec());
             Ok(())
         }
 
@@ -564,7 +765,7 @@ ln -s "$target/bin/codex" "$HOME/.local/bin/codex"
     }
 
     #[test]
-    fn repairs_only_vibe_or_existing_codex_runtimes() {
+    fn detects_vibe_runtimes_and_validates_reconciliation_scripts() {
         let mut config = VmConfig {
             preset: Some("base,vibe".into()),
             ..Default::default()
@@ -582,7 +783,12 @@ ln -s "$target/bin/codex" "$HOME/.local/bin/codex"
         assert!(CODEX_REPAIR.contains(".codex-stage.XXXXXX"));
         assert!(!CODEX_REPAIR.contains("$HOME/.codex"));
         #[cfg(unix)]
-        for script in [CODEX_PROBE, CODEX_REPAIR] {
+        for script in [
+            CODEX_PROBE,
+            CODEX_REPAIR,
+            CODEX_RECONCILE_WORKER,
+            CODEX_RECONCILE_LAUNCHER,
+        ] {
             assert!(Command::new("/bin/sh")
                 .args(["-n", "-c", script])
                 .status()
@@ -592,20 +798,77 @@ ln -s "$target/bin/codex" "$HOME/.local/bin/codex"
     }
 
     #[test]
-    fn fake_provider_reconciles_fresh_state_then_becomes_idempotent() {
-        let provider = FakeProvider::new(["absent", "consumable", "consumable"]);
+    fn foreground_and_background_modes_use_one_guest_launch() {
+        let provider = FakeProvider::new([]);
         let config = VmConfig {
             preset: Some("vibe".into()),
             ..Default::default()
         };
 
-        reconcile_for(&provider, "demo", &config, &GlobalConfig::default()).unwrap();
-        reconcile_for(&provider, "demo", &config, &GlobalConfig::default()).unwrap();
+        reconcile_codex(&provider, "demo", &config).unwrap();
+        assert!(reconcile_codex_in_background(&provider, "demo", &config).unwrap());
 
-        assert_eq!(
-            provider.calls(),
-            ["runtime", "probe", "repair", "probe", "runtime", "probe"]
+        assert_eq!(provider.calls(), ["exec", "exec"]);
+        let commands = provider.commands();
+        assert_eq!(commands[0][7], "wait");
+        assert_eq!(commands[1][7], "background");
+        assert_eq!(commands[0][8], "yes");
+        assert_eq!(commands[0][9], "demo");
+        assert!(commands[0][2].contains("nohup"));
+    }
+
+    #[test]
+    fn background_reconciliation_skips_non_vibe_environments() {
+        let provider = FakeProvider::new([]);
+
+        assert!(!reconcile_codex_in_background(&provider, "demo", &VmConfig::default()).unwrap());
+        assert!(provider.calls().is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn worker_lock_makes_concurrent_and_repeated_repairs_idempotent() {
+        let directory = TempDir::new().unwrap();
+        let root = directory.path().join("runtime");
+        fs::create_dir_all(&root).unwrap();
+        let state = directory.path().join("state");
+        let repairs = directory.path().join("repairs");
+        fs::write(&state, "incomplete\n").unwrap();
+        fs::write(&repairs, "").unwrap();
+        write_executable(
+            &root.join("codex-probe.sh"),
+            "#!/bin/sh\nprintf 'VM_CODEX_STATE=%s\\n' \"$(cat \"$VM_CODEX_TEST_STATE\")\"\n",
         );
+        write_executable(
+            &root.join("codex-repair.sh"),
+            "#!/bin/sh\nprintf x >> \"$VM_CODEX_TEST_REPAIRS\"\nsleep 1\nprintf '%s\\n' consumable > \"$VM_CODEX_TEST_STATE\"\n",
+        );
+
+        let worker = || {
+            let mut command = Command::new("/bin/sh");
+            command
+                .args([
+                    "-c",
+                    CODEX_RECONCILE_WORKER,
+                    "vm-codex-worker-test",
+                    root.to_str().unwrap(),
+                    "yes",
+                    "demo",
+                    "wait",
+                ])
+                .env("VM_CODEX_TEST_STATE", &state)
+                .env("VM_CODEX_TEST_REPAIRS", &repairs);
+            command
+        };
+
+        let mut first = worker().spawn().unwrap();
+        let mut second = worker().spawn().unwrap();
+        assert!(first.wait().unwrap().success());
+        assert!(second.wait().unwrap().success());
+        assert_eq!(fs::read_to_string(&repairs).unwrap(), "x");
+        assert!(worker().status().unwrap().success());
+        assert_eq!(fs::read_to_string(&repairs).unwrap(), "x");
+        assert!(!root.join("codex.lock").exists());
     }
 
     #[cfg(unix)]

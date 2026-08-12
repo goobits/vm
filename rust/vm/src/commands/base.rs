@@ -8,7 +8,12 @@ use vm_config::{
 use vm_core::{vm_println, vm_warning};
 use vm_provider::{tart_base, TartCommand};
 
+mod runtime;
 mod tart_install;
+
+pub(in crate::commands) use runtime::{
+    codex_expected, codex_state, reconcile_codex, reconcile_codex_in_background, CodexState,
+};
 
 const DOCKER_BASE_NAME: &str = "@vibe-box";
 const TART_BASE_BUILDER: &str = include_str!("../../scripts/build-vibe-tart-base.sh");

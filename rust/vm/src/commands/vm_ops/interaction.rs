@@ -53,6 +53,11 @@ pub async fn handle_ssh(
         "Connecting to VM"
     );
     ensure_running_for_shell(provider.as_ref(), container, &config, &global_config).await?;
+    if let Err(error) =
+        crate::commands::base::reconcile_codex_in_background(provider.as_ref(), vm_name, &config)
+    {
+        debug!(%error, "Could not start background Codex reconciliation");
+    }
     crate::commands::tools::before_shell(provider.as_ref(), vm_name, &config);
     vm_progress!("Connecting to '{vm_name}'...");
     provider

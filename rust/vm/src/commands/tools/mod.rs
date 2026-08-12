@@ -1,5 +1,4 @@
 mod guest;
-mod reconcile;
 mod updates;
 
 use std::{
@@ -10,7 +9,7 @@ use std::{
 use vm_config::config::VmConfig;
 use vm_core::{vm_hint, vm_println, vm_success};
 use vm_packages::{RegisterTool, ToolKind};
-use vm_provider::Provider;
+use vm_provider::{Provider, ProviderContext};
 
 use crate::cli::ToolsSubcommand;
 use crate::error::{VmError, VmResult};
@@ -18,9 +17,9 @@ use crate::error::{VmError, VmResult};
 use super::command_context::{
     load_or_create_runtime_subject, load_runtime_subject, RuntimeSubject,
 };
-use super::packages;
 use super::packages::tooling::{self, CachedToolCatalog, RefreshOutcome};
 use super::vm_ops::ensure_running;
+use super::{base, packages};
 
 use guest::InstallMode;
 
@@ -146,7 +145,7 @@ pub(super) async fn handle(
                 true,
             )
             .await?;
-            reconcile::environment(&subject)?;
+            reconcile_environment(&subject)?;
             ensure_builtin_releases(&subject.config).await?;
             tooling::refresh(&subject.config).await?;
             apply_updates(
@@ -162,6 +161,15 @@ pub(super) async fn handle(
             )
         }
     }
+}
+
+fn reconcile_environment(subject: &RuntimeSubject) -> VmResult<()> {
+    let context = ProviderContext::default().with_config(subject.global_config.clone());
+    subject
+        .provider
+        .reconcile_runtime(Some(&subject.target), &context)
+        .map_err(VmError::from)?;
+    base::reconcile_codex(subject.provider.as_ref(), &subject.target, &subject.config)
 }
 
 async fn ensure_builtin_releases(config: &VmConfig) -> VmResult<()> {
@@ -274,7 +282,7 @@ pub(in crate::commands) fn before_shell(
         let installed = guest::installed(provider, environment)?;
         let consumable = guest::consumable(provider, environment)?;
         let selected =
-            updates::plan(config, &catalog.artifacts, &installed, &consumable).selected(false)?;
+            updates::plan(config, &catalog.artifacts, &installed, &consumable).automatic();
         if selected.is_empty() {
             return Ok(());
         }
@@ -405,15 +413,15 @@ async fn show_status(subject: &RuntimeSubject) -> VmResult<()> {
             None
         }
     };
-    let codex = reconcile::codex_state(subject.provider.as_ref(), &subject.target)?;
+    let codex = base::codex_state(subject.provider.as_ref(), &subject.target)?;
 
     vm_println!("Guest tools ({target})");
     vm_println!("NAME\tOWNER\tREGISTERED\tPUBLISHED\tINSTALLED\tCONSUMABLE\tPROJECT_COPY\tVERSION");
-    if reconcile::codex_expected(&subject.config) || codex != reconcile::CodexState::Absent {
+    if base::codex_expected(&subject.config) || codex != base::CodexState::Absent {
         vm_println!(
             "codex\tbase\tn/a\tn/a\t{}\t{}\tn/a\t-",
-            yes_no(codex != reconcile::CodexState::Absent),
-            yes_no(codex == reconcile::CodexState::Consumable)
+            yes_no(codex != base::CodexState::Absent),
+            yes_no(codex == base::CodexState::Consumable)
         );
     }
     for name in tool_status_names(

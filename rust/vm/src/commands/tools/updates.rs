@@ -35,6 +35,13 @@ pub(super) struct UpdatePlan {
 }
 
 impl UpdatePlan {
+    pub(super) fn automatic(self) -> Vec<ToolArtifactRecord> {
+        self.automatic
+            .into_iter()
+            .map(|change| change.artifact)
+            .collect()
+    }
+
     pub(super) fn selected(self, all: bool) -> VmResult<Vec<ToolArtifactRecord>> {
         let mut selected = self
             .automatic
@@ -235,5 +242,29 @@ mod tests {
 
         assert_eq!(plan.automatic.len(), 1);
         assert!(plan.prompt.is_empty());
+    }
+
+    #[test]
+    fn automatic_selection_never_includes_prompt_updates() {
+        let available = BTreeMap::from([("codex".into(), artifact("codex", "2.0.0", 'b'))]);
+        let installed = BTreeMap::from([(
+            "codex".into(),
+            InstalledTool {
+                name: "codex".into(),
+                version: "1.0.0".into(),
+                target: "linux-arm64".into(),
+                digest: "a".repeat(64),
+            },
+        )]);
+
+        let selected = plan(
+            &config(ToolUpdatePolicy::Prompt, false),
+            &available,
+            &installed,
+            &BTreeMap::from([("codex".into(), true)]),
+        )
+        .automatic();
+
+        assert!(selected.is_empty());
     }
 }
