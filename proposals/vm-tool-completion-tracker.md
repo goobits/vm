@@ -302,6 +302,7 @@ d56a207b fix(packages): preflight configured source shelves
 67c953d9 fix(tools): reconcile stale guest state
 1fedfbf9 fix(packages): version edge runtime policy
 eadfb08b docs(cli): clarify collection publication
+7a7129cd fix(tools): preserve partial Codex backups
 ```
 
 The user's dirty `vm.yaml` is intentionally outside these commits.
