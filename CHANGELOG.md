@@ -65,7 +65,7 @@
 - 🚀 Docker client and service provisioning no longer depends on Python APT bindings and avoids reinstalling tools that are already present.
 - 🚀 Generated zsh configuration initializes its prompt-hook array before testing membership, eliminating first-login math errors.
 - 🚀 Managed shell configuration keeps `yoclaude` and `yocodex` available and reports the Vibe-base recovery path when an older environment lacks their binaries.
-- 🚀 Docker Vibe builds keep Codex outside host-synced state, invalidate derived images when their base image changes, and build through the current snapshot API.
+- 🚀 Docker and Tart Vibe builds keep Codex's complete standalone runtime outside host-synced state, including the required code-mode helper; Docker derived images also invalidate when their base changes and build through the current snapshot API.
 - 🚀 Docker environment discovery excludes managed service containers, while creation safely reuses only the exact host ports owned by preserved services.
 - 🚀 `vm run` applies the same package client environment as other create paths.
 - 🚀 Tart guest-home sync and mount paths expand the intended guest home instead of creating literal `$HOME` paths.

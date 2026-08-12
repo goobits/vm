@@ -341,6 +341,15 @@ mod tests {
         }
         assert!(TART_BASE_BUILDER.contains("VIBE_AI_TOOLS_INSTALLER"));
         assert!(TART_BASE_BUILDER.contains("antigravity claude codex"));
+        for runtime_contract in [
+            "codex-package.json",
+            "cp -R \"$codex_package_dir/.\"",
+            "/usr/local/lib/vm-ai-tools/codex-package/bin/codex",
+            "/usr/local/lib/vm-ai-tools/codex-package/bin/codex-code-mode-host",
+        ] {
+            assert!(VIBE_AI_TOOLS_INSTALLER.contains(runtime_contract));
+            assert!(DOCKERFILE.contains(runtime_contract));
+        }
         assert!(VIBE_PRESET.contains("agent-skills: {}"));
         for managed_entry in ["antigravity: {}", "claude: {}", "codex: {}"] {
             assert!(!VIBE_PRESET.contains(managed_entry));

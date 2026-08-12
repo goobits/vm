@@ -153,10 +153,23 @@ RUN export HOME="/home/${USER_NAME}" && \
     command -v codex >/dev/null
 
 USER root
-RUN install -d -m 0755 /usr/local/lib/vm-ai-tools && \
-    install -m 0755 "$(readlink -f /home/${USER_NAME}/.local/bin/codex)" \
+RUN codex_executable="$(readlink -f /home/${USER_NAME}/.local/bin/codex)" && \
+    codex_bin_dir="$(dirname "$codex_executable")" && \
+    codex_package_dir="$(dirname "$codex_bin_dir")" && \
+    test -f "$codex_package_dir/codex-package.json" && \
+    test -x "$codex_bin_dir/codex-code-mode-host" && \
+    install -d -m 0755 \
+        /usr/local/lib/vm-ai-tools \
+        /usr/local/lib/vm-ai-tools/codex-package && \
+    cp -R "$codex_package_dir/." /usr/local/lib/vm-ai-tools/codex-package/ && \
+    ln -sfn /usr/local/lib/vm-ai-tools/codex-package/bin/codex \
         /usr/local/lib/vm-ai-tools/codex && \
+    ln -sfn /usr/local/lib/vm-ai-tools/codex-package/bin/codex-code-mode-host \
+        /usr/local/lib/vm-ai-tools/codex-code-mode-host && \
     ln -sfn /usr/local/lib/vm-ai-tools/codex /usr/local/bin/codex && \
+    ln -sfn /usr/local/lib/vm-ai-tools/codex-code-mode-host \
+        /usr/local/bin/codex-code-mode-host && \
+    test -x /usr/local/bin/codex-code-mode-host && \
     /usr/local/bin/codex --version
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
