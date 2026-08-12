@@ -98,6 +98,19 @@ properties:
   snapshots:
     $ref: "#/definitions/SnapshotSettings"
 
+  packages:
+    type: object
+    description: "Shared package-infrastructure controller settings"
+    properties:
+      source_roots:
+        type: array
+        description: "Absolute host directories recursively scanned for package repositories by vm packages up"
+        items:
+          type: string
+          minLength: 1
+        uniqueItems: true
+    additionalProperties: false
+
 additionalProperties: true
 
 definitions:

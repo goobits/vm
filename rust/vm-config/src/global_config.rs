@@ -40,9 +40,30 @@ pub struct GlobalConfig {
     #[serde(default, skip_serializing_if = "SnapshotSettings::is_default")]
     pub snapshots: SnapshotSettings,
 
+    /// Shared package-infrastructure controller settings
+    #[serde(
+        default,
+        skip_serializing_if = "PackageInfrastructureSettings::is_default"
+    )]
+    pub packages: PackageInfrastructureSettings,
+
     /// Extra configuration for extensions
     #[serde(flatten)]
     pub extra: IndexMap<String, serde_json::Value>,
+}
+
+/// Controller-wide package source discovery settings.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PackageInfrastructureSettings {
+    /// Absolute host directories scanned recursively by `vm packages up`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_roots: Vec<String>,
+}
+
+impl PackageInfrastructureSettings {
+    pub fn is_default(&self) -> bool {
+        self.source_roots.is_empty()
+    }
 }
 
 /// Global backup settings

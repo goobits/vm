@@ -5,7 +5,7 @@ use std::{
 };
 
 use vm_core::{vm_println, vm_success};
-use vm_packages::{PackageEcosystem, RegisterPackage};
+use vm_packages::{PackageEcosystem, PackageInventory, RegisterPackage};
 
 use crate::error::{VmError, VmResult};
 
@@ -88,21 +88,110 @@ pub(super) async fn register(files: &ApplianceFiles, intent: RegistrationIntent)
     Ok(())
 }
 
+pub(super) async fn reconcile_source_roots(
+    files: &ApplianceFiles,
+    source_roots: &[String],
+) -> VmResult<()> {
+    let source_roots = validated_source_roots(source_roots)?;
+    if source_roots.is_empty() {
+        return Ok(());
+    }
+    vm_println!(
+        "Reconciling package sources from {} configured root(s)",
+        source_roots.len()
+    );
+    register(
+        files,
+        RegistrationIntent {
+            targets: source_roots,
+            ecosystem: None,
+            repository: None,
+            branch: None,
+            ci_registry: None,
+            recursive: true,
+        },
+    )
+    .await
+}
+
 pub(super) async fn list(files: &ApplianceFiles) -> VmResult<()> {
-    let packages = configured_client(files)?.package_definitions().await?;
+    let client = configured_client(files)?;
+    let (packages, inventory) = tokio::try_join!(client.package_definitions(), client.packages())?;
     if packages.is_empty() {
         vm_println!("No shared packages are registered");
+        return Ok(());
     }
+    vm_println!("NAME\tECOSYSTEM\tREGISTERED\tPUBLISHED\tINSTALLED\tCONSUMABLE\tSOURCE");
     for package in packages {
+        let published = package_is_published(&inventory, package.ecosystem, &package.name);
         vm_println!(
-            "{}\t{}\t{}#{}",
+            "{}\t{}\tyes\t{}\tn/a\t{}\t{}#{}",
             package.name,
             package.ecosystem,
+            yes_no(published),
+            yes_no(published),
             package.repository,
             package.default_branch
         );
     }
     Ok(())
+}
+
+fn package_is_published(
+    inventory: &PackageInventory,
+    ecosystem: PackageEcosystem,
+    name: &str,
+) -> bool {
+    let registry = match ecosystem {
+        PackageEcosystem::Npm => "npm",
+        PackageEcosystem::Cargo => "cargo",
+        PackageEcosystem::Python => "pypi",
+    };
+    inventory.get(registry).is_some_and(|packages| {
+        packages
+            .iter()
+            .any(|candidate| same_package(ecosystem, candidate, name))
+    })
+}
+
+fn same_package(ecosystem: PackageEcosystem, left: &str, right: &str) -> bool {
+    if ecosystem != PackageEcosystem::Python {
+        return left == right;
+    }
+    let normalize = |value: &str| {
+        value
+            .to_ascii_lowercase()
+            .replace(['_', '.'], "-")
+            .split('-')
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join("-")
+    };
+    normalize(left) == normalize(right)
+}
+
+fn validated_source_roots(source_roots: &[String]) -> VmResult<Vec<String>> {
+    source_roots
+        .iter()
+        .map(|root| {
+            if std::path::Path::new(root).is_absolute() {
+                Ok(root.clone())
+            } else {
+                Err(VmError::validation(
+                    format!("Package source root '{root}' is not an absolute host path"),
+                    Some("Run `vm config set packages.source_roots <absolute-path>... --global`"),
+                ))
+            }
+        })
+        .collect()
+}
+
+fn yes_no(value: bool) -> &'static str {
+    if value {
+        "yes"
+    } else {
+        "no"
+    }
 }
 
 pub(super) async fn show(files: &ApplianceFiles, checkout_id: &str) -> VmResult<()> {
@@ -198,5 +287,55 @@ fn credential(path: Option<PathBuf>, clear: bool, kind: &str) -> VmResult<Option
             format!("Cannot set and clear the {kind} token together"),
             None::<String>,
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use vm_packages::PackageEcosystem;
+
+    use super::{package_is_published, validated_source_roots};
+
+    #[test]
+    fn publication_state_uses_registry_names_and_python_normalization() {
+        let inventory = BTreeMap::from([
+            ("npm".to_string(), vec!["@scope/shared".to_string()]),
+            ("pypi".to_string(), vec!["shared_auth".to_string()]),
+            ("cargo".to_string(), vec!["shared-core".to_string()]),
+        ]);
+
+        assert!(package_is_published(
+            &inventory,
+            PackageEcosystem::Npm,
+            "@scope/shared"
+        ));
+        assert!(!package_is_published(
+            &inventory,
+            PackageEcosystem::Npm,
+            "@scope/shared_other"
+        ));
+        assert!(package_is_published(
+            &inventory,
+            PackageEcosystem::Python,
+            "shared-auth"
+        ));
+        assert!(!package_is_published(
+            &inventory,
+            PackageEcosystem::Cargo,
+            "unpublished"
+        ));
+    }
+
+    #[test]
+    fn configured_source_roots_must_be_absolute() {
+        assert_eq!(
+            validated_source_roots(&["/srv/packages".to_string()]).unwrap(),
+            ["/srv/packages"]
+        );
+        let error = validated_source_roots(&["../packages".to_string()]).unwrap_err();
+        assert!(error.to_string().contains("absolute host path"));
+        assert!(error.hint().unwrap().contains("packages.source_roots"));
     }
 }

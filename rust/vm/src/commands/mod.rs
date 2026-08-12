@@ -40,6 +40,8 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         return Ok(());
     }
 
+    command_context::ensure_controller_host(&args.command)?;
+
     match args.command {
         Command::Doctor {
             fix,

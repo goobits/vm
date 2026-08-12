@@ -4,7 +4,7 @@ mod updates;
 use std::path::PathBuf;
 
 use vm_config::config::VmConfig;
-use vm_core::{vm_hint, vm_println, vm_progress, vm_success};
+use vm_core::{vm_hint, vm_println, vm_success};
 use vm_packages::{RegisterTool, ToolKind};
 use vm_provider::Provider;
 
@@ -65,15 +65,20 @@ pub(super) async fn handle(
             Ok(())
         }
         ToolsSubcommand::List => {
-            let definitions = tooling::client()?.tools().await?;
+            let client = tooling::client()?;
+            let definitions = client.tools().await?;
             if definitions.is_empty() {
                 vm_println!("No tools are registered");
             } else {
+                vm_println!("NAME\tKIND\tREGISTERED\tPUBLISHED\tINSTALLED\tCONSUMABLE\tSOURCE");
                 for definition in definitions {
+                    let published = !client.tool(&definition.name).await?.artifacts.is_empty();
                     vm_println!(
-                        "{}\t{}\t{}",
+                        "{}\t{}\tyes\t{}\tn/a\t{}\t{}",
                         definition.name,
                         kind_name(definition.kind),
+                        yes_no(published),
+                        "n/a",
                         definition.repository
                     );
                 }
@@ -201,16 +206,33 @@ async fn ensure_builtin_releases(config: &VmConfig) -> VmResult<()> {
             {
                 return Err(VmError::validation(
                     format!("Built-in tool '{}' requires private Git access", tool.name),
-                    Some(
-                        "Run `gh auth login --hostname github.com`, then `vm packages auth --github`",
-                    ),
+                    Some(format!(
+                        "Run `gh auth login --hostname github.com`, then `vm packages auth --github`, then `vm tools publish {}`",
+                        tool.name
+                    )),
                 ));
             }
-            vm_progress!("Publishing the initial '{}' collection...", tool.name);
-            packages::publish_tool(tool.name)?;
+            return Err(VmError::validation(
+                format!(
+                    "Built-in tool '{}' is registered but not published",
+                    tool.name
+                ),
+                Some(format!(
+                    "Run `vm tools publish {}`, then retry `vm tools update`",
+                    tool.name
+                )),
+            ));
         }
     }
     Ok(())
+}
+
+fn yes_no(value: bool) -> &'static str {
+    if value {
+        "yes"
+    } else {
+        "no"
+    }
 }
 
 fn kind_name(kind: ToolKind) -> &'static str {

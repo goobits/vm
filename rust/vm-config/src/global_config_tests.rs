@@ -9,6 +9,7 @@ fn test_default_global_config() {
     assert!(config.features.is_default());
     assert!(config.worktrees.is_default());
     assert!(config.backups.is_default());
+    assert!(config.packages.is_default());
 }
 
 #[test]
@@ -96,12 +97,22 @@ fn test_serialization_deserialization_cycle() {
     let mut config = GlobalConfig::default();
     config.services.postgresql.enabled = true;
     config.defaults.cpus = Some(4);
+    config.packages.source_roots = vec!["/srv/packages".to_string()];
 
     let yaml = serde_yaml_ng::to_string(&config).unwrap();
     let deserialized: GlobalConfig = serde_yaml_ng::from_str(&yaml).unwrap();
 
     assert!(deserialized.services.postgresql.enabled);
     assert_eq!(deserialized.defaults.cpus, Some(4));
+    assert_eq!(deserialized.packages.source_roots, ["/srv/packages"]);
+}
+
+#[test]
+fn package_source_roots_are_omitted_when_empty() {
+    let yaml = serde_yaml_ng::to_string(&GlobalConfig::default()).unwrap();
+
+    assert!(!yaml.contains("packages:"));
+    assert!(!yaml.contains("source_roots:"));
 }
 
 #[test]

@@ -280,6 +280,9 @@ fn build_global_schema_cache() -> HashMap<String, SchemaType> {
     add_booleans!(cache, "worktrees.enabled");
     add_strings!(cache, "worktrees.base_path");
 
+    // Shared package source discovery
+    add_string_arrays!(cache, "packages.source_roots");
+
     cache
 }
 
@@ -452,6 +455,7 @@ mod tests {
         }
         assert!(schema["properties"]["backups"].is_mapping());
         assert!(schema["properties"]["snapshots"].is_mapping());
+        assert!(schema["properties"]["packages"]["properties"]["source_roots"].is_mapping());
     }
 
     #[test]
@@ -483,6 +487,16 @@ mod tests {
         );
         assert_eq!(
             lookup_field_type("bootstrap.playwright.browsers", false),
+            SchemaType::Array {
+                item_type: Box::new(SchemaType::String)
+            }
+        );
+    }
+
+    #[test]
+    fn looks_up_global_package_source_roots() {
+        assert_eq!(
+            lookup_field_type("packages.source_roots", true),
             SchemaType::Array {
                 item_type: Box::new(SchemaType::String)
             }
