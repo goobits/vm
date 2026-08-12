@@ -1,5 +1,5 @@
 ---
-Status: Reconciliation implemented but awaiting host acceptance
+Status: Docker reconciliation partially accepted; repeat appliance no-op pending
 Date: 2026-08-12
 Depends: docs/user-guide/package-infrastructure.md, docs/development/architecture.md
 ---
@@ -8,8 +8,9 @@ Depends: docs/user-guide/package-infrastructure.md, docs/development/architectur
 
 This is the single remaining-work tracker for the active VM-tool release. The
 base implementation and scoped first-run/upgrade reconciliation are complete.
-Host behavior is implemented but awaiting host acceptance before the remaining
-live Docker and Tart matrix is closed.
+Live Docker acceptance passed for source discovery, tool state, guest updates,
+and data preservation. A repeat source-installed appliance start still
+recreates unchanged registry/work containers and remains open below.
 
 Package development and release work runs in Docker or Linux VMs. The Mac only
 launches those runtimes and holds controller credentials; it does not build,
@@ -176,10 +177,10 @@ test, merge, or publish package source directly.
 - [x] Cover fresh setup and existing-machine reconciliation with fake providers
   and temporary fixtures, then synchronize command help and user documentation.
 
-All host-facing behavior in this section is implemented but awaiting host
-acceptance. Container tests cover fake Docker/provider execution, temporary
-controller state, fixture source discovery, repeat reconciliation, targeted
-sidecar updates, and volume-preserving command construction.
+Container tests cover fake Docker/provider execution, temporary controller
+state, fixture source discovery, repeat reconciliation, targeted sidecar
+updates, and volume-preserving command construction. Live Docker acceptance is
+recorded below.
 
 ## Static Verification
 
@@ -225,31 +226,20 @@ agent locations without replacing Codex system skills. The flat source shelf
 registered 13 npm packages while routing `agent-skills` to `vm tools`. These
 are the only remaining tasks:
 
-The new first-run/upgrade reconciliation is implemented but awaiting host
-acceptance; the earlier live results below do not constitute acceptance of this
-new flow.
+Live host acceptance on 2026-08-12 installed the current source CLI, persisted
+the host package shelf only in controller-global `packages.source_roots`, and
+ran the reconciliation sequence against `vm-dev`. Both tool-update passes were
+steady-state no-ops. Final status reported base-owned Codex and managed
+`agent-skills` 0.6.1 as installed and consumable; `agent-skills` remained
+registered and published. The `vm-dev` and PostgreSQL container IDs remained
+`3095a72fe244` and `ff9d7cf85390`, and PostgreSQL retained
+`vm_vm_postgres_data`.
 
-Validate it non-destructively from the controller host with an existing
-environment name:
-
-```bash
-VM_ACCEPT_EXISTING='actual-existing-environment'
-vm config get packages.source_roots --global
-vm packages up
-vm packages up
-vm packages doctor
-vm packages list
-vm tools list
-vm tools status "$VM_ACCEPT_EXISTING"
-vm tools update "$VM_ACCEPT_EXISTING" --all
-vm tools update "$VM_ACCEPT_EXISTING" --all
-vm tools status "$VM_ACCEPT_EXISTING"
-```
-
-If `agent-skills` is registered but unpublished, confirm that the first update
-prints `vm tools publish agent-skills`, run that explicit publication command,
-and then resume the two update calls. Do not publish automatically as part of
-acceptance.
+Both appliance starts remained healthy, retained the package catalog and named
+volumes, and rediscovered all 13 npm sources while routing `agent-skills` to
+`vm tools`. The second source-installed start reused every Docker build layer,
+but changing local image identity caused Compose to recreate the registry/work
+containers. State safety passed; literal steady-state no-op acceptance did not.
 
 The first container-local Codex agent then exposed that the base installer had
 copied only the main Codex executable out of its canonical standalone package.
@@ -261,6 +251,8 @@ before their first command.
   project directory.
 - [x] Populate `goobits/agent-skills` from the clean local submodule history,
   publish 0.6.1, and activate the collection in the running Docker worker.
+- [ ] Keep a repeated source-installed `vm packages up` from recreating
+  registry/work containers when their effective image content is unchanged.
 - [ ] Start a separate Docker worker on the same managed network.
 - [ ] Prove npm, Cargo, and Python public proxying, immutable internal artifacts,
   per-worker override isolation, persistent-cache restart recovery, and clear
@@ -303,6 +295,8 @@ d56a207b fix(packages): preflight configured source shelves
 1fedfbf9 fix(packages): version edge runtime policy
 eadfb08b docs(cli): clarify collection publication
 7a7129cd fix(tools): preserve partial Codex backups
+77027272 docs(packages): record final transaction fix
+207e06c0 fix(runtime): preserve complete Codex package
 ```
 
 The user's dirty `vm.yaml` is intentionally outside these commits.
