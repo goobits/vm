@@ -1,8 +1,8 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use vm_packages::{
     validate_sha256, validate_tool_name, validate_tool_target, validate_tool_version,
-    RegistryEndpoints, ToolArtifactRecord,
+    RegistryEndpoints, ToolArtifactRecord, ToolKind,
 };
 use vm_provider::Provider;
 
@@ -95,6 +95,22 @@ for state in "$states"/*.state; do
   printf '%s\t%s\n' "$name" "$result"
 done
 "#;
+const PROJECT_COLLECTION_OVERRIDES_SCRIPT: &str = r#"
+workspace=$1
+shift
+while test "$#" -ge 2; do
+  name=$1
+  destination=$2
+  shift 2
+  path="$workspace/$destination"
+  test -d "$path" || continue
+  path_root=$(CDPATH= cd -P "$path" 2>/dev/null && pwd) || continue
+  repository_root=$(git -C "$path" rev-parse --show-toplevel 2>/dev/null) || continue
+  repository_root=$(CDPATH= cd -P "$repository_root" 2>/dev/null && pwd) || continue
+  test "$path_root" = "$repository_root" || continue
+  printf '%s\t%s\n' "$name" "$destination"
+done
+"#;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct InstalledTool {
@@ -153,6 +169,44 @@ pub(super) fn consumable(
         )
         .map_err(VmError::from)?;
     Ok(parse_consumable(&output))
+}
+
+pub(super) fn project_collection_overrides(
+    provider: &dyn Provider,
+    environment: &str,
+    workspace: &str,
+    artifacts: &BTreeMap<String, ToolArtifactRecord>,
+) -> VmResult<BTreeMap<String, BTreeSet<String>>> {
+    let candidates = artifacts
+        .values()
+        .filter(|artifact| artifact.kind == ToolKind::Collection)
+        .flat_map(|artifact| {
+            artifact
+                .links
+                .keys()
+                .cloned()
+                .map(move |destination| (artifact.tool.clone(), destination))
+        })
+        .collect::<BTreeSet<_>>();
+    if candidates.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+
+    let mut command = vec![
+        "sh".to_string(),
+        "-c".to_string(),
+        PROJECT_COLLECTION_OVERRIDES_SCRIPT.to_string(),
+        "vm-tool-project-overrides".to_string(),
+        workspace.to_string(),
+    ];
+    for (name, destination) in &candidates {
+        command.push(name.clone());
+        command.push(destination.clone());
+    }
+    let output = provider
+        .exec_output(Some(environment), &command)
+        .map_err(VmError::from)?;
+    Ok(parse_project_collection_overrides(&output, &candidates))
 }
 
 pub(super) fn install(
@@ -280,6 +334,26 @@ fn parse_consumable(output: &str) -> BTreeMap<String, bool> {
         .collect()
 }
 
+fn parse_project_collection_overrides(
+    output: &str,
+    candidates: &BTreeSet<(String, String)>,
+) -> BTreeMap<String, BTreeSet<String>> {
+    let mut overrides = BTreeMap::<String, BTreeSet<String>>::new();
+    for line in output.lines() {
+        let Some((name, destination)) = line.split_once('\t') else {
+            continue;
+        };
+        if !candidates.contains(&(name.to_string(), destination.to_string())) {
+            continue;
+        }
+        overrides
+            .entry(name.to_string())
+            .or_default()
+            .insert(destination.to_string());
+    }
+    overrides
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,6 +395,65 @@ mod tests {
             .status()
             .unwrap()
             .success());
+    }
+
+    #[test]
+    fn finds_only_standalone_project_collection_checkouts() {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace = directory.path().join("workspace");
+        let checkout = workspace.join(".claude/skills");
+        let ordinary = workspace.join(".codex/skills");
+        fs::create_dir_all(&checkout).unwrap();
+        fs::create_dir_all(&ordinary).unwrap();
+        assert!(Command::new("git")
+            .args(["init", "--quiet"])
+            .arg(&checkout)
+            .status()
+            .unwrap()
+            .success());
+
+        let output = Command::new("sh")
+            .args(["-c", PROJECT_COLLECTION_OVERRIDES_SCRIPT, "test"])
+            .arg(&workspace)
+            .args([
+                "agent-skills",
+                ".claude/skills",
+                "agent-skills",
+                ".codex/skills",
+            ])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let candidates = BTreeSet::from([
+            ("agent-skills".into(), ".claude/skills".into()),
+            ("agent-skills".into(), ".codex/skills".into()),
+        ]);
+        let overrides = parse_project_collection_overrides(
+            &String::from_utf8(output.stdout).unwrap(),
+            &candidates,
+        );
+
+        assert_eq!(
+            overrides["agent-skills"],
+            BTreeSet::from([".claude/skills".into()])
+        );
+        assert!(Command::new("sh")
+            .args(["-n", "-c", PROJECT_COLLECTION_OVERRIDES_SCRIPT])
+            .status()
+            .unwrap()
+            .success());
+    }
+
+    #[test]
+    fn ignores_unrequested_project_override_rows() {
+        let candidates = BTreeSet::from([("agent-skills".into(), ".claude/skills".into())]);
+        let overrides = parse_project_collection_overrides(
+            "agent-skills\t.claude/skills\nother\t.codex/skills\nnoise\n",
+            &candidates,
+        );
+
+        assert_eq!(overrides.len(), 1);
+        assert_eq!(overrides["agent-skills"].len(), 1);
     }
 
     #[test]

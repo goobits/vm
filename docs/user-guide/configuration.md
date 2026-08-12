@@ -284,6 +284,13 @@ that command registers the built-in `agent-skills` definition when needed, but
 publication remains an explicit `vm tools publish agent-skills` operation.
 Rerunning `vm tools update` reconciles a stale package edge, incomplete Codex
 runtime, and non-consumable managed links without rebuilding the base.
+Managed collections activate under the guest user's home; VM never rewrites the
+mounted project repository. A collection checkout or submodule at the matching
+project path is therefore a separate copy that can take precedence over the
+managed release. `vm tools status` reports it as `PROJECT_COPY=yes`, and
+`vm tools update` prints the exact project path. For a VM-managed project,
+remove that legacy checkout. For a portable repository-owned copy, update it
+through Git separately and disable the overlapping managed tool.
 
 Host sync is separate: it retains supported CLI state and credentials but does
 not install executables:

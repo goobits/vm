@@ -247,6 +247,18 @@ Docker and Tart Vibe installers now preserve the complete package, including
 the matching `codex-code-mode-host`, so code-backed agent tools do not fail
 before their first command.
 
+Managed collection reconciliation now detects standalone Git checkouts at the
+same project activation paths. Status exposes `PROJECT_COPY`, and update emits
+a non-destructive ownership warning instead of implying that project submodules
+are synchronized. VM continues to own guest-home activation and never mutates
+mounted project Git.
+
+Live Zoop acceptance on 2026-08-12 detected its legacy `.agents/skills` and
+`.claude/skills` repository copies, then reported `PROJECT_COPY=no` after their
+scoped Git removal. In-place `vm tools update zoop-io-dev --all` changed Codex
+from installed/non-consumable to installed/consumable without recreating the
+Docker worker, while managed `agent-skills` remained consumable at 0.6.1.
+
 - [x] Start and restart the central package appliance in Docker from outside a
   project directory.
 - [x] Populate `goobits/agent-skills` from the clean local submodule history,

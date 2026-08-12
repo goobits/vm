@@ -244,6 +244,10 @@ gateway. `vm tools list` reports controller registration/publication only.
 reports the base-owned Codex runtime separately. Its rows are the union of
 configured tools, controller registrations, and guest state, so a stale
 installed tool remains visible after it is removed from project configuration.
+For collections, `PROJECT_COPY` also identifies a standalone project checkout
+at a declared activation path. Managed releases live under the guest home and
+never advance, remove, or otherwise rewrite project Git; the operator must pick
+one owner for overlapping collection content.
 
 `vm tools update [environment]` is also the idempotent upgrade reconciliation
 entry point. For Docker it regenerates current Compose metadata and updates only

@@ -314,6 +314,13 @@ fn apply_updates(
         )
     })?;
     report_missing(&catalog);
+    let project_overrides = guest::project_collection_overrides(
+        provider,
+        environment,
+        project_workspace(config),
+        &catalog.artifacts,
+    )?;
+    report_project_overrides(&project_overrides);
     let installed = guest::installed(provider, environment)?;
     let consumable = guest::consumable(provider, environment)?;
     let selected =
@@ -379,6 +386,16 @@ async fn controller_tool_states() -> VmResult<BTreeMap<String, ControllerToolSta
 
 async fn show_status(subject: &RuntimeSubject) -> VmResult<()> {
     let target = guest::platform_target(subject.provider.as_ref(), &subject.target)?;
+    let catalog = tooling::cached(&subject.config, &target)?;
+    let project_overrides = match &catalog {
+        Some(catalog) => guest::project_collection_overrides(
+            subject.provider.as_ref(),
+            &subject.target,
+            project_workspace(&subject.config),
+            &catalog.artifacts,
+        )?,
+        None => BTreeMap::new(),
+    };
     let installed = guest::installed(subject.provider.as_ref(), &subject.target)?;
     let consumable = guest::consumable(subject.provider.as_ref(), &subject.target)?;
     let controller = match controller_tool_states().await {
@@ -391,10 +408,10 @@ async fn show_status(subject: &RuntimeSubject) -> VmResult<()> {
     let codex = reconcile::codex_state(subject.provider.as_ref(), &subject.target)?;
 
     vm_println!("Guest tools ({target})");
-    vm_println!("NAME\tOWNER\tREGISTERED\tPUBLISHED\tINSTALLED\tCONSUMABLE\tVERSION");
+    vm_println!("NAME\tOWNER\tREGISTERED\tPUBLISHED\tINSTALLED\tCONSUMABLE\tPROJECT_COPY\tVERSION");
     if reconcile::codex_expected(&subject.config) || codex != reconcile::CodexState::Absent {
         vm_println!(
-            "codex\tbase\tn/a\tn/a\t{}\t{}\t-",
+            "codex\tbase\tn/a\tn/a\t{}\t{}\tn/a\t-",
             yes_no(codex != reconcile::CodexState::Absent),
             yes_no(codex == reconcile::CodexState::Consumable)
         );
@@ -408,15 +425,21 @@ async fn show_status(subject: &RuntimeSubject) -> VmResult<()> {
         let controller_state = controller.as_ref().and_then(|states| states.get(&name));
         let installed_tool = installed.get(&name);
         vm_println!(
-            "{}\tmanaged\t{}\t{}\t{}\t{}\t{}",
+            "{}\tmanaged\t{}\t{}\t{}\t{}\t{}\t{}",
             name,
             controller_state.map_or("unknown", |state| yes_no(state.registered)),
             controller_state.map_or("unknown", |state| yes_no(state.published)),
             yes_no(installed_tool.is_some()),
             yes_no(consumable.get(&name).copied().unwrap_or(false)),
+            if catalog.is_some() {
+                yes_no(project_overrides.contains_key(&name))
+            } else {
+                "unknown"
+            },
             installed_tool.map_or("-", |tool| tool.version.as_str())
         );
     }
+    report_project_overrides(&project_overrides);
     Ok(())
 }
 
@@ -449,9 +472,26 @@ fn report_missing(catalog: &CachedToolCatalog) {
     }
 }
 
+fn project_workspace(config: &VmConfig) -> &str {
+    config
+        .project
+        .as_ref()
+        .and_then(|project| project.workspace_path.as_deref())
+        .unwrap_or("/workspace")
+}
+
+fn report_project_overrides(overrides: &BTreeMap<String, BTreeSet<String>>) {
+    for (name, destinations) in overrides {
+        vm_hint!(
+            "Project-local collection '{name}' is also checked out at {} and can override the managed guest copy. VM leaves project Git unchanged; remove that checkout or update it separately.",
+            destinations.iter().cloned().collect::<Vec<_>>().join(", ")
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{tool_status_names, ControllerToolState};
+    use super::{project_workspace, tool_status_names, ControllerToolState};
     use crate::commands::tools::guest::InstalledTool;
     use std::collections::BTreeMap;
     use vm_config::config::{ToolConfig, VmConfig};
@@ -492,5 +532,16 @@ mod tests {
                 "stale-installed"
             ]
         );
+    }
+
+    #[test]
+    fn project_workspace_defaults_to_the_guest_mount() {
+        let mut config = VmConfig::default();
+        assert_eq!(project_workspace(&config), "/workspace");
+        config.project = Some(vm_config::config::ProjectConfig {
+            workspace_path: Some("/source".into()),
+            ..Default::default()
+        });
+        assert_eq!(project_workspace(&config), "/source");
     }
 }

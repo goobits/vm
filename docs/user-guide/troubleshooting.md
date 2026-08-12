@@ -192,7 +192,11 @@ vm tools update [environment] --all
 
 `status` distinguishes registered, published, installed, and consumable tools,
 including registrations or stale guest installs no longer selected by the
-project.
+project. `PROJECT_COPY=yes` means the project also contains a standalone Git
+checkout at one of that collection's activation paths. That checkout is not a
+failed sync: project Git is intentionally never mutated by `vm tools`. Remove
+the checkout when VM should own the collection, or update it separately and
+disable the overlapping managed tool when the repository should own it.
 `update` repairs a missing/stale package edge, incomplete standalone Codex
 package, and broken managed-tool links. Docker updates only the sidecar; Linux
 Tart updates only its edge container. Neither path rebuilds the base or removes
