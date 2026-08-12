@@ -214,6 +214,7 @@ fn host_file_descriptor_usage() -> Option<(u64, u64)> {
     None
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn parse_descriptor_values(values: &str) -> Option<(u64, u64)> {
     let mut values = values
         .split_whitespace()

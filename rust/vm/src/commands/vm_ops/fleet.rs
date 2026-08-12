@@ -161,46 +161,41 @@ pub async fn handle_fleet_lifecycle(
     for (provider_name, provider_instances) in group_by_provider(instances) {
         let provider = provider_for(&provider_name)?;
         for instance in provider_instances {
-            let result = match action {
-                FleetAction::Start => provider.start(Some(&instance.name), &context),
-                FleetAction::Stop => provider.stop(Some(&instance.name)),
-                FleetAction::Restart => provider.restart(Some(&instance.name), &context),
-            };
-
-            match result {
-                Ok(()) => {
-                    let should_wait = match action {
-                        FleetAction::Start => !no_wait,
-                        FleetAction::Restart => true,
-                        FleetAction::Stop => false,
-                    };
-                    if should_wait {
-                        match wait_until_commands_ready(
-                            provider.as_ref(),
-                            Some(&instance.name),
-                            &instance.name,
-                        )
-                        .await
-                        {
-                            Ok(()) => {
-                                progress.success(&instance.name);
-                            }
-                            Err(error) => {
-                                progress.failure(&instance.name, &error);
-                            }
-                        }
-                    } else {
-                        progress.success(&instance.name);
-                    }
-                }
-                Err(e) => {
-                    progress.failure(&instance.name, &e);
-                }
+            match apply_lifecycle(provider.as_ref(), &context, &instance.name, action, no_wait)
+                .await
+            {
+                Ok(()) => progress.success(&instance.name),
+                Err(error) => progress.failure(&instance.name, &error),
             }
         }
     }
 
     progress.finish()
+}
+
+async fn apply_lifecycle(
+    provider: &dyn Provider,
+    context: &ProviderContext,
+    environment: &str,
+    action: FleetAction,
+    no_wait: bool,
+) -> VmResult<()> {
+    match action {
+        FleetAction::Start => provider.start(Some(environment), context),
+        FleetAction::Stop => provider.stop(Some(environment)),
+        FleetAction::Restart => provider.restart(Some(environment), context),
+    }
+    .map_err(VmError::from)?;
+
+    let should_wait = match action {
+        FleetAction::Start => !no_wait,
+        FleetAction::Restart => true,
+        FleetAction::Stop => false,
+    };
+    if should_wait {
+        wait_until_commands_ready(provider, Some(environment), environment).await?;
+    }
+    Ok(())
 }
 
 fn provider_for(provider_name: &str) -> VmResult<Box<dyn Provider>> {

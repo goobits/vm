@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "macos")]
 use std::process::Command;
 use vm_config::config::VmConfig;
 use vm_core::error::{Result, VmError};
@@ -87,40 +88,37 @@ pub(super) fn forget_instance(instance: &str) -> Result<()> {
     Ok(())
 }
 
-fn recover_running_project_home(project: &str) -> Result<Option<PathBuf>> {
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = project;
-        return Ok(None);
-    }
+#[cfg(not(target_os = "macos"))]
+fn recover_running_project_home(_project: &str) -> Result<Option<PathBuf>> {
+    Ok(None)
+}
 
-    #[cfg(target_os = "macos")]
+#[cfg(target_os = "macos")]
+fn recover_running_project_home(project: &str) -> Result<Option<PathBuf>> {
+    let output = match Command::new("ps").args(["-axo", "pid=,command="]).output() {
+        Ok(output) if output.status.success() => output,
+        _ => return Ok(None),
+    };
+    let processes = parse_running_tart_processes(&String::from_utf8_lossy(&output.stdout));
+    for (pid, instance) in processes
+        .into_iter()
+        .filter(|(_, instance)| belongs_to_project(instance, project))
     {
-        let output = match Command::new("ps").args(["-axo", "pid=,command="]).output() {
-            Ok(output) if output.status.success() => output,
-            _ => return Ok(None),
-        };
-        let processes = parse_running_tart_processes(&String::from_utf8_lossy(&output.stdout));
-        for (pid, instance) in processes
-            .into_iter()
-            .filter(|(_, instance)| belongs_to_project(instance, project))
+        let output = match Command::new("lsof")
+            .args(["-a", "-p", &pid.to_string(), "-d", "cwd", "-Fn"])
+            .output()
         {
-            let output = match Command::new("lsof")
-                .args(["-a", "-p", &pid.to_string(), "-d", "cwd", "-Fn"])
-                .output()
-            {
-                Ok(output) if output.status.success() => output,
-                _ => continue,
-            };
-            if let Some(home) =
-                parse_tart_home_from_lsof(&String::from_utf8_lossy(&output.stdout), &instance)
-            {
-                remember_instance(&instance, &home)?;
-                return Ok(Some(home));
-            }
+            Ok(output) if output.status.success() => output,
+            _ => continue,
+        };
+        if let Some(home) =
+            parse_tart_home_from_lsof(&String::from_utf8_lossy(&output.stdout), &instance)
+        {
+            remember_instance(&instance, &home)?;
+            return Ok(Some(home));
         }
-        Ok(None)
     }
+    Ok(None)
 }
 
 fn read_state() -> Result<StorageState> {
@@ -186,6 +184,7 @@ fn validate_instance(instance: &str) -> Result<()> {
     Ok(())
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn parse_running_tart_processes(output: &str) -> Vec<(u32, String)> {
     output
         .lines()
@@ -208,6 +207,7 @@ fn parse_running_tart_processes(output: &str) -> Vec<(u32, String)> {
         .collect()
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn parse_tart_home_from_lsof(output: &str, instance: &str) -> Option<PathBuf> {
     output.lines().find_map(|line| {
         let path = Path::new(line.strip_prefix('n')?);
