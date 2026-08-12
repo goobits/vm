@@ -2,7 +2,10 @@ mod guest;
 mod reconcile;
 mod updates;
 
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+};
 
 use vm_config::config::VmConfig;
 use vm_core::{vm_hint, vm_println, vm_success};
@@ -135,7 +138,6 @@ pub(super) async fn handle(
             background,
         } => {
             let subject = load_or_create_runtime_subject(config_path, profile, environment).await?;
-            ensure_builtin_releases(&subject.config).await?;
             ensure_running(
                 subject.provider.as_ref(),
                 Some(subject.target.as_str()),
@@ -145,6 +147,7 @@ pub(super) async fn handle(
             )
             .await?;
             reconcile::environment(&subject)?;
+            ensure_builtin_releases(&subject.config).await?;
             tooling::refresh(&subject.config).await?;
             apply_updates(
                 subject.provider.as_ref(),
@@ -269,7 +272,9 @@ pub(in crate::commands) fn before_shell(
         };
         report_missing(&catalog);
         let installed = guest::installed(provider, environment)?;
-        let selected = updates::plan(config, &catalog.artifacts, &installed).selected(false)?;
+        let consumable = guest::consumable(provider, environment)?;
+        let selected =
+            updates::plan(config, &catalog.artifacts, &installed, &consumable).selected(false)?;
         if selected.is_empty() {
             return Ok(());
         }
@@ -309,10 +314,10 @@ fn apply_updates(
         )
     })?;
     report_missing(&catalog);
-    let mut installed = guest::installed(provider, environment)?;
+    let installed = guest::installed(provider, environment)?;
     let consumable = guest::consumable(provider, environment)?;
-    installed.retain(|name, _| consumable.get(name).copied().unwrap_or(false));
-    let selected = updates::plan(config, &catalog.artifacts, &installed).selected(all)?;
+    let selected =
+        updates::plan(config, &catalog.artifacts, &installed, &consumable).selected(all)?;
     if selected.is_empty() {
         vm_success!("Configured tools are current");
         return Ok(());
@@ -394,20 +399,45 @@ async fn show_status(subject: &RuntimeSubject) -> VmResult<()> {
             yes_no(codex == reconcile::CodexState::Consumable)
         );
     }
-    for name in subject.config.tools.entries.keys() {
-        let controller_state = controller.as_ref().and_then(|states| states.get(name));
-        let installed_tool = installed.get(name);
+    for name in tool_status_names(
+        &subject.config,
+        controller.as_ref(),
+        &installed,
+        &consumable,
+    ) {
+        let controller_state = controller.as_ref().and_then(|states| states.get(&name));
+        let installed_tool = installed.get(&name);
         vm_println!(
             "{}\tmanaged\t{}\t{}\t{}\t{}\t{}",
             name,
             controller_state.map_or("unknown", |state| yes_no(state.registered)),
             controller_state.map_or("unknown", |state| yes_no(state.published)),
             yes_no(installed_tool.is_some()),
-            yes_no(consumable.get(name).copied().unwrap_or(false)),
+            yes_no(consumable.get(&name).copied().unwrap_or(false)),
             installed_tool.map_or("-", |tool| tool.version.as_str())
         );
     }
     Ok(())
+}
+
+fn tool_status_names(
+    config: &VmConfig,
+    controller: Option<&BTreeMap<String, ControllerToolState>>,
+    installed: &BTreeMap<String, guest::InstalledTool>,
+    consumable: &BTreeMap<String, bool>,
+) -> BTreeSet<String> {
+    let mut names = config
+        .tools
+        .entries
+        .keys()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    if let Some(controller) = controller {
+        names.extend(controller.keys().cloned());
+    }
+    names.extend(installed.keys().cloned());
+    names.extend(consumable.keys().cloned());
+    names
 }
 
 fn report_missing(catalog: &CachedToolCatalog) {
@@ -415,6 +445,52 @@ fn report_missing(catalog: &CachedToolCatalog) {
         vm_hint!(
             "No cached release is available for: {}",
             catalog.missing.join(", ")
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{tool_status_names, ControllerToolState};
+    use crate::commands::tools::guest::InstalledTool;
+    use std::collections::BTreeMap;
+    use vm_config::config::{ToolConfig, VmConfig};
+
+    #[test]
+    fn status_includes_controller_and_stale_guest_state() {
+        let mut config = VmConfig::default();
+        config
+            .tools
+            .entries
+            .insert("configured".into(), ToolConfig::default());
+        let controller = BTreeMap::from([(
+            "registered".into(),
+            ControllerToolState {
+                registered: true,
+                published: false,
+            },
+        )]);
+        let installed = BTreeMap::from([(
+            "stale-installed".into(),
+            InstalledTool {
+                name: "stale-installed".into(),
+                version: "1.0.0".into(),
+                target: "linux-arm64".into(),
+                digest: "a".repeat(64),
+            },
+        )]);
+        let consumable = BTreeMap::from([("orphan-state".into(), false)]);
+
+        let names = tool_status_names(&config, Some(&controller), &installed, &consumable);
+
+        assert_eq!(
+            names.into_iter().collect::<Vec<_>>(),
+            [
+                "configured",
+                "orphan-state",
+                "registered",
+                "stale-installed"
+            ]
         );
     }
 }

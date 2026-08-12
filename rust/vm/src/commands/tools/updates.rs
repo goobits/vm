@@ -67,10 +67,13 @@ pub(super) fn plan(
     config: &VmConfig,
     available: &BTreeMap<String, ToolArtifactRecord>,
     installed: &BTreeMap<String, InstalledTool>,
+    consumable: &BTreeMap<String, bool>,
 ) -> UpdatePlan {
     let mut plan = UpdatePlan::default();
     for (name, artifact) in available {
-        let current = installed.get(name);
+        let current = installed
+            .get(name)
+            .filter(|_| consumable.get(name).copied().unwrap_or(false));
         if current.is_some_and(|current| current.digest == artifact.artifact_digest) {
             continue;
         }
@@ -169,13 +172,20 @@ mod tests {
             &config(ToolUpdatePolicy::Prompt, false),
             &available,
             &installed,
+            &BTreeMap::from([("codex".into(), true)]),
         );
         assert_eq!(prompted.prompt.len(), 1);
-        let automatic = plan(&config(ToolUpdatePolicy::Off, true), &available, &installed);
+        let automatic = plan(
+            &config(ToolUpdatePolicy::Off, true),
+            &available,
+            &installed,
+            &BTreeMap::from([("codex".into(), true)]),
+        );
         assert_eq!(automatic.automatic.len(), 1);
         let initial = plan(
             &config(ToolUpdatePolicy::Off, false),
             &available,
+            &BTreeMap::new(),
             &BTreeMap::new(),
         );
         assert_eq!(initial.automatic.len(), 1);
@@ -197,8 +207,33 @@ mod tests {
             &config(ToolUpdatePolicy::Auto, false),
             &available,
             &installed,
+            &BTreeMap::from([("codex".into(), true)]),
         );
         assert!(plan.automatic.is_empty());
+        assert!(plan.prompt.is_empty());
+    }
+
+    #[test]
+    fn matching_but_non_consumable_release_is_reinstalled() {
+        let available = BTreeMap::from([("codex".into(), artifact("codex", "1.0.0", 'a'))]);
+        let installed = BTreeMap::from([(
+            "codex".into(),
+            InstalledTool {
+                name: "codex".into(),
+                version: "1.0.0".into(),
+                target: "linux-arm64".into(),
+                digest: "a".repeat(64),
+            },
+        )]);
+
+        let plan = plan(
+            &config(ToolUpdatePolicy::Off, false),
+            &available,
+            &installed,
+            &BTreeMap::from([("codex".into(), false)]),
+        );
+
+        assert_eq!(plan.automatic.len(), 1);
         assert!(plan.prompt.is_empty());
     }
 }
