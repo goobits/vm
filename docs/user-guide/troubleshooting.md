@@ -178,6 +178,11 @@ closed. If the worker edge itself is down, restart the project environment;
 package clients intentionally do not bypass it because doing so could leak an
 internal name to a public registry.
 
+`vm packages up` validates configured source roots before starting or updating
+the appliance. Fix a reported missing/invalid absolute root and retry; no
+service reconciliation has occurred. An existing empty configured shelf is
+valid and will be scanned again on the next run.
+
 For an existing environment, run this on the controller host:
 
 ```bash
@@ -185,11 +190,15 @@ vm tools status [environment]
 vm tools update [environment] --all
 ```
 
-`status` distinguishes registered, published, installed, and consumable tools.
+`status` distinguishes registered, published, installed, and consumable tools,
+including registrations or stale guest installs no longer selected by the
+project.
 `update` repairs a missing/stale package edge, incomplete standalone Codex
 package, and broken managed-tool links. Docker updates only the sidecar; Linux
 Tart updates only its edge container. Neither path rebuilds the base or removes
-the persistent edge cache volume.
+the persistent edge cache volume. Codex replacement is transactional and
+refuses to overwrite an unmanaged `/usr/local/bin/codex`; inspect and resolve
+that ownership explicitly before retrying.
 
 If a package/tool command was run inside a managed guest, do not try to operate
 the controller from there. The error prints the exact shell-safe host command,
@@ -197,7 +206,9 @@ such as `Run on the host: vm packages up`; run that command in the host terminal
 
 A built-in tool can be registered but not published on a fresh controller. That
 is intentional. Run the reported explicit command, normally
-`vm tools publish agent-skills`, then rerun `vm tools update`.
+`vm tools publish agent-skills`, then rerun `vm tools update`. The first update
+still reconciles the worker edge and Codex before reporting the unpublished
+collection.
 
 ## Secrets
 

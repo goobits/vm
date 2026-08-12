@@ -57,6 +57,11 @@ appliance and recursively registers repositories below the configured absolute
 source roots. Existing credentials and named volumes are retained. A
 Docker-only setup does not need a Tart package VM.
 
+Configured roots are resolved and scanned before the appliance is started or
+updated. A missing or invalid root therefore fails without changing appliance
+state. An existing but empty configured shelf is a successful no-op, which
+allows first-run setup before repositories have been added.
+
 On its first run, macOS selects Tart and prepares the versioned Linux base
 automatically. Later runs reuse the stored runtime. Other platforms select
 Docker. Use `--runtime docker` only when every consumer is Docker-based, or
@@ -176,9 +181,10 @@ The appliance clones the registered Git origins into its private `source-mirrors
 Docker volume when package work requires them.
 
 The host path is intentionally not stored in project configuration or mounted
-into the appliance. Run the recursive registration again after adding a new
-repository; registration is idempotent. Wait until the directory contains Git
-repositories with `origin` remotes before running it.
+into the appliance. Configured shelves may start empty; the next `vm packages
+up` discovers repositories after they are added. Manual `vm packages register
+<path> --recursive` remains strict and reports an error when it finds no Git
+repositories. Registration is idempotent.
 
 Supported ecosystems are `npm`, `cargo`, and `python`. A package has one
 canonical repository and immutable published versions.
@@ -212,11 +218,14 @@ For the built-in `agent-skills` selection, `vm tools update` automatically
 registers the canonical Goobits repository when it is missing. Publication is
 always explicit: a fresh controller stops with the exact
 `vm tools publish agent-skills` command, after which the operator reruns
-`vm tools update`. Tool updates activate inside an already-running environment
-and do not require a base rebuild. Read credentials travel to the guest over
-standard input rather than command arguments. Collection activation merges
-individual skills into an existing agent skill directory, preserving unmanaged
-personal and system skills.
+`vm tools update`. Runtime and Codex reconciliation happens before that
+publication check, so an unpublished collection does not prevent targeted
+infrastructure repair. Tool updates activate inside an already-running
+environment and do not require a base rebuild. Read credentials travel to the
+guest over standard input rather than command arguments. Collection activation
+merges individual skills into an existing agent skill directory, preserving
+unmanaged personal and system skills. The generic publisher currently supports
+registered collections; binary publishers remain tool-specific.
 
 ```bash
 vm tools refresh
@@ -232,7 +241,9 @@ pinned. Normal startup never waits for the registry or an update check.
 is environment-specific, and a published package is consumable through the
 gateway. `vm tools list` reports controller registration/publication only.
 `vm tools status [environment]` adds installed and consumable guest state and
-reports the base-owned Codex runtime separately.
+reports the base-owned Codex runtime separately. Its rows are the union of
+configured tools, controller registrations, and guest state, so a stale
+installed tool remains visible after it is removed from project configuration.
 
 `vm tools update [environment]` is also the idempotent upgrade reconciliation
 entry point. For Docker it regenerates current Compose metadata and updates only
@@ -241,8 +252,12 @@ reconciles only the guest edge container. Both paths preserve the edge cache
 named volume and leave the primary environment and base image intact. An absent
 or incomplete Codex runtime in a Vibe environment is staged under `/usr/local`
 from a temporary home, validated, and swapped with rollback; host-synced
-`~/.codex` state is not used as an executable destination. Managed tool links
-are then verified before the command reports success.
+`~/.codex` state is not used as an executable destination. The transaction
+preserves both the prior package and launcher links, refuses to replace an
+unmanaged `/usr/local/bin` launcher, and restores the complete prior runtime if
+validation fails. Managed tool links are then verified before the command
+reports success. A matching installed release with broken links is treated as
+non-consumable and retried, including by the cached background startup path.
 
 Package and tool controller commands are host-only. When invoked inside a
 managed guest, the CLI exits without changing state and prints the exact

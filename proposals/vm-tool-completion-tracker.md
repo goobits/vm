@@ -1,15 +1,15 @@
 ---
-Status: Docker base, tool, shelf, and appliance acceptance complete; data-plane acceptance remains
-Date: 2026-08-11
+Status: Reconciliation implemented but awaiting host acceptance
+Date: 2026-08-12
 Depends: docs/user-guide/package-infrastructure.md, docs/development/architecture.md
 ---
 
 # VM Tool Completion Tracker
 
 This is the single remaining-work tracker for the active VM-tool release. The
-implementation and static verification phases are complete. Only live Docker
-and Tart acceptance remains, intentionally deferred until the development host
-has been recreated.
+base implementation and scoped first-run/upgrade reconciliation are complete.
+Host behavior is implemented but awaiting host acceptance before the remaining
+live Docker and Tart matrix is closed.
 
 Package development and release work runs in Docker or Linux VMs. The Mac only
 launches those runtimes and holds controller credentials; it does not build,
@@ -82,7 +82,8 @@ test, merge, or publish package source directly.
 - [x] Keep Antigravity, Claude Code, and Codex in Docker and Tart Vibe bases;
   reserve managed-tool activation for `agent-skills` and other explicit tools.
 - [x] Keep Codex's immutable executable outside host-synced `~/.codex` state,
-  and include the base image ID in derived-image cache keys.
+  preserve its canonical package and code-mode helper beside it, and include
+  the base image ID in derived-image cache keys.
 - [x] Build Docker Vibe bases through the current snapshot API, exclude managed
   service containers from environment discovery, and reuse only their exact
   occupied host ports during environment creation.
@@ -109,8 +110,8 @@ test, merge, or publish package source directly.
 - [x] Resolve source-installed CLI symlinks and initialize package-volume roots
   before non-root services start, including volumes introduced by upgrades.
 - [x] Publish registered collections through a credential-isolated ephemeral
-  job and bootstrap the built-in `agent-skills` definition and initial release
-  from `vm tools update`.
+  job and bootstrap the built-in `agent-skills` definition from `vm tools
+  update`; keep initial publication an explicit operator action.
 - [x] Deliver artifact read credentials to running guests over standard input,
   and merge collection skills without replacing existing agent skill roots.
 - [x] Define the shared publish secret explicitly for ephemeral package and
@@ -156,20 +157,55 @@ test, merge, or publish package source directly.
 - [x] Keep package-infrastructure scope in the root agent instructions and this
   one canonical tracker.
 
+## Implemented First-Run And Upgrade Reconciliation
+
+- [x] Make `vm packages up` preflight and reconcile configurable
+  controller-wide source roots, accepting an empty configured shelf without
+  weakening strict manual registration.
+- [x] Keep tool publication explicit and report registered, published,
+  installed, and consumable state separately, including stale controller or
+  guest rows.
+- [x] Reconcile a missing or stale worker package edge without rebuilding its
+  base or recreating unrelated services, and version edge runtime policy
+  independently from the registry image.
+- [x] Repair an incomplete existing Codex standalone runtime without writing
+  through host-synced `~/.codex` state, overwriting unmanaged launchers, or
+  leaving a partial package/link transaction.
+- [x] Detect managed guest context and print the exact command to run on the
+  controller host.
+- [x] Cover fresh setup and existing-machine reconciliation with fake providers
+  and temporary fixtures, then synchronize command help and user documentation.
+
+All host-facing behavior in this section is implemented but awaiting host
+acceptance. Container tests cover fake Docker/provider execution, temporary
+controller state, fixture source discovery, repeat reconciliation, targeted
+sidecar updates, and volume-preserving command construction.
+
 ## Static Verification
 
-The final source-only gate is:
+The container-safe verification gate is:
 
 ```bash
-cargo fmt --all -- --check
-cargo check -j 2 --workspace --all-features
+make fmt
+cd rust && cargo check -j 1 --workspace --all-features
+make test-unit CARGO_JOBS=1
+make test-integration CARGO_JOBS=1
+make clippy CARGO_JOBS=1
+make check-duplicates
 git diff --check
 ```
 
 No Docker image, Tart base, guest, or release binary is built by this gate.
 
-Latest result on 2026-08-11: all three commands passed. The workspace check
-covered every crate with all features enabled and two compile jobs.
+Latest result on 2026-08-12: formatting, the serial all-feature workspace check,
+the complete unit suite, the supported non-network integration suite, and
+`git diff --check` passed from an isolated container-local Cargo target. The
+integration wrapper now enables the package server's declared
+`standalone-binary` feature in both runner paths. Scoped package/tool Clippy
+passed with warnings denied. Full workspace Clippy remains blocked by
+pre-existing Tart storage warnings and the existing unused Linux doctor parser.
+Duplicate detection could not run because `jscpd` is not installed in this
+container. No Docker, Tart, host VM, network, or publication action was run.
 
 ## Post-Recreation Acceptance
 
@@ -188,6 +224,38 @@ state, and `agent-skills` 0.6.1 activates 26 skills across all five supported
 agent locations without replacing Codex system skills. The flat source shelf
 registered 13 npm packages while routing `agent-skills` to `vm tools`. These
 are the only remaining tasks:
+
+The new first-run/upgrade reconciliation is implemented but awaiting host
+acceptance; the earlier live results below do not constitute acceptance of this
+new flow.
+
+Validate it non-destructively from the controller host with an existing
+environment name:
+
+```bash
+VM_ACCEPT_EXISTING='actual-existing-environment'
+vm config get packages.source_roots --global
+vm packages up
+vm packages up
+vm packages doctor
+vm packages list
+vm tools list
+vm tools status "$VM_ACCEPT_EXISTING"
+vm tools update "$VM_ACCEPT_EXISTING" --all
+vm tools update "$VM_ACCEPT_EXISTING" --all
+vm tools status "$VM_ACCEPT_EXISTING"
+```
+
+If `agent-skills` is registered but unpublished, confirm that the first update
+prints `vm tools publish agent-skills`, run that explicit publication command,
+and then resume the two update calls. Do not publish automatically as part of
+acceptance.
+
+The first container-local Codex agent then exposed that the base installer had
+copied only the main Codex executable out of its canonical standalone package.
+Docker and Tart Vibe installers now preserve the complete package, including
+the matching `codex-code-mode-host`, so code-backed agent tools do not fail
+before their first command.
 
 - [x] Start and restart the central package appliance in Docker from outside a
   project directory.
@@ -223,6 +291,17 @@ de09ccf5 docs(vm): finalize implementation handoff
 6fcb243a fix(shell): initialize zsh prompt hooks
 32a4f491 fix(shell): keep managed tool shortcuts available
 6b94ed93 feat(runtime): complete Vibe and package bootstrap
+7832d01c feat(packages): reconcile controller setup
+7b9da82e feat(tools): reconcile runtime infrastructure
+593dc952 test(packages): cover reconciliation workflows
+cca4de6d fix(tools): harden guest reconciliation
+63f39737 test(packages): enable standalone integration fixtures
+5bc1491e fix(tools): make Codex repair transactional
+5aa887c8 fix(packages): list published npm metadata
+d56a207b fix(packages): preflight configured source shelves
+67c953d9 fix(tools): reconcile stale guest state
+1fedfbf9 fix(packages): version edge runtime policy
+eadfb08b docs(cli): clarify collection publication
 ```
 
 The user's dirty `vm.yaml` is intentionally outside these commits.

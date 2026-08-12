@@ -203,7 +203,9 @@ vm packages rollout <package>@<version> --to <consumer>
 Recursive registration skips repositories marked by `vm-tool.yaml`; those are
 published and activated through `vm tools`. `packages.source_roots` is a
 controller-wide list; `vm packages up` reconciles those roots on fresh and
-existing appliance state without replacing credentials or named volumes.
+existing appliance state without replacing credentials or named volumes. Roots
+are scanned before appliance mutation; configured empty shelves are accepted,
+while manual recursive registration still requires at least one repository.
 `vm packages list` separates registered, published, installed, and consumable
 state; environment-only states are reported as not applicable.
 
@@ -224,12 +226,14 @@ vm tools update [environment] [--all] [--background]
 
 Tool sources and immutable releases live in package infrastructure. `status`
 reads one guest and separates controller registration/publication from guest
-installation/consumability. Publication is always an explicit
-`vm tools publish <name>` operation. `update` creates or starts the requested
-guest when necessary, updates only stale runtime sidecar infrastructure,
-repairs incomplete Codex state, and validates managed-tool activation without a
-base rebuild. These commands must run on the controller host; a managed guest
-prints the exact host command and exits.
+installation/consumability, including stale controller-only or guest-only rows.
+Publication is always an explicit `vm tools publish <name>` operation; the
+generic publisher currently accepts collections. `update` creates or starts the
+requested guest when necessary, updates only stale runtime sidecar
+infrastructure, repairs incomplete Codex state before checking publication, and
+validates managed-tool activation without a base rebuild. These commands must
+run on the controller host; a managed guest prints the exact host command and
+exits.
 
 ## Plugins
 
