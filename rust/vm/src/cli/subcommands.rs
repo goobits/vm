@@ -189,7 +189,7 @@ pub enum ToolsSubcommand {
     List,
     /// Show one registered tool and its published releases
     Show { name: String },
-    /// Explicitly publish the current source of one registered tool
+    /// Explicitly publish one registered collection from its current source
     Publish { name: String },
     /// Refresh the appliance-generated tool catalog cache
     Refresh {
