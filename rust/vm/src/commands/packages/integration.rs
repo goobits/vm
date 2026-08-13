@@ -38,7 +38,7 @@ async fn integrate(
     strategy: String,
     actor: &str,
 ) -> VmResult<vm_packages::SubmissionRecord> {
-    let submission = client.submission(&submission_id).await?;
+    let submission = client.submission(submission_id).await?;
     if !matches!(
         submission.state,
         WorkflowState::Approved | WorkflowState::Integrating

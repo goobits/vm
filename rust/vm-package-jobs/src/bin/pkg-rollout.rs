@@ -44,7 +44,7 @@ async fn run_rollout(
             return Ok(());
         }
         RolloutState::Validating => {
-            complete(&client, &rollout.rollout_id, true).await?;
+            complete(client, &rollout.rollout_id, true).await?;
             println!("{} recovered and is ready for review", rollout.rollout_id);
             return Ok(());
         }
@@ -94,7 +94,7 @@ async fn run_rollout(
         &rollout.version,
         &source,
     ) {
-        let _ = complete(&client, &rollout.rollout_id, false).await;
+        let _ = complete(client, &rollout.rollout_id, false).await;
         return Err(error);
     }
     let status = text(
@@ -105,7 +105,7 @@ async fn run_rollout(
         "inspect consumer rollout changes",
     )?;
     if status.trim().is_empty() {
-        let _ = complete(&client, &rollout.rollout_id, false).await;
+        let _ = complete(client, &rollout.rollout_id, false).await;
         bail!("package manager produced no consumer dependency change");
     }
     run(
@@ -156,7 +156,7 @@ async fn run_rollout(
             .arg(client.rollout_upload_url(&rollout.rollout_id)),
         "submit tested consumer rollout",
     )?;
-    let ready = complete(&client, &rollout.rollout_id, true).await?;
+    let ready = complete(client, &rollout.rollout_id, true).await?;
     println!(
         "{} is ready for review on {}",
         ready.rollout_id,

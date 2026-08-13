@@ -36,7 +36,7 @@ async fn submit(
     consumer: String,
     actor: &str,
 ) -> VmResult<vm_packages::SubmissionRecord> {
-    let checkout = client.checkout(&checkout_id).await?;
+    let checkout = client.checkout(checkout_id).await?;
     if !matches!(
         checkout.state,
         WorkflowState::Active | WorkflowState::NeedsChanges
@@ -75,7 +75,7 @@ async fn submit(
     )?;
     let upload_client =
         PackageInfrastructureClient::new(RegistryEndpoints::new(gateway).map_err(VmError::from)?);
-    let upload_url = upload_client.submission_upload_url(&checkout_id, &consumer);
+    let upload_url = upload_client.submission_upload_url(checkout_id, &consumer);
     exec(
         subject,
         [
@@ -96,7 +96,7 @@ async fn submit(
     )?;
     exec(subject, ["rm", "-f", bundle.as_str()])?;
 
-    let submission = client.checkout_submission(&checkout_id).await?;
+    let submission = client.checkout_submission(checkout_id).await?;
     let validating = client
         .validate_submission(
             &submission.submission_id,
