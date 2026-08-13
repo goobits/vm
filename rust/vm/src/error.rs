@@ -181,4 +181,12 @@ mod tests {
         assert_eq!(error.hint(), Some("Use a port from 1-65535"));
         assert!(error.source().is_none());
     }
+
+    #[test]
+    fn io_error_surfaces_the_underlying_message() {
+        let error = VmError::from(io::Error::other("connection closed"));
+
+        assert_eq!(error.to_string(), "connection closed");
+        assert_eq!(error.source().unwrap().to_string(), "connection closed");
+    }
 }
