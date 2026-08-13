@@ -9,7 +9,7 @@ mod submission;
 mod tools;
 
 pub use error::{WorkError, WorkResult};
-pub use server::{router, run, WorkCredentials};
-pub use source::SourceManager;
-pub use store::Store;
-pub use submission::ImportedSubmission;
+pub use server::{run, WorkCredentials};
+pub(crate) use source::SourceManager;
+pub(crate) use store::Store;
+pub(crate) use submission::ImportedSubmission;

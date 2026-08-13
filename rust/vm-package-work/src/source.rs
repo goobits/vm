@@ -15,7 +15,7 @@ use crate::{io::atomic_write, ImportedSubmission, Store, WorkError, WorkResult};
 mod rollout;
 
 #[derive(Clone)]
-pub struct SourceManager {
+pub(crate) struct SourceManager {
     root: PathBuf,
     locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
 }

@@ -66,7 +66,7 @@ pub(crate) struct Database {
     pub(crate) tool_receipts: BTreeMap<String, ToolPublicationReceipt>,
 }
 
-pub struct Store {
+pub(crate) struct Store {
     root: PathBuf,
     pub(crate) database: Mutex<Database>,
 }

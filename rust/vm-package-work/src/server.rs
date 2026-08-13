@@ -101,7 +101,7 @@ pub(crate) struct AppState {
     access: WorkCredentials,
 }
 
-pub fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router {
+pub(crate) fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router {
     let source = SourceManager::new(store.root());
     let state = AppState {
         store,

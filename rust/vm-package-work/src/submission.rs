@@ -11,7 +11,7 @@ use crate::store::{
 };
 use crate::{Store, WorkError, WorkResult};
 
-pub struct ImportedSubmission {
+pub(crate) struct ImportedSubmission {
     pub submitted_commit: String,
     pub diff_digest: String,
 }
