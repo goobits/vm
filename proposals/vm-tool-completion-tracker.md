@@ -81,6 +81,9 @@ automatically without host synchronization or approval commands.
   remove configurable CI/public release destinations and credentials.
 - [x] Automatically create, test, and push one consumer upgrade branch for
   every registered project that drifts behind a private release.
+- [x] Make rollout queue reconciliation an authenticated command and keep
+  workflow routing, source control, storage, and persistence records internal
+  to the workflow service.
 - [x] Remove the public host `submit`, `integrate`, `publish`, and `rollout`
   commands and their one-shot worker paths.
 
@@ -253,6 +256,14 @@ consumer rollout creation, source discovery, and repeat reconciliation. `git
 diff --check` passed. Duplicate detection could not run because `jscpd` is not
 installed in this container. No Docker, Tart, host VM, external network, or
 publication action was run.
+
+The focused package-boundary audit on 2026-08-13 found no dependency cycles,
+cross-crate source imports, or misplaced workspace members. Formatting, 41
+package contract/workflow/job tests, 15 repeated workflow tests after API
+narrowing, scoped all-target Clippy with warnings denied, and `git diff --check`
+passed. Rollout reconciliation is now an explicit authenticated `POST` command;
+the obsolete side-effecting `GET` contract was removed without a compatibility
+shim.
 
 ## Post-Recreation Acceptance
 

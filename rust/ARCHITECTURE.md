@@ -168,7 +168,8 @@ records, appliance resources
 - Isolated package and consumer worktrees
 - Submission, integration, release, rollout, and recovery receipts
 
-**Key Exports**: `Store`, `SourceManager`, authenticated workflow router
+**Key Exports**: `run`, `WorkCredentials`, workflow error contract. The router,
+store, source manager, and persistence records remain service-internal.
 
 #### vm-package-jobs
 **Role**: Credential-scoped package workflow workers.
