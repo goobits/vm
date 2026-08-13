@@ -232,6 +232,7 @@ impl<'a> ComposeOperations<'a> {
         configure_worktrees(
             self.config,
             &mut tera_context,
+            Path::new(workspace_path),
             &home_dir,
             &final_project_name,
             mode == RenderMode::Runtime,

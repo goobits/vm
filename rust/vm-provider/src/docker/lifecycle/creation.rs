@@ -8,7 +8,9 @@ use super::LifecycleOperations;
 use crate::{
     audio::MacOSAudioManager,
     context::ProviderContext,
-    docker::{build::BuildOperations, compose::ComposeOperations, ComposeCommand, DockerOps},
+    docker::{
+        build::BuildOperations, compose::ComposeOperations, mountpoints, ComposeCommand, DockerOps,
+    },
 };
 use vm_core::{
     command_stream::stream_command_visible,
@@ -96,6 +98,7 @@ impl<'a> LifecycleOperations<'a> {
         }
 
         let modified_config = self.prepare_config_for_build()?;
+        mountpoints::prepare(&modified_config, self.project_dir, None)?;
         let build_ops = BuildOperations::new(&modified_config, self.generated_dir, self.executable);
         let (build_context, base_image, is_snapshot) = build_ops.prepare_build_context()?;
 

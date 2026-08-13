@@ -21,7 +21,7 @@ use vm_core::{
     vm_warning,
 };
 
-use super::{artifacts::compose_path, compose::ComposeOperations, ComposeCommand};
+use super::{artifacts::compose_path, compose::ComposeOperations, mountpoints, ComposeCommand};
 
 // Constants for container lifecycle operations
 const DEFAULT_SHELL: &str = "zsh";
@@ -98,6 +98,7 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
         ProgressReporter::task(&phase, "Generating updated docker-compose.yml...");
 
         let temp_config = self.prepare_temp_config()?;
+        mountpoints::prepare(&temp_config, self.project_dir, Some(&state.mounts))?;
         let compose_ops = ComposeOperations::new(
             &temp_config,
             self.generated_dir,

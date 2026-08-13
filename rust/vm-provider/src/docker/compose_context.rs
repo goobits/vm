@@ -149,22 +149,12 @@ pub(super) fn process_dotfiles(config: &VmConfig, username: &str) -> Vec<(String
 pub(super) fn configure_worktrees(
     config: &VmConfig,
     context: &mut TeraContext,
+    workspace_path: &Path,
     home_dir: &str,
     project: &str,
     create_directory: bool,
 ) {
-    let enabled = config
-        .host_sync
-        .as_ref()
-        .and_then(|host_sync| host_sync.worktrees.as_ref())
-        .map(|worktrees| worktrees.enabled)
-        .unwrap_or_else(|| {
-            vm_config::GlobalConfig::load()
-                .ok()
-                .map(|global| global.worktrees.enabled)
-                .unwrap_or(true)
-        });
-    if !enabled {
+    if !worktrees_enabled(config) {
         return;
     }
 
@@ -175,19 +165,38 @@ pub(super) fn configure_worktrees(
         vm_warning!("Failed to create worktrees directory {base}");
     }
 
-    if let Ok(worktrees) = detect_worktrees() {
-        let mounts = worktrees
-            .iter()
-            .filter_map(|worktree| {
-                let path = Path::new(worktree);
-                path.to_str()
-                    .zip(path.file_name().and_then(|name| name.to_str()))
-            })
-            .collect::<Vec<_>>();
-        if !mounts.is_empty() {
-            context.insert("worktrees", &mounts);
-        }
+    let mounts = resolve_worktree_mounts(workspace_path, detect_worktrees().unwrap_or_default());
+    if !mounts.is_empty() {
+        context.insert("worktrees", &mounts);
     }
+}
+
+pub(super) fn worktrees_enabled(config: &VmConfig) -> bool {
+    config
+        .host_sync
+        .as_ref()
+        .and_then(|host_sync| host_sync.worktrees.as_ref())
+        .map(|worktrees| worktrees.enabled)
+        .unwrap_or_else(|| {
+            vm_config::GlobalConfig::load()
+                .ok()
+                .map(|global| global.worktrees.enabled)
+                .unwrap_or(true)
+        })
+}
+
+pub(super) fn resolve_worktree_mounts(
+    workspace_path: &Path,
+    worktrees: Vec<String>,
+) -> Vec<(String, String)> {
+    worktrees
+        .into_iter()
+        .filter_map(|source| {
+            let name = Path::new(&source).file_name()?;
+            let target = workspace_path.join(name);
+            Some((source, target.to_str()?.to_string()))
+        })
+        .collect()
 }
 
 fn expand_tilde(path: &str) -> Option<Cow<'_, str>> {
@@ -211,5 +220,26 @@ fn maybe_chown_path_to_sudo_user(path: &Path) {
         let _ = Command::new("chown")
             .args(["-R", &owner, path.to_string_lossy().as_ref()])
             .status();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolves_worktree_targets_below_the_workspace() {
+        let mounts = resolve_worktree_mounts(
+            Path::new("/source"),
+            vec!["/tmp/worktrees/feature".to_string()],
+        );
+
+        assert_eq!(
+            mounts,
+            vec![(
+                "/tmp/worktrees/feature".to_string(),
+                "/source/feature".to_string()
+            )]
+        );
     }
 }

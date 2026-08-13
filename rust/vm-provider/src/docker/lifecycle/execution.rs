@@ -3,7 +3,7 @@ use super::LifecycleOperations;
 use crate::{
     audio::MacOSAudioManager,
     context::ProviderContext,
-    docker::{compose::ComposeOperations, DockerOps},
+    docker::{compose::ComposeOperations, mountpoints, DockerOps},
     InstanceState,
 };
 use tracing::{info, warn};
@@ -54,6 +54,8 @@ impl<'a> LifecycleOperations<'a> {
                 )));
             }
         }
+
+        mountpoints::prepare(self.config, self.project_dir, None)?;
 
         if context.global_config.is_none() {
             return DockerOps::start_container(Some(self.executable), &target_container);
@@ -159,7 +161,7 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
     use tempfile::TempDir;
-    use vm_config::config::{PackageEdgeConfig, ProjectConfig, VmConfig};
+    use vm_config::config::{MountAccess, PackageEdgeConfig, ProjectConfig, VmConfig};
     use vm_config::GlobalConfig;
 
     fn fake_runtime_with_edge(
@@ -236,12 +238,16 @@ mod tests {
     }
 
     #[test]
-    fn stopped_start_uses_runtime_start_without_printing_runtime_output() {
+    fn stopped_start_repairs_mountpoints_without_using_compose() {
         let temp_dir = TempDir::new().unwrap();
         let (executable, log) = fake_runtime(&temp_dir, Some("exited"));
-        let config = config();
+        let mut config = config();
+        let project = config.project.as_mut().unwrap();
+        project.workspace_path = Some("/workspace".to_string());
+        project.workspace_access = MountAccess::ReadOnly;
         let generated_dir = temp_dir.path().join("generated");
         let project_dir = temp_dir.path().join("project");
+        fs::create_dir(&project_dir).unwrap();
         let ops = LifecycleOperations::new(
             &config,
             &generated_dir,
@@ -252,6 +258,7 @@ mod tests {
         ops.start_container(None, &ProviderContext::default())
             .unwrap();
 
+        assert!(project_dir.join("node_modules").is_dir());
         let commands = fs::read_to_string(log).unwrap();
         assert!(commands.lines().next().unwrap().starts_with("inspect "));
         assert!(commands.lines().any(|line| line == "start demo-dev"));

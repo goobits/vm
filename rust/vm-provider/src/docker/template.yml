@@ -58,7 +58,7 @@ services:
       {% if worktrees %}
       # Git worktrees (fallback: individual worktree mounts)
       {% for worktree in worktrees %}
-      - {{ worktree.0 }}:{{ workspace_path }}/{{ worktree.1 }}:{{ workspace_access }}
+      - {{ worktree.0 }}:{{ worktree.1 }}:{{ workspace_access }}
       {% endfor %}
       {% endif %}
       # Shell history persistence (survives container recreation)

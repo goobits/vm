@@ -5,6 +5,7 @@ pub mod build;
 pub mod command;
 mod compose_context;
 mod compose_model;
+mod mountpoints;
 
 #[cfg(test)]
 mod build_tests;
