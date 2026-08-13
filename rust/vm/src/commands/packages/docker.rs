@@ -234,7 +234,7 @@ fn source_build_command(workspace: &Path, dockerfile: &str, image: &str) -> Comm
     let mut command = Command::new("docker");
     command
         .current_dir(workspace)
-        .args(["build", "--label"])
+        .args(["build", "--provenance=false", "--label"])
         .arg(format!("{SOURCE_BUILD_LABEL}=true"))
         .args(["--tag", image, "--file", dockerfile, "."]);
     command
@@ -355,6 +355,7 @@ mod tests {
             arguments,
             [
                 "build",
+                "--provenance=false",
                 "--label",
                 "org.goobits.vm.source-build=true",
                 "--tag",
