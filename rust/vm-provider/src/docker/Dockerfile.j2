@@ -31,6 +31,22 @@ ARG GIT_CORE_EXCLUDESFILE_CONTENT
 
 # Snapshot detection - set to "true" when base_image is a pre-provisioned snapshot
 ARG BASE_PREPROVISIONED=false
+ARG VIBE_RUNTIME_REQUIRED=false
+
+# A stale @vibe-box must fail before a project image can appear usable. Rebuild
+# the shared base once instead of repairing every derived environment.
+RUN if [ "$VIBE_RUNTIME_REQUIRED" = "true" ]; then \
+        test -f /usr/local/lib/vm-ai-tools/codex-package/codex-package.json && \
+        test -x /usr/local/lib/vm-ai-tools/codex-package/bin/codex && \
+        test -x /usr/local/lib/vm-ai-tools/codex-package/bin/codex-code-mode-host && \
+        test -x /usr/local/bin/codex && \
+        test -x /usr/local/bin/codex-code-mode-host || { \
+            printf '%s\n' \
+              'Vibe base is incomplete: Codex code-mode host is unavailable.' \
+              'Run on the host: vm system base build vibe --provider docker' >&2; \
+            exit 1; \
+        }; \
+    fi
 
 ARG TZ=UTC
 ENV DEBIAN_FRONTEND=noninteractive

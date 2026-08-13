@@ -508,6 +508,9 @@ CMD ["tail", "-f", "/dev/null"]
         let is_snapshot = self.uses_preprovisioned_snapshot();
 
         args.push(format!("--build-arg=BASE_PREPROVISIONED={}", is_snapshot));
+        if self.uses_vibe_snapshot() {
+            args.push("--build-arg=VIBE_RUNTIME_REQUIRED=true".to_string());
+        }
 
         // Resolve Node defaults once for build-time and runtime provisioning.
         let node = NodeToolchainPlan::resolve(self.config);
@@ -593,6 +596,11 @@ CMD ["tail", "-f", "/dev/null"]
         self.get_box_config()
             .map(|cfg| matches!(cfg, BoxConfig::Snapshot(_)))
             .unwrap_or(false)
+    }
+
+    fn uses_vibe_snapshot(&self) -> bool {
+        self.get_box_config()
+            .is_ok_and(|config| matches!(config, BoxConfig::Snapshot(name) if name == "vibe-box"))
     }
 
     pub fn image_exists(&self, image: &str) -> Result<bool> {

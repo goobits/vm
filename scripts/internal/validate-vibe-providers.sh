@@ -124,6 +124,8 @@ Suggested checks after each start:
   vm exec -- which claude
   vm exec -- which agy
   vm exec -- which codex
+  vm exec -- test -x /usr/local/lib/vm-ai-tools/codex-package/bin/codex-code-mode-host
+  vm exec -- test -x /usr/local/bin/codex-code-mode-host
   vm exec -- git config --global user.name
   vm exec -- printenv | grep -E 'EDITOR|PATH' || true
   vm shell

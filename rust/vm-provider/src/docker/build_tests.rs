@@ -55,6 +55,9 @@ fn test_gather_build_args_host_integration() {
     assert!(args
         .iter()
         .any(|arg| arg == "--build-arg=PNPM_VERSION=10.12.3"));
+    assert!(!args
+        .iter()
+        .any(|arg| arg.starts_with("--build-arg=VIBE_RUNTIME_REQUIRED=")));
     assert!(include_str!("Dockerfile.j2").contains(
         "source=shared/scripts/install-node-toolchain.sh,target=/tmp/install-node-toolchain.sh"
     ));
@@ -86,6 +89,9 @@ fn test_gather_build_args_snapshot_omits_host_specific_inputs() {
         .any(|arg| arg == "--build-arg=BASE_PREPROVISIONED=true"));
     assert!(args
         .iter()
+        .any(|arg| arg == "--build-arg=VIBE_RUNTIME_REQUIRED=true"));
+    assert!(args
+        .iter()
         .any(|arg| arg == "--build-arg=TZ=America/New_York"));
     assert!(!args
         .iter()
@@ -102,6 +108,26 @@ fn test_gather_build_args_snapshot_omits_host_specific_inputs() {
     assert!(!args
         .iter()
         .any(|arg| arg.starts_with("--build-arg=GIT_USER_EMAIL=")));
+
+    let mut other_snapshot = config.clone();
+    other_snapshot.vm.as_mut().unwrap().r#box = Some(BoxSpec::String("@team-box".to_string()));
+    let other_args = BuildOperations::new(&other_snapshot, &temp_path, "docker")
+        .gather_build_args("vm-snapshot/global/team-box:latest");
+    assert!(other_args
+        .iter()
+        .any(|arg| arg == "--build-arg=BASE_PREPROVISIONED=true"));
+    assert!(!other_args
+        .iter()
+        .any(|arg| arg.starts_with("--build-arg=VIBE_RUNTIME_REQUIRED=")));
+}
+
+#[test]
+fn generated_vibe_build_rejects_an_incomplete_codex_runtime() {
+    let template = include_str!("Dockerfile.j2");
+
+    assert!(template.contains("ARG VIBE_RUNTIME_REQUIRED=false"));
+    assert!(template.contains("codex-package/bin/codex-code-mode-host"));
+    assert!(template.contains("vm system base build vibe --provider docker"));
 }
 
 #[test]
