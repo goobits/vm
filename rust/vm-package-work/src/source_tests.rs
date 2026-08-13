@@ -18,21 +18,25 @@ fn git(repository: &Path, args: &[&str]) {
         .success());
 }
 
+fn cargo_repository(repository: &Path, manifest: &str, message: &str) {
+    std::fs::create_dir(repository).unwrap();
+    git(repository, &["init", "--initial-branch", "main"]);
+    git(repository, &["config", "user.email", "test@example.com"]);
+    git(repository, &["config", "user.name", "Test"]);
+    std::fs::write(repository.join("Cargo.toml"), manifest).unwrap();
+    git(repository, &["add", "Cargo.toml"]);
+    git(repository, &["commit", "-m", message]);
+}
+
 #[tokio::test]
 async fn package_checkout_lifecycle_stays_inside_managed_agent_storage() {
     let directory = tempfile::tempdir().unwrap();
     let repository = directory.path().join("repository");
-    std::fs::create_dir(&repository).unwrap();
-    git(&repository, &["init", "--initial-branch", "main"]);
-    git(&repository, &["config", "user.email", "test@example.com"]);
-    git(&repository, &["config", "user.name", "Test"]);
-    std::fs::write(
-        repository.join("Cargo.toml"),
+    cargo_repository(
+        &repository,
         "[package]\nname='auth'\nversion='1.0.0'\n",
-    )
-    .unwrap();
-    git(&repository, &["add", "Cargo.toml"]);
-    git(&repository, &["commit", "-m", "initial"]);
+        "initial",
+    );
 
     let data = directory.path().join("data");
     let store = Store::open(&data).await.unwrap();
@@ -182,36 +186,18 @@ async fn package_checkout_lifecycle_stays_inside_managed_agent_storage() {
 async fn consumer_rollout_isolated_bundle_pushes_only_its_upgrade_branch() {
     let directory = tempfile::tempdir().unwrap();
     let package_repository = directory.path().join("package");
-    std::fs::create_dir(&package_repository).unwrap();
-    git(&package_repository, &["init", "--initial-branch", "main"]);
-    git(
+    cargo_repository(
         &package_repository,
-        &["config", "user.email", "test@example.com"],
-    );
-    git(&package_repository, &["config", "user.name", "Test"]);
-    std::fs::write(
-        package_repository.join("Cargo.toml"),
         "[package]\nname='auth'\nversion='1.1.0'\n",
-    )
-    .unwrap();
-    git(&package_repository, &["add", "Cargo.toml"]);
-    git(&package_repository, &["commit", "-m", "auth release"]);
+        "auth release",
+    );
 
     let consumer_repository = directory.path().join("consumer-repository");
-    std::fs::create_dir(&consumer_repository).unwrap();
-    git(&consumer_repository, &["init", "--initial-branch", "main"]);
-    git(
+    cargo_repository(
         &consumer_repository,
-        &["config", "user.email", "test@example.com"],
-    );
-    git(&consumer_repository, &["config", "user.name", "Test"]);
-    std::fs::write(
-        consumer_repository.join("Cargo.toml"),
         "[package]\nname='app'\nversion='1.0.0'\n[dependencies]\nauth='1.0.0'\n",
-    )
-    .unwrap();
-    git(&consumer_repository, &["add", "Cargo.toml"]);
-    git(&consumer_repository, &["commit", "-m", "initial consumer"]);
+        "initial consumer",
+    );
 
     let data = directory.path().join("data");
     let store = Store::open(&data).await.unwrap();

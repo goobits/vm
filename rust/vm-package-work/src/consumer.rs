@@ -560,10 +560,8 @@ mod tests {
     use super::*;
     use vm_packages::{PackageEcosystem, PublicationRecord, RegisterPackage, ReleaseRecord};
 
-    #[tokio::test]
-    async fn published_versions_automatically_queue_each_drifted_consumer_once() {
-        let directory = tempfile::tempdir().unwrap();
-        let store = Store::open(directory.path()).await.unwrap();
+    async fn store_with_auth_release(root: &std::path::Path, recorded_publication: bool) -> Store {
+        let store = Store::open(root).await.unwrap();
         store
             .register_package(RegisterPackage {
                 name: "auth".into(),
@@ -588,23 +586,38 @@ mod tests {
                 artifact_digest: "b".repeat(64),
                 source_pushed: true,
                 registry: "https://packages.example/cargo/".into(),
-                publications: vec![],
+                publications: recorded_publication
+                    .then(|| PublicationRecord {
+                        registry: "https://packages.example/cargo/".into(),
+                        artifact_digest: "b".repeat(64),
+                        published_at: now,
+                    })
+                    .into_iter()
+                    .collect(),
                 state: WorkflowState::Published,
                 created_at: now,
                 updated_at: now,
             },
         );
+        store
+    }
+
+    fn auth_consumer(name: &str, version: &str) -> RegisterConsumer {
+        RegisterConsumer {
+            name: name.into(),
+            repository: format!("https://example.com/{name}.git"),
+            default_branch: "main".into(),
+            dependencies: std::collections::BTreeMap::from([("auth".into(), version.into())]),
+        }
+    }
+
+    #[tokio::test]
+    async fn published_versions_automatically_queue_each_drifted_consumer_once() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = store_with_auth_release(directory.path(), false).await;
         for consumer in ["project-a", "project-b"] {
             store
-                .register_consumer(RegisterConsumer {
-                    name: consumer.into(),
-                    repository: format!("https://example.com/{consumer}.git"),
-                    default_branch: "main".into(),
-                    dependencies: std::collections::BTreeMap::from([(
-                        "auth".into(),
-                        "1.4.0".into(),
-                    )]),
-                })
+                .register_consumer(auth_consumer(consumer, "1.4.0"))
                 .await
                 .unwrap();
         }
@@ -620,52 +633,10 @@ mod tests {
     #[tokio::test]
     async fn drift_keeps_consumers_pinned_while_rollout_is_pending() {
         let directory = tempfile::tempdir().unwrap();
-        let store = Store::open(directory.path()).await.unwrap();
-        store
-            .register_package(RegisterPackage {
-                name: "auth".into(),
-                ecosystem: PackageEcosystem::Cargo,
-                repository: "https://example.com/auth.git".into(),
-                default_branch: "main".into(),
-            })
-            .await
-            .unwrap();
-        let now = Utc::now();
-        store.database.lock().await.releases.insert(
-            "rel-auth".into(),
-            ReleaseRecord {
-                release_id: "rel-auth".into(),
-                submission_id: "sub-auth".into(),
-                checkout_id: "checkout-auth".into(),
-                package: "auth".into(),
-                version: "1.5.0".into(),
-                source_repository: "https://example.com/auth.git".into(),
-                source_commit: "a".repeat(40),
-                tag: "v1.5.0".into(),
-                artifact_digest: "b".repeat(64),
-                source_pushed: true,
-                registry: "https://packages.example/cargo/".into(),
-                publications: vec![PublicationRecord {
-                    registry: "https://packages.example/cargo/".into(),
-                    artifact_digest: "b".repeat(64),
-                    published_at: now,
-                }],
-                state: WorkflowState::Published,
-                created_at: now,
-                updated_at: now,
-            },
-        );
+        let store = store_with_auth_release(directory.path(), true).await;
         for (consumer, version) in [("project-a", "1.4.2"), ("project-b", "1.3.8")] {
             store
-                .register_consumer(RegisterConsumer {
-                    name: consumer.into(),
-                    repository: format!("https://example.com/{consumer}.git"),
-                    default_branch: "main".into(),
-                    dependencies: std::collections::BTreeMap::from([(
-                        "auth".into(),
-                        version.into(),
-                    )]),
-                })
+                .register_consumer(auth_consumer(consumer, version))
                 .await
                 .unwrap();
         }
@@ -725,12 +696,7 @@ mod tests {
             .is_file());
 
         store
-            .register_consumer(RegisterConsumer {
-                name: "project-a".into(),
-                repository: "https://example.com/project-a.git".into(),
-                default_branch: "main".into(),
-                dependencies: std::collections::BTreeMap::from([("auth".into(), "1.5.0".into())]),
-            })
+            .register_consumer(auth_consumer("project-a", "1.5.0"))
             .await
             .unwrap();
         let consumers = store.package_consumers("auth").await.unwrap();
