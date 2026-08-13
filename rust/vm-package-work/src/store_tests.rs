@@ -1,6 +1,6 @@
 use super::*;
 use crate::ImportedSubmission;
-use vm_packages::PackageEcosystem;
+use vm_packages::{PackageEcosystem, RegisterPackage};
 
 fn request(key: &str, agent: &str) -> CreateCheckout {
     CreateCheckout {

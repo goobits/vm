@@ -1,3 +1,5 @@
+mod catalog;
+mod checkout;
 mod consumer;
 mod error;
 mod io;

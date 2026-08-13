@@ -7,29 +7,31 @@ use tokio::sync::Mutex;
 use vm_packages::{
     sha256_hex, validate_label, CheckoutLease, CheckoutRecord, CleanupRequest, ConsumerRecord,
     CreateCheckout, InternalPackageCatalog, LeaseRecord, LeaseRequest, PackageDefinition,
-    ReceiptKind, RegisterPackage, ReleaseRecord, RolloutRecord, SourceKind, SubmissionRecord,
-    ToolArtifactRecord, ToolDefinition, ToolPublicationReceipt, TransitionRequest, WorkflowReceipt,
-    WorkflowState, WorkflowTransition,
+    ReceiptKind, ReleaseRecord, RolloutRecord, SourceKind, SubmissionRecord, ToolArtifactRecord,
+    ToolDefinition, ToolPublicationReceipt, TransitionRequest, WorkflowReceipt, WorkflowState,
+    WorkflowTransition,
 };
 
+use crate::catalog::source_definition;
+use crate::checkout::{
+    close_record as close_checkout_record, id as checkout_id, normalized_consumers,
+    transition_record as transition_checkout_record, validate_create, validate_lease,
+    validate_lease_request, validate_transition,
+};
 use crate::submission::transition_records;
 use crate::{io::atomic_write, WorkError, WorkResult};
 
-mod support;
-use support::{
-    checkout_id, close_checkout_record, normalized_consumers, persist_database, pretty_json,
-    transition_checkout_record, validate_create, validate_lease, validate_lease_request,
-    validate_transition,
+mod idempotency;
+mod receipt;
+pub(crate) use idempotency::{
+    ensure_fingerprint, next_id, operation_fingerprint, validate_key as validate_idempotency_key,
 };
-pub(crate) use support::{
-    ensure_fingerprint, next_id, operation_fingerprint, receipt, validate_idempotency_key,
-    ReceiptInput,
-};
+pub(crate) use receipt::{receipt, ReceiptInput};
 
 const STATE_FILE: &str = "state/workflows.json";
 const CATALOG_FILE: &str = "catalog/packages.json";
 const DEFAULT_LEASE_SECONDS: i64 = 8 * 60 * 60;
-const MAX_LEASE_SECONDS: i64 = 24 * 60 * 60;
+pub(crate) const MAX_LEASE_SECONDS: i64 = 24 * 60 * 60;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct IdempotencyRecord {
@@ -203,77 +205,6 @@ impl Store {
             checkout: record,
             lease_token: Some(request.lease_token),
         })
-    }
-
-    pub async fn register_package(
-        &self,
-        request: RegisterPackage,
-    ) -> WorkResult<PackageDefinition> {
-        request.validate()?;
-        let mut current = self.database.lock().await;
-        if current.tools.contains_key(&request.name) {
-            return Err(WorkError::Conflict(format!(
-                "source '{}' is already registered as a tool",
-                request.name
-            )));
-        }
-        if let Some(existing) = current.packages.get(&request.name).cloned() {
-            if existing.ecosystem == request.ecosystem
-                && existing.repository == request.repository
-                && existing.default_branch == request.default_branch
-            {
-                self.materialize_catalog_locked(&current).await?;
-                return Ok(existing);
-            }
-            return Err(WorkError::Conflict(format!(
-                "package '{}' is already registered with different settings",
-                request.name
-            )));
-        }
-        let definition = PackageDefinition {
-            name: request.name,
-            ecosystem: request.ecosystem,
-            repository: request.repository,
-            default_branch: request.default_branch,
-            registered_at: Utc::now(),
-        };
-        let mut next = current.clone();
-        next.packages
-            .insert(definition.name.clone(), definition.clone());
-        self.commit(&mut current, next).await?;
-        self.materialize_catalog_locked(&current).await?;
-        Ok(definition)
-    }
-
-    pub async fn package(&self, name: &str) -> WorkResult<PackageDefinition> {
-        self.database
-            .lock()
-            .await
-            .packages
-            .get(name)
-            .cloned()
-            .ok_or_else(|| WorkError::NotFound(format!("package {name}")))
-    }
-
-    pub(crate) async fn source(&self, name: &str) -> WorkResult<SourceDefinition> {
-        let database = self.database.lock().await;
-        source_definition(&database, name)?
-            .ok_or_else(|| WorkError::NotFound(format!("source {name}")))
-    }
-
-    pub async fn packages(&self) -> Vec<PackageDefinition> {
-        self.database
-            .lock()
-            .await
-            .packages
-            .values()
-            .cloned()
-            .collect()
-    }
-
-    pub async fn internal_catalog(&self) -> WorkResult<InternalPackageCatalog> {
-        let database = self.database.lock().await;
-        InternalPackageCatalog::from_definitions(database.packages.values()).map_err(Into::into)
     }
 
     pub async fn record_source(
@@ -719,7 +650,7 @@ impl Store {
         self.materialize_catalog_locked(&database).await
     }
 
-    async fn materialize_catalog_locked(&self, database: &Database) -> WorkResult<()> {
+    pub(crate) async fn materialize_catalog_locked(&self, database: &Database) -> WorkResult<()> {
         let catalog = InternalPackageCatalog::from_definitions(database.packages.values())?;
         atomic_write(self.root.join(CATALOG_FILE), pretty_json(&catalog)?).await
     }
@@ -773,33 +704,14 @@ impl Store {
     }
 }
 
-fn source_definition(database: &Database, name: &str) -> WorkResult<Option<SourceDefinition>> {
-    match (database.packages.get(name), database.tools.get(name)) {
-        (Some(package), None) => Ok(Some(SourceDefinition {
-            kind: SourceKind::Package,
-            name: package.name.clone(),
-            repository: package.repository.clone(),
-            default_branch: package.default_branch.clone(),
-        })),
-        (None, Some(tool)) if tool.kind == vm_packages::ToolKind::Collection => {
-            Ok(Some(SourceDefinition {
-                kind: SourceKind::ToolCollection,
-                name: tool.name.clone(),
-                repository: tool.repository.clone(),
-                default_branch: tool.default_branch.clone(),
-            }))
-        }
-        (None, Some(_)) => Err(WorkError::Invalid(format!(
-            "tool {name} is not an editable collection"
-        ))),
-        (Some(_), Some(_)) => Err(WorkError::Conflict(format!(
-            "source name {name} is ambiguous between a package and tool"
-        ))),
-        // The HTTP boundary verifies registration. Keeping the store primitive
-        // package-defaulted preserves isolated state-machine tests and imported
-        // pre-kind workflow state.
-        (None, None) => Ok(None),
-    }
+async fn persist_database(root: &Path, database: &Database) -> WorkResult<()> {
+    atomic_write(root.join(STATE_FILE), pretty_json(database)?).await
+}
+
+fn pretty_json(value: &impl Serialize) -> WorkResult<Vec<u8>> {
+    let mut content = serde_json::to_vec_pretty(value)?;
+    content.push(b'\n');
+    Ok(content)
 }
 
 #[cfg(test)]

@@ -1,16 +1,13 @@
-use std::path::Path;
-
 use chrono::Utc;
-use serde::Serialize;
 use vm_packages::{
     sha256_hex, validate_label, CreateCheckout, LeaseRecord, LeaseRequest, ReceiptKind,
-    TransitionRequest, WorkflowReceipt, WorkflowState, WorkflowTransition,
+    TransitionRequest, WorkflowState, WorkflowTransition,
 };
 
-use super::{Database, IdempotencyRecord, MAX_LEASE_SECONDS, STATE_FILE};
-use crate::{io::atomic_write, WorkError, WorkResult};
+use crate::store::{receipt, Database, ReceiptInput, MAX_LEASE_SECONDS};
+use crate::{WorkError, WorkResult};
 
-pub(super) fn transition_checkout_record(
+pub(crate) fn transition_record(
     database: &mut Database,
     checkout_id: &str,
     request: &TransitionRequest,
@@ -60,7 +57,7 @@ pub(super) fn transition_checkout_record(
     Ok(())
 }
 
-pub(super) fn close_checkout_record(
+pub(crate) fn close_record(
     database: &mut Database,
     checkout_id: &str,
     actor: &str,
@@ -69,8 +66,7 @@ pub(super) fn close_checkout_record(
         .checkouts
         .get(checkout_id)
         .ok_or_else(|| WorkError::NotFound(checkout_id.to_string()))?;
-    let previous = checkout.state;
-    let commit = checkout.base_commit.clone();
+    let (previous, commit) = (checkout.state, checkout.base_commit.clone());
     let now = Utc::now();
     let cleanup = receipt(
         database,
@@ -108,39 +104,7 @@ pub(super) fn close_checkout_record(
     Ok(())
 }
 
-pub(crate) struct ReceiptInput<'a> {
-    pub(crate) kind: ReceiptKind,
-    pub(crate) checkout_id: &'a str,
-    pub(crate) actor: &'a str,
-    pub(crate) previous: Option<WorkflowState>,
-    pub(crate) next: WorkflowState,
-    pub(crate) commit: Option<String>,
-    pub(crate) validation_result: Option<String>,
-    pub(crate) reason: &'a str,
-    pub(crate) timestamp: chrono::DateTime<Utc>,
-}
-
-pub(crate) fn receipt(database: &mut Database, input: ReceiptInput<'_>) -> WorkflowReceipt {
-    WorkflowReceipt {
-        receipt_id: format!("receipt-{:08}", next_id(database)),
-        kind: input.kind,
-        checkout_id: input.checkout_id.to_string(),
-        actor: input.actor.to_string(),
-        timestamp: input.timestamp,
-        previous: input.previous,
-        next: input.next,
-        commit: input.commit,
-        validation_result: input.validation_result,
-        reason: input.reason.to_string(),
-    }
-}
-
-pub(crate) fn next_id(database: &mut Database) -> u64 {
-    database.sequence += 1;
-    database.sequence
-}
-
-pub(super) fn checkout_id(package: &str, now: chrono::DateTime<Utc>, sequence: u64) -> String {
+pub(crate) fn id(package: &str, now: chrono::DateTime<Utc>, sequence: u64) -> String {
     let slug = package
         .chars()
         .map(|character| {
@@ -156,13 +120,13 @@ pub(super) fn checkout_id(package: &str, now: chrono::DateTime<Utc>, sequence: u
     format!("pkg-{slug}-{}-{sequence:06}", now.format("%Y%m%d"))
 }
 
-pub(super) fn normalized_consumers(mut consumers: Vec<String>) -> Vec<String> {
+pub(crate) fn normalized_consumers(mut consumers: Vec<String>) -> Vec<String> {
     consumers.sort();
     consumers.dedup();
     consumers
 }
 
-pub(super) fn validate_create(request: &CreateCheckout) -> WorkResult<()> {
+pub(crate) fn validate_create(request: &CreateCheckout) -> WorkResult<()> {
     validate_label("package", &request.package)?;
     validate_label("agent", &request.agent)?;
     for consumer in &request.consumers {
@@ -173,15 +137,15 @@ pub(super) fn validate_create(request: &CreateCheckout) -> WorkResult<()> {
             "task must contain 1 to 1000 characters".into(),
         ));
     }
-    if request.lease_token.len() < 32 || request.lease_token.len() > 256 {
+    if !(32..=256).contains(&request.lease_token.len()) {
         return Err(WorkError::Invalid(
             "lease token must contain 32 to 256 characters".into(),
         ));
     }
-    validate_idempotency_key(&request.idempotency_key)
+    crate::store::validate_idempotency_key(&request.idempotency_key)
 }
 
-pub(super) fn validate_lease_request(request: &LeaseRequest) -> WorkResult<()> {
+pub(crate) fn validate_lease_request(request: &LeaseRequest) -> WorkResult<()> {
     validate_label("lease holder", &request.holder)?;
     if request.lease_token.trim().is_empty() {
         return Err(WorkError::Invalid("lease token cannot be empty".into()));
@@ -191,30 +155,20 @@ pub(super) fn validate_lease_request(request: &LeaseRequest) -> WorkResult<()> {
             "lease duration must be between 60 and {MAX_LEASE_SECONDS} seconds"
         )));
     }
-    validate_idempotency_key(&request.idempotency_key)
+    crate::store::validate_idempotency_key(&request.idempotency_key)
 }
 
-pub(super) fn validate_transition(request: &TransitionRequest) -> WorkResult<()> {
+pub(crate) fn validate_transition(request: &TransitionRequest) -> WorkResult<()> {
     validate_label("actor", &request.actor)?;
     if request.reason.trim().is_empty() || request.reason.len() > 1_000 {
         return Err(WorkError::Invalid(
             "transition reason must contain 1 to 1000 characters".into(),
         ));
     }
-    validate_idempotency_key(&request.idempotency_key)
+    crate::store::validate_idempotency_key(&request.idempotency_key)
 }
 
-pub(crate) fn validate_idempotency_key(key: &str) -> WorkResult<()> {
-    if key.trim().is_empty() || key.len() > 128 {
-        Err(WorkError::Invalid(
-            "idempotency key must contain 1 to 128 characters".into(),
-        ))
-    } else {
-        Ok(())
-    }
-}
-
-pub(super) fn validate_lease(
+pub(crate) fn validate_lease(
     lease: &LeaseRecord,
     holder: &str,
     token: &str,
@@ -229,39 +183,4 @@ pub(super) fn validate_lease(
         ));
     }
     Ok(())
-}
-
-pub(crate) fn ensure_fingerprint(
-    existing: &IdempotencyRecord,
-    fingerprint: &str,
-) -> WorkResult<()> {
-    if existing.fingerprint == fingerprint {
-        Ok(())
-    } else {
-        Err(WorkError::Conflict(
-            "idempotency key was already used for a different request".into(),
-        ))
-    }
-}
-
-pub(crate) fn operation_fingerprint(
-    operation: &str,
-    checkout_id: Option<&str>,
-    value: &impl Serialize,
-) -> WorkResult<String> {
-    Ok(sha256_hex(&serde_json::to_vec(&(
-        operation,
-        checkout_id,
-        value,
-    ))?))
-}
-
-pub(super) async fn persist_database(root: &Path, database: &Database) -> WorkResult<()> {
-    atomic_write(root.join(STATE_FILE), pretty_json(database)?).await
-}
-
-pub(super) fn pretty_json(value: &impl Serialize) -> WorkResult<Vec<u8>> {
-    let mut content = serde_json::to_vec_pretty(value)?;
-    content.push(b'\n');
-    Ok(content)
 }
