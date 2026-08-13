@@ -257,13 +257,14 @@ diff --check` passed. Duplicate detection could not run because `jscpd` is not
 installed in this container. No Docker, Tart, host VM, external network, or
 publication action was run.
 
-The focused package-boundary audit on 2026-08-13 found no dependency cycles,
-cross-crate source imports, or misplaced workspace members. Formatting, 41
-package contract/workflow/job tests, 15 repeated workflow tests after API
-narrowing, scoped all-target Clippy with warnings denied, and `git diff --check`
-passed. Rollout reconciliation is now an explicit authenticated `POST` command;
-the obsolete side-effecting `GET` contract was removed without a compatibility
-shim.
+The focused package-boundary and consolidation audits on 2026-08-13 found no
+dependency cycles, cross-crate source imports, misplaced workspace members, or
+competing documentation/task owners. Package identity normalization now has one
+domain owner, release publishers share one credential-aware Git command owner,
+and repeated workflow fixtures are consolidated without reducing coverage.
+Formatting, focused package/CLI tests, scoped all-target Clippy with warnings
+denied, and `git diff --check` passed. Rollout reconciliation remains an
+explicit authenticated `POST` command with no obsolete compatibility path.
 
 ## Post-Recreation Acceptance
 
@@ -423,6 +424,12 @@ e1254dcf chore(rust): keep cross-platform checks warning-free
 a6d06a41 feat(packages): automate private consumer releases
 bb6de4d4 refactor(packages): expose one guest release workflow
 9c5f24f2 chore(packages): satisfy workspace lint
+b6371868 refactor(packages): make rollout reconciliation explicit
+5135dffc refactor(packages): narrow workflow service API
+f80e144d docs(packages): record boundary audit
+91e37c3f refactor(packages): centralize package identity
+82d6f5ed refactor(packages): consolidate release Git commands
+8f13e180 test(packages): consolidate workflow fixtures
 ```
 
 The unrelated untracked `storage-5x-port/` directory is intentionally outside
