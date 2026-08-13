@@ -52,6 +52,7 @@ async fn package_checkout_lifecycle_stays_inside_managed_agent_storage() {
             agent: "agent-1".into(),
             consumers: vec!["project-a".into()],
             task: "change auth".into(),
+            lease_token: "lease-token-012345678901234567890123456789".into(),
             idempotency_key: "checkout-1".into(),
         })
         .await

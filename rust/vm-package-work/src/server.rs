@@ -817,6 +817,7 @@ mod tests {
             "agent": "agent-1",
             "consumers": ["project-a"],
             "task": "refresh tokens",
+            "lease_token": "lease-token-012345678901234567890123456789",
             "idempotency_key": "create-1"
         })
     }

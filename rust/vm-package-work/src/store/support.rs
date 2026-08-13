@@ -173,6 +173,11 @@ pub(super) fn validate_create(request: &CreateCheckout) -> WorkResult<()> {
             "task must contain 1 to 1000 characters".into(),
         ));
     }
+    if request.lease_token.len() < 32 || request.lease_token.len() > 256 {
+        return Err(WorkError::Invalid(
+            "lease token must contain 32 to 256 characters".into(),
+        ));
+    }
     validate_idempotency_key(&request.idempotency_key)
 }
 

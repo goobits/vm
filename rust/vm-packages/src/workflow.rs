@@ -65,6 +65,8 @@ pub struct CreateCheckout {
     #[serde(default)]
     pub consumers: Vec<String>,
     pub task: String,
+    /// Client-generated capability used for checkout archive and submission access.
+    pub lease_token: String,
     pub idempotency_key: String,
 }
 

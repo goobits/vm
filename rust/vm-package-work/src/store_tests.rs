@@ -8,6 +8,7 @@ fn request(key: &str, agent: &str) -> CreateCheckout {
         agent: agent.into(),
         consumers: vec!["project-b".into(), "project-a".into(), "project-a".into()],
         task: "fix token refresh".into(),
+        lease_token: format!("lease-token-{agent}-012345678901234567890123456789"),
         idempotency_key: key.into(),
     }
 }
@@ -31,7 +32,7 @@ async fn concurrent_checkouts_are_isolated_and_idempotent() {
         .unwrap();
 
     assert_eq!(first.checkout.checkout_id, retry.checkout.checkout_id);
-    assert!(retry.lease_token.is_none());
+    assert_eq!(retry.lease_token, first.lease_token);
     assert_ne!(first.checkout.checkout_id, second.checkout.checkout_id);
     assert_ne!(first.checkout.lease, second.checkout.lease);
     assert_eq!(first.checkout.consumers, ["project-a", "project-b"]);
@@ -95,7 +96,7 @@ async fn transitions_are_validated_persisted_and_receipted() {
 }
 
 #[tokio::test]
-async fn lease_tokens_are_required_and_never_returned_on_retry() {
+async fn client_lease_tokens_make_checkout_creation_retryable() {
     let directory = tempfile::tempdir().unwrap();
     let store = Store::open(directory.path()).await.unwrap();
     let created = store

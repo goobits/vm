@@ -88,6 +88,7 @@ pub(super) async fn handle(files: &ApplianceFiles, intent: CheckoutIntent) -> Vm
             agent: intent.agent.clone(),
             consumers: vec![consumer.clone()],
             task: intent.task,
+            lease_token: vm_core::secrets::generate_random_password(48),
             idempotency_key: uuid::Uuid::new_v4().to_string(),
         })
         .await?;

@@ -296,6 +296,18 @@ impl SourceManager {
         submission: &SubmissionRecord,
         request: IntegrationRequest,
     ) -> WorkResult<SubmissionRecord> {
+        if submission.state == WorkflowState::Integrating {
+            let integration = submission
+                .integration
+                .as_ref()
+                .ok_or_else(|| WorkError::Conflict("integration record is missing".into()))?;
+            if integration.strategy != request.strategy {
+                return Err(WorkError::Conflict(
+                    "integration retry changed the merge strategy".into(),
+                ));
+            }
+            return Ok(submission.clone());
+        }
         if submission.state != WorkflowState::Approved {
             return Err(WorkError::Conflict(
                 "only an approved submission can be integrated".into(),

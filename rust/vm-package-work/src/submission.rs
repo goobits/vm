@@ -22,22 +22,26 @@ impl Store {
         checkout_id: &str,
         imported: ImportedSubmission,
     ) -> WorkResult<SubmissionRecord> {
-        let submission_id = format!(
-            "sub-{checkout_id}-{}",
-            imported
-                .submitted_commit
-                .chars()
-                .take(12)
-                .collect::<String>()
-        );
+        let submission_id = format!("sub-{checkout_id}");
         let mut current = self.database.lock().await;
-        if let Some(existing) = current.submissions.get(&submission_id) {
+        let existing_id = current
+            .submissions
+            .values()
+            .filter(|submission| submission.checkout_id == checkout_id)
+            .max_by_key(|submission| submission.created_at)
+            .map(|submission| submission.submission_id.clone());
+        if let Some(existing) = existing_id
+            .as_ref()
+            .and_then(|id| current.submissions.get(id))
+        {
             if existing.diff_digest == imported.diff_digest {
                 return Ok(existing.clone());
             }
-            return Err(WorkError::Conflict(
-                "submission commit was already recorded with a different diff".into(),
-            ));
+            if existing.state != WorkflowState::NeedsChanges {
+                return Err(WorkError::Conflict(
+                    "submission can only be replaced after review requests changes".into(),
+                ));
+            }
         }
         let mut next = current.clone();
         let now = Utc::now();
@@ -45,9 +49,12 @@ impl Store {
             .checkouts
             .get(checkout_id)
             .ok_or_else(|| WorkError::NotFound(checkout_id.to_string()))?;
-        if checkout.state != WorkflowState::Active {
+        if !matches!(
+            checkout.state,
+            WorkflowState::Active | WorkflowState::NeedsChanges
+        ) {
             return Err(WorkError::Conflict(
-                "only an active checkout can be submitted".into(),
+                "only an active checkout or requested rework can be submitted".into(),
             ));
         }
         let branch = checkout
@@ -58,23 +65,47 @@ impl Store {
             .base_commit
             .clone()
             .ok_or_else(|| WorkError::Conflict("checkout base commit is missing".into()))?;
-        let record = SubmissionRecord {
-            submission_id: submission_id.clone(),
-            checkout_id: checkout_id.to_string(),
-            package: checkout.package.clone(),
-            branch,
-            base_commit,
-            submitted_commit: imported.submitted_commit,
-            diff_digest: imported.diff_digest,
-            state: WorkflowState::Active,
-            validation: None,
-            review: None,
-            integration: None,
-            release_id: None,
-            created_at: now,
-            updated_at: now,
-        };
-        next.submissions.insert(submission_id.clone(), record);
+        let submission_id = existing_id.unwrap_or(submission_id);
+        if next.submissions.contains_key(&submission_id) {
+            transition_records(
+                &mut next,
+                &submission_id,
+                WorkflowState::Active,
+                ReceiptKind::Submission,
+                "package-agent",
+                "review feedback addressed; submission reactivated",
+                Some("rework_complete".into()),
+            )?;
+            let record = next
+                .submissions
+                .get_mut(&submission_id)
+                .expect("submission remains present");
+            record.submitted_commit = imported.submitted_commit;
+            record.diff_digest = imported.diff_digest;
+            record.validation = None;
+            record.review = None;
+            record.integration = None;
+            record.release_id = None;
+            record.updated_at = now;
+        } else {
+            let record = SubmissionRecord {
+                submission_id: submission_id.clone(),
+                checkout_id: checkout_id.to_string(),
+                package: checkout.package.clone(),
+                branch,
+                base_commit,
+                submitted_commit: imported.submitted_commit,
+                diff_digest: imported.diff_digest,
+                state: WorkflowState::Active,
+                validation: None,
+                review: None,
+                integration: None,
+                release_id: None,
+                created_at: now,
+                updated_at: now,
+            };
+            next.submissions.insert(submission_id.clone(), record);
+        }
         transition_records(
             &mut next,
             &submission_id,
@@ -523,6 +554,7 @@ mod tests {
                 agent: "agent-1".into(),
                 consumers: vec!["project-a".into()],
                 task: "change auth".into(),
+                lease_token: "lease-token-012345678901234567890123456789".into(),
                 idempotency_key: "create".into(),
             })
             .await
@@ -574,6 +606,53 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(validated.state, WorkflowState::Reviewing);
+        let changes_requested = store
+            .record_review(
+                &submission.submission_id,
+                ReviewRequest {
+                    decision: ReviewDecision::NeedsChanges,
+                    recommended_version: vm_packages::VersionRecommendation::Patch,
+                    api_diff: vm_packages::PublicApiDiff {
+                        changed_paths: vec![],
+                        potentially_breaking: false,
+                    },
+                    reason: "add a regression test".into(),
+                    required_followups: vec!["cover refresh failure".into()],
+                    merge_strategy: "rebase".into(),
+                    reviewer: "integration-agent".into(),
+                    idempotency_key: "review-needs-changes".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(changes_requested.state, WorkflowState::NeedsChanges);
+
+        let resubmitted = store
+            .record_submission(
+                &created.checkout.checkout_id,
+                ImportedSubmission {
+                    submitted_commit: "fedcba987654321".into(),
+                    diff_digest: "updated-digest".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(resubmitted.submission_id, submission.submission_id);
+        assert_eq!(resubmitted.state, WorkflowState::Submitted);
+        assert!(resubmitted.review.is_none());
+
+        store
+            .validate_submission(
+                &submission.submission_id,
+                ValidationRequest {
+                    package: CheckOutcome::Passed,
+                    consumers: BTreeMap::from([("project-a".into(), CheckOutcome::Passed)]),
+                    actor: "controller".into(),
+                    idempotency_key: "validate-resubmission".into(),
+                },
+            )
+            .await
+            .unwrap();
         let reviewed = store
             .record_review(
                 &submission.submission_id,
@@ -588,7 +667,7 @@ mod tests {
                     required_followups: vec![],
                     merge_strategy: "rebase".into(),
                     reviewer: "integration-agent".into(),
-                    idempotency_key: "review".into(),
+                    idempotency_key: "review-approved".into(),
                 },
             )
             .await

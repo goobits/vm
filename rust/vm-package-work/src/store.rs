@@ -110,17 +110,16 @@ impl Store {
                 .ok_or_else(|| WorkError::Internal("idempotency target is missing".into()))?;
             return Ok(CheckoutLease {
                 checkout,
-                lease_token: None,
+                lease_token: Some(request.lease_token),
             });
         }
 
         let mut next = current.clone();
         let now = Utc::now();
         let checkout_id = checkout_id(&request.package, now, next_id(&mut next));
-        let token = vm_core::secrets::generate_random_password(48);
         let lease = LeaseRecord {
             holder: request.agent.clone(),
-            token_digest: sha256_hex(&token),
+            token_digest: sha256_hex(&request.lease_token),
             expires_at: now + Duration::seconds(DEFAULT_LEASE_SECONDS),
         };
         let checkout_receipt = receipt(
@@ -191,7 +190,7 @@ impl Store {
         self.commit(&mut current, next).await?;
         Ok(CheckoutLease {
             checkout: record,
-            lease_token: Some(token),
+            lease_token: Some(request.lease_token),
         })
     }
 

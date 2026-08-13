@@ -371,6 +371,7 @@ mod tests {
                 agent: "agent-1".into(),
                 consumers: vec!["project-a".into()],
                 task: "release auth".into(),
+                lease_token: "lease-token-012345678901234567890123456789".into(),
                 idempotency_key: "create-release".into(),
             })
             .await
