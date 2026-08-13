@@ -1,1097 +1,108 @@
-// Standard library imports
 use std::fs;
 use std::path::{Path, PathBuf};
 
-// External crate imports
 use indexmap::IndexMap;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use serde_yaml_ng as serde_yaml;
 use vm_core::error::Result;
 
-// Internal crate imports
 use crate::detector::git::GitConfig;
-use crate::ports::PortMapping;
+pub use crate::ports::PortsConfig;
 
+mod environment;
+mod host_sync;
+mod limits;
 pub mod mounts;
-pub use mounts::{MountAccess, MountConfig};
+mod runtime;
+mod storage;
 pub mod tools;
+
+#[cfg(feature = "test-helpers")]
+pub use environment::{MockProviderConfig, MockVmInstanceConfig, VmStatusReportConfig};
+pub use environment::{
+    NetworkingConfig, PackageEdgeConfig, ProjectConfig, SecurityConfig, ServiceConfig, TartConfig,
+    TerminalConfig,
+};
+pub use host_sync::{AiSyncConfig, AiSyncTools, HostSyncConfig, WorktreesConfig};
+pub use limits::{CpuLimit, DiskLimit, MemoryLimit, SwapLimit};
+pub use mounts::{MountAccess, MountConfig};
+pub use runtime::{
+    BootstrapConfig, BoxSpec, ContainerLoggingConfig, PlaywrightBootstrapConfig, VersionsConfig,
+    VmSettings,
+};
+pub use storage::{
+    StorageConfig, TmpfsMountConfig, VolumeMountConfig, VolumeRetention, VolumeScope,
+};
 pub use tools::{ToolConfig, ToolUpdatePolicy, ToolsConfig};
-
-// Helper function to deserialize version field that accepts both strings and numbers
-fn deserialize_option_string_or_number<'de, D>(
-    deserializer: D,
-) -> std::result::Result<Option<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    use serde::de::{Error, Visitor};
-    use std::fmt;
-
-    struct StringOrNumberVisitor;
-
-    impl<'de> Visitor<'de> for StringOrNumberVisitor {
-        type Value = Option<String>;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a string, number, or null")
-        }
-
-        fn visit_none<E>(self) -> std::result::Result<Self::Value, E>
-        where
-            E: Error,
-        {
-            Ok(None)
-        }
-
-        fn visit_some<D>(self, deserializer: D) -> std::result::Result<Self::Value, D::Error>
-        where
-            D: Deserializer<'de>,
-        {
-            deserializer.deserialize_any(InnerVisitor)
-        }
-
-        fn visit_unit<E>(self) -> std::result::Result<Self::Value, E>
-        where
-            E: Error,
-        {
-            Ok(None)
-        }
-    }
-
-    struct InnerVisitor;
-
-    impl<'de> Visitor<'de> for InnerVisitor {
-        type Value = Option<String>;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a string or number")
-        }
-
-        fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
-        where
-            E: Error,
-        {
-            Ok(Some(value.to_string()))
-        }
-
-        fn visit_i64<E>(self, value: i64) -> std::result::Result<Self::Value, E>
-        where
-            E: Error,
-        {
-            Ok(Some(value.to_string()))
-        }
-
-        fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E>
-        where
-            E: Error,
-        {
-            Ok(Some(value.to_string()))
-        }
-
-        fn visit_f64<E>(self, value: f64) -> std::result::Result<Self::Value, E>
-        where
-            E: Error,
-        {
-            Ok(Some(value.to_string()))
-        }
-    }
-
-    deserializer.deserialize_option(StringOrNumberVisitor)
-}
 
 /// Main VM configuration structure.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct VmConfig {
-    // 1. Metadata & Schema
     #[serde(rename = "$schema", skip_serializing_if = "Option::is_none")]
     pub schema: Option<String>,
-
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
-
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preset: Option<String>,
-
-    // 2. Provider & Environment
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
-
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_profile: Option<String>,
-
     #[serde(skip_serializing_if = "Option::is_none")]
     pub os: Option<String>,
-
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tart: Option<TartConfig>,
-
-    // 3. Project Identity
     #[serde(skip_serializing_if = "Option::is_none")]
     pub project: Option<ProjectConfig>,
-
-    // 4. VM Resources
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vm: Option<VmSettings>,
-
     #[serde(default, skip_serializing_if = "StorageConfig::is_empty")]
     pub storage: StorageConfig,
-
-    /// Additional host directories mounted into the guest.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mounts: Vec<MountConfig>,
-
-    /// Immutable tools and collections activated inside the guest.
     #[serde(default, skip_serializing_if = "ToolsConfig::is_empty")]
     pub tools: ToolsConfig,
-
-    // 5. Runtime Versions
     #[serde(skip_serializing_if = "Option::is_none")]
     pub versions: Option<VersionsConfig>,
-
-    // 6. Project Bootstrap
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bootstrap: Option<BootstrapConfig>,
-
-    // 7. Networking
     #[serde(default)]
     pub ports: PortsConfig,
-
     #[serde(skip_serializing_if = "Option::is_none")]
     pub networking: Option<NetworkingConfig>,
-
-    // 7. Services & Infrastructure
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub services: IndexMap<String, ServiceConfig>,
-
-    // 8. Package Management
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub apt_packages: Vec<String>,
-
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub npm_packages: Vec<String>,
-
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pip_packages: Vec<String>,
-
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cargo_packages: Vec<String>,
-
-    // 9. Development Environment
     #[serde(skip_serializing_if = "Option::is_none")]
     pub terminal: Option<TerminalConfig>,
-
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub aliases: IndexMap<String, String>,
-
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub environment: IndexMap<String, String>,
-
-    // 10. Host Synchronization
     #[serde(skip_serializing_if = "Option::is_none")]
     pub host_sync: Option<HostSyncConfig>,
-
-    // 11. Security
     #[serde(skip_serializing_if = "Option::is_none")]
     pub security: Option<SecurityConfig>,
-
-    // 12. Profiles
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profiles: Option<IndexMap<String, VmConfig>>,
-
-    // 13. Extra/Custom
     #[serde(flatten)]
     pub extra_config: IndexMap<String, serde_json::Value>,
-
-    // 14. Internal-only fields
-    /// Path to the config file that was loaded (for debugging)
     #[serde(skip)]
     pub source_path: Option<PathBuf>,
-
-    /// Host Git configuration (if detected and enabled)
     #[serde(skip)]
     pub git_config: Option<GitConfig>,
-
-    /// Controller-supplied package edge attached to this runtime only.
     #[serde(skip)]
     pub package_edge: Option<PackageEdgeConfig>,
-
-    // 14. Mock provider config (for testing only)
     #[cfg(feature = "test-helpers")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mock: Option<MockProviderConfig>,
-}
-
-/// Runtime-only settings for the read-only package proxy beside a worker.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct PackageEdgeConfig {
-    pub image: String,
-    pub internal_gateway: String,
-    pub client_gateway: String,
-    pub read_token: String,
-    pub revision: String,
-}
-
-/// Configuration for the mock provider, for testing purposes.
-#[cfg(feature = "test-helpers")]
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct MockProviderConfig {
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub instances: Vec<MockVmInstanceConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub status_report: Option<VmStatusReportConfig>,
-}
-
-/// A mock VM instance for testing `vm list`.
-#[cfg(feature = "test-helpers")]
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct MockVmInstanceConfig {
-    pub name: String,
-    pub status: String,
-    pub ip_address: Option<String>,
-    pub memory_gb: u32,
-    pub cpus: u32,
-}
-
-/// A mock status report for testing `vm status`.
-#[cfg(feature = "test-helpers")]
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct VmStatusReportConfig {
-    pub name: String,
-    pub is_running: bool,
-    pub ip_address: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub services: Vec<(String, String)>,
-}
-
-/// Port configuration with range-based allocation and explicit mappings.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct PortsConfig {
-    #[serde(rename = "_range", skip_serializing_if = "Option::is_none")]
-    pub range: Option<Vec<u16>>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub mappings: Vec<PortMapping>,
-}
-
-impl PortsConfig {
-    pub fn get_all_exposed_ports(&self) -> Vec<String> {
-        let mut ports = Vec::new();
-
-        // Add explicit mappings
-        for mapping in &self.mappings {
-            ports.push(format!("{}:{}", mapping.host, mapping.guest));
-        }
-
-        // Add range mapping
-        if let Some(range) = &self.range {
-            if range.len() == 2 {
-                let (start, end) = (range[0], range[1]);
-                ports.push(format!("{start}-{end}:{start}-{end}"));
-            }
-        }
-        ports
-    }
-
-    pub fn has_ports(&self) -> bool {
-        self.range.is_some() || !self.mappings.is_empty()
-    }
-
-    pub fn is_port_in_range(&self, port: u16) -> bool {
-        if let Some(range) = &self.range {
-            if range.len() == 2 {
-                let (start, end) = (range[0], range[1]);
-                return port >= start && port <= end;
-            }
-        }
-        false
-    }
-}
-
-/// Project-specific configuration settings.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ProjectConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hostname: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub workspace_path: Option<String>,
-    #[serde(default, skip_serializing_if = "MountAccess::is_read_write")]
-    pub workspace_access: MountAccess,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub backup_pattern: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub env_template_path: Option<String>,
-}
-
-/// Box specification - unified way to specify VM base images, Dockerfiles, or snapshots
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(untagged)]
-pub enum BoxSpec {
-    /// Simple string reference (image name, Dockerfile path, or snapshot)
-    /// Examples: "ubuntu:24.04", "./Dockerfile", "@my-snapshot"
-    String(String),
-
-    /// Advanced Docker build configuration with context and build arguments
-    Build {
-        dockerfile: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        context: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        args: Option<IndexMap<String, String>>,
-    },
-}
-
-/// Virtual machine resource and system configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct VmSettings {
-    /// Unified box configuration (image, Dockerfile, or snapshot)
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        rename = "box",
-        alias = "image"
-    )]
-    pub r#box: Option<BoxSpec>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub user: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub uid: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub gid: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory: Option<MemoryLimit>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cpus: Option<CpuLimit>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pids_limit: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub swap: Option<SwapLimit>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub swappiness: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timezone: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub port_binding: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub gui: Option<bool>,
-    /// Seconds Docker should allow for graceful shutdown before sending SIGKILL.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub stop_grace_period: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub logging: Option<ContainerLoggingConfig>,
-}
-
-impl VmSettings {
-    /// Get box specification from `box` field.
-    pub fn get_box_spec(&self) -> Option<BoxSpec> {
-        self.r#box.clone()
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ContainerLoggingConfig {
-    #[serde(default = "default_logging_driver")]
-    pub driver: String,
-    #[serde(default = "default_logging_max_size")]
-    pub max_size: String,
-    #[serde(default = "default_logging_max_files")]
-    pub max_files: u32,
-}
-
-impl Default for ContainerLoggingConfig {
-    fn default() -> Self {
-        Self {
-            driver: default_logging_driver(),
-            max_size: default_logging_max_size(),
-            max_files: default_logging_max_files(),
-        }
-    }
-}
-
-fn default_logging_driver() -> String {
-    "local".to_string()
-}
-
-fn default_logging_max_size() -> String {
-    "20m".to_string()
-}
-
-fn default_logging_max_files() -> u32 {
-    5
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct StorageConfig {
-    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
-    pub volumes: IndexMap<String, VolumeMountConfig>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tmpfs: Vec<TmpfsMountConfig>,
-}
-
-impl StorageConfig {
-    pub fn is_empty(&self) -> bool {
-        self.volumes.is_empty() && self.tmpfs.is_empty()
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VolumeMountConfig {
-    pub target: String,
-    #[serde(default)]
-    pub scope: VolumeScope,
-    #[serde(default = "default_true")]
-    pub nocopy: bool,
-    #[serde(default)]
-    pub retention: VolumeRetention,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum VolumeScope {
-    #[default]
-    Project,
-    Instance,
-    Platform,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum VolumeRetention {
-    #[default]
-    Keep,
-    Disposable,
-}
-
-impl VolumeRetention {
-    pub fn as_label(self) -> &'static str {
-        match self {
-            Self::Keep => "keep",
-            Self::Disposable => "disposable",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TmpfsMountConfig {
-    pub target: String,
-    pub size: MemoryLimit,
-    #[serde(default = "default_tmpfs_mode")]
-    pub mode: String,
-}
-
-fn default_tmpfs_mode() -> String {
-    "1777".to_string()
-}
-
-/// Memory limit configuration supporting both specific limits and unlimited access.
-#[derive(Debug, Clone, PartialEq)]
-pub enum MemoryLimit {
-    /// Specific memory limit in megabytes
-    Limited(u32),
-    /// Percentage of available system memory (1-100)
-    Percentage(u8),
-    /// No memory limit
-    Unlimited,
-}
-
-impl Serialize for MemoryLimit {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match self {
-            MemoryLimit::Limited(mb) => serializer.serialize_u32(*mb),
-            MemoryLimit::Percentage(percent) => serializer.serialize_str(&format!("{}%", percent)),
-            MemoryLimit::Unlimited => serializer.serialize_str("unlimited"),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for MemoryLimit {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        use crate::limit_parser::{LimitVisitor, ParsedLimit};
-
-        let visitor = LimitVisitor::new("memory (MB)");
-        let parsed = deserializer.deserialize_any(visitor)?;
-
-        match parsed {
-            ParsedLimit::Number(mb) => Ok(MemoryLimit::Limited(mb)),
-            ParsedLimit::Bytes(bytes) => {
-                let mb = (bytes / 1024 / 1024) as u32;
-                Ok(MemoryLimit::Limited(mb))
-            }
-            ParsedLimit::Percentage(percent) => Ok(MemoryLimit::Percentage(percent)),
-            ParsedLimit::Unlimited => Ok(MemoryLimit::Unlimited),
-        }
-    }
-}
-
-impl MemoryLimit {
-    /// Get the memory limit in MB if it's a fixed value
-    /// Returns None for Unlimited or Percentage (needs resolution)
-    pub fn to_mb(&self) -> Option<u32> {
-        match self {
-            MemoryLimit::Limited(mb) => Some(*mb),
-            MemoryLimit::Percentage(_) | MemoryLimit::Unlimited => None,
-        }
-    }
-
-    /// Check if this limit is unlimited
-    pub fn is_unlimited(&self) -> bool {
-        matches!(self, MemoryLimit::Unlimited)
-    }
-
-    /// Check if this limit is a percentage
-    pub fn is_percentage(&self) -> bool {
-        matches!(self, MemoryLimit::Percentage(_))
-    }
-
-    /// Get the percentage value if this is a percentage limit
-    pub fn to_percentage(&self) -> Option<u8> {
-        match self {
-            MemoryLimit::Percentage(percent) => Some(*percent),
-            _ => None,
-        }
-    }
-
-    /// Resolve a percentage limit to concrete MB value based on available memory
-    pub fn resolve_percentage(&self, available_mb: u64) -> Option<u32> {
-        match self {
-            MemoryLimit::Percentage(percent) => {
-                let mb = (available_mb * (*percent as u64) / 100) as u32;
-                Some(mb)
-            }
-            MemoryLimit::Limited(mb) => Some(*mb),
-            MemoryLimit::Unlimited => None,
-        }
-    }
-
-    /// Convert to Docker memory format (e.g., "1024m")
-    pub fn to_docker_format(&self) -> Option<String> {
-        match self {
-            MemoryLimit::Limited(mb) => Some(format!("{mb}m")),
-            MemoryLimit::Percentage(_) | MemoryLimit::Unlimited => None,
-        }
-    }
-}
-
-/// CPU limit configuration supporting both specific limits and unlimited access.
-#[derive(Debug, Clone, PartialEq)]
-pub enum CpuLimit {
-    /// Specific CPU count limit
-    Limited(u32),
-    /// Percentage of available CPUs (1-100)
-    Percentage(u8),
-    /// No CPU limit
-    Unlimited,
-}
-
-impl Serialize for CpuLimit {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match self {
-            CpuLimit::Limited(count) => serializer.serialize_u32(*count),
-            CpuLimit::Percentage(percent) => serializer.serialize_str(&format!("{}%", percent)),
-            CpuLimit::Unlimited => serializer.serialize_str("unlimited"),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for CpuLimit {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        use crate::limit_parser::{LimitVisitor, ParsedLimit};
-        use serde::de;
-
-        let visitor = LimitVisitor::new("CPU count");
-        let parsed = deserializer.deserialize_any(visitor)?;
-
-        match parsed {
-            ParsedLimit::Number(count) => Ok(CpuLimit::Limited(count)),
-            ParsedLimit::Bytes(_) => Err(de::Error::custom(
-                "Memory units (gb, mb) are not valid for CPU limits",
-            )),
-            ParsedLimit::Percentage(percent) => Ok(CpuLimit::Percentage(percent)),
-            ParsedLimit::Unlimited => Ok(CpuLimit::Unlimited),
-        }
-    }
-}
-
-impl CpuLimit {
-    /// Get the CPU count if it's a fixed value
-    /// Returns None for Unlimited or Percentage (needs resolution)
-    pub fn to_count(&self) -> Option<u32> {
-        match self {
-            CpuLimit::Limited(count) => Some(*count),
-            CpuLimit::Percentage(_) | CpuLimit::Unlimited => None,
-        }
-    }
-
-    /// Check if this limit is unlimited
-    pub fn is_unlimited(&self) -> bool {
-        matches!(self, CpuLimit::Unlimited)
-    }
-
-    /// Check if this limit is a percentage
-    pub fn is_percentage(&self) -> bool {
-        matches!(self, CpuLimit::Percentage(_))
-    }
-
-    /// Get the percentage value if this is a percentage limit
-    pub fn to_percentage(&self) -> Option<u8> {
-        match self {
-            CpuLimit::Percentage(percent) => Some(*percent),
-            _ => None,
-        }
-    }
-
-    /// Resolve a percentage limit to concrete CPU count based on available CPUs
-    pub fn resolve_percentage(&self, available_cpus: u32) -> Option<u32> {
-        match self {
-            CpuLimit::Percentage(percent) => {
-                let count = ((available_cpus * (*percent as u32)) / 100).max(1); // At least 1 CPU
-                Some(count)
-            }
-            CpuLimit::Limited(count) => Some(*count),
-            CpuLimit::Unlimited => None,
-        }
-    }
-}
-
-/// Swap space limit configuration supporting both specific limits and unlimited access.
-#[derive(Debug, Clone, PartialEq)]
-pub enum SwapLimit {
-    /// Specific swap limit in megabytes
-    Limited(u32),
-    /// Percentage of available system memory (1-100)
-    Percentage(u8),
-    /// No swap limit
-    Unlimited,
-}
-
-impl Serialize for SwapLimit {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match self {
-            SwapLimit::Limited(mb) => serializer.serialize_u32(*mb),
-            SwapLimit::Percentage(percent) => serializer.serialize_str(&format!("{}%", percent)),
-            SwapLimit::Unlimited => serializer.serialize_str("unlimited"),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for SwapLimit {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        use crate::limit_parser::{LimitVisitor, ParsedLimit};
-
-        let visitor = LimitVisitor::new("swap (MB)");
-        let parsed = deserializer.deserialize_any(visitor)?;
-
-        match parsed {
-            ParsedLimit::Number(mb) => Ok(SwapLimit::Limited(mb)),
-            ParsedLimit::Bytes(bytes) => {
-                let mb = (bytes / 1024 / 1024) as u32;
-                Ok(SwapLimit::Limited(mb))
-            }
-            ParsedLimit::Percentage(percent) => Ok(SwapLimit::Percentage(percent)),
-            ParsedLimit::Unlimited => Ok(SwapLimit::Unlimited),
-        }
-    }
-}
-
-impl SwapLimit {
-    /// Get the swap limit in MB if it's a fixed value
-    /// Returns None for Unlimited or Percentage (needs resolution)
-    pub fn to_mb(&self) -> Option<u32> {
-        match self {
-            SwapLimit::Limited(mb) => Some(*mb),
-            SwapLimit::Percentage(_) | SwapLimit::Unlimited => None,
-        }
-    }
-
-    /// Check if this limit is unlimited
-    pub fn is_unlimited(&self) -> bool {
-        matches!(self, SwapLimit::Unlimited)
-    }
-
-    /// Check if this limit is a percentage
-    pub fn is_percentage(&self) -> bool {
-        matches!(self, SwapLimit::Percentage(_))
-    }
-
-    /// Get the percentage value if this is a percentage limit
-    pub fn to_percentage(&self) -> Option<u8> {
-        match self {
-            SwapLimit::Percentage(percent) => Some(*percent),
-            _ => None,
-        }
-    }
-
-    /// Resolve a percentage limit to concrete MB value based on available memory
-    pub fn resolve_percentage(&self, available_mb: u64) -> Option<u32> {
-        match self {
-            SwapLimit::Percentage(percent) => {
-                let mb = (available_mb * (*percent as u64) / 100) as u32;
-                Some(mb)
-            }
-            SwapLimit::Limited(mb) => Some(*mb),
-            SwapLimit::Unlimited => None,
-        }
-    }
-}
-
-/// Disk size limit configuration supporting both specific limits and unlimited access.
-#[derive(Debug, Clone, PartialEq)]
-pub enum DiskLimit {
-    /// Specific disk size limit in gigabytes
-    Limited(u32),
-    /// Percentage of available disk space (1-100)
-    Percentage(u8),
-}
-
-impl Serialize for DiskLimit {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match self {
-            DiskLimit::Limited(gb) => serializer.serialize_u32(*gb),
-            DiskLimit::Percentage(percent) => serializer.serialize_str(&format!("{}%", percent)),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for DiskLimit {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        use crate::limit_parser::{LimitVisitor, ParsedLimit};
-        use serde::de;
-
-        let visitor = LimitVisitor::new("disk size (GB)");
-        let parsed = deserializer.deserialize_any(visitor)?;
-
-        match parsed {
-            ParsedLimit::Number(gb) => Ok(DiskLimit::Limited(gb)),
-            ParsedLimit::Bytes(bytes) => {
-                let gb = (bytes / 1024 / 1024 / 1024) as u32;
-                Ok(DiskLimit::Limited(gb))
-            }
-            ParsedLimit::Percentage(percent) => Ok(DiskLimit::Percentage(percent)),
-            ParsedLimit::Unlimited => Err(de::Error::custom("Disk size cannot be unlimited")),
-        }
-    }
-}
-
-impl DiskLimit {
-    /// Get the disk size in GB if it's a fixed value
-    /// Returns None for Percentage (needs resolution)
-    pub fn to_gb(&self) -> Option<u32> {
-        match self {
-            DiskLimit::Limited(gb) => Some(*gb),
-            DiskLimit::Percentage(_) => None,
-        }
-    }
-
-    /// Check if this limit is a percentage
-    pub fn is_percentage(&self) -> bool {
-        matches!(self, DiskLimit::Percentage(_))
-    }
-
-    /// Get the percentage value if this is a percentage limit
-    pub fn to_percentage(&self) -> Option<u8> {
-        match self {
-            DiskLimit::Percentage(percent) => Some(*percent),
-            _ => None,
-        }
-    }
-
-    /// Resolve a percentage limit to concrete GB value based on available disk space
-    pub fn resolve_percentage(&self, available_gb: u64) -> Option<u32> {
-        match self {
-            DiskLimit::Percentage(percent) => {
-                let gb = (available_gb * (*percent as u64) / 100) as u32;
-                Some(gb)
-            }
-            DiskLimit::Limited(gb) => Some(*gb),
-        }
-    }
-}
-
-/// Language runtime and tool version specifications.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct VersionsConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub node: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub npm: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pnpm: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub python: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub nvm: Option<String>,
-}
-
-/// Idempotent project initialization performed by the existing provisioner.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct BootstrapConfig {
-    #[serde(default = "default_true")]
-    pub dependencies: bool,
-    #[serde(default)]
-    pub playwright: PlaywrightBootstrapConfig,
-}
-
-impl Default for BootstrapConfig {
-    fn default() -> Self {
-        Self {
-            dependencies: true,
-            playwright: PlaywrightBootstrapConfig::default(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
-pub struct PlaywrightBootstrapConfig {
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub browsers: Vec<String>,
-}
-
-/// Configuration for individual services and databases.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ServiceConfig {
-    #[serde(default)]
-    pub enabled: bool,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "deserialize_option_string_or_number"
-    )]
-    pub version: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub port: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub r#type: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub user: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub password: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub database: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub buildx: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub display: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub executable_path: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub driver: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub share_microphone: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_mb: Option<u32>,
-
-    // Per-project backup settings
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub backup_on_destroy: Option<bool>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub seed_file: Option<PathBuf>,
-}
-
-/// Terminal and shell customization settings.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct TerminalConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub shell: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub theme: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub emoji: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub username: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub show_git_branch: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub show_timestamp: Option<bool>,
-}
-
-/// Host-to-VM synchronization configuration.
-/// Consolidates all features that sync data/config from host machine into VM.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct HostSyncConfig {
-    /// Copy git configuration from host ~/.gitconfig (default: true)
-    #[serde(default = "default_true")]
-    pub git_config: bool,
-
-    /// Enable SSH agent forwarding (requires ssh-agent running on host)
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub ssh_agent: bool,
-
-    /// Mount ~/.ssh/config read-only (default: false)
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub ssh_config: bool,
-
-    /// List of dotfiles to sync from host (e.g., ["~/.vimrc", "~/.config/nvim"])
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub dotfiles: Vec<String>,
-
-    /// AI tool data synchronization (Claude, Antigravity, Codex)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ai_tools: Option<AiSyncConfig>,
-
-    /// Git worktrees support
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub worktrees: Option<WorktreesConfig>,
-}
-
-/// Tart virtualization provider configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct TartConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub image: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub guest_os: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub disk_size: Option<DiskLimit>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rosetta: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub nested: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ssh_user: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub install_docker: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub storage_path: Option<String>,
-}
-
-/// AI tool synchronization configuration.
-/// Supports both boolean (enable/disable all) and granular per-tool control.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum AiSyncConfig {
-    /// Simple mode: true enables all tools, false disables all
-    Boolean(bool),
-    /// Granular mode: control each tool individually
-    Detailed(AiSyncTools),
-}
-
-impl Default for AiSyncConfig {
-    fn default() -> Self {
-        // Default: enable Claude and Antigravity, disable others.
-        AiSyncConfig::Detailed(AiSyncTools::default())
-    }
-}
-
-impl AiSyncConfig {
-    pub fn is_claude_enabled(&self) -> bool {
-        match self {
-            AiSyncConfig::Boolean(enabled) => *enabled,
-            AiSyncConfig::Detailed(tools) => tools.claude,
-        }
-    }
-
-    pub fn is_antigravity_enabled(&self) -> bool {
-        match self {
-            AiSyncConfig::Boolean(enabled) => *enabled,
-            AiSyncConfig::Detailed(tools) => tools.antigravity,
-        }
-    }
-
-    pub fn is_codex_enabled(&self) -> bool {
-        match self {
-            AiSyncConfig::Boolean(enabled) => *enabled,
-            AiSyncConfig::Detailed(tools) => tools.codex,
-        }
-    }
-}
-
-/// Individual AI tool sync settings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AiSyncTools {
-    #[serde(default = "default_true")]
-    pub claude: bool,
-    #[serde(default = "default_true", alias = "gemini")]
-    pub antigravity: bool,
-    #[serde(default)]
-    pub codex: bool,
-}
-
-impl Default for AiSyncTools {
-    fn default() -> Self {
-        Self {
-            claude: true,
-            antigravity: true,
-            codex: false,
-        }
-    }
-}
-
-fn is_false(b: &bool) -> bool {
-    !b
-}
-fn default_true() -> bool {
-    true
-}
-
-/// Git worktree configuration settings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorktreesConfig {
-    #[serde(default = "default_worktrees_enabled")]
-    pub enabled: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub base_path: Option<String>,
-}
-
-impl Default for WorktreesConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            base_path: None,
-        }
-    }
-}
-
-fn default_worktrees_enabled() -> bool {
-    true
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct SecurityConfig {
-    #[serde(default)]
-    pub enable_debugging: bool,
-    #[serde(default = "default_true")]
-    pub no_new_privileges: bool,
-    #[serde(default)]
-    pub user_namespaces: bool,
-    #[serde(default)]
-    pub read_only_root: bool,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub drop_capabilities: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub security_opts: Vec<String>,
-}
-
-/// Docker networking configuration for container connectivity.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct NetworkingConfig {
-    /// List of Docker networks this container should join.
-    /// Networks will be created automatically if they don't exist.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub networks: Vec<String>,
 }
 
 impl VmConfig {
@@ -1102,15 +113,16 @@ impl VmConfig {
     }
 
     pub fn write_to_file(&self, path: &Path) -> Result<()> {
-        let yaml = serde_yaml::to_string(self)?;
-        fs::write(path, yaml)?;
+        fs::write(path, serde_yaml::to_string(self)?)?;
         Ok(())
     }
 
     pub fn from_file(path: &PathBuf) -> Result<Self> {
-        let content = std::fs::read_to_string(path)?;
-        let source_desc = format!("{}", path.display());
-        crate::yaml::CoreOperations::parse_yaml_with_diagnostics(&content, &source_desc)
+        let content = fs::read_to_string(path)?;
+        crate::yaml::CoreOperations::parse_yaml_with_diagnostics(
+            &content,
+            &path.display().to_string(),
+        )
     }
 
     pub fn to_json(&self) -> Result<String> {
@@ -1118,99 +130,83 @@ impl VmConfig {
     }
 
     pub fn apply_default_backup_settings(&mut self) {
-        for (_, service) in self.services.iter_mut() {
-            let should_backup = service.backup_on_destroy.is_none()
-                && service.r#type.as_deref() == Some("database");
-
-            if should_backup {
+        for service in self.services.values_mut() {
+            if service.backup_on_destroy.is_none() && service.r#type.as_deref() == Some("database")
+            {
                 service.backup_on_destroy = Some(true);
             }
         }
     }
 
     pub fn is_partial(&self) -> bool {
-        self.provider.is_none() || self.project.as_ref().map_or(true, |p| p.name.is_none())
+        self.provider.is_none()
+            || self
+                .project
+                .as_ref()
+                .map_or(true, |project| project.name.is_none())
     }
 
     pub fn ensure_service_ports(&mut self) {
-        const PRIORITY_SERVICES: &[&str] = &["postgresql", "redis", "mysql", "mongodb"];
-        const SERVICES_WITHOUT_PORTS: &[&str] = &["docker"];
-
-        let range = match &self.ports.range {
-            Some(r) if r.len() == 2 => r,
-            _ => return,
+        const PRIORITY: &[&str] = &["postgresql", "redis", "mysql", "mongodb"];
+        const WITHOUT_PORTS: &[&str] = &["docker"];
+        let Some(range) = self.ports.range.as_ref().filter(|range| range.len() == 2) else {
+            return;
         };
-        let (range_start, range_end) = (range[0], range[1]);
-
-        let mut used_ports: std::collections::HashSet<u16> =
-            self.services.values().filter_map(|s| s.port).collect();
-
-        let mut current_port = range_end;
-        let mut get_next_port = || -> Option<u16> {
-            while current_port >= range_start {
-                let port = current_port;
-                if current_port == range_start {
-                    current_port = 0;
-                } else {
-                    current_port -= 1;
+        let (start, end) = (range[0], range[1]);
+        let mut used = self
+            .services
+            .values()
+            .filter_map(|service| service.port)
+            .collect::<std::collections::HashSet<_>>();
+        let mut next = end;
+        let mut allocate = || {
+            while next >= start {
+                let candidate = next;
+                next = if next == start { 0 } else { next - 1 };
+                if used.insert(candidate) {
+                    return Some(candidate);
                 }
-                if !used_ports.contains(&port) {
-                    used_ports.insert(port);
-                    return Some(port);
-                }
-                if current_port == 0 {
+                if next == 0 {
                     break;
                 }
             }
             None
         };
 
-        let mut services_to_process = Vec::new();
-        for &priority_service in PRIORITY_SERVICES {
-            if let Some(service) = self.services.get(priority_service) {
-                if service.enabled && service.port.is_none() {
-                    services_to_process.push(priority_service.to_string());
-                }
-            }
-        }
-
-        let mut other_services: Vec<String> = self
+        let mut pending = PRIORITY
+            .iter()
+            .filter(|name| {
+                self.services
+                    .get(**name)
+                    .is_some_and(|service| service.enabled && service.port.is_none())
+            })
+            .map(|name| (*name).to_string())
+            .collect::<Vec<_>>();
+        let mut remaining = self
             .services
             .iter()
             .filter(|(name, service)| {
                 service.enabled
                     && service.port.is_none()
-                    && !PRIORITY_SERVICES.contains(&name.as_str())
-                    && !SERVICES_WITHOUT_PORTS.contains(&name.as_str())
+                    && !PRIORITY.contains(&name.as_str())
+                    && !WITHOUT_PORTS.contains(&name.as_str())
             })
             .map(|(name, _)| name.clone())
-            .collect();
-        other_services.sort();
-        services_to_process.extend(other_services);
+            .collect::<Vec<_>>();
+        remaining.sort();
+        pending.extend(remaining);
 
-        for service_name in services_to_process {
-            if let Some(port) = get_next_port() {
-                if let Some(service) = self.services.get_mut(&service_name) {
-                    service.port = Some(port);
-                }
+        for name in pending {
+            if let Some(port) = allocate() {
+                self.services.get_mut(&name).expect("known service").port = Some(port);
             }
         }
-
-        let disabled_services: Vec<String> = self
-            .services
-            .iter()
-            .filter(|(_, service)| {
-                !service.enabled
-                    && service.port.is_some()
-                    && service
-                        .port
-                        .is_some_and(|p| p >= range_start && p <= range_end)
-            })
-            .map(|(name, _)| name.clone())
-            .collect();
-
-        for service_name in disabled_services {
-            if let Some(service) = self.services.get_mut(&service_name) {
+        for service in self.services.values_mut() {
+            if !service.enabled
+                && service
+                    .port
+                    .is_some_and(|port| (start..=end).contains(&port))
+            {
                 service.port = None;
             }
         }
@@ -1234,7 +230,6 @@ mod container_policy_tests {
         else {
             panic!("expected detailed AI sync config");
         };
-
         assert!(tools.antigravity);
         assert!(!tools.claude);
         assert!(!tools.codex);
@@ -1243,49 +238,27 @@ mod container_policy_tests {
     #[test]
     fn parses_container_storage_and_runtime_policy() {
         let config: VmConfig = serde_yaml_ng::from_str(
-            r#"
-provider: docker
-project:
-  name: sketch-api
-vm:
-  pids_limit: 4096
-  stop_grace_period: 60
-  logging: {}
-storage:
-  volumes:
-    node_modules:
-      target: /workspace/node_modules
-      scope: instance
-  tmpfs:
-    - target: /tmp
-      size: 4g
-bootstrap:
-  playwright:
-    browsers: [chromium, firefox, webkit]
-"#,
+            "provider: docker\nproject:\n  name: sketch-api\nvm:\n  pids_limit: 4096\n  stop_grace_period: 60\n  logging: {}\nstorage:\n  volumes:\n    node_modules:\n      target: /workspace/node_modules\n      scope: instance\n  tmpfs:\n    - target: /tmp\n      size: 4g\nbootstrap:\n  playwright:\n    browsers: [chromium, firefox, webkit]\n",
         )
         .unwrap();
-
         let vm = config.vm.unwrap();
         assert_eq!(vm.pids_limit, Some(4096));
         assert_eq!(vm.stop_grace_period, Some(60));
         let logging = vm.logging.unwrap();
-        assert_eq!(logging.driver, "local");
-        assert_eq!(logging.max_size, "20m");
-        assert_eq!(logging.max_files, 5);
-
+        assert_eq!(
+            (
+                logging.driver.as_str(),
+                logging.max_size.as_str(),
+                logging.max_files
+            ),
+            ("local", "20m", 5)
+        );
         let volume = &config.storage.volumes["node_modules"];
         assert_eq!(volume.scope, VolumeScope::Instance);
         assert!(volume.nocopy);
         assert_eq!(volume.retention, VolumeRetention::Keep);
         assert_eq!(config.storage.tmpfs[0].size, MemoryLimit::Limited(4096));
         assert_eq!(config.storage.tmpfs[0].mode, "1777");
-
-        let bootstrap = config.bootstrap.unwrap();
-        assert!(bootstrap.dependencies);
-        assert_eq!(
-            bootstrap.playwright.browsers,
-            ["chromium", "firefox", "webkit"]
-        );
+        assert!(config.bootstrap.unwrap().dependencies);
     }
 }
