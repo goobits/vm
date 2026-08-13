@@ -103,8 +103,9 @@ pub enum PackagesSubcommand {
     Consumers { package: String },
     /// Show package-version drift across registered consumers
     Drift,
-    /// Create an isolated package checkout and attach it to this project
+    /// Create an isolated package or tool-collection checkout in this project
     Checkout {
+        #[arg(value_name = "SOURCE")]
         package: String,
         #[arg(long)]
         agent: String,
@@ -114,7 +115,7 @@ pub enum PackagesSubcommand {
         #[arg(long)]
         task: String,
     },
-    /// Show one package checkout
+    /// Show one managed source checkout
     Show { checkout_id: String },
     /// Validate, review, integrate, and privately release an active checkout
     Release { checkout_id: String },
@@ -154,8 +155,6 @@ pub enum ToolsSubcommand {
     List,
     /// Show one registered tool and its published releases
     Show { name: String },
-    /// Explicitly publish one registered collection from its current source
-    Publish { name: String },
     /// Refresh the appliance-generated tool catalog cache
     Refresh {
         #[arg(long, hide = true)]

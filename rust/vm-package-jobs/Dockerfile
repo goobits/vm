@@ -9,7 +9,6 @@ RUN cargo build --locked --release --package vm-package-jobs --bins \
       --package vm-package-work --bin pkg-git-askpass && \
     install -m 0755 target/release/pkg-review /usr/local/bin/pkg-review && \
     install -m 0755 target/release/pkg-release /usr/local/bin/pkg-release && \
-    install -m 0755 target/release/pkg-tool-release /usr/local/bin/pkg-tool-release && \
     install -m 0755 target/release/pkg-rollout /usr/local/bin/pkg-rollout && \
     install -m 0755 target/release/pkg-git-askpass /usr/local/bin/pkg-git-askpass
 
@@ -29,7 +28,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=builder /usr/local/bin/pkg-review /usr/local/bin/pkg-review
 COPY --from=builder /usr/local/bin/pkg-release /usr/local/bin/pkg-release
-COPY --from=builder /usr/local/bin/pkg-tool-release /usr/local/bin/pkg-tool-release
 COPY --from=builder /usr/local/bin/pkg-rollout /usr/local/bin/pkg-rollout
 COPY --from=builder /usr/local/bin/pkg-git-askpass /usr/local/bin/pkg-git-askpass
 COPY --from=builder /usr/local/cargo /usr/local/cargo

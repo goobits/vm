@@ -1,5 +1,8 @@
 use anyhow::{bail, Result};
+use serde::Serialize;
 use url::Url;
+
+use crate::sha256_hex;
 
 /// Stable gateway endpoints exposed to a project environment.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,6 +63,15 @@ struct AgentAccess {
     gateway: String,
     token: String,
     consumer: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ManagedClientSettings {
+    pub revision: String,
+    pub profile: String,
+    pub npmrc: String,
+    pub pip_conf: String,
+    pub cargo_config: String,
 }
 
 impl ClientEnvironment {
@@ -139,6 +151,42 @@ impl ClientEnvironment {
         &self.read_token
     }
 
+    pub fn managed_settings(&self) -> ManagedClientSettings {
+        let npm_registry = self.authenticated_url("npm/");
+        let pip_index = self.authenticated_url("pypi/simple/");
+        let cargo_index = self.endpoints.cargo_index();
+        let mut variables = self.variables();
+        variables.extend([
+            ("NPM_CONFIG_USERCONFIG".into(), "/etc/vm/npmrc".into()),
+            ("PIP_CONFIG_FILE".into(), "/etc/vm/pip.conf".into()),
+        ]);
+        variables.sort_by(|left, right| left.0.cmp(&right.0));
+        let profile = std::iter::once(
+            "# Managed by VM; changes are replaced during VM reconciliation.\n".to_string(),
+        )
+        .chain(
+            variables
+                .into_iter()
+                .map(|(name, value)| format!("export {name}={}\n", shell_quote(&value))),
+        )
+        .collect::<String>();
+        let npmrc = format!("registry={npm_registry}\nalways-auth=true\n");
+        let pip_conf = format!("[global]\nindex-url = {pip_index}\n");
+        let cargo_config = format!(
+            "[registries.vm]\nindex = {index:?}\ncredential-provider = \"cargo:token\"\n\n[source.crates-io]\nreplace-with = \"vm\"\n\n[source.vm]\nregistry = {index:?}\n\n[registry]\nglobal-credential-providers = [\"cargo:token\"]\n",
+            index = cargo_index
+        );
+        let revision =
+            sha256_hex(format!("{profile}\0{npmrc}\0{pip_conf}\0{cargo_config}").as_bytes());
+        ManagedClientSettings {
+            revision,
+            profile,
+            npmrc,
+            pip_conf,
+            cargo_config,
+        }
+    }
+
     fn authenticated_url(&self, path: &str) -> String {
         let mut url = self.endpoints.gateway.clone();
         url.set_path(&format!("{}/{}", url.path().trim_end_matches('/'), path));
@@ -148,6 +196,10 @@ impl ClientEnvironment {
             .expect("HTTP URLs support passwords");
         url.to_string()
     }
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
 #[cfg(test)]
@@ -181,5 +233,24 @@ mod tests {
     fn rejects_non_http_gateways() {
         assert!(RegistryEndpoints::new("file:///tmp/packages").is_err());
         assert!(RegistryEndpoints::new("relative/path").is_err());
+    }
+
+    #[test]
+    fn renders_idempotent_native_client_settings() {
+        let settings = ClientEnvironment::new(
+            RegistryEndpoints::new("https://packages.internal").unwrap(),
+            "read-token",
+        )
+        .unwrap()
+        .with_agent_access("https://packages.internal", "agent-token", "project-a")
+        .unwrap()
+        .managed_settings();
+
+        assert!(settings.profile.contains("NPM_CONFIG_USERCONFIG"));
+        assert!(settings.profile.contains("VM_PACKAGES_AGENT_TOKEN"));
+        assert!(settings.npmrc.contains("reader:read-token@"));
+        assert!(settings.pip_conf.contains("/pypi/simple/"));
+        assert!(settings.cargo_config.contains("replace-with = \"vm\""));
+        assert_eq!(settings.revision.len(), 64);
     }
 }

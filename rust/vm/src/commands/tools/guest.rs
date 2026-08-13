@@ -751,6 +751,12 @@ mod tests {
             fs::create_dir_all(&skill).unwrap();
             fs::write(skill.join("SKILL.md"), "# Test\n").unwrap();
         }
+        assert!(Command::new("chmod")
+            .args(["-R", "a-w"])
+            .arg(release.parent().unwrap())
+            .status()
+            .unwrap()
+            .success());
         fs::create_dir_all(home.join(".codex/skills/.system")).unwrap();
         let installer = directory.path().join("installer.sh");
         fs::write(&installer, INSTALLER).unwrap();
@@ -813,6 +819,12 @@ mod tests {
                 fs::create_dir_all(&skill).unwrap();
                 fs::write(skill.join("SKILL.md"), "# Updated\n").unwrap();
             }
+            assert!(Command::new("chmod")
+                .args(["-R", "a-w"])
+                .arg(next_release.parent().unwrap())
+                .status()
+                .unwrap()
+                .success());
             let next_manifest = format!(
                 "agent-skills\t2.0.0\tany\tcollection\t{next_digest}\thttp://unused\n.agents/skills\tskills\n.codex/skills\tskills"
             );
@@ -843,10 +855,97 @@ mod tests {
                     .unwrap()
                     .contains("Updated")
             );
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(&next_release).unwrap().permissions().mode() & 0o222,
+                0
+            );
+            assert_eq!(
+                fs::metadata(next_release.join("x-one/SKILL.md"))
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o222,
+                0
+            );
             assert!(!fs::read_dir(&release)
                 .unwrap()
                 .flatten()
                 .any(|entry| entry.file_name().to_string_lossy().starts_with(".vm-tool-")));
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn collection_installer_replaces_writable_release_from_immutable_artifact() {
+        let directory = tempfile::tempdir().unwrap();
+        let home = directory.path().join("home");
+        let data = directory.path().join("data");
+        let contents = directory.path().join("contents/skills/x-one");
+        fs::create_dir_all(&home).unwrap();
+        fs::create_dir_all(&contents).unwrap();
+        fs::write(contents.join("SKILL.md"), "# Canonical\n").unwrap();
+        let archive = directory.path().join("agent-skills.tar.gz");
+        assert!(Command::new("tar")
+            .args(["-czf"])
+            .arg(&archive)
+            .args(["-C"])
+            .arg(directory.path().join("contents"))
+            .arg(".")
+            .status()
+            .unwrap()
+            .success());
+        let digest = vm_packages::sha256_hex(fs::read(&archive).unwrap());
+        let manifest = format!(
+            "agent-skills\t1.0.0\tany\tcollection\t{digest}\tfile://{}\n.codex/skills\tskills",
+            archive.display()
+        );
+        let run = || {
+            Command::new("sh")
+                .args(["-c", INSTALLER, "vm-tool-installer-test", "wait"])
+                .arg(&manifest)
+                .env("HOME", &home)
+                .env("XDG_DATA_HOME", &data)
+                .env("CARGO_REGISTRIES_VM_TOKEN", "test-token")
+                .output()
+                .unwrap()
+        };
+
+        let first = run();
+        assert!(
+            first.status.success(),
+            "{}",
+            String::from_utf8_lossy(&first.stderr)
+        );
+        let release = data
+            .join("vm-tools/releases/agent-skills")
+            .join(format!("1.0.0-{digest}"));
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            fs::metadata(&release).unwrap().permissions().mode() & 0o222,
+            0
+        );
+
+        assert!(Command::new("chmod")
+            .args(["-R", "u+w"])
+            .arg(&release)
+            .status()
+            .unwrap()
+            .success());
+        fs::write(release.join("skills/x-one/SKILL.md"), "# Mutated\n").unwrap();
+        let repaired = run();
+        assert!(
+            repaired.status.success(),
+            "{}",
+            String::from_utf8_lossy(&repaired.stderr)
+        );
+        assert_eq!(
+            fs::read_to_string(release.join("skills/x-one/SKILL.md")).unwrap(),
+            "# Canonical\n"
+        );
+        assert_eq!(
+            fs::metadata(&release).unwrap().permissions().mode() & 0o222,
+            0
+        );
     }
 }

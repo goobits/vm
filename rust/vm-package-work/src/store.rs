@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 use vm_packages::{
     sha256_hex, validate_label, CheckoutLease, CheckoutRecord, CleanupRequest, ConsumerRecord,
     CreateCheckout, InternalPackageCatalog, LeaseRecord, LeaseRequest, PackageDefinition,
-    ReceiptKind, RegisterPackage, ReleaseRecord, RolloutRecord, SubmissionRecord,
+    ReceiptKind, RegisterPackage, ReleaseRecord, RolloutRecord, SourceKind, SubmissionRecord,
     ToolArtifactRecord, ToolDefinition, ToolPublicationReceipt, TransitionRequest, WorkflowReceipt,
     WorkflowState, WorkflowTransition,
 };
@@ -71,6 +71,14 @@ pub(crate) struct Store {
     pub(crate) database: Mutex<Database>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct SourceDefinition {
+    pub(crate) kind: SourceKind,
+    pub(crate) name: String,
+    pub(crate) repository: String,
+    pub(crate) default_branch: String,
+}
+
 impl Store {
     pub async fn open(root: impl Into<PathBuf>) -> WorkResult<Self> {
         let root = root.into();
@@ -114,6 +122,8 @@ impl Store {
             });
         }
 
+        let source_kind = source_definition(&current, &request.package)?
+            .map_or(SourceKind::Package, |source| source.kind);
         let mut next = current.clone();
         let now = Utc::now();
         let checkout_id = checkout_id(&request.package, now, next_id(&mut next));
@@ -153,6 +163,7 @@ impl Store {
         let record = CheckoutRecord {
             checkout_id: checkout_id.clone(),
             package: request.package.clone(),
+            source_kind,
             agent: request.agent.clone(),
             consumers: normalized_consumers(request.consumers),
             task: request.task,
@@ -200,6 +211,12 @@ impl Store {
     ) -> WorkResult<PackageDefinition> {
         request.validate()?;
         let mut current = self.database.lock().await;
+        if current.tools.contains_key(&request.name) {
+            return Err(WorkError::Conflict(format!(
+                "source '{}' is already registered as a tool",
+                request.name
+            )));
+        }
         if let Some(existing) = current.packages.get(&request.name).cloned() {
             if existing.ecosystem == request.ecosystem
                 && existing.repository == request.repository
@@ -236,6 +253,12 @@ impl Store {
             .get(name)
             .cloned()
             .ok_or_else(|| WorkError::NotFound(format!("package {name}")))
+    }
+
+    pub(crate) async fn source(&self, name: &str) -> WorkResult<SourceDefinition> {
+        let database = self.database.lock().await;
+        source_definition(&database, name)?
+            .ok_or_else(|| WorkError::NotFound(format!("source {name}")))
     }
 
     pub async fn packages(&self) -> Vec<PackageDefinition> {
@@ -747,6 +770,35 @@ impl Store {
             .await?;
         }
         Ok(())
+    }
+}
+
+fn source_definition(database: &Database, name: &str) -> WorkResult<Option<SourceDefinition>> {
+    match (database.packages.get(name), database.tools.get(name)) {
+        (Some(package), None) => Ok(Some(SourceDefinition {
+            kind: SourceKind::Package,
+            name: package.name.clone(),
+            repository: package.repository.clone(),
+            default_branch: package.default_branch.clone(),
+        })),
+        (None, Some(tool)) if tool.kind == vm_packages::ToolKind::Collection => {
+            Ok(Some(SourceDefinition {
+                kind: SourceKind::ToolCollection,
+                name: tool.name.clone(),
+                repository: tool.repository.clone(),
+                default_branch: tool.default_branch.clone(),
+            }))
+        }
+        (None, Some(_)) => Err(WorkError::Invalid(format!(
+            "tool {name} is not an editable collection"
+        ))),
+        (Some(_), Some(_)) => Err(WorkError::Conflict(format!(
+            "source name {name} is ambiguous between a package and tool"
+        ))),
+        // The HTTP boundary verifies registration. Keeping the store primitive
+        // package-defaulted preserves isolated state-machine tests and imported
+        // pre-kind workflow state.
+        (None, None) => Ok(None),
     }
 }
 

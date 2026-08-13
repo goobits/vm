@@ -32,7 +32,7 @@ pub use consumer::{
 pub use credentials::{authorization_token, issue_agent_capability, verify_agent_capability};
 pub use digest::{encode_hex, sha256_hex, sha256_reader};
 pub use ecosystem::{PackageEcosystem, ParsePackageEcosystemError};
-pub use environment::{ClientEnvironment, RegistryEndpoints};
+pub use environment::{ClientEnvironment, ManagedClientSettings, RegistryEndpoints};
 pub use release::{
     BeginReleaseRequest, CompleteReleaseRequest, PublicationRecord, PublicationRequest,
     ReleaseRecord,
@@ -58,5 +58,5 @@ pub use validation::{
 };
 pub use workflow::{
     CheckoutLease, CheckoutRecord, CleanupRequest, CreateCheckout, LeaseRecord, LeaseRequest,
-    ReceiptKind, TransitionRequest, WorkflowReceipt, WorkflowState, WorkflowTransition,
+    ReceiptKind, SourceKind, TransitionRequest, WorkflowReceipt, WorkflowState, WorkflowTransition,
 };

@@ -437,12 +437,6 @@ fn tool_refresh_status_and_batch_update_commands_parse() {
         } if name == "codex"
     ));
     assert!(matches!(
-        Args::parse_from(["vm", "tools", "publish", "agent-skills"]).command,
-        Command::Tools {
-            command: ToolsSubcommand::Publish { name }
-        } if name == "agent-skills"
-    ));
-    assert!(matches!(
         Args::parse_from(["vm", "tools", "refresh"]).command,
         Command::Tools {
             command: ToolsSubcommand::Refresh { quiet: false }

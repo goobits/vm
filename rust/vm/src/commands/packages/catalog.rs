@@ -4,8 +4,10 @@ use std::{
     process::{Command, Stdio},
 };
 
-use vm_core::{vm_println, vm_success};
-use vm_packages::{PackageEcosystem, PackageIdentity, PackageInventory, RegisterPackage};
+use vm_core::{vm_println, vm_success, vm_warning};
+use vm_packages::{
+    PackageEcosystem, PackageIdentity, PackageInventory, RegisterPackage, RegisterTool,
+};
 
 use crate::error::{VmError, VmResult};
 
@@ -68,31 +70,57 @@ pub(super) async fn register(files: &ApplianceFiles, intent: RegistrationIntent)
         (discovery.packages, discovery.tools)
     };
 
-    apply_registration(files, requests, tool_repositories).await
+    let failures = apply_registration(files, requests, tool_repositories).await?;
+    registration_result(failures)
 }
 
 async fn apply_registration(
     files: &ApplianceFiles,
     requests: Vec<RegisterPackage>,
-    tool_repositories: Vec<PathBuf>,
-) -> VmResult<()> {
-    for repository in tool_repositories {
-        vm_println!(
-            "Tool source: {} (managed by `vm tools`)",
-            repository.display()
-        );
-    }
-    if requests.is_empty() {
-        vm_success!("Package source scan complete; no language packages found");
-        return Ok(());
+    tools: Vec<RegisterTool>,
+) -> VmResult<Vec<String>> {
+    if requests.is_empty() && tools.is_empty() {
+        vm_success!("Package source scan complete; no package or tool repositories found");
+        return Ok(Vec::new());
     }
     let client = configured_client(files)?;
+    let mut failures = Vec::new();
     for request in requests {
-        let package = client.register_package(&request).await?;
-        vm_success!("Registered {} ({})", package.name, package.ecosystem);
-        vm_println!("Repository: {}", package.repository);
+        match client.register_package(&request).await {
+            Ok(package) => {
+                vm_success!("Registered {} ({})", package.name, package.ecosystem);
+                vm_println!("Repository: {}", package.repository);
+            }
+            Err(error) => {
+                vm_warning!("Could not register package {}: {error}", request.name);
+                failures.push(format!("package {}: {error}", request.name));
+            }
+        }
     }
-    Ok(())
+    for request in tools {
+        match client.register_tool(&request).await {
+            Ok(tool) => {
+                vm_success!("Registered tool {} ({:?})", tool.name, tool.kind);
+                vm_println!("Repository: {}", tool.repository);
+            }
+            Err(error) => {
+                vm_warning!("Could not register tool {}: {error}", request.name);
+                failures.push(format!("tool {}: {error}", request.name));
+            }
+        }
+    }
+    Ok(failures)
+}
+
+fn registration_result(failures: Vec<String>) -> VmResult<()> {
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(VmError::validation(
+            format!("{} source registration(s) failed", failures.len()),
+            Some("Fix the reported repositories and retry"),
+        ))
+    }
 }
 
 pub(super) fn prepare_source_roots(source_roots: &[String]) -> VmResult<SourceRootPlan> {
@@ -111,15 +139,21 @@ pub(super) fn prepare_source_roots(source_roots: &[String]) -> VmResult<SourceRo
 pub(super) async fn reconcile_source_roots(
     files: &ApplianceFiles,
     plan: SourceRootPlan,
-) -> VmResult<()> {
+) -> VmResult<Vec<String>> {
     if plan.root_count == 0 {
-        return Ok(());
+        return Ok(Vec::new());
     }
     vm_println!(
         "Reconciling package sources from {} configured root(s)",
         plan.root_count
     );
-    apply_registration(files, plan.discovery.packages, plan.discovery.tools).await
+    for failure in &plan.discovery.failures {
+        vm_warning!("Source discovery failed: {failure}");
+    }
+    let mut failures = plan.discovery.failures;
+    failures
+        .extend(apply_registration(files, plan.discovery.packages, plan.discovery.tools).await?);
+    Ok(failures)
 }
 
 pub(super) async fn list(files: &ApplianceFiles) -> VmResult<()> {

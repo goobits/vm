@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use vm_core::vm_progress;
 use vm_packages::{
-    CheckOutcome, PackageEcosystem, PackageInfrastructureClient, RegistryEndpoints,
+    CheckOutcome, PackageEcosystem, PackageInfrastructureClient, RegistryEndpoints, SourceKind,
     ValidationRequest, WorkflowState,
 };
 
@@ -50,14 +50,23 @@ async fn submit(
             Some("Inspect it with `vm packages show <checkout-id>`"),
         ));
     }
-    let definition = client.package_definition(&checkout.package).await?;
     let root = checkout_root(subject, checkout_id)?;
     let source = format!("{root}/source");
     ensure_clean(subject, &source)?;
 
     vm_progress!("Running package and consumer checks...");
-    run_package_check(subject, definition.ecosystem, &source)?;
-    run_consumer_check(subject, definition.ecosystem, &checkout.package, &source)?;
+    let consumers = match checkout.source_kind {
+        SourceKind::Package => {
+            let definition = client.package_definition(&checkout.package).await?;
+            run_package_check(subject, definition.ecosystem, &source)?;
+            run_consumer_check(subject, definition.ecosystem, &checkout.package, &source)?;
+            BTreeMap::from([(consumer.clone(), CheckOutcome::Passed)])
+        }
+        SourceKind::ToolCollection => {
+            run_collection_check(subject, &source)?;
+            BTreeMap::new()
+        }
+    };
 
     let bundle = format!("{root}/submission.bundle");
     exec(subject, ["rm", "-f", bundle.as_str()])?;
@@ -102,7 +111,7 @@ async fn submit(
             &submission.submission_id,
             &ValidationRequest {
                 package: CheckOutcome::Passed,
-                consumers: BTreeMap::from([(consumer, CheckOutcome::Passed)]),
+                consumers,
                 actor: actor.into(),
                 idempotency_key: format!("validate-{}", submission.submission_id),
             },
@@ -130,7 +139,7 @@ fn ensure_clean(subject: &impl PackageExecutor, source: &str) -> VmResult<()> {
     )
     .map_err(|error| {
         VmError::validation(
-            format!("Package checkout has uncommitted changes: {error}"),
+            format!("Managed checkout has uncommitted changes: {error}"),
             Some("Commit intended files and remove unintended files before submitting"),
         )
     })
@@ -154,6 +163,10 @@ pub(super) fn run_package_check(
         ),
         PackageEcosystem::Python => exec(subject, ["python", "-m", "pytest", source]),
     }
+}
+
+pub(super) fn run_collection_check(subject: &impl PackageExecutor, source: &str) -> VmResult<()> {
+    exec(subject, ["npm", "--prefix", source, "test", "--if-present"])
 }
 
 pub(super) fn run_consumer_check(

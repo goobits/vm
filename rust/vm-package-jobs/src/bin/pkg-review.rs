@@ -5,7 +5,7 @@ use anyhow::{bail, Context, Result};
 use vm_package_jobs::runtime::{command_text, run_command};
 use vm_packages::{
     PackageEcosystem, PackageInfrastructureClient, PublicApiDiff, RegistryEndpoints,
-    ReviewDecision, ReviewRequest, VersionRecommendation, WorkflowState,
+    ReviewDecision, ReviewRequest, SourceKind, VersionRecommendation, WorkflowState,
 };
 
 #[tokio::main]
@@ -40,7 +40,15 @@ async fn review(client: &PackageInfrastructureClient, submission_id: &str) -> Re
         bail!("submission is not ready for review");
     }
     let checkout = client.checkout(&submission.checkout_id).await?;
-    let definition = client.package_definition(&submission.package).await?;
+    let ecosystem = match checkout.source_kind {
+        SourceKind::Package => Some(
+            client
+                .package_definition(&submission.package)
+                .await?
+                .ecosystem,
+        ),
+        SourceKind::ToolCollection => None,
+    };
     let managed_source = PathBuf::from(
         checkout
             .worktree
@@ -96,7 +104,7 @@ async fn review(client: &PackageInfrastructureClient, submission_id: &str) -> Re
         ]),
         "inspect package review diff",
     )?;
-    let api_paths = public_api_paths(definition.ecosystem, &changed_paths);
+    let api_paths = public_api_paths(checkout.source_kind, ecosystem, &changed_paths);
     let potentially_breaking = removed_public_surface(&diff);
     let api_diff = PublicApiDiff {
         changed_paths: api_paths.clone(),
@@ -116,7 +124,7 @@ async fn review(client: &PackageInfrastructureClient, submission_id: &str) -> Re
             format!("generated dependency/build output included: {path}"),
             vec!["Remove generated files from the submission".into()],
         )
-    } else if !run_required_checks(definition.ecosystem, &source)? {
+    } else if !run_required_checks(checkout.source_kind, ecosystem, &source)? {
         (
             ReviewDecision::NeedsChanges,
             "required package checks failed in the isolated reviewer".into(),
@@ -162,14 +170,18 @@ async fn review(client: &PackageInfrastructureClient, submission_id: &str) -> Re
     Ok(())
 }
 
-fn run_required_checks(ecosystem: PackageEcosystem, source: &Path) -> Result<bool> {
-    let commands: &[(&str, &[&str])] = match ecosystem {
-        PackageEcosystem::Cargo => &[("cargo", &["test"])],
-        PackageEcosystem::Npm => &[
+fn run_required_checks(
+    source_kind: SourceKind,
+    ecosystem: Option<PackageEcosystem>,
+    source: &Path,
+) -> Result<bool> {
+    let commands: &[(&str, &[&str])] = match (source_kind, ecosystem) {
+        (SourceKind::Package, Some(PackageEcosystem::Cargo)) => &[("cargo", &["test"])],
+        (SourceKind::Package, Some(PackageEcosystem::Npm)) => &[
             ("npm", &["install", "--ignore-scripts"]),
             ("npm", &["test", "--if-present"]),
         ],
-        PackageEcosystem::Python => &[
+        (SourceKind::Package, Some(PackageEcosystem::Python)) => &[
             ("python", &["-m", "venv", "/tmp/package-review-venv"]),
             (
                 "/tmp/package-review-venv/bin/pip",
@@ -177,6 +189,8 @@ fn run_required_checks(ecosystem: PackageEcosystem, source: &Path) -> Result<boo
             ),
             ("/tmp/package-review-venv/bin/python", &["-m", "pytest"]),
         ],
+        (SourceKind::ToolCollection, None) => &[("npm", &["test", "--if-present"])],
+        _ => bail!("source kind and package ecosystem do not match"),
     };
     for (program, arguments) in commands {
         let status = Command::new(program)
@@ -191,21 +205,31 @@ fn run_required_checks(ecosystem: PackageEcosystem, source: &Path) -> Result<boo
     Ok(true)
 }
 
-fn public_api_paths(ecosystem: PackageEcosystem, paths: &[String]) -> Vec<String> {
+fn public_api_paths(
+    source_kind: SourceKind,
+    ecosystem: Option<PackageEcosystem>,
+    paths: &[String],
+) -> Vec<String> {
     paths
         .iter()
-        .filter(|path| match ecosystem {
-            PackageEcosystem::Cargo => path.as_str() == "Cargo.toml" || path.starts_with("src/"),
-            PackageEcosystem::Npm => {
+        .filter(|path| match (source_kind, ecosystem) {
+            (SourceKind::Package, Some(PackageEcosystem::Cargo)) => {
+                path.as_str() == "Cargo.toml" || path.starts_with("src/")
+            }
+            (SourceKind::Package, Some(PackageEcosystem::Npm)) => {
                 path.as_str() == "package.json"
                     || path.starts_with("src/")
                     || path.ends_with(".d.ts")
             }
-            PackageEcosystem::Python => {
+            (SourceKind::Package, Some(PackageEcosystem::Python)) => {
                 path.ends_with(".py")
                     && !path.starts_with("tests/")
                     && !path.contains("/__pycache__/")
             }
+            (SourceKind::ToolCollection, None) => {
+                path.as_str() == "package.json" || path.ends_with("/SKILL.md")
+            }
+            _ => false,
         })
         .cloned()
         .collect()
@@ -265,7 +289,7 @@ mod tests {
     fn review_classification_detects_api_security_and_generated_changes() {
         let paths = vec!["src/lib.rs".into(), "target/debug/output".into()];
         assert_eq!(
-            public_api_paths(PackageEcosystem::Cargo, &paths),
+            public_api_paths(SourceKind::Package, Some(PackageEcosystem::Cargo), &paths),
             ["src/lib.rs"]
         );
         assert_eq!(generated_path(&paths), Some("target/debug/output"));

@@ -367,7 +367,7 @@ async fn create_checkout(
     Json(request): Json<CreateCheckout>,
 ) -> WorkResult<(StatusCode, Json<CheckoutLease>)> {
     ensure_requested_consumer(&access, &request.consumers)?;
-    state.store.package(&request.package).await?;
+    state.store.source(&request.package).await?;
     let mut checkout = state.store.create_checkout(request).await?;
     checkout.checkout = state.source.prepare(&state.store, &checkout).await?;
     Ok((StatusCode::CREATED, Json(checkout)))

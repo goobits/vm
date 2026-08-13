@@ -75,17 +75,6 @@ pub(super) fn doctor(files: &ApplianceFiles) -> VmResult<()> {
     Ok(())
 }
 
-pub(super) fn run_tool_release(files: &ApplianceFiles, name: &str) -> VmResult<()> {
-    process::validate_job_id(name)?;
-    process::run(
-        compose(files)
-            .args(["run", "--rm", "--no-deps", "--env"])
-            .arg(format!("TOOL_NAME={name}"))
-            .arg("tool-releaser"),
-        "run the tool release job",
-    )
-}
-
 pub(super) fn maintenance(files: &ApplianceFiles, task: MaintenanceTask<'_>) -> VmResult<String> {
     doctor(files)?;
     let was_running = task.requires_pause() && status(files)? == "running";

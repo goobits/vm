@@ -3,7 +3,8 @@ use std::process::{Command as StdCommand, Stdio};
 use super::*;
 use vm_packages::{
     CreateCheckout, CreateRollout, IntegrationRecord, PackageEcosystem, PublicationRecord,
-    RegisterConsumer, RegisterPackage, ReleaseRecord, RolloutState,
+    RegisterConsumer, RegisterPackage, RegisterTool, ReleaseRecord, RolloutState, SourceKind,
+    ToolKind,
 };
 
 fn git(repository: &Path, args: &[&str]) {
@@ -16,6 +17,59 @@ fn git(repository: &Path, args: &[&str]) {
         .status()
         .unwrap()
         .success());
+}
+
+#[tokio::test]
+async fn tool_collection_checkout_uses_the_same_managed_source_boundary() {
+    let directory = tempfile::tempdir().unwrap();
+    let repository = directory.path().join("agent-skills");
+    std::fs::create_dir(&repository).unwrap();
+    git(&repository, &["init", "--initial-branch", "main"]);
+    git(&repository, &["config", "user.email", "test@example.com"]);
+    git(&repository, &["config", "user.name", "Test"]);
+    std::fs::write(
+        repository.join("package.json"),
+        r#"{"name":"agent-skills","version":"1.0.0"}"#,
+    )
+    .unwrap();
+    git(&repository, &["add", "package.json"]);
+    git(&repository, &["commit", "-m", "initial"]);
+
+    let data = directory.path().join("data");
+    let store = Store::open(&data).await.unwrap();
+    store
+        .register_tool(RegisterTool {
+            name: "agent-skills".into(),
+            kind: ToolKind::Collection,
+            repository: url::Url::from_file_path(&repository).unwrap().into(),
+            default_branch: "main".into(),
+        })
+        .await
+        .unwrap();
+    let checkout = store
+        .create_checkout(CreateCheckout {
+            package: "agent-skills".into(),
+            agent: "codex".into(),
+            consumers: vec!["project-a".into()],
+            task: "update owner checklist".into(),
+            lease_token: "lease-token-012345678901234567890123456789".into(),
+            idempotency_key: "tool-checkout-1".into(),
+        })
+        .await
+        .unwrap();
+    let prepared = SourceManager::new(&data)
+        .prepare(&store, &checkout)
+        .await
+        .unwrap();
+
+    assert_eq!(prepared.source_kind, SourceKind::ToolCollection);
+    assert_eq!(prepared.state, WorkflowState::CheckedOut);
+    assert_eq!(prepared.base_branch.as_deref(), Some("main"));
+    assert!(prepared
+        .worktree
+        .as_deref()
+        .unwrap()
+        .starts_with(data.join("agents").to_str().unwrap()));
 }
 
 fn cargo_repository(repository: &Path, manifest: &str, message: &str) {

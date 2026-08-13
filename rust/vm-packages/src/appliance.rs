@@ -162,8 +162,6 @@ mod tests {
         assert!(COMPOSE_YAML.contains("work_agent_signing_key"));
         assert!(COMPOSE_YAML.contains("agent-temporary-data:/data/agents:ro"));
         assert!(COMPOSE_YAML.contains("exec pkg-release"));
-        assert!(COMPOSE_YAML.contains("tool-releaser:"));
-        assert!(COMPOSE_YAML.contains("exec pkg-tool-release"));
         assert!(COMPOSE_YAML.contains("exec pkg-review"));
         assert!(COMPOSE_YAML.contains("exec pkg-rollout"));
         assert!(COMPOSE_YAML.contains("profiles: [maintenance]"));

@@ -202,24 +202,6 @@ services:
     tmpfs: ["/tmp:rw,exec,nosuid,size=8g"]
     networks: [packages, egress]
 
-  tool-releaser:
-    profiles: [jobs]
-    image: "${VM_PACKAGES_JOB_IMAGE:?required}"
-    environment:
-      PKG_RELEASE_GATEWAY: http://gateway:8080
-      PKG_RELEASE_TOKEN_FILE: /run/secrets/release_token
-      PKG_RELEASE_PUBLISH_TOKEN_FILE: /run/secrets/publish_token
-      PKG_RELEASE_GIT_TOKEN_FILE: /run/secrets/git_token
-    entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - exec pkg-tool-release --tool "$${TOOL_NAME:?required}"
-    secrets: [release_token, publish_token, git_token]
-    cap_drop: ["ALL"]
-    security_opt: ["no-new-privileges:true"]
-    read_only: true
-    tmpfs: ["/tmp:rw,exec,nosuid,size=2g"]
-    networks: [packages, egress]
-
   rollout:
     image: "${VM_PACKAGES_JOB_IMAGE:?required}"
     restart: unless-stopped

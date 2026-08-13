@@ -106,14 +106,6 @@ pub(super) async fn handle(
             }
             Ok(())
         }
-        ToolsSubcommand::Publish { name } => {
-            packages::publish_tool(&name)?;
-            if let Ok(config) = vm_config::AppConfig::load(config_path, profile, None) {
-                let _ = tooling::refresh(&config.vm).await;
-            }
-            vm_success!("Published tool '{name}'");
-            Ok(())
-        }
         ToolsSubcommand::Refresh { quiet } => {
             let config = vm_config::AppConfig::load(config_path, profile, None)?.vm;
             match tooling::refresh(&config).await? {
@@ -207,13 +199,15 @@ async fn update_fleet_target(
     instance: &InstanceInfo,
     mode: InstallMode,
 ) -> VmResult<()> {
-    let config = config_for_fleet_target(config, instance);
+    let mut config = config_for_fleet_target(config, instance);
+    packages::apply_client_environment(&mut config)?;
     let provider = vm_ops::configured_provider(&config, &instance.provider)?;
     provider
         .start(Some(&instance.name), &ProviderContext::default())
         .map_err(VmError::from)?;
     vm_ops::wait_until_commands_ready(provider.as_ref(), Some(&instance.name), &instance.name)
         .await?;
+    packages::reconcile_client_settings(provider.as_ref(), &instance.name, &config)?;
     base::reconcile_codex(provider.as_ref(), &instance.name, &config)?;
     apply_updates(provider.as_ref(), &instance.name, &config, mode)
 }
@@ -233,6 +227,11 @@ fn reconcile_environment(subject: &RuntimeSubject) -> VmResult<()> {
         .provider
         .reconcile_runtime(Some(&subject.target), &context)
         .map_err(VmError::from)?;
+    packages::reconcile_client_settings(
+        subject.provider.as_ref(),
+        &subject.target,
+        &subject.config,
+    )?;
     base::reconcile_codex(subject.provider.as_ref(), &subject.target, &subject.config)
 }
 
@@ -284,7 +283,7 @@ async fn ensure_builtin_releases(config: &VmConfig) -> VmResult<()> {
                 return Err(VmError::validation(
                     format!("Built-in tool '{}' requires private Git access", tool.name),
                     Some(format!(
-                        "Run `gh auth login --hostname github.com`, then `vm packages auth --github`, then `vm tools publish {}`",
+                        "Configure controller Git access, then create and release a managed '{}' checkout from a writable environment",
                         tool.name
                     )),
                 ));
@@ -295,7 +294,7 @@ async fn ensure_builtin_releases(config: &VmConfig) -> VmResult<()> {
                     tool.name
                 ),
                 Some(format!(
-                    "Run `vm tools publish {}`, then retry `vm tools update`",
+                    "Create and release a managed '{}' checkout from a writable environment, then retry `vm tools update`",
                     tool.name
                 )),
             ));

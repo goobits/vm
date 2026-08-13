@@ -1,6 +1,14 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceKind {
+    #[default]
+    Package,
+    ToolCollection,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkflowState {
@@ -113,6 +121,8 @@ pub struct WorkflowTransition {
 pub struct CheckoutRecord {
     pub checkout_id: String,
     pub package: String,
+    #[serde(default)]
+    pub source_kind: SourceKind,
     pub agent: String,
     pub consumers: Vec<String>,
     pub task: String,

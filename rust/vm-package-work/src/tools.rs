@@ -112,6 +112,12 @@ impl Store {
     pub async fn register_tool(&self, request: RegisterTool) -> WorkResult<ToolDefinition> {
         request.validate()?;
         let mut current = self.database.lock().await;
+        if current.packages.contains_key(&request.name) {
+            return Err(WorkError::Conflict(format!(
+                "source '{}' is already registered as a package",
+                request.name
+            )));
+        }
         if let Some(existing) = current.tools.get(&request.name) {
             if existing.kind == request.kind
                 && existing.repository == request.repository

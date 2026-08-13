@@ -334,7 +334,7 @@ fn configured_empty_shelf_is_a_successful_noop() {
     );
     assert!(String::from_utf8(output.stdout)
         .unwrap()
-        .contains("Package source scan complete; no language packages found"));
+        .contains("Package source scan complete; no package or tool repositories found"));
     assert_eq!(gateway.package_registrations(), 0);
 }
 

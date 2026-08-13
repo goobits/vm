@@ -4,6 +4,7 @@ use std::process::{Command, Stdio};
 
 use vm_config::config::{PackageEdgeConfig, VmConfig};
 use vm_packages::{ApplianceState, ClientEnvironment, InfrastructureRuntime, RegistryEndpoints};
+use vm_provider::Provider;
 
 use crate::commands::command_context::RuntimeSubject;
 use crate::error::{VmError, VmResult};
@@ -13,6 +14,73 @@ use super::files::ApplianceFiles;
 // Bump when edge labels, environment, mounts, or lifecycle policy change
 // without requiring a new registry image.
 const PACKAGE_EDGE_POLICY_REVISION: &str = "2";
+
+const INSTALL_CLIENT_SETTINGS: &str = r#"import json, os, pathlib, sys, tempfile
+
+settings = json.load(sys.stdin)
+required = {"revision", "profile", "npmrc", "pip_conf", "cargo_config"}
+if set(settings) != required or not all(isinstance(settings[key], str) for key in required):
+    raise SystemExit("invalid VM package client settings")
+
+uid = int(os.environ.get("SUDO_UID", "0"))
+gid = int(os.environ.get("SUDO_GID", "0"))
+sensitive_mode = 0o640 if uid else 0o600
+
+def managed_directory(path, mode=0o755, owner=None):
+    path = pathlib.Path(path)
+    if path.is_symlink():
+        raise SystemExit(f"refusing managed directory symlink: {path}")
+    path.mkdir(parents=True, exist_ok=True)
+    metadata = path.stat()
+    if (metadata.st_mode & 0o777) != mode:
+        os.chmod(path, mode)
+    if owner and (metadata.st_uid, metadata.st_gid) != owner:
+        os.chown(path, *owner)
+    return path
+
+def replace(path, content, mode=0o644, owner=None):
+    path = pathlib.Path(path)
+    if path.is_symlink():
+        raise SystemExit(f"refusing managed file symlink: {path}")
+    encoded = content.encode()
+    if path.is_file() and path.read_bytes() == encoded:
+        metadata = path.stat()
+        if (metadata.st_mode & 0o777) == mode and (not owner or (metadata.st_uid, metadata.st_gid) == owner):
+            return
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as output:
+            output.write(encoded)
+            output.flush()
+            os.fsync(output.fileno())
+        os.chmod(temporary, mode)
+        if owner:
+            os.chown(temporary, *owner)
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+managed_directory("/etc/vm", 0o750 if uid else 0o700, (0, gid))
+managed_directory("/etc/profile.d")
+owner = (0, gid)
+replace("/etc/profile.d/vm-packages.sh", settings["profile"], sensitive_mode, owner)
+replace("/etc/vm/npmrc", settings["npmrc"], sensitive_mode, owner)
+replace("/etc/vm/pip.conf", settings["pip_conf"], sensitive_mode, owner)
+replace("/etc/vm/cargo-config.toml", settings["cargo_config"], sensitive_mode, owner)
+replace("/etc/vm/package-client.revision", settings["revision"] + "\n", sensitive_mode, owner)
+
+source = "[ -r /etc/profile.d/vm-packages.sh ] && . /etc/profile.d/vm-packages.sh"
+for candidate in ("/etc/bash.bashrc", "/etc/zsh/zshrc"):
+    path = pathlib.Path(candidate)
+    if not path.is_file():
+        continue
+    if path.is_symlink():
+        raise SystemExit(f"refusing shell configuration symlink: {path}")
+    content = path.read_text()
+    if source not in content.splitlines():
+        replace(path, content.rstrip("\n") + "\n" + source + "\n")
+"#;
 
 pub(super) trait PackageExecutor {
     fn checkout_root(&self, checkout_id: &str) -> VmResult<String>;
@@ -84,15 +152,48 @@ fn required_guest_variable(name: &str) -> VmResult<String> {
         .ok_or_else(|| {
             VmError::validation(
                 format!("Managed guest package access is missing {name}"),
-                Some("Restart this environment after `vm packages up` reconciles the appliance"),
+                Some("Run `vm tools update` on the controller host, then open a new guest shell"),
             )
         })
 }
 
 pub(in crate::commands) fn apply_client_environment(config: &mut VmConfig) -> VmResult<()> {
+    let Some((client, edge)) = configured_client_environment(config)? else {
+        return Ok(());
+    };
+    config.package_edge = Some(edge);
+    apply_environment(config, &client);
+    Ok(())
+}
+
+pub(in crate::commands) fn reconcile_client_settings(
+    provider: &dyn Provider,
+    environment: &str,
+    config: &VmConfig,
+) -> VmResult<()> {
+    let Some((client, _)) = configured_client_environment(config)? else {
+        return Ok(());
+    };
+    let content = serde_json::to_vec(&client.managed_settings())
+        .map_err(|error| VmError::general(error, "Failed to render package client settings"))?;
+    let command = vec![
+        "/bin/sh".to_string(),
+        "-c".to_string(),
+        "if [ \"$(id -u)\" -eq 0 ]; then exec python3 -c \"$1\"; else exec sudo -n python3 -c \"$1\"; fi".to_string(),
+        "vm-package-settings".to_string(),
+        INSTALL_CLIENT_SETTINGS.to_string(),
+    ];
+    provider
+        .exec_with_stdin(Some(environment), &command, &content)
+        .map_err(VmError::from)
+}
+
+fn configured_client_environment(
+    config: &VmConfig,
+) -> VmResult<Option<(ClientEnvironment, PackageEdgeConfig)>> {
     let files = ApplianceFiles::discover()?;
     let Some(state) = files.read_state()? else {
-        return Ok(());
+        return Ok(None);
     };
     let provider = config.provider.as_deref().unwrap_or("docker");
     if provider == "tart"
@@ -120,9 +221,7 @@ pub(in crate::commands) fn apply_client_environment(config: &mut VmConfig) -> Vm
         consumer,
         provider,
     )?;
-    config.package_edge = Some(edge);
-    apply_environment(config, &client);
-    Ok(())
+    Ok(Some((client, edge)))
 }
 
 fn apply_environment(config: &mut VmConfig, client: &ClientEnvironment) {
@@ -405,7 +504,7 @@ impl PackageExecutor for GuestRuntime {
 mod tests {
     use super::{
         apply_environment, checkout_root_for, client_environment, gateway_for_provider,
-        package_edge_revision,
+        package_edge_revision, INSTALL_CLIENT_SETTINGS,
     };
     use vm_config::config::{TartConfig, VmConfig, VmSettings};
     use vm_packages::{
@@ -503,6 +602,15 @@ mod tests {
             config.environment["CARGO_SOURCE_CRATES_IO_REPLACE_WITH"],
             "vm"
         );
+    }
+
+    #[test]
+    fn client_repair_is_atomic_and_sources_interactive_shells() {
+        assert!(INSTALL_CLIENT_SETTINGS.contains("os.replace(temporary, path)"));
+        assert!(INSTALL_CLIENT_SETTINGS.contains("/etc/profile.d/vm-packages.sh"));
+        assert!(INSTALL_CLIENT_SETTINGS.contains("/etc/bash.bashrc"));
+        assert!(INSTALL_CLIENT_SETTINGS.contains("/etc/zsh/zshrc"));
+        assert!(INSTALL_CLIENT_SETTINGS.contains("refusing managed file symlink"));
     }
 
     #[test]

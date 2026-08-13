@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use vm_packages::{
     sha256_hex as digest_hex, BeginReleaseRequest, CleanupRequest, CompleteReleaseRequest,
     PackageEcosystem, PackageIdentity, PackageInfrastructureClient, PublicationRequest,
-    RegistryEndpoints, ReleaseRecord, VersionRecommendation, WorkflowState,
+    RegistryEndpoints, ReleaseRecord, SourceKind, VersionRecommendation, WorkflowState,
 };
 
 use crate::runtime::{operation_key, required_secret as secret, run_command as run};
@@ -79,6 +79,17 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
         .review
         .as_ref()
         .context("submission has no integration review")?;
+    let checkout = client.checkout(&submission.checkout_id).await?;
+    if checkout.source_kind == SourceKind::ToolCollection {
+        return super::tool::release_submission(
+            &client,
+            &submission,
+            &release_token,
+            &publish_token,
+            &gateway,
+        )
+        .await;
+    }
     let definition = client.package_definition(&submission.package).await?;
 
     let release_root = tempfile::tempdir()?;
@@ -194,7 +205,10 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
     Ok(())
 }
 
-async fn cleanup_release(client: &PackageInfrastructureClient, release_id: &str) -> Result<()> {
+pub(super) async fn cleanup_release(
+    client: &PackageInfrastructureClient,
+    release_id: &str,
+) -> Result<()> {
     client
         .cleanup_release(
             release_id,
@@ -207,7 +221,7 @@ async fn cleanup_release(client: &PackageInfrastructureClient, release_id: &str)
     Ok(())
 }
 
-fn download_bundle(url: &str, token: &str, destination: &Path) -> Result<()> {
+pub(super) fn download_bundle(url: &str, token: &str, destination: &Path) -> Result<()> {
     run(
         Command::new("curl")
             .args(["--fail", "--silent", "--show-error", "--location"])
@@ -221,7 +235,7 @@ fn download_bundle(url: &str, token: &str, destination: &Path) -> Result<()> {
     Ok(())
 }
 
-fn clone_at(bundle: &Path, destination: &Path, commit: &str) -> Result<()> {
+pub(super) fn clone_at(bundle: &Path, destination: &Path, commit: &str) -> Result<()> {
     run(
         Command::new("git")
             .arg("clone")
@@ -333,7 +347,7 @@ print(json.dumps({"name": name, "version": version}))"#;
     })
 }
 
-fn validate_version_bump(
+pub(super) fn validate_version_bump(
     previous: &Version,
     next: &Version,
     recommendation: VersionRecommendation,
@@ -454,7 +468,7 @@ fn single_artifact(directory: &Path, suffix: &str) -> Result<PathBuf> {
     Ok(matches.remove(0))
 }
 
-fn push_source(
+pub(super) fn push_source(
     source: &Path,
     repository: &str,
     branch: &str,

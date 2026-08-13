@@ -59,23 +59,6 @@ pub(super) fn configured_state_and_client(
     Ok((state, client))
 }
 
-pub(super) fn launch_tool_release(
-    files: &ApplianceFiles,
-    state: &ApplianceState,
-    name: &str,
-) -> VmResult<()> {
-    if state.job_image.is_empty() {
-        return Err(VmError::validation(
-            "Package appliance state predates integration review support",
-            Some("Run `vm packages up` to refresh it"),
-        ));
-    }
-    match state.runtime {
-        InfrastructureRuntime::Docker => docker::run_tool_release(files, name),
-        InfrastructureRuntime::Tart => tart::run_tool_release(files, name),
-    }
-}
-
 pub(super) async fn up(
     files: &ApplianceFiles,
     requested: PackageInfrastructureRuntime,

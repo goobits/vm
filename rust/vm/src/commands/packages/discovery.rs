@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use url::Url;
 use vm_config::detector::{git::detect_repository, ProjectFacts};
-use vm_packages::{PackageEcosystem, RegisterPackage, ToolKind};
+use vm_packages::{PackageEcosystem, RegisterPackage, RegisterTool, ToolKind};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::error::{VmError, VmResult};
@@ -15,7 +15,8 @@ const TOOL_MANIFEST: &str = "vm-tool.yaml";
 #[derive(Default)]
 pub(super) struct Discovery {
     pub(super) packages: Vec<RegisterPackage>,
-    pub(super) tools: Vec<PathBuf>,
+    pub(super) tools: Vec<RegisterTool>,
+    pub(super) failures: Vec<String>,
 }
 
 #[derive(Default)]
@@ -39,7 +40,54 @@ pub(super) fn discover(
 }
 
 pub(super) fn discover_configured(targets: &[String]) -> VmResult<Discovery> {
-    discover_with_policy(targets, true, None, None, true)
+    let repositories = configured_repository_paths(targets)?;
+    let mut discovery = Discovery::default();
+    for root in repositories {
+        let result = match is_tool_repository(&root) {
+            Ok(true) => discover_tool(&root, None).map(|tool| discovery.tools.push(tool)),
+            Ok(false) => {
+                discover_one(&root, None, None).map(|package| discovery.packages.push(package))
+            }
+            Err(error) => Err(error),
+        };
+        if let Err(error) = result {
+            discovery
+                .failures
+                .push(format!("{}: {error}", root.display()));
+        }
+    }
+    Ok(discovery)
+}
+
+fn configured_repository_paths(targets: &[String]) -> VmResult<BTreeSet<PathBuf>> {
+    let mut repositories = BTreeSet::new();
+    for target in targets {
+        let root = fs::canonicalize(target).map_err(|error| {
+            VmError::filesystem(error, target, "resolve package registration path")
+        })?;
+        if !root.is_dir() {
+            return Err(VmError::validation(
+                format!("Package source root {} is not a directory", root.display()),
+                None::<String>,
+            ));
+        }
+        for entry in WalkDir::new(&root)
+            .follow_links(false)
+            .into_iter()
+            .filter_entry(should_visit)
+        {
+            let entry = entry.map_err(|error| {
+                VmError::validation(
+                    format!("Failed to scan {}: {error}", root.display()),
+                    None::<String>,
+                )
+            })?;
+            if entry.file_type().is_dir() && entry.path().join(".git").exists() {
+                repositories.insert(entry.into_path());
+            }
+        }
+    }
+    Ok(repositories)
 }
 
 fn discover_with_policy(
@@ -55,9 +103,15 @@ fn discover_with_policy(
         .iter()
         .map(|root| discover_one(root, ecosystem, branch))
         .collect::<VmResult<_>>()?;
+    let tools = roots
+        .tools
+        .iter()
+        .map(|root| discover_tool(root, branch))
+        .collect::<VmResult<_>>()?;
     Ok(Discovery {
         packages,
-        tools: roots.tools.into_iter().collect(),
+        tools,
+        failures: Vec::new(),
     })
 }
 
@@ -184,6 +238,44 @@ fn discover_one(
     request.validate().map_err(|error| {
         VmError::validation(
             format!("Invalid package metadata in {}: {error}", root.display()),
+            None::<String>,
+        )
+    })?;
+    Ok(request)
+}
+
+fn discover_tool(root: &Path, branch: Option<&str>) -> VmResult<RegisterTool> {
+    let manifest_path = root.join(TOOL_MANIFEST);
+    let manifest = serde_yaml_ng::from_str::<ToolManifest>(&read_manifest(&manifest_path)?)
+        .map_err(|error| {
+            VmError::validation(
+                format!("Invalid {}: {error}", manifest_path.display()),
+                Some("Expected `kind: binary` or `kind: collection`"),
+            )
+        })?;
+    let repository = detect_repository(root).map_err(VmError::from)?;
+    let name = root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            VmError::validation(
+                format!("Tool repository {} has no usable name", root.display()),
+                None::<String>,
+            )
+        })?
+        .to_string();
+    let request = RegisterTool {
+        name,
+        kind: manifest.kind,
+        repository: normalize_repository_url(&repository.origin_url)?,
+        default_branch: branch
+            .map(str::to_string)
+            .or(repository.default_branch)
+            .unwrap_or_else(|| "main".into()),
+    };
+    request.validate().map_err(|error| {
+        VmError::validation(
+            format!("Invalid tool metadata in {}: {error}", root.display()),
             None::<String>,
         )
     })?;
@@ -468,7 +560,8 @@ mod tests {
 
         assert!(discovery.packages.is_empty());
         assert_eq!(discovery.tools.len(), 1);
-        assert!(discovery.tools[0].ends_with("agent-skills"));
+        assert_eq!(discovery.tools[0].name, "agent-skills");
+        assert_eq!(discovery.tools[0].kind, vm_packages::ToolKind::Collection);
     }
 
     #[test]
@@ -481,6 +574,31 @@ mod tests {
 
         assert!(configured.packages.is_empty());
         assert!(configured.tools.is_empty());
+        assert!(configured.failures.is_empty());
+    }
+
+    #[test]
+    fn configured_discovery_isolates_invalid_repositories() {
+        let directory = tempfile::tempdir().unwrap();
+        package(
+            directory.path(),
+            "auth",
+            "package.json",
+            r#"{"name":"@shared/auth","version":"1.0.0"}"#,
+        );
+        let broken = directory.path().join("broken");
+        fs::create_dir(&broken).unwrap();
+        let repository = Repository::init(&broken).unwrap();
+        repository
+            .remote("origin", "git@example.com:shared/broken.git")
+            .unwrap();
+
+        let configured =
+            discover_configured(&[directory.path().to_string_lossy().into_owned()]).unwrap();
+
+        assert_eq!(configured.packages.len(), 1);
+        assert_eq!(configured.failures.len(), 1);
+        assert!(configured.failures[0].contains("broken"));
     }
 
     #[test]

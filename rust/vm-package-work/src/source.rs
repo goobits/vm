@@ -10,7 +10,9 @@ use vm_packages::{
     RolloutRecord, SubmissionRecord, TransitionRequest, WorkflowState,
 };
 
-use crate::{io::atomic_write, ImportedSubmission, Store, WorkError, WorkResult};
+use crate::{
+    io::atomic_write, store::SourceDefinition, ImportedSubmission, Store, WorkError, WorkResult,
+};
 
 mod rollout;
 
@@ -36,8 +38,13 @@ impl SourceManager {
         if checkout.checkout.state != WorkflowState::Created {
             return Ok(checkout.checkout.clone());
         }
-        let definition = store.package(&checkout.checkout.package).await?;
-        let lock = self.lock(&format!("package:{}", definition.name)).await;
+        let definition = store.source(&checkout.checkout.package).await?;
+        if definition.kind != checkout.checkout.source_kind {
+            return Err(WorkError::Conflict(
+                "checkout source kind no longer matches the catalog".into(),
+            ));
+        }
+        let lock = self.lock(&format!("source:{}", definition.name)).await;
         let _guard = lock.lock().await;
         let result = self
             .prepare_locked(store, &checkout.checkout, &definition)
@@ -318,9 +325,14 @@ impl SourceManager {
                 "integration strategy must be rebase or merge".into(),
             ));
         }
-        let definition = store.package(&submission.package).await?;
+        let definition = store.source(&submission.package).await?;
         let checkout = store.get_checkout(&submission.checkout_id).await?;
-        let lock = self.lock(&format!("package:{}", definition.name)).await;
+        if definition.kind != checkout.source_kind {
+            return Err(WorkError::Conflict(
+                "checkout source kind no longer matches the catalog".into(),
+            ));
+        }
+        let lock = self.lock(&format!("source:{}", definition.name)).await;
         let _guard = lock.lock().await;
         let mirror = self
             .root
@@ -525,7 +537,7 @@ impl SourceManager {
         &self,
         store: &Store,
         checkout: &CheckoutRecord,
-        definition: &vm_packages::PackageDefinition,
+        definition: &SourceDefinition,
     ) -> WorkResult<CheckoutRecord> {
         let mirrors = self.root.join("sources");
         let checkout_root = self.agent_root(&checkout.checkout_id)?;

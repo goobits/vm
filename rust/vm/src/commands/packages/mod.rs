@@ -23,14 +23,7 @@ use vm_core::vm_success;
 
 use appliance::configured_client;
 use files::ApplianceFiles;
-pub(super) use runtime::apply_client_environment;
-
-pub(in crate::commands) fn publish_tool(name: &str) -> VmResult<()> {
-    let files = ApplianceFiles::discover()?;
-    let _operation_lock = files.acquire_operation_lock()?;
-    let (state, _) = appliance::configured_state_and_client(&files)?;
-    appliance::launch_tool_release(&files, &state, name)
-}
+pub(super) use runtime::{apply_client_environment, reconcile_client_settings};
 
 pub(in crate::commands) fn git_auth_configured() -> VmResult<bool> {
     ApplianceFiles::discover()?.has_git_token()
@@ -64,7 +57,16 @@ pub(super) async fn handle(
             let global_config = vm_config::GlobalConfig::load()?;
             let source_roots = catalog::prepare_source_roots(&global_config.packages.source_roots)?;
             appliance::up(&files, runtime, port, registry_image, job_image).await?;
-            catalog::reconcile_source_roots(&files, source_roots).await?;
+            let failures = catalog::reconcile_source_roots(&files, source_roots).await?;
+            if !failures.is_empty() {
+                return Err(crate::error::VmError::validation(
+                    format!(
+                        "{} configured source(s) could not be registered",
+                        failures.len()
+                    ),
+                    Some("Fix the reported repositories and rerun `vm packages up`"),
+                ));
+            }
             if let Ok(config) = vm_config::AppConfig::load(config_path, profile, None) {
                 let _ = tooling::refresh(&config.vm).await;
             }
@@ -124,7 +126,7 @@ pub(super) async fn handle(
         }
         PackagesSubcommand::Show { checkout_id } => catalog::show(&files, &checkout_id).await,
         PackagesSubcommand::Release { .. } => Err(crate::error::VmError::validation(
-            "Package checkout releases run inside the assigned managed environment",
+            "Managed source releases run inside the assigned environment",
             Some("Run `vm packages release <checkout-id>` inside that Docker or Tart guest"),
         )),
         PackagesSubcommand::Cancel { checkout_id } => {

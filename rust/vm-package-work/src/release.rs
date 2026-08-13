@@ -1,7 +1,7 @@
 use chrono::Utc;
 use vm_packages::{
     validate_label, validate_registry_url, BeginReleaseRequest, CompleteReleaseRequest,
-    PublicationRecord, PublicationRequest, ReceiptKind, ReleaseRecord, ReviewDecision,
+    PublicationRecord, PublicationRequest, ReceiptKind, ReleaseRecord, ReviewDecision, SourceKind,
     WorkflowState,
 };
 
@@ -66,12 +66,22 @@ impl Store {
         }
         let checkout_id = submission.checkout_id.clone();
         let package = submission.package.clone();
-        let source_repository = next
-            .packages
-            .get(&package)
-            .ok_or_else(|| WorkError::Internal("release package definition is missing".into()))?
-            .repository
-            .clone();
+        let checkout = next
+            .checkouts
+            .get(&checkout_id)
+            .ok_or_else(|| WorkError::Internal("release checkout is missing".into()))?;
+        let source_repository = match checkout.source_kind {
+            SourceKind::Package => next
+                .packages
+                .get(&package)
+                .map(|definition| definition.repository.clone()),
+            SourceKind::ToolCollection => next
+                .tools
+                .get(&package)
+                .filter(|definition| definition.kind == vm_packages::ToolKind::Collection)
+                .map(|definition| definition.repository.clone()),
+        }
+        .ok_or_else(|| WorkError::Internal("release source definition is missing".into()))?;
         let release_id = format!("rel-{submission_id}");
         if next.releases.contains_key(&release_id) {
             return Err(WorkError::Conflict(

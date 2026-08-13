@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use vm_core::{vm_hint, vm_println, vm_progress, vm_success};
 use vm_packages::{
-    CreateCheckout, PackageEcosystem, PackageInfrastructureClient, RegistryEndpoints,
-    TransitionRequest, WorkflowState,
+    CreateCheckout, PackageEcosystem, PackageInfrastructureClient, RegistryEndpoints, SourceKind,
+    ToolKind, TransitionRequest, WorkflowState,
 };
 
 use crate::commands::command_context::{
@@ -29,6 +29,21 @@ pub(super) struct CheckoutIntent {
     pub(super) agent: String,
     pub(super) consumer: Option<String>,
     pub(super) task: String,
+}
+
+#[derive(Clone, Copy)]
+enum EditableSource {
+    Package(PackageEcosystem),
+    ToolCollection,
+}
+
+impl EditableSource {
+    fn kind(self) -> SourceKind {
+        match self {
+            Self::Package(_) => SourceKind::Package,
+            Self::ToolCollection => SourceKind::ToolCollection,
+        }
+    }
 }
 
 pub(super) async fn cleanup_local(
@@ -63,8 +78,10 @@ fn cleanup_runtime(
             None::<String>,
         ));
     }
-    let record = OverrideRecord::load(subject, &root, checkout, current_project)?;
-    record.restore(subject)?;
+    if checkout.source_kind == SourceKind::Package {
+        let record = OverrideRecord::load(subject, &root, checkout, current_project)?;
+        record.restore(subject)?;
+    }
     exec(subject, ["rm", "-rf", "--", root.as_str()])
 }
 
@@ -80,22 +97,8 @@ pub(super) async fn handle(files: &ApplianceFiles, intent: CheckoutIntent) -> Vm
     }
 
     let (state, client) = configured_state_and_client(files)?;
-    let definition = client.package_definition(&intent.package).await?;
-    let pinned_version = client
-        .package_consumers(&intent.package)
-        .await?
-        .iter()
-        .find(|usage| usage.consumer == consumer)
-        .map(|usage| usage.version.clone())
-        .ok_or_else(|| {
-            VmError::validation(
-                format!(
-                    "Consumer '{consumer}' has no registered '{}' dependency",
-                    intent.package
-                ),
-                Some("Register the consumer and its pinned dependency before creating a checkout"),
-            )
-        })?;
+    let source = editable_source(&client, &intent.package).await?;
+    let pinned_version = pinned_version(&client, &intent.package, &consumer, source).await?;
     vm_progress!(
         "Preparing isolated '{}' checkout in package infrastructure...",
         intent.package
@@ -123,8 +126,8 @@ pub(super) async fn handle(files: &ApplianceFiles, intent: CheckoutIntent) -> Vm
         &checkout.checkout,
         lease_token,
         &consumer,
-        definition.ecosystem,
-        &pinned_version,
+        source,
+        pinned_version.as_deref(),
     ) {
         if let Ok(root) = checkout_root(&subject, &checkout.checkout.checkout_id) {
             if let Err(cleanup_error) = cleanup_failed_attach(&subject, &root) {
@@ -171,9 +174,15 @@ fn attach(
     checkout: &vm_packages::CheckoutRecord,
     lease_token: &str,
     consumer: &str,
-    ecosystem: PackageEcosystem,
-    pinned_version: &str,
+    editable_source: EditableSource,
+    pinned_version: Option<&str>,
 ) -> VmResult<()> {
+    if checkout.source_kind != editable_source.kind() {
+        return Err(VmError::validation(
+            "Checkout source kind does not match the registered source",
+            None::<String>,
+        ));
+    }
     let root = checkout_root(subject, &checkout.checkout_id)?;
     let source = format!("{root}/source");
     let archive = format!("/tmp/{}.bundle", checkout.checkout_id);
@@ -217,18 +226,26 @@ fn attach(
         ],
     )?;
     exec(subject, ["rm", "-f", archive.as_str()])?;
-    let record = OverrideRecord::new(
-        &checkout.checkout_id,
-        consumer,
-        &checkout.package,
-        ecosystem,
-        source,
-        pinned_version,
-    );
-    record.write(subject, &root)?;
-    if let Err(error) = record.activate(subject) {
-        let _ = record.restore(subject);
-        return Err(error);
+    if let EditableSource::Package(ecosystem) = editable_source {
+        let pinned_version = pinned_version.ok_or_else(|| {
+            VmError::validation(
+                "Package checkout is missing its pinned version",
+                None::<String>,
+            )
+        })?;
+        let record = OverrideRecord::new(
+            &checkout.checkout_id,
+            consumer,
+            &checkout.package,
+            ecosystem,
+            source,
+            pinned_version,
+        );
+        record.write(subject, &root)?;
+        if let Err(error) = record.activate(subject) {
+            let _ = record.restore(subject);
+            return Err(error);
+        }
     }
     Ok(())
 }
@@ -251,22 +268,8 @@ pub(super) async fn handle_guest(intent: CheckoutIntent) -> VmResult<()> {
         ));
     }
     let client = subject.client()?;
-    let definition = client.package_definition(&intent.package).await?;
-    let pinned_version = client
-        .package_consumers(&intent.package)
-        .await?
-        .iter()
-        .find(|usage| usage.consumer == consumer)
-        .map(|usage| usage.version.clone())
-        .ok_or_else(|| {
-            VmError::validation(
-                format!(
-                    "Consumer '{consumer}' has no registered '{}' dependency",
-                    intent.package
-                ),
-                Some("Register the consumer dependency before creating a checkout"),
-            )
-        })?;
+    let source = editable_source(&client, &intent.package).await?;
+    let pinned_version = pinned_version(&client, &intent.package, &consumer, source).await?;
     let intent_key = format!(
         "checkout-{}",
         &vm_packages::sha256_hex(format!(
@@ -296,8 +299,8 @@ pub(super) async fn handle_guest(intent: CheckoutIntent) -> VmResult<()> {
         &checkout.checkout,
         &request.lease_token,
         &consumer,
-        definition.ecosystem,
-        &pinned_version,
+        source,
+        pinned_version.as_deref(),
     ) {
         if let Ok(root) = checkout_root(&subject, &checkout.checkout.checkout_id) {
             let _ = cleanup_failed_attach(&subject, &root);
@@ -322,6 +325,50 @@ pub(super) async fn handle_guest(intent: CheckoutIntent) -> VmResult<()> {
     vm_success!("Checkout {} is active", active.checkout_id);
     vm_println!("Source: {root}/source");
     Ok(())
+}
+
+async fn editable_source(
+    client: &PackageInfrastructureClient,
+    name: &str,
+) -> VmResult<EditableSource> {
+    let (packages, tools) = tokio::try_join!(client.package_definitions(), client.tools())?;
+    if let Some(package) = packages.iter().find(|package| package.name == name) {
+        return Ok(EditableSource::Package(package.ecosystem));
+    }
+    match tools.iter().find(|tool| tool.name == name) {
+        Some(tool) if tool.kind == ToolKind::Collection => Ok(EditableSource::ToolCollection),
+        Some(_) => Err(VmError::validation(
+            format!("Tool '{name}' is not an editable collection"),
+            None::<String>,
+        )),
+        None => Err(VmError::validation(
+            format!("No package or tool collection named '{name}' is registered"),
+            None::<String>,
+        )),
+    }
+}
+
+async fn pinned_version(
+    client: &PackageInfrastructureClient,
+    package: &str,
+    consumer: &str,
+    source: EditableSource,
+) -> VmResult<Option<String>> {
+    let EditableSource::Package(_) = source else {
+        return Ok(None);
+    };
+    client
+        .package_consumers(package)
+        .await?
+        .iter()
+        .find(|usage| usage.consumer == consumer)
+        .map(|usage| Some(usage.version.clone()))
+        .ok_or_else(|| {
+            VmError::validation(
+                format!("Consumer '{consumer}' has no registered '{package}' dependency"),
+                Some("Register the consumer and its pinned dependency before creating a checkout"),
+            )
+        })
 }
 
 fn read_or_create_request(

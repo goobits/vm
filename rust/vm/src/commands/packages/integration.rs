@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use vm_core::{vm_progress, vm_success};
 use vm_packages::{
-    CheckOutcome, IntegrationRequest, PackageInfrastructureClient, RegistryEndpoints,
+    CheckOutcome, IntegrationRequest, PackageInfrastructureClient, RegistryEndpoints, SourceKind,
     ValidationRequest, WorkflowState,
 };
 
@@ -10,7 +10,7 @@ use crate::error::{VmError, VmResult};
 
 use super::{
     runtime::{checkout_root, exec, GuestRuntime, PackageExecutor},
-    submission::{run_consumer_check, run_package_check},
+    submission::{run_collection_check, run_consumer_check, run_package_check},
 };
 
 pub(super) async fn handle_guest(
@@ -59,7 +59,6 @@ async fn integrate(
             None::<String>,
         ));
     }
-    let definition = client.package_definition(&submission.package).await?;
     vm_progress!("Integrating against the latest canonical package revision...");
     let integrating = client
         .prepare_integration(
@@ -112,15 +111,25 @@ async fn integrate(
     )?;
     exec(subject, ["rm", "-f", bundle.as_str()])?;
     vm_progress!("Rerunning integrated package and consumer checks...");
-    run_package_check(subject, definition.ecosystem, &source)?;
-    run_consumer_check(subject, definition.ecosystem, &submission.package, &source)?;
+    let consumers = match checkout.source_kind {
+        SourceKind::Package => {
+            let definition = client.package_definition(&submission.package).await?;
+            run_package_check(subject, definition.ecosystem, &source)?;
+            run_consumer_check(subject, definition.ecosystem, &submission.package, &source)?;
+            BTreeMap::from([(consumer, CheckOutcome::Passed)])
+        }
+        SourceKind::ToolCollection => {
+            run_collection_check(subject, &source)?;
+            BTreeMap::new()
+        }
+    };
     let integration_commit = integration.integration_commit.clone();
     let ready = client
         .complete_integration(
             &integrating.submission_id,
             &ValidationRequest {
                 package: CheckOutcome::Passed,
-                consumers: BTreeMap::from([(consumer, CheckOutcome::Passed)]),
+                consumers,
                 actor: actor.into(),
                 idempotency_key: format!("integration-checks-{}", integrating.submission_id),
             },

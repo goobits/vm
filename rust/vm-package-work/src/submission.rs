@@ -191,16 +191,11 @@ impl Store {
             .ok_or_else(|| WorkError::NotFound(submission_id.to_string()))?
             .checkout_id
             .clone();
-        let expected_consumers = &next
+        let checkout = next
             .checkouts
             .get(&checkout_id)
-            .ok_or_else(|| WorkError::Internal("submission checkout is missing".into()))?
-            .consumers;
-        if request.consumers.keys().ne(expected_consumers.iter()) {
-            return Err(WorkError::Invalid(
-                "validation must report every selected consumer exactly once".into(),
-            ));
-        }
+            .ok_or_else(|| WorkError::Internal("submission checkout is missing".into()))?;
+        validate_consumer_results(checkout, &request.consumers)?;
         let validation = ValidationResult {
             package: request.package,
             consumers: request.consumers,
@@ -397,6 +392,17 @@ impl Store {
                 .ok_or_else(|| WorkError::Internal("idempotency target is missing".into()));
         }
         let mut next = current.clone();
+        let checkout_id = next
+            .submissions
+            .get(submission_id)
+            .ok_or_else(|| WorkError::NotFound(submission_id.to_string()))?
+            .checkout_id
+            .clone();
+        let checkout = next
+            .checkouts
+            .get(&checkout_id)
+            .ok_or_else(|| WorkError::Internal("submission checkout is missing".into()))?;
+        validate_consumer_results(checkout, &request.consumers)?;
         let validation = ValidationResult {
             package: request.package,
             consumers: request.consumers,
@@ -533,6 +539,23 @@ fn validate_validation(request: &ValidationRequest) -> WorkResult<()> {
     validate_idempotency_key(&request.idempotency_key)
 }
 
+fn validate_consumer_results(
+    checkout: &vm_packages::CheckoutRecord,
+    consumers: &std::collections::BTreeMap<String, vm_packages::CheckOutcome>,
+) -> WorkResult<()> {
+    let matches_source = match checkout.source_kind {
+        vm_packages::SourceKind::Package => consumers.keys().eq(checkout.consumers.iter()),
+        vm_packages::SourceKind::ToolCollection => consumers.is_empty(),
+    };
+    if matches_source {
+        Ok(())
+    } else {
+        Err(WorkError::Invalid(
+            "validation consumer results do not match the source kind".into(),
+        ))
+    }
+}
+
 fn validate_review(request: &ReviewRequest) -> WorkResult<()> {
     validate_label("reviewer", &request.reviewer)?;
     if request.reason.trim().is_empty() || request.reason.len() > 4_000 {
@@ -553,7 +576,95 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
-    use vm_packages::{CheckOutcome, CreateCheckout};
+    use vm_packages::{CheckOutcome, CreateCheckout, RegisterTool, ToolKind};
+
+    #[tokio::test]
+    async fn collection_validation_has_no_package_consumer_result() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).await.unwrap();
+        store
+            .register_tool(RegisterTool {
+                name: "agent-skills".into(),
+                kind: ToolKind::Collection,
+                repository: "https://example.invalid/agent-skills.git".into(),
+                default_branch: "main".into(),
+            })
+            .await
+            .unwrap();
+        let created = store
+            .create_checkout(CreateCheckout {
+                package: "agent-skills".into(),
+                agent: "agent-1".into(),
+                consumers: vec!["project-a".into()],
+                task: "change skills".into(),
+                lease_token: "lease-token-012345678901234567890123456789".into(),
+                idempotency_key: "create-collection".into(),
+            })
+            .await
+            .unwrap();
+        store
+            .record_source(
+                &created.checkout.checkout_id,
+                "main".into(),
+                "abc123".into(),
+                "agents/collection".into(),
+                "/data/agents/collection".into(),
+            )
+            .await
+            .unwrap();
+        store
+            .transition(
+                &created.checkout.checkout_id,
+                vm_packages::TransitionRequest {
+                    next: WorkflowState::Active,
+                    actor: "agent-1".into(),
+                    reason: "attached".into(),
+                    commit: Some("abc123".into()),
+                    validation_result: None,
+                    idempotency_key: "activate-collection".into(),
+                },
+            )
+            .await
+            .unwrap();
+        let submission = store
+            .record_submission(
+                &created.checkout.checkout_id,
+                ImportedSubmission {
+                    submitted_commit: "def456789012345".into(),
+                    diff_digest: "collection-digest".into(),
+                },
+            )
+            .await
+            .unwrap();
+
+        let invalid = store
+            .validate_submission(
+                &submission.submission_id,
+                ValidationRequest {
+                    package: CheckOutcome::Passed,
+                    consumers: BTreeMap::from([("project-a".into(), CheckOutcome::Passed)]),
+                    actor: "controller".into(),
+                    idempotency_key: "validate-collection-invalid".into(),
+                },
+            )
+            .await;
+        assert!(invalid.is_err());
+
+        let validated = store
+            .validate_submission(
+                &submission.submission_id,
+                ValidationRequest {
+                    package: CheckOutcome::Passed,
+                    consumers: BTreeMap::new(),
+                    actor: "controller".into(),
+                    idempotency_key: "validate-collection".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(validated.state, WorkflowState::Reviewing);
+        assert!(validated.validation.unwrap().consumers.is_empty());
+    }
 
     #[tokio::test]
     async fn submission_validation_and_review_are_durable_and_ordered() {

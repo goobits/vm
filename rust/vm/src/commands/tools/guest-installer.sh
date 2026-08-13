@@ -173,6 +173,17 @@ managed_link() {
   esac
 }
 
+release_is_writable() {
+  candidate=$1
+  test -n "$(find "$candidate" \( -type d -o -type f \) -perm -u=w -print -quit)"
+}
+
+harden_release() {
+  candidate=$1
+  find "$candidate" -type f -exec chmod a-w {} +
+  find "$candidate" -type d -exec chmod a-w {} +
+}
+
 install_tool() (
   manifest=$1
   task=$(mktemp -d "$temporary/task.XXXXXX")
@@ -199,6 +210,10 @@ install_tool() (
   tail -n +2 "$manifest_file" > "$links"
 
   release="$releases/$name/$version-$digest"
+  if test -d "$release" && release_is_writable "$release"; then
+    chmod -R u+w "$release"
+    rm -rf "$release"
+  fi
   if test ! -d "$release"; then
     archive="$task/artifact.tar.gz"
     curl --fail --silent --show-error --location \
@@ -227,6 +242,7 @@ install_tool() (
     if ! mv "$extracted" "$release" 2>/dev/null; then
       test -d "$release" || exit 1
     fi
+    harden_release "$release"
   fi
 
   : > "$prepared"

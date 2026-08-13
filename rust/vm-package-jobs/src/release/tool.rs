@@ -10,26 +10,28 @@ use semver::Version;
 use serde::Deserialize;
 use tokio_util::io::ReaderStream;
 use vm_packages::{
-    sha256_reader, tool_artifact_path, validate_label, validate_repository_url, validate_tool_name,
-    PackageInfrastructureClient, PublishToolArtifact, RegistryEndpoints, ToolArtifactRecord,
-    ToolKind,
+    sha256_reader, tool_artifact_path, validate_tool_name, BeginReleaseRequest,
+    CompleteReleaseRequest, PackageInfrastructureClient, PublicationRequest, PublishToolArtifact,
+    SubmissionRecord, ToolArtifactRecord, ToolKind, WorkflowState,
 };
 
-use crate::runtime::{operation_key, required_secret, run_command};
+use crate::runtime::{operation_key, run_command};
 
+use super::package::{
+    cleanup_release, clone_at, download_bundle, push_source, validate_version_bump,
+};
 use super::{git, git_text};
 
-const DEFAULT_GATEWAY: &str = "http://gateway:8080";
 const TOOL_TARGET: &str = "any";
 const RELEASE_ACTOR: &str = "tool-release-service";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ToolReleaseOptions {
-    pub name: String,
-}
-
 struct BuiltCollection {
     archive: PathBuf,
+    source_commit: String,
+    version: String,
+}
+
+struct CollectionIdentity {
     source_commit: String,
     version: String,
 }
@@ -47,88 +49,174 @@ pub struct ToolReleaseManifest {
     pub idempotency_key: String,
 }
 
-/// Clone and publish one registered collection from an exact source commit.
-pub async fn release(options: ToolReleaseOptions) -> Result<ToolArtifactRecord> {
-    validate_tool_name(&options.name)?;
-    let gateway =
-        std::env::var("PKG_RELEASE_GATEWAY").unwrap_or_else(|_| DEFAULT_GATEWAY.to_string());
-    let release_token = required_secret("PKG_RELEASE_TOKEN_FILE")?;
-    let publish_token = required_secret("PKG_RELEASE_PUBLISH_TOKEN_FILE")?;
-    let client = PackageInfrastructureClient::new(RegistryEndpoints::new(&gateway)?)
-        .with_release_token(release_token);
-    let inventory = client.tool(&options.name).await?;
+/// Release one approved tool-collection submission through the durable package workflow.
+pub(super) async fn release_submission(
+    client: &PackageInfrastructureClient,
+    submission: &SubmissionRecord,
+    release_token: &str,
+    publish_token: &str,
+    gateway: &str,
+) -> Result<()> {
+    let integration = submission
+        .integration
+        .as_ref()
+        .context("tool submission has no integration record")?;
+    let review = submission
+        .review
+        .as_ref()
+        .context("tool submission has no integration review")?;
+    let inventory = client.tool(&submission.package).await?;
     if inventory.definition.kind != ToolKind::Collection {
-        bail!(
-            "tool '{}' is a binary; generic publication currently supports collections",
-            options.name
-        );
+        bail!("managed tool checkout is not a collection");
     }
 
-    let directory = tempfile::tempdir()?;
-    let source = directory.path().join("source");
-    clone_collection(
+    let release_root = tempfile::tempdir()?;
+    let bundle = release_root.path().join("integration.bundle");
+    download_bundle(
+        &client.release_bundle_url(&submission.submission_id),
+        release_token,
+        &bundle,
+    )?;
+    let source = release_root.path().join("source");
+    let canonical = release_root.path().join("canonical");
+    clone_at(&bundle, &source, &integration.integration_commit)?;
+    clone_at(&bundle, &canonical, &integration.canonical_commit)?;
+    let identity = collection_identity(&source)?;
+    let previous = collection_identity(&canonical)?;
+    validate_version_bump(
+        &Version::parse(&previous.version)?,
+        &Version::parse(&identity.version)?,
+        review.recommended_version,
+    )?;
+    if identity.source_commit != integration.integration_commit {
+        bail!("tool release source does not match the validated integration");
+    }
+
+    let built = build_collection(&source, &release_root.path().join("tool.tar.gz"))?;
+    let tag = format!("v{}", built.version);
+    push_source(
+        &source,
         &inventory.definition.repository,
         &inventory.definition.default_branch,
-        &source,
+        &integration.canonical_commit,
+        &integration.integration_commit,
+        &tag,
     )?;
-    let built = build_collection(&source, &directory.path().join("tool.tar.gz"))?;
-    let tag = format!("source-{}", &built.source_commit[..12]);
     let manifest = ToolReleaseManifest {
-        name: options.name.clone(),
+        name: submission.package.clone(),
         version: built.version,
         target: TOOL_TARGET.into(),
         links: collection_links(),
         source_commit: built.source_commit,
         tag,
         actor: RELEASE_ACTOR.into(),
-        idempotency_key: String::new(),
-    };
-    let manifest = ToolReleaseManifest {
-        idempotency_key: operation_key(
-            "tool-release",
-            &format!(
-                "{}:{}:{}:{}",
-                manifest.name, manifest.version, manifest.target, manifest.source_commit
-            ),
-        ),
-        ..manifest
+        idempotency_key: operation_key("tool-workflow", &submission.submission_id),
     };
     let request = publication_request(&built.archive, manifest.clone())?;
-    upload_archive(
-        &gateway,
-        &publish_token,
-        &built.archive,
-        &options.name,
-        &request,
-    )
-    .await?;
-    let record = client
-        .publish_tool_artifact(&options.name, &request)
+    let registry = format!(
+        "{}{}",
+        gateway.trim_end_matches('/'),
+        tool_artifact_path(
+            &manifest.name,
+            &request.version,
+            &request.target,
+            &request.artifact_digest,
+        )
+    );
+    let mut release = match submission.state {
+        WorkflowState::ReadyToRelease => {
+            client
+                .begin_release(
+                    &submission.submission_id,
+                    &BeginReleaseRequest {
+                        version: request.version.clone(),
+                        tag: request.tag.clone(),
+                        source_commit: request.source_commit.clone(),
+                        artifact_digest: request.artifact_digest.clone(),
+                        source_pushed: true,
+                        registry: registry.clone(),
+                        actor: RELEASE_ACTOR.into(),
+                        idempotency_key: operation_key("tool-release", &submission.submission_id),
+                    },
+                )
+                .await?
+        }
+        WorkflowState::Publishing => {
+            let release_id = submission
+                .release_id
+                .as_deref()
+                .context("publishing tool submission has no release record")?;
+            let release = client.release(release_id).await?;
+            if release.version != request.version
+                || release.tag != request.tag
+                || release.source_commit != request.source_commit
+                || release.artifact_digest != request.artifact_digest
+                || release.registry != registry
+            {
+                bail!("tool release retry no longer matches its durable record");
+            }
+            release
+        }
+        _ => bail!("tool submission is not ready to release"),
+    };
+
+    if !release
+        .publications
+        .iter()
+        .any(|publication| publication.registry == registry)
+    {
+        upload_archive(
+            gateway,
+            publish_token,
+            &built.archive,
+            &manifest.name,
+            &request,
+        )
         .await?;
-    verify_record(&record, &manifest, &request)?;
+        let record = client
+            .publish_tool_artifact(&manifest.name, &request)
+            .await?;
+        verify_record(&record, &manifest, &request)?;
+        release = client
+            .record_publication(
+                &release.release_id,
+                &PublicationRequest {
+                    registry,
+                    artifact_digest: request.artifact_digest,
+                    actor: RELEASE_ACTOR.into(),
+                    idempotency_key: operation_key("tool-publication", &submission.submission_id),
+                },
+            )
+            .await?;
+    }
+    let released = client
+        .complete_release(
+            &release.release_id,
+            &CompleteReleaseRequest {
+                actor: RELEASE_ACTOR.into(),
+                idempotency_key: operation_key("tool-complete", &submission.submission_id),
+            },
+        )
+        .await?;
+    cleanup_release(client, &released.release_id).await?;
     println!(
         "{} {} published from {} ({})",
-        record.tool, record.version, record.source_commit, record.receipt_id
+        released.package, released.version, released.source_commit, released.release_id
     );
-    Ok(record)
-}
-
-fn clone_collection(repository: &str, branch: &str, destination: &Path) -> Result<()> {
-    validate_repository_url(repository)?;
-    validate_label("default branch", branch)?;
-    run_command(
-        git()
-            .args(["clone", "--depth", "1", "--single-branch", "--branch"])
-            .arg(branch)
-            .arg("--")
-            .arg(repository)
-            .arg(destination),
-        "clone registered tool source",
-    )?;
     Ok(())
 }
 
 fn build_collection(source: &Path, archive: &Path) -> Result<BuiltCollection> {
+    let identity = collection_identity(source)?;
+    create_archive(source, archive)?;
+    Ok(BuiltCollection {
+        archive: archive.to_path_buf(),
+        source_commit: identity.source_commit,
+        version: identity.version,
+    })
+}
+
+fn collection_identity(source: &Path) -> Result<CollectionIdentity> {
     #[derive(Deserialize)]
     struct CollectionManifest {
         version: String,
@@ -150,9 +238,7 @@ fn build_collection(source: &Path, archive: &Path) -> Result<BuiltCollection> {
         &["rev-parse", "--verify", "HEAD^{commit}"],
         "resolve collection source commit",
     )?;
-    create_archive(source, archive)?;
-    Ok(BuiltCollection {
-        archive: archive.to_path_buf(),
+    Ok(CollectionIdentity {
         source_commit,
         version: version.to_string(),
     })
