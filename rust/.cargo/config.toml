@@ -1,6 +1,3 @@
-[build]
-target-dir = "../.build/target"
-
 [alias]
 dead-code = "clippy -- -D dead_code"
 dead-deps = "machete"

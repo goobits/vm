@@ -189,17 +189,27 @@ fn get_project_root() -> Result<PathBuf> {
 
     // Search upwards from the executable's location for the project root,
     // which we identify by the presence of the 'rust/Cargo.toml' file.
-    for path in exe_path.ancestors() {
-        let rust_cargo_toml = path.join("rust/Cargo.toml");
-        if rust_cargo_toml.exists() {
-            // The path we need for cargo commands is the 'rust' directory itself.
-            return Ok(path.join("rust"));
+    let current_directory = env::current_dir()?;
+    for start in [&exe_path, &current_directory] {
+        for path in start.ancestors() {
+            if path.join("Cargo.toml").is_file() && path.join("vm-installer").is_dir() {
+                return Ok(path.to_path_buf());
+            }
+            if path.join("rust/Cargo.toml").is_file() {
+                return Ok(path.join("rust"));
+            }
         }
     }
 
     Err(vm_core::error::VmError::Internal(
         "Project root not found".to_string(),
     ))
+}
+
+fn cargo_target_directory() -> PathBuf {
+    env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| env::temp_dir().join("vm-rust-target"))
 }
 
 fn run_cargo_clean(project_root: &Path) -> Result<()> {
@@ -212,8 +222,7 @@ fn run_cargo_clean(project_root: &Path) -> Result<()> {
 
     vm_progress!("Cleaning build artifacts...");
 
-    // Clean platform-specific target directory
-    let target_dir = project_root.join(format!("target-{platform}"));
+    let target_dir = cargo_target_directory();
 
     let status = Command::new("cargo")
         .arg("clean")
@@ -263,8 +272,8 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
         vm_warning!("sccache not found - builds will be slower. Install: cargo install sccache");
     }
 
-    // Use platform-specific target directory to avoid conflicts in shared filesystems
-    let target_dir = project_root.join(format!("target-{platform}"));
+    // Reuse one machine-local cache outside the source checkout.
+    let target_dir = cargo_target_directory();
 
     let install_profile =
         env::var("VM_INSTALL_PROFILE").unwrap_or_else(|_| "source-install".to_string());
@@ -308,6 +317,16 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
             binary_path.display()
         )));
     }
+    fs::write(
+        target_dir.join(vm_core::SOURCE_WORKSPACE_MARKER),
+        project_root.to_string_lossy().as_bytes(),
+    )
+    .map_err(|error| {
+        vm_core::error::VmError::Internal(format!(
+            "Failed to record source workspace in {}: {error}",
+            target_dir.display()
+        ))
+    })?;
     Ok(binary_path)
 }
 
@@ -547,19 +566,10 @@ mod tests {
     }
 
     #[test]
-    fn test_platform_specific_target_directory() {
-        // Test platform string format
-        let platform = platform::detect_platform_string();
-        assert!(platform.contains('-'));
-
-        // Test target directory path construction
-        let temp_dir = tempdir().expect("Failed to create temp directory");
-        let project_root = temp_dir.path();
-        let target_dir = project_root.join(format!("target-{}", platform));
-
-        // This should be a valid path
-        assert!(!target_dir.to_string_lossy().is_empty());
-        assert!(target_dir.to_string_lossy().contains(&platform));
+    fn test_machine_cache_target_directory() {
+        let target_dir = cargo_target_directory();
+        assert!(target_dir.is_absolute());
+        assert!(target_dir.ends_with("vm-rust-target"));
     }
 
     #[test]
@@ -590,8 +600,7 @@ mod tests {
     #[test]
     fn test_cargo_clean_target_directory() {
         let temp_dir = tempdir().expect("Failed to create temp directory");
-        let platform = "test-platform";
-        let target_dir = temp_dir.path().join(format!("target-{}", platform));
+        let target_dir = temp_dir.path().join("vm-rust-target");
 
         // Create some fake build artifacts
         fs::create_dir_all(&target_dir).expect("Failed to create target directory");
@@ -601,8 +610,7 @@ mod tests {
         assert!(target_dir.exists());
         assert!(artifact.exists());
 
-        // Test that the target directory path is constructed correctly
-        assert!(target_dir.to_string_lossy().contains(platform));
+        assert!(target_dir.ends_with("vm-rust-target"));
     }
 
     #[test]

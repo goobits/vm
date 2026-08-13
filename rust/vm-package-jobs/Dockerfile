@@ -3,14 +3,14 @@
 FROM rust:1.97-bookworm AS builder
 
 WORKDIR /source
-ENV CARGO_TARGET_DIR=/source/target
+ENV CARGO_TARGET_DIR=/tmp/vm-rust-target
 COPY . .
 RUN cargo build --locked --release --package vm-package-jobs --bins \
       --package vm-package-work --bin pkg-git-askpass && \
-    install -m 0755 target/release/pkg-review /usr/local/bin/pkg-review && \
-    install -m 0755 target/release/pkg-release /usr/local/bin/pkg-release && \
-    install -m 0755 target/release/pkg-rollout /usr/local/bin/pkg-rollout && \
-    install -m 0755 target/release/pkg-git-askpass /usr/local/bin/pkg-git-askpass
+    install -m 0755 "$CARGO_TARGET_DIR/release/pkg-review" /usr/local/bin/pkg-review && \
+    install -m 0755 "$CARGO_TARGET_DIR/release/pkg-release" /usr/local/bin/pkg-release && \
+    install -m 0755 "$CARGO_TARGET_DIR/release/pkg-rollout" /usr/local/bin/pkg-rollout && \
+    install -m 0755 "$CARGO_TARGET_DIR/release/pkg-git-askpass" /usr/local/bin/pkg-git-askpass
 
 FROM node:22-bookworm
 

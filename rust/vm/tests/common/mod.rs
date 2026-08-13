@@ -6,7 +6,7 @@ use std::path::PathBuf;
 ///
 /// This function tries multiple sources in order:
 /// 1. `CARGO_BIN_EXE_vm` environment variable (set by `cargo test`)
-/// 2. Fallback to `/workspace/.build/target/debug/vm` (fallback path)
+/// 2. Fallback to the configured machine-local Cargo target directory
 ///
 /// If the binary cannot be found, returns an error with a helpful message.
 pub fn binary_path() -> Result<PathBuf> {
@@ -18,22 +18,13 @@ pub fn binary_path() -> Result<PathBuf> {
         }
     }
 
-    // Second try: fallback build path
-    let fallback = PathBuf::from("/workspace/.build/target/debug/vm");
+    // Second try: the configured machine-local build path.
+    let fallback = std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir().join("vm-rust-target"))
+        .join("debug/vm");
     if fallback.exists() {
         return Ok(fallback);
-    }
-
-    // Third try: relative path from workspace root
-    let workspace_fallback = PathBuf::from("../target/debug/vm");
-    if workspace_fallback.exists() {
-        return Ok(workspace_fallback);
-    }
-
-    // Fourth try: absolute path to workspace target
-    let absolute_fallback = PathBuf::from("/workspace/rust/target/debug/vm");
-    if absolute_fallback.exists() {
-        return Ok(absolute_fallback);
     }
 
     anyhow::bail!(

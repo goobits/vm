@@ -137,6 +137,9 @@ ENV PATH="${NVM_DIR}/versions/node/v${NODE_VERSION}/bin:${PATH}"
 ENV PATH="/home/${USER_NAME}/.cargo/bin:${PATH}"
 ENV CARGO_HOME="/home/${USER_NAME}/.cargo"
 ENV RUSTUP_HOME="/home/${USER_NAME}/.rustup"
+ENV CARGO_TARGET_DIR="/tmp/vm-rust-target"
+ENV NPM_CONFIG_CACHE="/tmp/vm-npm-cache"
+ENV PNPM_STORE_DIR="/tmp/vm-pnpm-store"
 
 # Vibe-owned AI CLIs are part of the immutable base. Project package
 # infrastructure remains responsible only for explicitly managed tools such as
@@ -212,7 +215,7 @@ USER ${USER_NAME}
 SHELL ["/bin/bash", "-c"]
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD bash -c 'source ~/.nvm/nvm.sh && source ~/.cargo/env 2>/dev/null && command -v node && command -v python3 || exit 1'
+    CMD command -v node >/dev/null && test -x /usr/bin/python3
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["/bin/bash"]

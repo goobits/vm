@@ -359,6 +359,9 @@ mod tests {
         for managed_entry in ["antigravity: {}", "claude: {}", "codex: {}"] {
             assert!(!VIBE_PRESET.contains(managed_entry));
         }
+        assert!(DOCKERFILE.contains("CARGO_TARGET_DIR=\"/tmp/vm-rust-target\""));
+        assert!(DOCKERFILE.contains("CMD command -v node >/dev/null && test -x /usr/bin/python3"));
+        assert!(!DOCKERFILE.contains("CMD bash -c 'source ~/.nvm/nvm.sh"));
     }
 
     #[test]

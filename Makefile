@@ -1,6 +1,8 @@
 .PHONY: help build build-no-bump test test-unit test-integration test-network clippy fmt fmt-fix check-duplicates check bump-version quality-gates deny watch dev udeps
 
 CARGO_JOBS ?= 1
+CARGO_TARGET_DIR ?= /tmp/vm-rust-target
+export CARGO_TARGET_DIR
 INTEGRATION_FEATURES := integration,vm-package-server/standalone-binary
 
 # Default target - show help

@@ -772,7 +772,8 @@ build_standalone_pkg_server() {
         "Failed to navigate to rust directory" \
         "Ensure the script is run from the project root"
 
-    if ! timeout "$CARGO_TIMEOUT_SECONDS" cargo build --release --features standalone-binary -p vm-package-server 2>&1 | tee -a "$LOG_FILE"; then
+    local cargo_target_dir="${CARGO_TARGET_DIR:-${TMPDIR:-/tmp}/vm-rust-target}"
+    if ! timeout "$CARGO_TIMEOUT_SECONDS" env CARGO_TARGET_DIR="$cargo_target_dir" cargo build --release --features standalone-binary -p vm-package-server 2>&1 | tee -a "$LOG_FILE"; then
         handle_error $ERR_CARGO_BUILD \
             "Failed to build standalone package server" \
             "Check the build log in $LOG_FILE"
@@ -781,7 +782,7 @@ build_standalone_pkg_server() {
     log_success "Standalone package server built successfully"
 
     # Install the standalone binary
-    local pkg_server_bin="$script_dir/rust/target/release/pkg-server"
+    local pkg_server_bin="$cargo_target_dir/release/pkg-server"
     if [[ ! -f "$pkg_server_bin" ]]; then
         handle_error $ERR_INSTALL_FAILED \
             "Built binary not found at expected location" \

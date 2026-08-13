@@ -243,14 +243,27 @@ fn source_workspace_for_executable(executable: &Path) -> Option<PathBuf> {
 
 fn source_workspace_from(executable: &Path) -> Option<PathBuf> {
     executable.ancestors().find_map(|ancestor| {
-        let workspace = ancestor.join("rust");
-        (workspace.join("Cargo.toml").is_file()
-            && workspace
-                .join("vm-package-server/docker/server/Dockerfile")
-                .is_file()
-            && workspace.join("vm-package-jobs/Dockerfile").is_file())
-        .then_some(workspace)
+        source_workspace_at(ancestor).or_else(|| {
+            let marker = ancestor.join(vm_core::SOURCE_WORKSPACE_MARKER);
+            let source = fs::read_to_string(marker).ok()?;
+            let source = fs::canonicalize(source.trim()).ok()?;
+            source_workspace_at(&source)
+        })
     })
+}
+
+fn source_workspace_at(path: &Path) -> Option<PathBuf> {
+    let workspace = if path.join("Cargo.toml").is_file() {
+        path.to_path_buf()
+    } else {
+        path.join("rust")
+    };
+    (workspace.join("Cargo.toml").is_file()
+        && workspace
+            .join("vm-package-server/docker/server/Dockerfile")
+            .is_file()
+        && workspace.join("vm-package-jobs/Dockerfile").is_file())
+    .then_some(workspace)
 }
 
 #[cfg(test)]
@@ -293,7 +306,32 @@ mod tests {
         .unwrap();
         fs::write(workspace.join("vm-package-jobs/Dockerfile"), "FROM scratch").unwrap();
 
-        let executable = workspace.join("target-macos-aarch64/source-install/vm");
+        let executable = workspace.join("target/source-install/vm");
+        assert_eq!(source_workspace_from(&executable), Some(workspace));
+    }
+
+    #[test]
+    fn source_workspace_is_recovered_from_external_build_cache() {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace = directory.path().join("checkout/rust");
+        fs::create_dir_all(workspace.join("vm-package-server/docker/server")).unwrap();
+        fs::create_dir_all(workspace.join("vm-package-jobs")).unwrap();
+        fs::write(workspace.join("Cargo.toml"), "[workspace]").unwrap();
+        fs::write(
+            workspace.join("vm-package-server/docker/server/Dockerfile"),
+            "FROM scratch",
+        )
+        .unwrap();
+        fs::write(workspace.join("vm-package-jobs/Dockerfile"), "FROM scratch").unwrap();
+        let target = directory.path().join("tmp/vm-rust-target");
+        let executable = target.join("source-install/vm");
+        fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        fs::write(
+            target.join(vm_core::SOURCE_WORKSPACE_MARKER),
+            workspace.to_string_lossy().as_bytes(),
+        )
+        .unwrap();
+
         assert_eq!(source_workspace_from(&executable), Some(workspace));
     }
 
