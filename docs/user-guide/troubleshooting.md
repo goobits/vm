@@ -219,9 +219,9 @@ the controller from there. The error prints the exact shell-safe host command,
 such as `Run on the host: vm packages up`; run that command in the host terminal.
 
 A built-in tool can be registered but not published on a fresh controller. That
-is intentional. Run the reported explicit command, normally
-`vm tools publish agent-skills`, then rerun `vm tools update`. The first update
-still reconciles the worker edge and Codex before reporting the unpublished
+is intentional. From a writable managed environment, create and release an
+`agent-skills` checkout, then rerun `vm tools update`. The first update still
+reconciles the worker edge and Codex before reporting the unpublished
 collection. See
 [Package Infrastructure](package-infrastructure.md#register-and-consume-tools)
 for normal update, locking, fleet, and package-state behavior.

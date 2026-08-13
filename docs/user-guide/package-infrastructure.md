@@ -1,9 +1,8 @@
 # Package Infrastructure
 
 VM manages one private package appliance for npm, Cargo, Python, and immutable
-guest tools/collections. Package source work runs in its assigned project
-environment. Validation, review, release, and consumer upgrades run through
-persistent appliance services—not as native Mac processes.
+guest tools/collections. Package and collection changes use the same managed
+checkout, review, integration, and release workflow inside writable guests.
 
 ## Architecture
 
@@ -91,6 +90,44 @@ that mirror in Docker Engine automatically.
 Projects keep ordinary versioned dependencies; no local/remote branch belongs
 in application code.
 
+## Change And Release A Source
+
+From a writable Docker or Tart project environment, request an isolated source:
+
+```bash
+vm packages checkout agent-skills \
+  --agent codex \
+  --task "update the owner checklist"
+```
+
+The appliance fetches the registered canonical repository, creates a unique
+task branch, and returns a writable checkout under
+`~/.local/share/vm/package-checkouts/<checkout-id>`. Edit that returned path,
+bump the source's stable semantic version, and commit the intended changes.
+Never edit an installed release under `~/.local/share/vm-tools/releases`; those
+directories are read-only immutable activation output. Reconciliation replaces
+older writable installations from the private artifact rather than trusting
+their contents.
+
+Finish from the same guest:
+
+```bash
+vm packages release <checkout-id>
+```
+
+That resumable command submits the exact Git bundle, waits for isolated review,
+integrates against the latest canonical branch, reruns checks, and lets the
+credential-isolated release worker push the commit and tag and publish the
+immutable artifact. No host checkout, host approval, npmjs.org, crates.io, or
+PyPI publication participates. Package and tool-collection work use this same
+boundary.
+
+For a language package, the unpublished checkout is attached only to the
+assigned consumer; other consumers stay on their published versions. Every
+mutating step is idempotent and receipted, so rerunning the same release resumes
+after a worker restart. Successful publication removes temporary checkout data
+without touching the registered repository or its persistent canonical mirror.
+
 Each worker gets a small read-only package edge. Docker runs it as a Compose
 sidecar; Linux Tart runs the same image in the guest's Docker Engine. Package
 clients talk only to that stable local endpoint. The edge keeps a persistent,
@@ -167,17 +204,18 @@ Keep that source shelf flat and make each child an independent Git repository:
 ```
 
 The shelf itself should not be a Git repository. A repository with a valid
-root `vm-tool.yaml` (`kind: binary` or `kind: collection`) is reported as a tool
-source and skipped by language-package registration. This lets tool collections
+root `vm-tool.yaml` (`kind: binary` or `kind: collection`) is registered as a
+tool source and skipped by language-package registration. This lets tool collections
 such as `agent-skills` live beside npm, Cargo, and Python sources without being
-misclassified by their metadata files. `vm tools` remains responsible for
-publishing and activating those repositories.
+misclassified by their metadata files. Registered tool collections enter the
+same managed checkout workflow as language packages.
 
 Path registration detects `package.json`, `Cargo.toml`, or `pyproject.toml`,
 then reads each repository's `origin` and default branch. Every supplied path
 must be a Git repository root. Use `--ecosystem` when a repository intentionally
 contains more than one supported manifest. Discovery only registers metadata;
-it does not copy, mount, build, publish, or continuously watch the local source.
+`vm packages up` does not copy, mount, build, publish, or continuously watch the
+local source.
 The appliance clones the registered Git origins into its private `source-mirrors`
 Docker volume when package work requires them.
 
@@ -199,16 +237,13 @@ language-package protocols:
 vm tools register agent-skills \
   --kind collection \
   --repository https://github.com/example/agent-skills.git
-vm tools publish agent-skills
 vm tools list
 vm tools show agent-skills
 ```
 
-`publish` launches a trusted ephemeral collection job. It clones the registered
-branch, reads the stable semantic version from `package.json`, archives the
-exact commit deterministically, and records an immutable artifact and receipt.
-The remote must already contain that branch; the job never creates or pushes
-source history. Project agents cannot publish it. Projects select
+Use `vm packages checkout <tool>` and `vm packages release <checkout-id>` to
+change a registered collection. The same reviewer and release workers validate,
+integrate, push, archive, and receipt its exact commit. Projects select
 versions through the one-level `tools:` map in `vm.yaml`. A collection such as
 `agent-skills` is one atomic version, even when it activates into several agent
 directories.
@@ -216,17 +251,16 @@ directories.
 The Vibe base owns Antigravity, Claude Code, and Codex executables. They do not
 require this appliance; `agent-skills` remains an intentionally managed tool.
 For the built-in `agent-skills` selection, `vm tools update` automatically
-registers the canonical Goobits repository when it is missing. Publication is
-always explicit: a fresh controller stops with the exact
-`vm tools publish agent-skills` command, after which the operator reruns
-`vm tools update`. Worker-edge and base-runtime reconciliation happen before
-that publication check, so an unpublished collection does not prevent targeted
-repair. Tool updates activate inside an already-running
+registers the canonical Goobits repository when it is missing. Tool updates
+activate inside an already-running
 environment and do not require a base rebuild. Read credentials travel to the
 guest over standard input rather than command arguments. Collection activation
 merges individual skills into an existing agent skill directory, preserving
-unmanaged personal and system skills. The generic publisher currently supports
-registered collections; binary publishers remain tool-specific.
+unmanaged personal and system skills. Managed source releases currently support
+registered collections; binary publishers remain tool-specific. A published
+collection becomes eligible in each configured guest under its update policy.
+Normal shell reconciliation adopts it without approval; an already-running
+agent session is not hot-reloaded.
 
 ```bash
 vm tools refresh
@@ -265,7 +299,9 @@ one owner for overlapping collection content.
 entry point. For Docker it regenerates current Compose metadata and updates only
 a missing or stale `package-edge` sidecar with `--no-deps`. For Linux Tart it
 reconciles only the guest edge container. Both paths preserve the edge cache
-named volume and leave the primary environment and base image intact. It then
+named volume and leave the primary environment and base image intact. Both also
+repair managed client files in place so a new shell no longer depends on the
+primary container's creation-time environment. It then
 invokes base-owned Codex reconciliation in the foreground, waiting for any
 shell-triggered repair already in flight, before it verifies managed-tool links.
 A Codex replacement is staged and validated before activation, rolls back on
@@ -282,66 +318,16 @@ Explicit `refresh` and `update` commands bypass the recent-success window while
 still respecting active locks.
 
 `vm tools update --fleet` starts matching managed environments in place and
-reconciles only their base-owned Codex runtime and the loaded managed-tool
-selection. It deliberately does not apply the invoking project's services or
-package-edge configuration to unrelated environments. Run the targeted
-`vm tools update [environment]` from a project's configuration context when its
-edge also needs reconciliation.
+reconciles the shared package routing, base-owned Codex runtime, and loaded
+managed-tool selection. It does not project the invoking project's application
+services onto unrelated environments.
 
-Package and tool controller commands are host-only. When invoked inside a
-managed guest, the CLI exits without changing state and prints the exact
-shell-safe command to run on the host, for example
-`Run on the host: vm tools update dev`.
+Administrative package/tool commands are host-only. Checkout, show, and release
+are intentionally guest-safe. Other commands invoked inside a managed guest
+print the exact shell-safe host command, for example `Run on the host: vm tools
+update dev`.
 
-## Develop and Release a Package
-
-Run checkout inside the selected Docker or Tart project environment:
-
-```bash
-vm packages checkout auth \
-  --agent agent-17 \
-  --task "fix token refresh"
-```
-
-The work service records the canonical base commit, creates a unique branch,
-and returns a bundle to an isolated checkout under
-`~/.local/share/vm/package-checkouts/<checkout-id>` in the project environment.
-Only that project receives the unpublished override. Other consumers remain on
-their published versions.
-
-Commit the intended package changes there, then ask the same environment to
-finish the workflow:
-
-```bash
-vm packages release <checkout-id>
-```
-
-That one resumable command validates the exact bundle and selected consumer,
-waits for the persistent reviewer, integrates against the latest canonical
-commit, reruns checks, and waits for publication. The release worker verifies
-the semantic version bump, pushes the matching source commit and tag, and
-publishes the immutable artifact only to VM's private gateway. No npmjs.org,
-crates.io, PyPI, host approval, or host synchronization command participates.
-A successful release removes the remaining bundle and guest checkout.
-
-Cleanup is restricted to validated task data under `/data/agents/<checkout-id>`
-inside the appliance and
-`~/.local/share/vm/package-checkouts/<checkout-id>` inside the project
-environment. Successful integration removes agent and integration worktrees;
-successful publication removes the final immutable release bundle after its
-receipt is durable. Cleanup never removes the registered source repository,
-its `.git` data, `/workspace`, or the persistent canonical mirror under
-`/data/sources`.
-
-Every mutating step is idempotent and writes a durable receipt. Worker queues
-are derived from that durable state, so a service restart or command retry
-resumes from the recorded state instead of creating a second merge, tag, or
-release.
-Use `vm packages cancel <checkout-id>` to stop eligible work. Use
-`vm packages cleanup <checkout-id>` to remove temporary data for a failed,
-rejected, cancelled, or already-published checkout.
-
-## Automatic Consumer Upgrades
+## Consumer Dependency Updates
 
 After publication, the persistent rollout worker finds every registered
 consumer pinned to an older version. It clones each consumer independently,
@@ -386,8 +372,8 @@ your infrastructure backup system to protect against physical disk loss.
 - Project environments consume registry protocols and never mount registry
   volumes.
 - Worktrees are isolated by checkout or rollout ID.
-- Only the persistent release service can push source/tags and publish private
-  artifacts; project agents can only advance their assigned checkout.
+- Only credential-isolated appliance jobs can read canonical sources or publish
+  private artifacts; project agents can only advance assigned checkouts.
 - Receipts contain identities, commits, digests, outcomes, and timestamps—not
   secrets.
 

@@ -203,7 +203,7 @@ vm packages register <name> --ecosystem <npm|cargo|python> --repository <url>
 vm packages register <path>... [--recursive]
 vm packages auth --github
 vm packages list
-vm packages checkout <package> --agent <agent> --task <task>
+vm packages checkout <package-or-collection> --agent <agent> --task <task>
 vm packages show <checkout-id>
 vm packages release <checkout-id>
 vm packages cancel <checkout-id>
@@ -213,18 +213,17 @@ vm packages consumers <package>
 vm packages drift
 ```
 
-Recursive registration skips repositories marked by `vm-tool.yaml`; those are
-published and activated through `vm tools`. `packages.source_roots` is a
+Recursive registration routes repositories marked by `vm-tool.yaml` into the
+managed tool-collection workflow. `packages.source_roots` is a
 controller-wide list; `vm packages up` reconciles those roots on fresh and
 existing appliance state without replacing credentials or named volumes. Roots
 are scanned before appliance mutation; configured empty shelves are accepted,
 while manual recursive registration still requires at least one repository.
 `vm packages list` separates registered, published, installed, and consumable
 state; environment-only states are reported as not applicable.
-Package checkout and release commands run inside the assigned Docker or Tart
-environment. Persistent infrastructure workers review, integrate, publish only
-to the private gateway, and prepare drifted consumer upgrade branches without a
-host sync or rollout command.
+Package checkout and release commands are the managed agent workflow inside the
+assigned Docker or Tart environment. The same commands handle registered tool
+collections. All publication stays inside the private gateway.
 
 See [Package Infrastructure](package-infrastructure.md) for the provider
 boundary, registration, credentials, release workflow, and recovery model.
@@ -235,7 +234,6 @@ boundary, registration, credentials, release workflow, and recovery model.
 vm tools register <name> --kind <binary|collection> --repository <url>
 vm tools list
 vm tools show <name>
-vm tools publish <name>
 vm tools refresh
 vm tools status [environment]
 vm tools update [environment] [--background]
@@ -243,12 +241,12 @@ vm tools update --fleet [--provider <provider>] [--pattern <pattern>] [--backgro
 ```
 
 `status` combines controller registration/publication with guest
-installation/consumability. Publication remains an explicit `vm tools publish`
-operation. `update` applies every eligible configured change without prompting
+installation/consumability. Collection publication uses the managed
+`vm packages checkout` / `vm packages release` workflow. `update` applies eligible changes without prompting
 or rebuilding the base. `--fleet` uses the loaded tool selection for matching
-managed environments, starts stopped targets in place, and summarizes failures;
-it does not copy the invoking project's services or package-edge configuration
-to unrelated targets. Run these commands on the controller host. See
+managed environments, starts stopped targets in place, repairs shared package
+routing, and summarizes failures; it does not copy the invoking project's
+application services to unrelated targets. Run these commands on the controller host. See
 [Package Infrastructure](package-infrastructure.md#register-and-consume-tools)
 for update policy, runtime ownership, locking, and recovery behavior.
 

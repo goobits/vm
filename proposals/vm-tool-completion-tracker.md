@@ -1,5 +1,5 @@
 ---
-Status: Container implementation complete; direct package workflow host acceptance pending
+Status: Managed package and collection release implemented; live host acceptance pending
 Date: 2026-08-13
 Depends: docs/user-guide/package-infrastructure.md, docs/development/architecture.md
 ---
@@ -17,11 +17,11 @@ Package development and release work runs in Docker or Linux VMs. The Mac only
 launches those runtimes and holds controller credentials; it does not build,
 test, merge, or publish package source directly.
 
-The assigned project agent now drives one resumable `vm packages release
-<checkout-id>` workflow directly against the appliance. Persistent review,
-release, and rollout services derive work from durable state. Releases publish
-only to the private VM gateway, and consumer upgrade branches are prepared
-automatically without host synchronization or approval commands.
+The normal release loop is a managed checkout followed by `vm packages release
+<checkout-id>` from its assigned writable guest. The same durable workflow now
+owns language packages and tool collections. Credential-isolated appliance
+workers review, integrate, push, and publish only to the private gateway; host
+working trees and installed immutable releases are never treated as source.
 
 ## Non-Negotiable Boundaries
 
@@ -225,10 +225,35 @@ automatically without host synchronization or approval commands.
 - [x] Cover fresh setup and existing-machine reconciliation with fake providers
   and temporary fixtures, then synchronize command help and user documentation.
 
+## Implemented Managed Collection Releases And Runtime Repair
+
+- [x] Extend the existing managed checkout, review, integration, release, and
+  receipt state machine to registered tool collections.
+- [x] Remove direct collection publication and default-branch publication paths
+  that bypassed assigned checkouts and integration review.
+- [x] Keep npm, Cargo, Python, and collection artifacts private and immutable;
+  only the credential-isolated release worker pushes canonical commits/tags and
+  publishes approved artifacts.
+- [x] Install root-managed, guest-readable shell, npm, pip, and Cargo settings
+  atomically through standard input, refusing symlink targets and preserving
+  unrelated shell configuration.
+- [x] Route `vm tools update` and fleet updates through the same in-place package
+  client repair instead of retaining a second reconciliation path.
+- [x] Make installed tool releases read-only and replace legacy writable
+  installations from their immutable private artifacts during reconciliation.
+
 Container tests cover fake Docker/provider execution, temporary controller
 state, fixture source discovery, repeat reconciliation, targeted sidecar
 updates, and volume-preserving command construction. Live Docker acceptance is
 recorded below.
+
+## Deferred Environment Apply (Not A Release Blocker)
+
+- [ ] Design a transactional `vm apply <environment>` operation for reconciling
+  `vm.yaml`. Mutable settings should update in place; immutable Docker changes
+  such as mounts should stage and verify a replacement while retaining the old
+  container for rollback and explicitly accounting for container-local data.
+  It must not publish package or tool source or become another `sync` path.
 
 ## Static Verification
 
@@ -247,12 +272,14 @@ git diff --check
 No Docker image, Tart base, guest, or release binary is built by this gate.
 
 Latest result on 2026-08-13: formatting, the serial all-feature workspace check,
-all-target workspace Clippy with warnings denied, 497 workspace library tests,
-27 focused CLI tests, and the 160-test integration feature matrix passed; 20
+all-target workspace Clippy with warnings denied, 500 workspace library tests,
+the 165-test VM command suite, and the 160-test integration feature matrix
+passed; 20
 tests requiring a real runtime or performance environment remained ignored.
 Focused coverage includes consumer-bound agent capabilities, retryable package
 workflow state, persistent worker queues, private-only publication, automatic
-consumer rollout creation, source discovery, and repeat reconciliation. `git
+consumer rollout creation, source discovery, writable-release replacement, and
+repeat reconciliation. `git
 diff --check` passed. Duplicate detection could not run because `jscpd` is not
 installed in this container. No Docker, Tart, host VM, external network, or
 publication action was run.
@@ -351,6 +378,12 @@ requires a tool catalog or package-appliance connection.
   matching workers reconcile in place, the second pass is a no-op, and no
   primary container ID or service volume changes (implemented but awaiting host
   acceptance).
+- [ ] From a writable Docker worker, create and release an `agent-skills`
+  checkout; verify review, integration, canonical push/tag, private publication,
+  cleanup, and receipts complete without a host source checkout or approval.
+- [ ] Run targeted and fleet tool reconciliation twice and verify managed guest
+  client files are unchanged on the second pass while primary containers,
+  volumes, and application services remain intact.
 - [ ] Create and restart a Docker worker with
   `project.workspace_access: read_only`; verify nested mountpoints are prepared,
   the second start is a no-op, and project source, container identity, and
