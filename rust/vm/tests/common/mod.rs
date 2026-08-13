@@ -21,7 +21,7 @@ pub fn binary_path() -> Result<PathBuf> {
     // Second try: the configured machine-local build path.
     let fallback = std::env::var_os("CARGO_TARGET_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::temp_dir().join("vm-rust-target"))
+        .unwrap_or_else(|| PathBuf::from(vm_core::MACHINE_CARGO_TARGET_DIR))
         .join("debug/vm");
     if fallback.exists() {
         return Ok(fallback);

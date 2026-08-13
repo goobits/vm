@@ -772,7 +772,7 @@ build_standalone_pkg_server() {
         "Failed to navigate to rust directory" \
         "Ensure the script is run from the project root"
 
-    local cargo_target_dir="${CARGO_TARGET_DIR:-${TMPDIR:-/tmp}/vm-rust-target}"
+    local cargo_target_dir="${CARGO_TARGET_DIR:-/tmp/vm-rust-target}"
     if ! timeout "$CARGO_TIMEOUT_SECONDS" env CARGO_TARGET_DIR="$cargo_target_dir" cargo build --release --features standalone-binary -p vm-package-server 2>&1 | tee -a "$LOG_FILE"; then
         handle_error $ERR_CARGO_BUILD \
             "Failed to build standalone package server" \
@@ -844,8 +844,9 @@ install_vm_tool() {
     current_dir=$(pwd)
     cd "$rust_dir" || handle_error $ERR_INSTALL_FAILED "Could not change to rust directory"
 
+    local source_target_dir="${CARGO_TARGET_DIR:-/tmp/vm-rust-target}"
     local cargo_failed=false
-    if ! timeout "$CARGO_TIMEOUT_SECONDS" cargo run \
+    if ! timeout "$CARGO_TIMEOUT_SECONDS" env CARGO_TARGET_DIR="$source_target_dir" cargo run \
         --package vm-installer \
         -- "${INSTALLER_ARGS[@]+"${INSTALLER_ARGS[@]}"}" 2>&1 | tee -a "$LOG_FILE" "$installer_output"; then
         cargo_failed=true

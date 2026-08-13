@@ -209,7 +209,7 @@ fn get_project_root() -> Result<PathBuf> {
 fn cargo_target_directory() -> PathBuf {
     env::var_os("CARGO_TARGET_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| env::temp_dir().join("vm-rust-target"))
+        .unwrap_or_else(|| PathBuf::from(vm_core::MACHINE_CARGO_TARGET_DIR))
 }
 
 fn run_cargo_clean(project_root: &Path) -> Result<()> {

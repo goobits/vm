@@ -138,8 +138,6 @@ ENV PATH="/home/${USER_NAME}/.cargo/bin:${PATH}"
 ENV CARGO_HOME="/home/${USER_NAME}/.cargo"
 ENV RUSTUP_HOME="/home/${USER_NAME}/.rustup"
 ENV CARGO_TARGET_DIR="/tmp/vm-rust-target"
-ENV NPM_CONFIG_CACHE="/tmp/vm-npm-cache"
-ENV PNPM_STORE_DIR="/tmp/vm-pnpm-store"
 
 # Vibe-owned AI CLIs are part of the immutable base. Project package
 # infrastructure remains responsible only for explicitly managed tools such as
