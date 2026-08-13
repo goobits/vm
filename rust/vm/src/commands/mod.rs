@@ -7,6 +7,7 @@ use command_context::{
     load_runtime_subject, project_name,
 };
 use environment::resolve_environment;
+use vm_config::validation::{validate_config, ValidationMode};
 use vm_config::AppConfig;
 use vm_core::vm_println;
 
@@ -67,7 +68,14 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
                 .ok()
                 .and_then(|config| config.vm.provider.clone())
                 .unwrap_or_else(|| "docker".to_string());
-            let configuration_error = loaded.err().map(|error| error.to_string());
+            let configuration_error = match loaded {
+                Ok(config) => match validate_config(&config.vm, ValidationMode::Static) {
+                    Ok(report) if report.has_errors() => Some(report.to_string()),
+                    Ok(_) => None,
+                    Err(error) => Some(error.to_string()),
+                },
+                Err(error) => Some(error.to_string()),
+            };
             doctor::run_with_fix(fix, &provider, configuration_error.as_deref())
                 .map_err(VmError::from)
         }

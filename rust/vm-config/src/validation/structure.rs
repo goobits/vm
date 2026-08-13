@@ -3,7 +3,6 @@ use crate::config::{
     BoxSpec, VmConfig,
 };
 use std::collections::HashSet;
-use std::net::TcpListener;
 use std::path::PathBuf;
 use tracing::warn;
 use vm_core::error::{Result, VmError};
@@ -43,37 +42,17 @@ fn validate_tart_box_spec(box_spec: &BoxSpec, errors: &mut Vec<String>) {
     }
 }
 
-/// Checks if a given host port is available to bind to.
-fn check_port_available(port: u16, binding: &str) -> Result<()> {
-    let addr = format!("{binding}:{port}");
-    match TcpListener::bind(&addr) {
-        Ok(_) => Ok(()), // Listener is implicitly closed when it goes out of scope
-        Err(e) => {
-            if e.kind() == std::io::ErrorKind::AddrInUse {
-                return Err(VmError::Config(format!(
-                    "Configuration error: Port {port} is already in use on host"
-                )));
-            }
-            Err(e.into())
-        }
-    }
-}
-
-pub struct ConfigValidator {
+struct ConfigValidator {
     config: VmConfig,
-    skip_port_availability_check: bool,
 }
 
 impl ConfigValidator {
     pub fn new(
         config: VmConfig,
         _schema_path: PathBuf,
-        skip_port_availability_check: bool,
+        _skip_port_availability_check: bool,
     ) -> Self {
-        Self {
-            config,
-            skip_port_availability_check,
-        }
+        Self { config }
     }
 
     pub fn validate(&self) -> Result<()> {
@@ -91,6 +70,7 @@ impl ConfigValidator {
         self.validate_versions()?;
         self.validate_networking()?;
         self.validate_runtime()?;
+        self.validate_resource_limits()?;
         self.validate_bootstrap()?;
         self.validate_mounts()?;
         self.config.tools.validate()?;
@@ -122,11 +102,19 @@ impl ConfigValidator {
 
     fn validate_provider(&self) -> Result<()> {
         if let Some(provider) = &self.config.provider {
-            match provider.as_str() {
-                "docker" | "podman" | "tart" => Ok(()),
-                _ => Err(vm_core::error::VmError::Config(format!(
-                    "Invalid provider: {provider}"
-                ))),
+            #[cfg(feature = "test-helpers")]
+            let valid_providers = ["docker", "podman", "tart", "mock"];
+            #[cfg(not(feature = "test-helpers"))]
+            let valid_providers = ["docker", "podman", "tart"];
+
+            if valid_providers.contains(&provider.as_str()) {
+                Ok(())
+            } else {
+                Err(vm_core::error::VmError::Config(format!(
+                    "Invalid provider '{}'. Valid providers are: {}",
+                    provider,
+                    valid_providers.join(", ")
+                )))
             }
         } else {
             Ok(())
@@ -179,13 +167,6 @@ impl ConfigValidator {
 
     fn validate_ports(&self) -> Result<()> {
         let mut used_host_ports = HashSet::new();
-        let port_binding = self
-            .config
-            .vm
-            .as_ref()
-            .and_then(|v| v.port_binding.as_deref())
-            .unwrap_or("0.0.0.0");
-
         for mapping in &self.config.ports.mappings {
             if !used_host_ports.insert(mapping.host) {
                 return Err(VmError::Config(format!(
@@ -205,11 +186,6 @@ impl ConfigValidator {
                     "Host port {} may require root/admin privileges",
                     mapping.host
                 );
-            }
-
-            // Only check for port availability if not skipped
-            if !self.skip_port_availability_check {
-                check_port_available(mapping.host, port_binding)?;
             }
         }
 
@@ -242,6 +218,11 @@ impl ConfigValidator {
 
     fn validate_services(&self) -> Result<()> {
         for (name, service) in &self.config.services {
+            if service.enabled && service.port.is_none() && name != "docker" {
+                return Err(VmError::Config(format!(
+                    "Service '{name}' is enabled but has no port specified"
+                )));
+            }
             if let Some(port) = service.port {
                 if port == 0 {
                     return Err(vm_core::error::VmError::Config(format!(
@@ -251,6 +232,21 @@ impl ConfigValidator {
             }
         }
 
+        Ok(())
+    }
+
+    fn validate_resource_limits(&self) -> Result<()> {
+        let Some(vm) = &self.config.vm else {
+            return Ok(());
+        };
+        if vm.cpus.as_ref().and_then(|cpus| cpus.to_count()) == Some(0) {
+            return Err(VmError::Config("VM CPU count cannot be 0".to_string()));
+        }
+        if vm.memory.as_ref().and_then(|memory| memory.to_mb()) == Some(0) {
+            return Err(VmError::Config(
+                "VM memory allocation cannot be 0".to_string(),
+            ));
+        }
         Ok(())
     }
 
@@ -559,6 +555,10 @@ impl ConfigValidator {
         }
         Ok(())
     }
+}
+
+pub(super) fn validate(config: &VmConfig) -> Result<()> {
+    ConfigValidator::new(config.clone(), PathBuf::new(), true).validate()
 }
 
 fn valid_storage_name(name: &str) -> bool {

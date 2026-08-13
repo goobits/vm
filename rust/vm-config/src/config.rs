@@ -1132,66 +1132,6 @@ impl VmConfig {
         self.provider.is_none() || self.project.as_ref().map_or(true, |p| p.name.is_none())
     }
 
-    pub fn validate(&self, skip_port_availability_check: bool) -> Vec<String> {
-        let mut errors = Vec::new();
-
-        // Run the more comprehensive validation from the validate module.
-        // This is a bit awkward as ConfigValidator returns a Result, not a Vec<String>.
-        // We'll convert the error into a string for consistency with the rest of this method.
-        let validator = crate::validate::ConfigValidator::new(
-            self.clone(),
-            std::path::PathBuf::new(),
-            skip_port_availability_check,
-        );
-        if let Err(e) = validator.validate() {
-            errors.push(e.to_string());
-        }
-
-        if let Some(provider) = &self.provider {
-            #[cfg(feature = "test-helpers")]
-            let valid_providers = ["docker", "podman", "tart", "mock"];
-            #[cfg(not(feature = "test-helpers"))]
-            let valid_providers = ["docker", "podman", "tart"];
-
-            if !valid_providers.contains(&provider.as_str()) {
-                errors.push(format!(
-                    "Invalid provider '{}'. Valid providers are: {}",
-                    provider,
-                    valid_providers.join(", ")
-                ));
-            }
-        }
-
-        if let Some(vm) = &self.vm {
-            if let Some(cpus) = &vm.cpus {
-                if let Some(count) = cpus.to_count() {
-                    #[allow(clippy::excessive_nesting)]
-                    if count == 0 {
-                        errors.push("VM CPU count cannot be 0".to_string());
-                    }
-                }
-            }
-            if let Some(memory) = &vm.memory {
-                match memory.to_mb() {
-                    Some(0) => {
-                        errors.push("VM memory allocation cannot be 0".to_string());
-                    }
-                    Some(_) => {} // Valid memory allocation
-                    None => {}    // Unlimited memory is valid
-                }
-            }
-        }
-
-        for (service_name, service) in &self.services {
-            if service.enabled && service.port.is_none() && service_name != "docker" {
-                errors.push(format!(
-                    "Service '{service_name}' is enabled but has no port specified"
-                ));
-            }
-        }
-        errors
-    }
-
     pub fn ensure_service_ports(&mut self) {
         const PRIORITY_SERVICES: &[&str] = &["postgresql", "redis", "mysql", "mongodb"];
         const SERVICES_WITHOUT_PORTS: &[&str] = &["docker"];

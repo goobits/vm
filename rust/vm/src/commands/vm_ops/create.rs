@@ -7,7 +7,11 @@ use tracing::{debug, info_span};
 
 use crate::commands::base;
 use crate::error::{VmError, VmResult};
-use vm_config::{config::VmConfig, validator::ConfigValidator, GlobalConfig};
+use vm_config::{
+    config::VmConfig,
+    validation::{validate_config, ValidationMode},
+    GlobalConfig,
+};
 use vm_core::{vm_hint, vm_println, vm_progress, vm_success, vm_warning};
 use vm_provider::{Provider, ProviderContext};
 
@@ -76,35 +80,14 @@ pub async fn handle_create(
         provider.reusable_host_ports(&target_name)?
     };
 
-    // Fail before expensive provider work when an explicitly mapped port is
-    // occupied by something other than the environment being force-recreated.
-    if !is_recreate {
-        let port_binding = config
-            .vm
-            .as_ref()
-            .and_then(|settings| settings.port_binding.as_deref())
-            .unwrap_or("0.0.0.0");
-        for mapping in &config.ports.mappings {
-            if reusable_host_ports.contains(&mapping.host) {
-                continue;
-            }
-            if std::net::TcpListener::bind((port_binding, mapping.host))
-                .is_err_and(|error| error.kind() == std::io::ErrorKind::AddrInUse)
-            {
-                return Err(VmError::validation(
-                    format!("Port {} is already in use on host", mapping.host),
-                    Some("ports"),
-                ));
-            }
-        }
-    }
-
-    let validator = ConfigValidator::new();
-    let validation = if is_recreate {
-        validator.validate_for_recreate(&config)
+    let mode = if is_recreate {
+        ValidationMode::Recreate
     } else {
-        validator.validate_with_reusable_ports(&config, &reusable_host_ports)
+        ValidationMode::Create {
+            reusable_host_ports: &reusable_host_ports,
+        }
     };
+    let validation = validate_config(&config, mode);
     match validation {
         Ok(report) => {
             if report.has_errors() {

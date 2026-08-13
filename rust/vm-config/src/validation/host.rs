@@ -82,8 +82,21 @@ impl fmt::Display for ValidationReport {
 }
 
 /// A validator for checking the `VmConfig` against the host system's resources.
-pub struct ConfigValidator {
+struct ConfigValidator {
     system: System,
+}
+
+pub(super) fn validate(
+    config: &VmConfig,
+    report: &mut ValidationReport,
+    check_port_availability: bool,
+    reusable_host_ports: &[u16],
+) -> Result<()> {
+    let validator = ConfigValidator::new();
+    validator.validate_cpu(config, report)?;
+    validator.validate_memory(config, report)?;
+    validator.validate_ports(config, report, check_port_availability, reusable_host_ports)?;
+    validator.validate_user(config, report)
 }
 
 impl Default for ConfigValidator {
@@ -99,50 +112,6 @@ impl ConfigValidator {
         system.refresh_cpu();
         system.refresh_memory();
         Self { system }
-    }
-
-    /// Validates the given configuration.
-    pub fn validate(&self, config: &VmConfig) -> Result<ValidationReport> {
-        self.validate_with_port_availability(config, true, &[])
-    }
-
-    /// Validate a new environment while allowing ports already owned by
-    /// provider-managed services that will be reused by that environment.
-    pub fn validate_with_reusable_ports(
-        &self,
-        config: &VmConfig,
-        reusable_host_ports: &[u16],
-    ) -> Result<ValidationReport> {
-        self.validate_with_port_availability(config, true, reusable_host_ports)
-    }
-
-    /// Validate a known existing environment before it is recreated. Host port
-    /// occupancy is ignored because the current environment owns those ports;
-    /// all structural and resource checks still run.
-    pub fn validate_for_recreate(&self, config: &VmConfig) -> Result<ValidationReport> {
-        self.validate_with_port_availability(config, false, &[])
-    }
-
-    fn validate_with_port_availability(
-        &self,
-        config: &VmConfig,
-        check_port_availability: bool,
-        reusable_host_ports: &[u16],
-    ) -> Result<ValidationReport> {
-        let mut report = ValidationReport::default();
-
-        self.validate_cpu(config, &mut report)?;
-        self.validate_memory(config, &mut report)?;
-        self.validate_ports(
-            config,
-            &mut report,
-            check_port_availability,
-            reusable_host_ports,
-        )?;
-        self.validate_user(config, &mut report)?;
-        // self.validate_disk_space(&mut report)?; // Placeholder for future implementation
-
-        Ok(report)
     }
 
     /// Validates that the user is configured.
@@ -361,21 +330,30 @@ impl ConfigValidator {
 
 #[cfg(test)]
 mod tests {
-    use super::ConfigValidator;
-    use crate::config::{ServiceConfig, VmConfig, VmSettings};
+    use super::super::{validate_config, ValidationMode};
+    use crate::config::{ProjectConfig, ServiceConfig, VmConfig, VmSettings};
 
-    #[test]
-    fn recreate_validation_ignores_only_host_port_occupancy() {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let mut config = VmConfig {
+    fn valid_config() -> VmConfig {
+        VmConfig {
+            provider: Some("docker".to_string()),
+            project: Some(ProjectConfig {
+                name: Some("host-validation-test".to_string()),
+                ..Default::default()
+            }),
             vm: Some(VmSettings {
                 user: Some("developer".to_string()),
                 port_binding: Some("127.0.0.1".to_string()),
                 ..Default::default()
             }),
             ..Default::default()
-        };
+        }
+    }
+
+    #[test]
+    fn recreate_validation_ignores_only_host_port_occupancy() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let mut config = valid_config();
         config.services.insert(
             "postgresql".to_string(),
             ServiceConfig {
@@ -385,9 +363,14 @@ mod tests {
             },
         );
 
-        let validator = ConfigValidator::new();
-        let normal = validator.validate(&config).unwrap();
-        let recreate = validator.validate_for_recreate(&config).unwrap();
+        let normal = validate_config(
+            &config,
+            ValidationMode::Create {
+                reusable_host_ports: &[],
+            },
+        )
+        .unwrap();
+        let recreate = validate_config(&config, ValidationMode::Recreate).unwrap();
 
         assert!(normal.errors.iter().any(|error| error.contains("in use")));
         assert!(recreate.errors.is_empty());
@@ -399,14 +382,7 @@ mod tests {
         let reusable_port = reusable_listener.local_addr().unwrap().port();
         let unrelated_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let unrelated_port = unrelated_listener.local_addr().unwrap().port();
-        let mut config = VmConfig {
-            vm: Some(VmSettings {
-                user: Some("developer".to_string()),
-                port_binding: Some("127.0.0.1".to_string()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
+        let mut config = valid_config();
         config.services.insert(
             "postgresql".to_string(),
             ServiceConfig {
@@ -424,9 +400,13 @@ mod tests {
             },
         );
 
-        let report = ConfigValidator::new()
-            .validate_with_reusable_ports(&config, &[reusable_port])
-            .unwrap();
+        let report = validate_config(
+            &config,
+            ValidationMode::Create {
+                reusable_host_ports: &[reusable_port],
+            },
+        )
+        .unwrap();
 
         assert!(!report
             .errors

@@ -8,6 +8,7 @@ use crate::cli::{ConfigProfileSubcommand, ConfigSubcommand};
 use crate::error::{VmError, VmResult};
 use serde_yaml_ng as serde_yaml;
 use vm_config::ports::{PortRange, PortRegistry};
+use vm_config::validation::{validate_config, ValidationMode};
 use vm_config::{config::VmConfig, AppConfig, ConfigOps};
 use vm_core::msg;
 use vm_core::{vm_print, vm_println, vm_progress, vm_success, vm_warning};
@@ -23,11 +24,16 @@ fn load_selected_config(
 /// Handle the `vm config validate` command.
 fn handle_validate_command(config_path: Option<PathBuf>, profile: Option<String>) -> VmResult<()> {
     let config = load_selected_config(config_path, profile)?.vm;
-    let errors = config.validate(true);
+    let report = validate_config(&config, ValidationMode::Static).map_err(|error| {
+        VmError::validation(
+            format!("Unexpected configuration validation error: {error}"),
+            None::<String>,
+        )
+    })?;
 
-    if !errors.is_empty() {
+    if report.has_errors() {
         return Err(VmError::validation(
-            format!("Configuration is invalid:\n  - {}", errors.join("\n  - ")),
+            format!("Configuration is invalid:\n{report}"),
             None::<String>,
         ));
     }
@@ -69,9 +75,14 @@ fn handle_render_command(
         ));
     }
 
-    let errors = config.validate(true);
-    if !errors.is_empty() {
-        return Err(VmError::validation(errors.join("; "), None::<String>));
+    let report = validate_config(&config, ValidationMode::Static).map_err(|error| {
+        VmError::validation(
+            format!("Unexpected configuration validation error: {error}"),
+            None::<String>,
+        )
+    })?;
+    if report.has_errors() {
+        return Err(VmError::validation(report.to_string(), None::<String>));
     }
 
     let project_dir = match config

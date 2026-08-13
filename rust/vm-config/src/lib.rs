@@ -39,8 +39,7 @@ pub mod ports;
 pub mod preset; // Made public for integration tests - used internally by config_ops and cli
 pub mod preset_cache; // Preset caching layer
 pub mod schema; // Schema-aware type detection
-pub mod validate;
-pub mod validator;
+pub mod validation;
 pub mod yaml; // YAML operations module
 
 #[cfg(test)]
