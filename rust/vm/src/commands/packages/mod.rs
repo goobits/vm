@@ -125,6 +125,10 @@ pub(super) async fn handle(
             .await
         }
         PackagesSubcommand::Show { checkout_id } => catalog::show(&files, &checkout_id).await,
+        PackagesSubcommand::Release { .. } => Err(crate::error::VmError::validation(
+            "Package checkout releases run inside the assigned managed environment",
+            Some("Run `vm packages release <checkout-id>` inside that Docker or Tart guest"),
+        )),
         PackagesSubcommand::Cancel { checkout_id } => {
             cancel_checkout(&files, config_path, profile, &checkout_id).await
         }
@@ -190,6 +194,7 @@ async fn handle_guest(
             .await
         }
         PackagesSubcommand::Show { checkout_id } => catalog::show_guest(&checkout_id).await,
+        PackagesSubcommand::Release { checkout_id } => release::handle_guest(&checkout_id).await,
         _ => Err(crate::error::VmError::validation(
             "This package command is restricted to the controller host",
             Some("Run package administration commands on the host"),

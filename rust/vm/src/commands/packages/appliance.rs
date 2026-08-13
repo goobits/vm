@@ -16,7 +16,6 @@ const HEALTH_INTERVAL: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone, Copy)]
 pub(super) enum PackageJob<'a> {
-    Review(&'a str),
     Release(&'a str),
     ToolRelease(&'a str),
     Rollout(&'a str),
@@ -53,7 +52,6 @@ impl<'a> MaintenanceTask<'a> {
 impl<'a> PackageJob<'a> {
     pub(super) fn service(self) -> &'static str {
         match self {
-            Self::Review(_) => "reviewer",
             Self::Release(_) => "releaser",
             Self::ToolRelease(_) => "tool-releaser",
             Self::Rollout(_) => "rollout",
@@ -62,7 +60,7 @@ impl<'a> PackageJob<'a> {
 
     pub(super) fn variable(self) -> &'static str {
         match self {
-            Self::Review(_) | Self::Release(_) => "SUBMISSION_ID",
+            Self::Release(_) => "SUBMISSION_ID",
             Self::ToolRelease(_) => "TOOL_NAME",
             Self::Rollout(_) => "ROLLOUT_ID",
         }
@@ -70,7 +68,7 @@ impl<'a> PackageJob<'a> {
 
     pub(super) fn id(self) -> &'a str {
         match self {
-            Self::Review(id) | Self::Release(id) | Self::ToolRelease(id) | Self::Rollout(id) => id,
+            Self::Release(id) | Self::ToolRelease(id) | Self::Rollout(id) => id,
         }
     }
 }
@@ -107,14 +105,6 @@ pub(super) fn launch_job(
         InfrastructureRuntime::Docker => docker::run_job(files, job),
         InfrastructureRuntime::Tart => tart::run_job(files, job),
     }
-}
-
-pub(super) fn launch_review(
-    files: &ApplianceFiles,
-    state: &ApplianceState,
-    submission_id: &str,
-) -> VmResult<()> {
-    launch_job(files, state, PackageJob::Review(submission_id))
 }
 
 pub(super) async fn up(

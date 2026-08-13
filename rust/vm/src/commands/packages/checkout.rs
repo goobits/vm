@@ -37,8 +37,22 @@ pub(super) async fn cleanup_local(
     checkout: &vm_packages::CheckoutRecord,
 ) -> VmResult<()> {
     let subject = load_runtime_subject(config_path, profile, None)?;
-    let root = checkout_root(&subject, &checkout.checkout_id)?;
-    let current_project = project_name(&subject.config);
+    cleanup_runtime(&subject, checkout, project_name(&subject.config))
+}
+
+pub(super) fn cleanup_guest(
+    subject: &GuestRuntime,
+    checkout: &vm_packages::CheckoutRecord,
+) -> VmResult<()> {
+    cleanup_runtime(subject, checkout, subject.consumer())
+}
+
+fn cleanup_runtime(
+    subject: &impl PackageExecutor,
+    checkout: &vm_packages::CheckoutRecord,
+    current_project: &str,
+) -> VmResult<()> {
+    let root = checkout_root(subject, &checkout.checkout_id)?;
     if !checkout
         .consumers
         .iter()
@@ -49,9 +63,9 @@ pub(super) async fn cleanup_local(
             None::<String>,
         ));
     }
-    let record = OverrideRecord::load(&subject, &root, checkout, current_project)?;
-    record.restore(&subject)?;
-    exec(&subject, ["rm", "-rf", "--", root.as_str()])
+    let record = OverrideRecord::load(subject, &root, checkout, current_project)?;
+    record.restore(subject)?;
+    exec(subject, ["rm", "-rf", "--", root.as_str()])
 }
 
 pub(super) async fn handle(files: &ApplianceFiles, intent: CheckoutIntent) -> VmResult<()> {

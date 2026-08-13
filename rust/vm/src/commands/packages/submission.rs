@@ -11,10 +11,12 @@ use crate::commands::command_context::{load_runtime_subject, project_name};
 use crate::error::{VmError, VmResult};
 
 use super::{
-    appliance::{configured_state_and_client, launch_review},
+    appliance::configured_state_and_client,
     files::ApplianceFiles,
     overrides::cargo_patch,
-    runtime::{checkout_root, exec, exec_in_workspace, gateway_for_provider, PackageExecutor},
+    runtime::{
+        checkout_root, exec, exec_in_workspace, gateway_for_provider, GuestRuntime, PackageExecutor,
+    },
 };
 
 pub(super) async fn handle(
@@ -35,12 +37,51 @@ pub(super) async fn handle(
     }
 
     let (state, client) = configured_state_and_client(files)?;
+    let gateway = gateway_for_provider(&state, subject.provider.name())?;
+    let submission = submit(
+        &subject,
+        &client,
+        &gateway,
+        &checkout_id,
+        consumer,
+        "vm-controller",
+    )
+    .await?;
+    vm_success!("Submission {} queued for review", submission.submission_id);
+    Ok(())
+}
+
+pub(super) async fn handle_guest(
+    subject: &GuestRuntime,
+    checkout_id: &str,
+) -> VmResult<vm_packages::SubmissionRecord> {
+    submit(
+        subject,
+        &subject.client()?,
+        subject.gateway(),
+        checkout_id,
+        subject.consumer().to_string(),
+        "package-agent",
+    )
+    .await
+}
+
+async fn submit(
+    subject: &impl PackageExecutor,
+    client: &PackageInfrastructureClient,
+    gateway: &str,
+    checkout_id: &str,
+    consumer: String,
+    actor: &str,
+) -> VmResult<vm_packages::SubmissionRecord> {
     let checkout = client.checkout(&checkout_id).await?;
-    if checkout.state != WorkflowState::Active
-        || !checkout
-            .consumers
-            .iter()
-            .any(|candidate| candidate == &consumer)
+    if !matches!(
+        checkout.state,
+        WorkflowState::Active | WorkflowState::NeedsChanges
+    ) || !checkout
+        .consumers
+        .iter()
+        .any(|candidate| candidate == &consumer)
     {
         return Err(VmError::validation(
             "Checkout is not active for this consumer",
@@ -48,18 +89,18 @@ pub(super) async fn handle(
         ));
     }
     let definition = client.package_definition(&checkout.package).await?;
-    let root = checkout_root(&subject, &checkout_id)?;
+    let root = checkout_root(subject, checkout_id)?;
     let source = format!("{root}/source");
-    ensure_clean(&subject, &source)?;
+    ensure_clean(subject, &source)?;
 
     vm_progress!("Running package and consumer checks...");
-    run_package_check(&subject, definition.ecosystem, &source)?;
-    run_consumer_check(&subject, definition.ecosystem, &checkout.package, &source)?;
+    run_package_check(subject, definition.ecosystem, &source)?;
+    run_consumer_check(subject, definition.ecosystem, &checkout.package, &source)?;
 
     let bundle = format!("{root}/submission.bundle");
-    exec(&subject, ["rm", "-f", bundle.as_str()])?;
+    exec(subject, ["rm", "-f", bundle.as_str()])?;
     exec(
-        &subject,
+        subject,
         [
             "git",
             "-C",
@@ -70,12 +111,11 @@ pub(super) async fn handle(
             "--all",
         ],
     )?;
-    let gateway = gateway_for_provider(&state, subject.provider.name())?;
     let upload_client =
         PackageInfrastructureClient::new(RegistryEndpoints::new(gateway).map_err(VmError::from)?);
     let upload_url = upload_client.submission_upload_url(&checkout_id, &consumer);
     exec(
-        &subject,
+        subject,
         [
             "curl",
             "--fail",
@@ -92,7 +132,7 @@ pub(super) async fn handle(
             &upload_url,
         ],
     )?;
-    exec(&subject, ["rm", "-f", bundle.as_str()])?;
+    exec(subject, ["rm", "-f", bundle.as_str()])?;
 
     let submission = client.checkout_submission(&checkout_id).await?;
     let validating = client
@@ -101,7 +141,7 @@ pub(super) async fn handle(
             &ValidationRequest {
                 package: CheckOutcome::Passed,
                 consumers: BTreeMap::from([(consumer, CheckOutcome::Passed)]),
-                actor: "vm-controller".into(),
+                actor: actor.into(),
                 idempotency_key: format!("validate-{}", submission.submission_id),
             },
         )
@@ -112,22 +152,7 @@ pub(super) async fn handle(
             Some("Inspect the submission before retrying"),
         ));
     }
-    vm_progress!("Launching ephemeral integration reviewer...");
-    launch_review(files, &state, &validating.submission_id)?;
-    let reviewed = client.submission(&validating.submission_id).await?;
-    vm_success!(
-        "Submission {} review: {}",
-        reviewed.submission_id,
-        reviewed
-            .review
-            .as_ref()
-            .map_or("unavailable".into(), |review| format!(
-                "{:?}",
-                review.decision
-            )
-            .to_ascii_lowercase())
-    );
-    Ok(())
+    Ok(validating)
 }
 
 fn ensure_clean(subject: &impl PackageExecutor, source: &str) -> VmResult<()> {

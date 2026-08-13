@@ -34,7 +34,9 @@ fn guest_allowed_command(command: &Command) -> bool {
     matches!(
         command,
         Command::Packages {
-            command: PackagesSubcommand::Checkout { .. } | PackagesSubcommand::Show { .. }
+            command: PackagesSubcommand::Checkout { .. }
+                | PackagesSubcommand::Show { .. }
+                | PackagesSubcommand::Release { .. }
         }
     )
 }

@@ -119,6 +119,8 @@ pub enum PackagesSubcommand {
     },
     /// Show one package checkout
     Show { checkout_id: String },
+    /// Validate, review, integrate, and privately release an active checkout
+    Release { checkout_id: String },
     /// Cancel an eligible checkout and remove its temporary data
     Cancel { checkout_id: String },
     /// Remove a terminal checkout's temporary service and project data

@@ -19,8 +19,10 @@ use vm_packages::{
     about = "Ephemeral isolated consumer-upgrade runner"
 )]
 struct Cli {
+    #[arg(long, required_unless_present = "watch")]
+    rollout: Option<String>,
     #[arg(long)]
-    rollout: String,
+    watch: bool,
 }
 
 #[tokio::main]
@@ -31,7 +33,34 @@ async fn main() -> Result<()> {
     let token = secret("PKG_ROLLOUT_TOKEN_FILE")?;
     let client = PackageInfrastructureClient::new(RegistryEndpoints::new(gateway)?)
         .with_rollout_token(token.clone());
-    let rollout = client.rollout(&cli.rollout).await?;
+    if cli.watch {
+        loop {
+            match client.next_rollout().await {
+                Ok(Some(rollout)) => {
+                    if let Err(error) = run_rollout(&client, &token, &rollout.rollout_id).await {
+                        eprintln!("rollout {} failed: {error:#}", rollout.rollout_id);
+                    }
+                }
+                Ok(None) => {}
+                Err(error) => eprintln!("rollout queue unavailable: {error:#}"),
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+    }
+    run_rollout(
+        &client,
+        &token,
+        cli.rollout.as_deref().context("--rollout is required")?,
+    )
+    .await
+}
+
+async fn run_rollout(
+    client: &PackageInfrastructureClient,
+    token: &str,
+    rollout_id: &str,
+) -> Result<()> {
+    let rollout = client.rollout(rollout_id).await?;
     match rollout.state {
         RolloutState::ReadyForReview => {
             println!("{} is already ready for review", rollout.rollout_id);

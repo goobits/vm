@@ -234,6 +234,22 @@ impl Store {
             .collect()
     }
 
+    pub async fn next_rollout(&self) -> Option<RolloutRecord> {
+        self.database
+            .lock()
+            .await
+            .rollouts
+            .values()
+            .filter(|rollout| {
+                matches!(
+                    rollout.state,
+                    RolloutState::Active | RolloutState::Validating
+                )
+            })
+            .min_by_key(|rollout| rollout.updated_at)
+            .cloned()
+    }
+
     pub async fn record_rollout_source(
         &self,
         rollout_id: &str,
@@ -565,6 +581,10 @@ mod tests {
             )
             .await
             .unwrap();
+        assert_eq!(
+            store.next_rollout().await.unwrap().rollout_id,
+            rollout.rollout_id
+        );
         store
             .record_rollout_submission(&rollout.rollout_id, "d".repeat(40))
             .await
@@ -580,6 +600,7 @@ mod tests {
             )
             .await
             .unwrap();
+        assert!(store.next_rollout().await.is_none());
 
         let consumers = store.package_consumers("auth").await.unwrap();
         assert_eq!(consumers[0].version, "1.4.2");

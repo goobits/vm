@@ -151,8 +151,8 @@ services:
     networks: [packages, egress]
 
   reviewer:
-    profiles: [jobs]
     image: "${VM_PACKAGES_JOB_IMAGE:?required}"
+    restart: unless-stopped
     environment:
       PKG_REVIEW_GATEWAY: http://gateway:8080
       PKG_CLIENT_GATEWAY: http://gateway:8080
@@ -166,7 +166,7 @@ services:
       - |
         . /usr/local/lib/pkg-client-env.sh
         export PKG_REVIEW_TOKEN="$$(cat /run/secrets/reviewer_token)"
-        exec pkg-review --submission "$${SUBMISSION_ID:?required}"
+        exec pkg-review --watch
     secrets: [reviewer_read_token, reviewer_token]
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -177,8 +177,8 @@ services:
     networks: [packages]
 
   releaser:
-    profiles: [jobs]
     image: "${VM_PACKAGES_JOB_IMAGE:?required}"
+    restart: unless-stopped
     environment:
       PKG_RELEASE_GATEWAY: http://gateway:8080
       PKG_RELEASE_TOKEN_FILE: /run/secrets/release_token
@@ -195,7 +195,7 @@ services:
     command:
       - |
         . /usr/local/lib/pkg-client-env.sh
-        exec pkg-release --submission "$${SUBMISSION_ID:?required}" --push-source
+        exec pkg-release --watch
     secrets: [releaser_read_token, release_token, publish_token, git_token, ci_publish_token]
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -222,8 +222,8 @@ services:
     networks: [packages, egress]
 
   rollout:
-    profiles: [jobs]
     image: "${VM_PACKAGES_JOB_IMAGE:?required}"
+    restart: unless-stopped
     environment:
       PKG_ROLLOUT_GATEWAY: http://gateway:8080
       PKG_ROLLOUT_TOKEN_FILE: /run/secrets/rollout_token
@@ -237,7 +237,7 @@ services:
     command:
       - |
         . /usr/local/lib/pkg-client-env.sh
-        exec pkg-rollout --rollout "$${ROLLOUT_ID:?required}"
+        exec pkg-rollout --watch
     secrets: [rollout_read_token, rollout_token]
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]

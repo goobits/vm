@@ -165,12 +165,14 @@ pub fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router {
         )
         .route_layer(middleware::from_fn_with_state(state.clone(), agent_auth));
     let reviews = Router::new()
+        .route("/v1/jobs/review/next", get(next_review))
         .route(
             "/v1/submissions/{submission_id}/review",
             post(record_review),
         )
         .route_layer(middleware::from_fn_with_state(state.clone(), reviewer_auth));
     let releases = Router::new()
+        .route("/v1/jobs/release/next", get(next_release))
         .route(
             "/v1/submissions/{submission_id}/release",
             post(begin_release),
@@ -188,6 +190,7 @@ pub fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router {
         .merge(crate::tools::release_routes())
         .route_layer(middleware::from_fn_with_state(state.clone(), release_auth));
     let rollouts = Router::new()
+        .route("/v1/jobs/rollout/next", get(next_rollout))
         .route("/v1/rollouts/{rollout_id}/bundle", get(download_rollout))
         .route("/v1/rollouts/{rollout_id}/submission", post(upload_rollout))
         .route("/v1/rollouts/{rollout_id}/complete", post(complete_rollout))
@@ -321,6 +324,18 @@ async fn get_rollout(
     Path(rollout_id): Path<String>,
 ) -> WorkResult<Json<RolloutRecord>> {
     Ok(Json(state.store.rollout(&rollout_id).await?))
+}
+
+async fn next_review(State(state): State<AppState>) -> Json<Option<SubmissionRecord>> {
+    Json(state.store.next_review().await)
+}
+
+async fn next_release(State(state): State<AppState>) -> Json<Option<SubmissionRecord>> {
+    Json(state.store.next_release().await)
+}
+
+async fn next_rollout(State(state): State<AppState>) -> Json<Option<RolloutRecord>> {
+    Json(state.store.next_rollout().await)
 }
 
 async fn create_checkout(
@@ -961,6 +976,26 @@ mod tests {
                 .post("/v1/checkouts")
                 .add_header(header::AUTHORIZATION, "Bearer read")
                 .json(&checkout())
+                .await
+                .status_code(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            server.get("/v1/jobs/review/next").await.status_code(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            server
+                .get("/v1/jobs/review/next")
+                .add_header(header::AUTHORIZATION, "Bearer reviewer")
+                .await
+                .status_code(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            server
+                .get("/v1/jobs/review/next")
+                .add_header(header::AUTHORIZATION, "Bearer release")
                 .await
                 .status_code(),
             StatusCode::UNAUTHORIZED

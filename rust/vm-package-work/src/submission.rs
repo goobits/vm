@@ -144,6 +144,17 @@ impl Store {
             .collect()
     }
 
+    pub async fn next_review(&self) -> Option<SubmissionRecord> {
+        self.database
+            .lock()
+            .await
+            .submissions
+            .values()
+            .filter(|submission| submission.state == WorkflowState::Reviewing)
+            .min_by_key(|submission| submission.updated_at)
+            .cloned()
+    }
+
     pub async fn checkout_submission(&self, checkout_id: &str) -> WorkResult<SubmissionRecord> {
         self.database
             .lock()
@@ -606,6 +617,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(validated.state, WorkflowState::Reviewing);
+        assert_eq!(
+            store.next_review().await.unwrap().submission_id,
+            submission.submission_id
+        );
         let changes_requested = store
             .record_review(
                 &submission.submission_id,
@@ -626,6 +641,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(changes_requested.state, WorkflowState::NeedsChanges);
+        assert!(store.next_review().await.is_none());
 
         let resubmitted = store
             .record_submission(
@@ -653,6 +669,10 @@ mod tests {
             )
             .await
             .unwrap();
+        assert_eq!(
+            store.next_review().await.unwrap().submission_id,
+            submission.submission_id
+        );
         let reviewed = store
             .record_review(
                 &submission.submission_id,
@@ -673,5 +693,6 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(reviewed.state, WorkflowState::Approved);
+        assert!(store.next_review().await.is_none());
     }
 }

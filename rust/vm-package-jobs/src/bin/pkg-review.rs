@@ -15,8 +15,10 @@ use vm_packages::{
     about = "Ephemeral package integration reviewer"
 )]
 struct Cli {
+    #[arg(long, required_unless_present = "watch")]
+    submission: Option<String>,
     #[arg(long)]
-    submission: String,
+    watch: bool,
 }
 
 #[tokio::main]
@@ -27,7 +29,31 @@ async fn main() -> Result<()> {
     let token = std::env::var("PKG_REVIEW_TOKEN").context("PKG_REVIEW_TOKEN is required")?;
     let client = PackageInfrastructureClient::new(RegistryEndpoints::new(gateway)?)
         .with_reviewer_token(token);
-    let submission = client.submission(&cli.submission).await?;
+    if cli.watch {
+        loop {
+            match client.next_review().await {
+                Ok(Some(submission)) => {
+                    if let Err(error) = review(&client, &submission.submission_id).await {
+                        eprintln!("review {} failed: {error:#}", submission.submission_id);
+                    }
+                }
+                Ok(None) => {}
+                Err(error) => eprintln!("review queue unavailable: {error:#}"),
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+    }
+    review(
+        &client,
+        cli.submission
+            .as_deref()
+            .context("--submission is required")?,
+    )
+    .await
+}
+
+async fn review(client: &PackageInfrastructureClient, submission_id: &str) -> Result<()> {
+    let submission = client.submission(submission_id).await?;
     if submission.state != WorkflowState::Reviewing
         || !submission
             .validation

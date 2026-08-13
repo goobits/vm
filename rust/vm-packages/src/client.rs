@@ -290,6 +290,15 @@ impl PackageInfrastructureClient {
         .await
     }
 
+    pub async fn next_review(&self) -> Result<Option<SubmissionRecord>> {
+        self.get_authenticated(
+            "v1/jobs/review/next",
+            self.reviewer_token.as_deref(),
+            "reviewer",
+        )
+        .await
+    }
+
     pub async fn prepare_integration(
         &self,
         submission_id: &str,
@@ -320,6 +329,15 @@ impl PackageInfrastructureClient {
 
     pub async fn release(&self, release_id: &str) -> Result<ReleaseRecord> {
         self.get_work(&format!("v1/releases/{release_id}")).await
+    }
+
+    pub async fn next_release(&self) -> Result<Option<SubmissionRecord>> {
+        self.get_authenticated(
+            "v1/jobs/release/next",
+            self.release_token.as_deref(),
+            "release",
+        )
+        .await
     }
 
     pub async fn begin_release(
@@ -397,6 +415,15 @@ impl PackageInfrastructureClient {
         self.get_work(&format!("v1/rollouts/{rollout_id}")).await
     }
 
+    pub async fn next_rollout(&self) -> Result<Option<RolloutRecord>> {
+        self.get_authenticated(
+            "v1/jobs/rollout/next",
+            self.rollout_token.as_deref(),
+            "rollout",
+        )
+        .await
+    }
+
     pub async fn complete_rollout(
         &self,
         rollout_id: &str,
@@ -470,6 +497,29 @@ impl PackageInfrastructureClient {
             .or(self.release_token.as_ref())
             .or(self.rollout_token.as_ref())
             .context("package workflow read credential is unavailable")?;
+        self.http
+            .get(&url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .with_context(|| format!("failed to connect to package workflow at {url}"))?
+            .error_for_status()
+            .with_context(|| format!("package workflow rejected GET {url}"))?
+            .json()
+            .await
+            .with_context(|| format!("package workflow returned invalid JSON from {url}"))
+    }
+
+    async fn get_authenticated<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        token: Option<&str>,
+        scope: &str,
+    ) -> Result<T> {
+        let token = token
+            .or(self.controller_token.as_deref())
+            .with_context(|| format!("package workflow {scope} credential is unavailable"))?;
+        let url = self.work_url(path);
         self.http
             .get(&url)
             .bearer_auth(token)

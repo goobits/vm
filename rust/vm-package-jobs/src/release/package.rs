@@ -18,7 +18,6 @@ use crate::runtime::{operation_key, required_secret as secret, run_command as ru
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackageReleaseOptions {
     pub submission: String,
-    pub push_source: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,9 +37,6 @@ struct Destination {
 }
 
 pub async fn release(options: PackageReleaseOptions) -> Result<()> {
-    if !options.push_source {
-        bail!("release publication requires explicit --push-source authorization");
-    }
     let gateway =
         std::env::var("PKG_RELEASE_GATEWAY").unwrap_or_else(|_| "http://gateway:8080".into());
     let release_token = secret("PKG_RELEASE_TOKEN_FILE")?;

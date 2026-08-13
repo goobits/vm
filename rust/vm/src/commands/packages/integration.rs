@@ -13,7 +13,7 @@ use crate::error::{VmError, VmResult};
 use super::{
     appliance::configured_state_and_client,
     files::ApplianceFiles,
-    runtime::{checkout_root, exec, gateway_for_provider},
+    runtime::{checkout_root, exec, gateway_for_provider, GuestRuntime, PackageExecutor},
     submission::{run_consumer_check, run_package_check},
 };
 
@@ -35,8 +35,51 @@ pub(super) async fn handle(
         ));
     }
     let (state, client) = configured_state_and_client(files)?;
+    let gateway = gateway_for_provider(&state, subject.provider.name())?;
+    let ready = integrate(
+        &subject,
+        &client,
+        &gateway,
+        &submission_id,
+        consumer,
+        strategy,
+        "vm-controller",
+    )
+    .await?;
+    vm_success!("Submission {} is ready to release", ready.submission_id);
+    Ok(())
+}
+
+pub(super) async fn handle_guest(
+    subject: &GuestRuntime,
+    submission_id: &str,
+) -> VmResult<vm_packages::SubmissionRecord> {
+    integrate(
+        subject,
+        &subject.client()?,
+        subject.gateway(),
+        submission_id,
+        subject.consumer().to_string(),
+        "rebase".into(),
+        "package-agent",
+    )
+    .await
+}
+
+async fn integrate(
+    subject: &impl PackageExecutor,
+    client: &PackageInfrastructureClient,
+    gateway: &str,
+    submission_id: &str,
+    consumer: String,
+    strategy: String,
+    actor: &str,
+) -> VmResult<vm_packages::SubmissionRecord> {
     let submission = client.submission(&submission_id).await?;
-    if submission.state != WorkflowState::Approved {
+    if !matches!(
+        submission.state,
+        WorkflowState::Approved | WorkflowState::Integrating
+    ) {
         return Err(VmError::validation(
             "Submission is not approved for integration",
             Some("Submit it and resolve any integration-review feedback first"),
@@ -59,7 +102,7 @@ pub(super) async fn handle(
         .prepare_integration(
             &submission.submission_id,
             &IntegrationRequest {
-                actor: "vm-controller".into(),
+                actor: actor.into(),
                 strategy,
                 idempotency_key: format!("integrate-{}", submission.submission_id),
             },
@@ -69,17 +112,16 @@ pub(super) async fn handle(
         .integration
         .as_ref()
         .ok_or_else(|| VmError::validation("Integration record is missing", None::<String>))?;
-    let checkout_root = checkout_root(&subject, &checkout.checkout_id)?;
+    let checkout_root = checkout_root(subject, &checkout.checkout_id)?;
     let root = format!("{checkout_root}/integration-{}", integrating.submission_id);
     let source = format!("{root}/source");
     let bundle = format!("{root}/integration.bundle");
-    exec(&subject, ["mkdir", "-p", root.as_str()])?;
-    let gateway = gateway_for_provider(&state, subject.provider.name())?;
+    exec(subject, ["mkdir", "-p", root.as_str()])?;
     let download_client =
         PackageInfrastructureClient::new(RegistryEndpoints::new(gateway).map_err(VmError::from)?);
     let url = download_client.integration_bundle_url(&integrating.submission_id, &consumer);
     exec(
-        &subject,
+        subject,
         [
             "curl",
             "--fail",
@@ -93,9 +135,9 @@ pub(super) async fn handle(
             &bundle,
         ],
     )?;
-    exec(&subject, ["git", "clone", &bundle, source.as_str()])?;
+    exec(subject, ["git", "clone", &bundle, source.as_str()])?;
     exec(
-        &subject,
+        subject,
         [
             "git",
             "-C",
@@ -105,10 +147,10 @@ pub(super) async fn handle(
             &integration.integration_commit,
         ],
     )?;
-    exec(&subject, ["rm", "-f", bundle.as_str()])?;
+    exec(subject, ["rm", "-f", bundle.as_str()])?;
     vm_progress!("Rerunning integrated package and consumer checks...");
-    run_package_check(&subject, definition.ecosystem, &source)?;
-    run_consumer_check(&subject, definition.ecosystem, &submission.package, &source)?;
+    run_package_check(subject, definition.ecosystem, &source)?;
+    run_consumer_check(subject, definition.ecosystem, &submission.package, &source)?;
     let integration_commit = integration.integration_commit.clone();
     let ready = client
         .complete_integration(
@@ -116,16 +158,12 @@ pub(super) async fn handle(
             &ValidationRequest {
                 package: CheckOutcome::Passed,
                 consumers: BTreeMap::from([(consumer, CheckOutcome::Passed)]),
-                actor: "vm-controller".into(),
+                actor: actor.into(),
                 idempotency_key: format!("integration-checks-{}", integrating.submission_id),
             },
         )
         .await?;
-    exec(&subject, ["rm", "-rf", "--", root.as_str()])?;
-    vm_success!(
-        "Submission {} is ready to release at {}",
-        ready.submission_id,
-        integration_commit
-    );
-    Ok(())
+    exec(subject, ["rm", "-rf", "--", root.as_str()])?;
+    vm_success!("Integrated checks passed at {integration_commit}");
+    Ok(ready)
 }

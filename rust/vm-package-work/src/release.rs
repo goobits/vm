@@ -144,6 +144,22 @@ impl Store {
             .collect()
     }
 
+    pub async fn next_release(&self) -> Option<vm_packages::SubmissionRecord> {
+        self.database
+            .lock()
+            .await
+            .submissions
+            .values()
+            .filter(|submission| {
+                matches!(
+                    submission.state,
+                    WorkflowState::ReadyToRelease | WorkflowState::Publishing
+                )
+            })
+            .min_by_key(|submission| submission.updated_at)
+            .cloned()
+    }
+
     pub async fn record_publication(
         &self,
         release_id: &str,
@@ -470,6 +486,10 @@ mod tests {
             )
             .await
             .unwrap();
+        assert_eq!(
+            store.next_release().await.unwrap().submission_id,
+            submission.submission_id
+        );
         let registry = "http://gateway:8080/cargo/index/";
         let release = store
             .begin_release(
@@ -487,6 +507,10 @@ mod tests {
             )
             .await
             .unwrap();
+        assert_eq!(
+            store.next_release().await.unwrap().submission_id,
+            submission.submission_id
+        );
         let published = store
             .record_publication(
                 &release.release_id,
@@ -511,6 +535,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(complete.state, WorkflowState::Published);
+        assert!(store.next_release().await.is_none());
         let closed = store
             .close_checkout(
                 &checkout.checkout_id,
