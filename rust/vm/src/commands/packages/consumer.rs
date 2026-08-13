@@ -1,15 +1,12 @@
 use std::collections::BTreeMap;
 
-use vm_core::{vm_println, vm_progress, vm_success};
-use vm_packages::{CreateRollout, RegisterConsumer, RolloutState};
+use vm_core::{vm_println, vm_success};
+use vm_packages::RegisterConsumer;
 
 use crate::cli::PackageConsumerSubcommand;
 use crate::error::{VmError, VmResult};
 
-use super::{
-    appliance::{configured_state_and_client, launch_job, PackageJob},
-    files::ApplianceFiles,
-};
+use super::{appliance::configured_state_and_client, files::ApplianceFiles};
 
 pub(super) async fn handle_catalog(
     files: &ApplianceFiles,
@@ -93,39 +90,6 @@ pub(super) async fn show_drift(files: &ApplianceFiles) -> VmResult<()> {
             vm_println!("  {}\t{}\t{state}", consumer.consumer, consumer.version);
         }
     }
-    Ok(())
-}
-
-pub(super) async fn rollout(
-    files: &ApplianceFiles,
-    target: String,
-    consumer: String,
-) -> VmResult<()> {
-    let (package, version) = parse_target(&target)?;
-    let (state, client) = configured_state_and_client(files)?;
-    vm_progress!("Preparing isolated consumer upgrade...");
-    let rollout = client
-        .create_rollout(&CreateRollout {
-            package,
-            version,
-            consumer,
-            actor: "vm-controller".into(),
-            idempotency_key: format!("rollout-{}", vm_core::secrets::generate_random_password(24)),
-        })
-        .await?;
-    launch_job(files, &state, PackageJob::Rollout(&rollout.rollout_id))?;
-    let rollout = client.rollout(&rollout.rollout_id).await?;
-    if rollout.state != RolloutState::ReadyForReview {
-        return Err(VmError::validation(
-            "Consumer rollout did not reach review-ready state",
-            Some("Inspect package infrastructure logs and retry the rollout"),
-        ));
-    }
-    vm_success!(
-        "Rollout {} is ready for normal review on {}",
-        rollout.rollout_id,
-        rollout.branch.as_deref().unwrap_or("its upgrade branch")
-    );
     Ok(())
 }
 

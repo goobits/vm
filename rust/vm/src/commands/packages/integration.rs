@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 
 use vm_core::{vm_progress, vm_success};
 use vm_packages::{
@@ -7,48 +6,12 @@ use vm_packages::{
     ValidationRequest, WorkflowState,
 };
 
-use crate::commands::command_context::{load_runtime_subject, project_name};
 use crate::error::{VmError, VmResult};
 
 use super::{
-    appliance::configured_state_and_client,
-    files::ApplianceFiles,
-    runtime::{checkout_root, exec, gateway_for_provider, GuestRuntime, PackageExecutor},
+    runtime::{checkout_root, exec, GuestRuntime, PackageExecutor},
     submission::{run_consumer_check, run_package_check},
 };
-
-pub(super) async fn handle(
-    files: &ApplianceFiles,
-    config_path: Option<PathBuf>,
-    profile: Option<String>,
-    submission_id: String,
-    requested_consumer: Option<String>,
-    strategy: String,
-) -> VmResult<()> {
-    let subject = load_runtime_subject(config_path, profile, None)?;
-    let current_project = project_name(&subject.config).to_string();
-    let consumer = requested_consumer.unwrap_or_else(|| current_project.clone());
-    if consumer != current_project {
-        return Err(VmError::validation(
-            format!("Consumer '{consumer}' is not the current project '{current_project}'"),
-            Some("Run this command from the selected consumer project"),
-        ));
-    }
-    let (state, client) = configured_state_and_client(files)?;
-    let gateway = gateway_for_provider(&state, subject.provider.name())?;
-    let ready = integrate(
-        &subject,
-        &client,
-        &gateway,
-        &submission_id,
-        consumer,
-        strategy,
-        "vm-controller",
-    )
-    .await?;
-    vm_success!("Submission {} is ready to release", ready.submission_id);
-    Ok(())
-}
 
 pub(super) async fn handle_guest(
     subject: &GuestRuntime,

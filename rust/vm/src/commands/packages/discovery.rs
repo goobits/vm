@@ -393,7 +393,6 @@ mod tests {
             true,
             None,
             None,
-            None,
         )
         .unwrap();
         let packages = discovery.packages;
@@ -430,13 +429,12 @@ mod tests {
         .unwrap();
         let target = path.to_string_lossy().into_owned();
 
-        assert!(discover(std::slice::from_ref(&target), false, None, None, None).is_err());
+        assert!(discover(std::slice::from_ref(&target), false, None, None).is_err());
         let discovery = discover(
             &[target],
             false,
             Some(PackageEcosystem::Cargo),
             Some("stable"),
-            None,
         )
         .unwrap();
         let packages = discovery.packages;
@@ -465,7 +463,6 @@ mod tests {
             true,
             None,
             None,
-            None,
         )
         .unwrap();
 
@@ -479,7 +476,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let target = directory.path().to_string_lossy().into_owned();
 
-        assert!(discover(std::slice::from_ref(&target), true, None, None, None).is_err());
+        assert!(discover(std::slice::from_ref(&target), true, None, None).is_err());
         let configured = discover_configured(&[target]).unwrap();
 
         assert!(configured.packages.is_empty());
@@ -500,7 +497,6 @@ mod tests {
         let error = discover(
             &[directory.path().to_string_lossy().into_owned()],
             true,
-            None,
             None,
             None,
         )

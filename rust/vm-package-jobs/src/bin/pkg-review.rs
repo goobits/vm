@@ -2,54 +2,30 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use anyhow::{bail, Context, Result};
-use clap::Parser;
 use vm_packages::{
     PackageEcosystem, PackageInfrastructureClient, PublicApiDiff, RegistryEndpoints,
     ReviewDecision, ReviewRequest, VersionRecommendation, WorkflowState,
 };
 
-#[derive(Parser)]
-#[command(
-    name = "pkg-review",
-    version,
-    about = "Ephemeral package integration reviewer"
-)]
-struct Cli {
-    #[arg(long, required_unless_present = "watch")]
-    submission: Option<String>,
-    #[arg(long)]
-    watch: bool,
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cli = Cli::parse();
     let gateway =
         std::env::var("PKG_REVIEW_GATEWAY").unwrap_or_else(|_| "http://gateway:8080".into());
     let token = std::env::var("PKG_REVIEW_TOKEN").context("PKG_REVIEW_TOKEN is required")?;
     let client = PackageInfrastructureClient::new(RegistryEndpoints::new(gateway)?)
         .with_reviewer_token(token);
-    if cli.watch {
-        loop {
-            match client.next_review().await {
-                Ok(Some(submission)) => {
-                    if let Err(error) = review(&client, &submission.submission_id).await {
-                        eprintln!("review {} failed: {error:#}", submission.submission_id);
-                    }
+    loop {
+        match client.next_review().await {
+            Ok(Some(submission)) => {
+                if let Err(error) = review(&client, &submission.submission_id).await {
+                    eprintln!("review {} failed: {error:#}", submission.submission_id);
                 }
-                Ok(None) => {}
-                Err(error) => eprintln!("review queue unavailable: {error:#}"),
             }
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            Ok(None) => {}
+            Err(error) => eprintln!("review queue unavailable: {error:#}"),
         }
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
-    review(
-        &client,
-        cli.submission
-            .as_deref()
-            .context("--submission is required")?,
-    )
-    .await
 }
 
 async fn review(client: &PackageInfrastructureClient, submission_id: &str) -> Result<()> {

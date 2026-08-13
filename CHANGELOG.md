@@ -1,6 +1,6 @@
 # Changelog
 
-<!-- CHANGELOG audit cutoff: 2026-08-10. commit 391c7932 on main. -->
+<!-- CHANGELOG audit cutoff: 2026-08-13. commit a6d06a41 on main. -->
 
 ## [Unreleased]
 
@@ -13,6 +13,7 @@
 - 🚀 `vibe-tart` defaults to a Linux guest with Docker Engine while retaining an explicit macOS/Colima fallback.
 - 🚀 Environment creation builds a missing standard Tart vibe base automatically at the configured storage location.
 - 📦 Redacted `vm config render` output previews the exact generated provider configuration.
+- 📦 Assigned project agents can complete resumable private package releases without a host workflow handoff.
 
 ### ✨ Added
 
@@ -21,6 +22,7 @@
 - 🚀 Targeted status reports include writable-layer size, volume and tmpfs usage, memory and PID peaks, mounts, logging, and lifecycle settings.
 - 🚀 Explicit pnpm-store pruning is available through `vm doctor --prune-pnpm-store`.
 - 📦 `vm config render [--instance <name>]` previews redacted generated configuration without contacting the provider.
+- 📦 Private package publication automatically prepares tested review branches for every drifted registered consumer.
 
 ### 🔧 Changed
 
@@ -32,6 +34,7 @@
 - 🪟 CLI output and actionable error hints now follow one consistent stdout and stderr contract.
 - 🚀 Linux-first `vibe-tart` routing uses the versioned Tart base and Docker Engine directly; macOS/Colima remains an explicit fallback.
 - 🚀 macOS Tart environments use the Sequoia base and run Docker through Colima with QEMU software emulation instead of unsupported nested virtualization.
+- 📦 ⚠️ `vm packages release <checkout-id>` replaces the host `submit`, `integrate`, `publish`, and `rollout` workflow commands.
 
 ### 🐛 Fixed
 
@@ -54,7 +57,8 @@
 - 🌐 Source-installed package appliances recheck local service and job images through Docker's content-addressed build cache, preventing non-controller source edits from leaving stale infrastructure behind.
 - 🌐 Source checkout discovery follows the installed `vm` symlink, and a networkless initialization step repairs non-root package-volume ownership before services start.
 - 🌐 Managed collections now publish through a credential-isolated ephemeral job, and `vm tools update` bootstraps the built-in `agent-skills` source and initial immutable release.
-- 🌐 Ephemeral release jobs now receive the intended publish secret as a read-only file instead of an unresolved Compose mount.
+- 🌐 The persistent private release service receives its publish secret as a read-only file instead of an unresolved Compose mount.
+- 🌐 Package workflow retries resume durable checkout, review, integration, release, and rollout state without duplicating work.
 - 🌐 `vm packages auth --github` validates and imports the active GitHub CLI credential into controller-only storage without printing it or exposing it to project workers.
 - 🌐 Flat package source shelves can mark managed tool repositories with `vm-tool.yaml`, preventing recursive language-package registration from misclassifying them.
 - 🌐 Managed tool downloads receive read credentials over standard input, and collections merge into existing skill roots without replacing personal or system skills.
@@ -93,6 +97,7 @@
 - 🌐 Docker-published application and service ports honor `vm.port_binding`, defaulting to loopback.
 - 🚀 Tart host and guest commands use one canonical quoting path for package, mount, copy, shell, and provisioning values so config cannot become shell syntax.
 - 📦 Copied environment configuration is readable only by its container owner.
+- 📦 Managed guests receive consumer-bound package capabilities without Git or registry-write credentials.
 
 ### 🏠 Internal
 

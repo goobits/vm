@@ -1,6 +1,6 @@
 ---
-Status: Container implementation complete; final host acceptance pending
-Date: 2026-08-12
+Status: Container implementation complete; direct package workflow host acceptance pending
+Date: 2026-08-13
 Depends: docs/user-guide/package-infrastructure.md, docs/development/architecture.md
 ---
 
@@ -16,6 +16,12 @@ acceptance.
 Package development and release work runs in Docker or Linux VMs. The Mac only
 launches those runtimes and holds controller credentials; it does not build,
 test, merge, or publish package source directly.
+
+The assigned project agent now drives one resumable `vm packages release
+<checkout-id>` workflow directly against the appliance. Persistent review,
+release, and rollout services derive work from durable state. Releases publish
+only to the private VM gateway, and consumer upgrade branches are prepared
+automatically without host synchronization or approval commands.
 
 ## Non-Negotiable Boundaries
 
@@ -60,6 +66,23 @@ test, merge, or publish package source directly.
 - [x] Validate managed paths centrally and constrain cleanup to task-owned data.
 - [x] Remove agent and integration worktrees after successful integration or
   publication while retaining durable receipts and required immutable data.
+
+### Direct package release and consumer reconciliation
+
+- [x] Make checkout creation, resubmission, integration, publication, and
+  cleanup retry-safe against durable workflow state.
+- [x] Give each managed guest a signed, consumer-bound capability without Git
+  or registry-write credentials.
+- [x] Let the assigned Docker or Tart agent run checkout, validation,
+  integration checks, and `vm packages release` directly.
+- [x] Run review, release, and rollout as persistent restartable appliance
+  workers rather than host-launched one-shot jobs.
+- [x] Publish npm, Cargo, and Python artifacts only to the private VM gateway;
+  remove configurable CI/public release destinations and credentials.
+- [x] Automatically create, test, and push one consumer upgrade branch for
+  every registered project that drifts behind a private release.
+- [x] Remove the public host `submit`, `integrate`, `publish`, and `rollout`
+  commands and their one-shot worker paths.
 
 ### Tart lifecycle and shell recovery
 
@@ -121,8 +144,9 @@ test, merge, or publish package source directly.
   update`; keep initial publication an explicit operator action.
 - [x] Deliver artifact read credentials to running guests over standard input,
   and merge collection skills without replacing existing agent skill roots.
-- [x] Define the shared publish secret explicitly for ephemeral package and
-  tool release jobs so Compose mounts the intended read-only token file.
+- [x] Define the shared publish secret explicitly for the package release
+  service and ephemeral tool release jobs so Compose mounts the intended
+  read-only token file.
 - [x] Let operators validate and explicitly import the active GitHub CLI
   credential into controller-only storage without printing or forwarding it to
   workers.
@@ -324,6 +348,12 @@ requires a tool catalog or package-appliance connection.
   immediately; verify the code-mode host is already executable without waiting
   for background reconciliation (implemented but awaiting host acceptance).
 - [ ] Start a separate Docker worker on the same managed network.
+- [ ] From that worker, create and release a package checkout using only the
+  scoped guest commands; restart each persistent worker mid-flow and verify the
+  same workflow resumes without duplicate branches, tags, or artifacts.
+- [ ] Verify one npm, Cargo, and Python release reaches only the private gateway
+  and automatically produces tested upgrade branches for every drifted
+  registered consumer without a host command.
 - [ ] Prove npm, Cargo, and Python public proxying, immutable internal artifacts,
   per-worker override isolation, persistent-cache restart recovery, and clear
   uncached-internal failure.
@@ -377,6 +407,10 @@ ad4c7a74 feat(tools): reconcile managed environments with fleet flag
 e1254dcf chore(rust): keep cross-platform checks warning-free
 30ba7620 fix(tools): isolate fleet reconciliation scope
 8b7fa9d1 fix(tools): decouple empty tool reconciliation
+498322e8 fix(packages): make release workflows resumable
+25507579 feat(packages): allow scoped guest package work
+0f39138b feat(packages): run durable infrastructure workers
+a6d06a41 feat(packages): automate private consumer releases
 ```
 
 The user's dirty `vm.yaml` is intentionally outside these commits.
@@ -395,6 +429,9 @@ The user's dirty `vm.yaml` is intentionally outside these commits.
   cache when the central appliance is briefly unavailable.
 - Package experiments are isolated to one worker and clean up their own task
   worktrees without touching source repositories or Git history.
+- An assigned agent can release through the private appliance without a host
+  handoff; other registered projects receive tested upgrade branches
+  automatically.
 - Tart discovery, base acquisition, shell recovery, and mounts follow bounded,
   storage-aware paths.
 - Cleanup, secrets, database services, snapshots, and self-updates are narrower

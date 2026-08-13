@@ -29,7 +29,7 @@ Goobits VM is built using a **layered architecture** designed around the princip
 | Domain | `vm-packages` | Package protocols, workflow records, appliance definition, client | `cargo test -p vm-packages` |
 | Service | `vm-package-server` | Immutable npm, Cargo, PyPI, and tool artifacts | `cargo test -p vm-package-server` |
 | Service | `vm-package-work` | Deterministic checkout, review, release, and rollout state | `cargo test -p vm-package-work` |
-| Service | `vm-package-jobs` | Ephemeral review, release, and rollout workers | `cargo test -p vm-package-jobs` |
+| Service | `vm-package-jobs` | Persistent review, release, and rollout workers | `cargo test -p vm-package-jobs` |
 | Service | `vm-auth-proxy` | Authentication proxy that fronts API/services | `cargo run -p vm-auth-proxy -- --help` |
 | Utility | `vm-platform` | OS detection, system integration, resource probing | `cargo test -p vm-platform` |
 | Tooling | `version-sync` | Keeps version numbers aligned across manifests | `cargo run -p version-sync -- check` |
@@ -171,12 +171,13 @@ records, appliance resources
 **Key Exports**: `Store`, `SourceManager`, authenticated workflow router
 
 #### vm-package-jobs
-**Role**: Ephemeral, credential-scoped package jobs.
+**Role**: Credential-scoped package workflow workers.
 
 **Responsibilities**:
-- Credential-free integration review
-- Authorized release publication
-- Isolated consumer rollouts
+- Persistent isolated integration review
+- Persistent private release publication
+- Persistent isolated consumer upgrades
+- Ephemeral tool publication
 
 **Key Exports**: Review, release, and rollout binaries
 

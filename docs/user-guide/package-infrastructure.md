@@ -1,9 +1,9 @@
 # Package Infrastructure
 
 VM manages one private package appliance for npm, Cargo, Python, and immutable
-guest tools/collections. Package
-source work, validation, review, release, and rollout run in project
-environments or ephemeral appliance containers—not as native Mac processes.
+guest tools/collections. Package source work runs in its assigned project
+environment. Validation, review, release, and consumer upgrades run through
+persistent appliance services—not as native Mac processes.
 
 ## Architecture
 
@@ -20,7 +20,7 @@ Dedicated Linux Tart VM (or Docker appliance)
     + registry        npm + Cargo + PyPI + tool artifacts + cache/proxy
     + OCI cache       Docker Hub pull-through cache
     + work service    workflow state, Git mirrors, receipts
-    + ephemeral jobs  review, release, rollout, maintenance
+    + workers         review, release, consumer upgrades
     + named volumes   artifacts, caches, state, receipts, worktrees
         |
         +-----------------------+
@@ -37,7 +37,8 @@ Docker project             Linux Tart project
 The Mac stores controller configuration and launches Docker or Tart. It does
 not clone package repositories, run package checks, build releases, or publish
 artifacts. Project agents never receive Git credentials or registry storage.
-The credential-free gateway alone joins a host-facing controller bridge; all
+Their scoped, consumer-bound package capability can submit only assigned work.
+The gateway alone joins a host-facing controller bridge; all
 registry and workflow storage remains behind the appliance's internal network.
 
 ## Start the Appliance
@@ -115,20 +116,19 @@ inside the guest.
 
 ## Register Sources and Consumers
 
-Store Git and optional remote-registry tokens as controller secrets:
+Store the canonical-source Git token as a controller secret:
 
 ```bash
 vm packages auth --github
 # Or import a Git token from another provider/file:
 vm packages auth --token-file /secure/input/git-token
-vm packages auth --ci-token-file /secure/input/registry-token
 ```
 
 `--github` reads the active `gh auth token` directly into the private
 controller secret without printing it. If GitHub reports an invalid session,
 run `gh auth login --hostname github.com` once and retry. Input files are read
-once. The tokens are exposed only to the scoped service or release job that
-needs them. Public-only sources do not need a Git credential.
+once. The token is exposed only to the source and release services that need
+it. Public-only sources do not need a Git credential.
 
 Register each package repository and each consumer inventory:
 
@@ -138,8 +138,7 @@ vm packages register ./packages --recursive
 
 vm packages register auth \
   --ecosystem cargo \
-  --repository https://github.com/example/auth.git \
-  --ci-registry https://ci-registry.example/cargo/index/
+  --repository https://github.com/example/auth.git
 
 vm packages consumer register project-a \
   --repository https://github.com/example/project-a.git \
@@ -296,7 +295,7 @@ shell-safe command to run on the host, for example
 
 ## Develop and Release a Package
 
-Run checkout from the selected consumer project:
+Run checkout inside the selected Docker or Tart project environment:
 
 ```bash
 vm packages checkout auth \
@@ -310,23 +309,20 @@ and returns a bundle to an isolated checkout under
 Only that project receives the unpublished override. Other consumers remain on
 their published versions.
 
-Commit the intended package changes inside the project environment, then run:
+Commit the intended package changes there, then ask the same environment to
+finish the workflow:
 
 ```bash
-vm packages submit <checkout-id>
-vm packages integrate <submission-id>
-vm packages publish <submission-id> --push-source
+vm packages release <checkout-id>
 ```
 
-Submission validates the exact bundle and selected consumers, then launches a
-credential-free ephemeral reviewer. Integration is serialized against the
-latest canonical commit. After integrated checks pass, the appliance removes
-the mutable agent and integration worktrees and retains only the immutable
-integration bundle required for release. Publication requires explicit
-source-push authority, verifies the semantic version bump, pushes the matching
-commit and tag, and publishes the same immutable artifact locally and to the
-configured CI registry. A successful release removes that remaining bundle and
-the guest's temporary checkout.
+That one resumable command validates the exact bundle and selected consumer,
+waits for the persistent reviewer, integrates against the latest canonical
+commit, reruns checks, and waits for publication. The release worker verifies
+the semantic version bump, pushes the matching source commit and tag, and
+publishes the immutable artifact only to VM's private gateway. No npmjs.org,
+crates.io, PyPI, host approval, or host synchronization command participates.
+A successful release removes the remaining bundle and guest checkout.
 
 Cleanup is restricted to validated task data under `/data/agents/<checkout-id>`
 inside the appliance and
@@ -337,24 +333,28 @@ receipt is durable. Cleanup never removes the registered source repository,
 its `.git` data, `/workspace`, or the persistent canonical mirror under
 `/data/sources`.
 
-Every mutating step is idempotent and writes a durable receipt. A retry resumes
-from the recorded state instead of creating a second merge, tag, or release.
+Every mutating step is idempotent and writes a durable receipt. Worker queues
+are derived from that durable state, so a service restart or command retry
+resumes from the recorded state instead of creating a second merge, tag, or
+release.
 Use `vm packages cancel <checkout-id>` to stop eligible work. Use
 `vm packages cleanup <checkout-id>` to remove temporary data for a failed,
 rejected, cancelled, or already-published checkout.
 
-## Drift and Explicit Rollouts
+## Automatic Consumer Upgrades
 
-Publishing never upgrades consumers automatically:
+After publication, the persistent rollout worker finds every registered
+consumer pinned to an older version. It clones each consumer independently,
+updates its root manifest and lockfile, runs its checks, and pushes a dedicated
+review branch. There is no host rollout or sync command.
+
+Use these read-only commands to inspect progress:
 
 ```bash
 vm packages consumers auth
 vm packages drift
-vm packages rollout auth@1.5.0 --to project-a
 ```
 
-A rollout clones the consumer inside an ephemeral job, updates only its root
-manifest and lockfile, runs its checks, and pushes a dedicated review branch.
 The registered consumer version changes only after its normal review process
 updates the inventory. Rerun `vm packages consumer register` with the reviewed
 version to refresh that inventory and close the matching rollout receipt.
@@ -386,8 +386,8 @@ your infrastructure backup system to protect against physical disk loss.
 - Project environments consume registry protocols and never mount registry
   volumes.
 - Worktrees are isolated by checkout or rollout ID.
-- Only the release job can push source/tags and publish artifacts, and the CLI
-  must explicitly authorize that job.
+- Only the persistent release service can push source/tags and publish private
+  artifacts; project agents can only advance their assigned checkout.
 - Receipts contain identities, commits, digests, outcomes, and timestamps—not
   secrets.
 

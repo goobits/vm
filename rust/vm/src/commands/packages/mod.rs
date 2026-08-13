@@ -29,7 +29,7 @@ pub(in crate::commands) fn publish_tool(name: &str) -> VmResult<()> {
     let files = ApplianceFiles::discover()?;
     let _operation_lock = files.acquire_operation_lock()?;
     let (state, _) = appliance::configured_state_and_client(&files)?;
-    appliance::launch_job(&files, &state, appliance::PackageJob::ToolRelease(name))
+    appliance::launch_tool_release(&files, &state, name)
 }
 
 pub(in crate::commands) fn git_auth_configured() -> VmResult<bool> {
@@ -132,32 +132,6 @@ pub(super) async fn handle(
         }
         PackagesSubcommand::Cleanup { checkout_id } => {
             cleanup_checkout(&files, config_path, profile, &checkout_id).await
-        }
-        PackagesSubcommand::Submit {
-            checkout_id,
-            consumer,
-        } => submission::handle(&files, config_path, profile, checkout_id, consumer).await,
-        PackagesSubcommand::Integrate {
-            submission_id,
-            consumer,
-            strategy,
-        } => {
-            integration::handle(
-                &files,
-                config_path,
-                profile,
-                submission_id,
-                consumer,
-                strategy,
-            )
-            .await
-        }
-        PackagesSubcommand::Publish {
-            submission_id,
-            push_source,
-        } => release::handle(&files, config_path, profile, submission_id, push_source).await,
-        PackagesSubcommand::Rollout { target, consumer } => {
-            consumer::rollout(&files, target, consumer).await
         }
         PackagesSubcommand::Auth {
             token_file,

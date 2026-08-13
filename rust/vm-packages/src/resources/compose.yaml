@@ -166,7 +166,7 @@ services:
       - |
         . /usr/local/lib/pkg-client-env.sh
         export PKG_REVIEW_TOKEN="$$(cat /run/secrets/reviewer_token)"
-        exec pkg-review --watch
+        exec pkg-review
     secrets: [reviewer_read_token, reviewer_token]
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -194,7 +194,7 @@ services:
     command:
       - |
         . /usr/local/lib/pkg-client-env.sh
-        exec pkg-release --watch
+        exec pkg-release
     secrets: [releaser_read_token, release_token, publish_token, git_token]
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -236,7 +236,7 @@ services:
     command:
       - |
         . /usr/local/lib/pkg-client-env.sh
-        exec pkg-rollout --watch
+        exec pkg-rollout
     secrets: [rollout_read_token, rollout_token]
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]

@@ -15,13 +15,6 @@ const HEALTH_TIMEOUT: Duration = Duration::from_secs(60);
 const HEALTH_INTERVAL: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone, Copy)]
-pub(super) enum PackageJob<'a> {
-    Release(&'a str),
-    ToolRelease(&'a str),
-    Rollout(&'a str),
-}
-
-#[derive(Debug, Clone, Copy)]
 pub(super) enum MaintenanceTask<'a> {
     List,
     Backup(&'a str),
@@ -49,30 +42,6 @@ impl<'a> MaintenanceTask<'a> {
     }
 }
 
-impl<'a> PackageJob<'a> {
-    pub(super) fn service(self) -> &'static str {
-        match self {
-            Self::Release(_) => "releaser",
-            Self::ToolRelease(_) => "tool-releaser",
-            Self::Rollout(_) => "rollout",
-        }
-    }
-
-    pub(super) fn variable(self) -> &'static str {
-        match self {
-            Self::Release(_) => "SUBMISSION_ID",
-            Self::ToolRelease(_) => "TOOL_NAME",
-            Self::Rollout(_) => "ROLLOUT_ID",
-        }
-    }
-
-    pub(super) fn id(self) -> &'a str {
-        match self {
-            Self::Release(id) | Self::ToolRelease(id) | Self::Rollout(id) => id,
-        }
-    }
-}
-
 pub(super) fn configured_client(files: &ApplianceFiles) -> VmResult<PackageInfrastructureClient> {
     configured_state_and_client(files).map(|(_, client)| client)
 }
@@ -90,10 +59,10 @@ pub(super) fn configured_state_and_client(
     Ok((state, client))
 }
 
-pub(super) fn launch_job(
+pub(super) fn launch_tool_release(
     files: &ApplianceFiles,
     state: &ApplianceState,
-    job: PackageJob<'_>,
+    name: &str,
 ) -> VmResult<()> {
     if state.job_image.is_empty() {
         return Err(VmError::validation(
@@ -102,8 +71,8 @@ pub(super) fn launch_job(
         ));
     }
     match state.runtime {
-        InfrastructureRuntime::Docker => docker::run_job(files, job),
-        InfrastructureRuntime::Tart => tart::run_job(files, job),
+        InfrastructureRuntime::Docker => docker::run_tool_release(files, name),
+        InfrastructureRuntime::Tart => tart::run_tool_release(files, name),
     }
 }
 

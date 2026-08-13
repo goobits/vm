@@ -9,7 +9,7 @@ use crate::error::VmResult;
 use vm_core::{vm_println, vm_progress, vm_warning};
 use vm_packages::{ApplianceConfig, COMPOSE_PROJECT};
 
-use super::appliance::{MaintenanceTask, PackageJob};
+use super::appliance::MaintenanceTask;
 use super::{files::ApplianceFiles, process};
 
 const SOURCE_BUILD_LABEL: &str = "org.goobits.vm.source-build";
@@ -75,14 +75,14 @@ pub(super) fn doctor(files: &ApplianceFiles) -> VmResult<()> {
     Ok(())
 }
 
-pub(super) fn run_job(files: &ApplianceFiles, job: PackageJob<'_>) -> VmResult<()> {
-    process::validate_job_id(job.id())?;
+pub(super) fn run_tool_release(files: &ApplianceFiles, name: &str) -> VmResult<()> {
+    process::validate_job_id(name)?;
     process::run(
         compose(files)
             .args(["run", "--rm", "--no-deps", "--env"])
-            .arg(format!("{}={}", job.variable(), job.id()))
-            .arg(job.service()),
-        "run the ephemeral package job",
+            .arg(format!("TOOL_NAME={name}"))
+            .arg("tool-releaser"),
+        "run the tool release job",
     )
 }
 

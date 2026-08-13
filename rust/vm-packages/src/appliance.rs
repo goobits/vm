@@ -161,11 +161,11 @@ mod tests {
         assert!(COMPOSE_YAML.contains("work_rollout_token"));
         assert!(COMPOSE_YAML.contains("work_agent_signing_key"));
         assert!(COMPOSE_YAML.contains("agent-temporary-data:/data/agents:ro"));
-        assert!(COMPOSE_YAML.contains("exec pkg-release --watch"));
+        assert!(COMPOSE_YAML.contains("exec pkg-release"));
         assert!(COMPOSE_YAML.contains("tool-releaser:"));
         assert!(COMPOSE_YAML.contains("exec pkg-tool-release"));
-        assert!(COMPOSE_YAML.contains("exec pkg-review --watch"));
-        assert!(COMPOSE_YAML.contains("exec pkg-rollout --watch"));
+        assert!(COMPOSE_YAML.contains("exec pkg-review"));
+        assert!(COMPOSE_YAML.contains("exec pkg-rollout"));
         assert!(COMPOSE_YAML.contains("profiles: [maintenance]"));
         assert!(GATEWAY_CONFIG.contains("reverse_proxy work:3091"));
         assert!(GATEWAY_CONFIG.contains("reverse_proxy oci-cache:5000"));

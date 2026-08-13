@@ -204,13 +204,13 @@ vm packages register <path>... [--recursive]
 vm packages auth --github
 vm packages list
 vm packages checkout <package> --agent <agent> --task <task>
-vm packages submit <checkout-id>
+vm packages show <checkout-id>
+vm packages release <checkout-id>
 vm packages cancel <checkout-id>
 vm packages cleanup <checkout-id>
-vm packages integrate <submission-id>
-vm packages publish <submission-id> --push-source
+vm packages consumer register <project> --repository <url> --dependency <package>@<version>
+vm packages consumers <package>
 vm packages drift
-vm packages rollout <package>@<version> --to <consumer>
 ```
 
 Recursive registration skips repositories marked by `vm-tool.yaml`; those are
@@ -221,6 +221,10 @@ are scanned before appliance mutation; configured empty shelves are accepted,
 while manual recursive registration still requires at least one repository.
 `vm packages list` separates registered, published, installed, and consumable
 state; environment-only states are reported as not applicable.
+Package checkout and release commands run inside the assigned Docker or Tart
+environment. Persistent infrastructure workers review, integrate, publish only
+to the private gateway, and prepare drifted consumer upgrade branches without a
+host sync or rollout command.
 
 See [Package Infrastructure](package-infrastructure.md) for the provider
 boundary, registration, credentials, release workflow, and recovery model.

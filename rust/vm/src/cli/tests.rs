@@ -349,6 +349,19 @@ fn package_checkout_parses_isolated_work_request() {
 }
 
 #[test]
+fn package_release_parses_guest_workflow() {
+    assert!(matches!(
+        Args::parse_from(["vm", "packages", "release", "checkout-auth-1"]),
+        Args {
+            command: Command::Packages {
+                command: PackagesSubcommand::Release { checkout_id }
+            },
+            ..
+        } if checkout_id == "checkout-auth-1"
+    ));
+}
+
+#[test]
 fn package_recovery_commands_parse() {
     assert!(matches!(
         Args::parse_from(["vm", "packages", "restore", "backup-20260810"]),
@@ -371,7 +384,7 @@ fn package_recovery_commands_parse() {
 }
 
 #[test]
-fn package_inventory_and_rollout_commands_parse() {
+fn package_inventory_commands_parse() {
     assert!(matches!(
         Args::parse_from([
             "vm",
@@ -390,15 +403,6 @@ fn package_inventory_and_rollout_commands_parse() {
             },
             ..
         }
-    ));
-    assert!(matches!(
-        Args::parse_from(["vm", "packages", "rollout", "auth@1.5.0", "--to", "project-a"]),
-        Args {
-            command: Command::Packages {
-                command: PackagesSubcommand::Rollout { target, consumer }
-            },
-            ..
-        } if target == "auth@1.5.0" && consumer == "project-a"
     ));
 }
 

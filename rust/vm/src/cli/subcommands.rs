@@ -122,36 +122,6 @@ pub enum PackagesSubcommand {
     Cancel { checkout_id: String },
     /// Remove a terminal checkout's temporary service and project data
     Cleanup { checkout_id: String },
-    /// Validate and submit committed package work for integration review
-    Submit {
-        checkout_id: String,
-        /// Defaults to the current project
-        #[arg(long)]
-        consumer: Option<String>,
-    },
-    /// Rebase or merge an approved submission and rerun selected checks
-    Integrate {
-        submission_id: String,
-        /// Defaults to the current project
-        #[arg(long)]
-        consumer: Option<String>,
-        #[arg(long, default_value = "rebase", value_parser = ["rebase", "merge"])]
-        strategy: String,
-    },
-    /// Push validated source/tag and publish immutable release artifacts
-    Publish {
-        submission_id: String,
-        /// Explicitly authorize the source commit and release tag push
-        #[arg(long)]
-        push_source: bool,
-    },
-    /// Create, test, and push one isolated consumer upgrade branch
-    Rollout {
-        /// Package and immutable version, for example auth@1.5.0
-        target: String,
-        #[arg(long = "to")]
-        consumer: String,
-    },
     /// Install or clear the controller's private Git token
     Auth {
         #[arg(

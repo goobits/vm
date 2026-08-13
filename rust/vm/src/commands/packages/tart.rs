@@ -12,7 +12,7 @@ use vm_provider::{tart_base, TartCommand};
 use crate::commands::base;
 use crate::error::{VmError, VmResult};
 
-use super::appliance::{MaintenanceTask, PackageJob};
+use super::appliance::MaintenanceTask;
 use super::{files::ApplianceFiles, process};
 
 const GUEST_ROOT: &str = "/opt/vm-packages";
@@ -187,17 +187,14 @@ pub(super) fn gateway_url(files: &ApplianceFiles, port: u16) -> VmResult<String>
     PackageTart::discover(files)?.gateway_url(port)
 }
 
-pub(super) fn run_job(files: &ApplianceFiles, job: PackageJob<'_>) -> VmResult<()> {
-    process::validate_job_id(job.id())?;
+pub(super) fn run_tool_release(files: &ApplianceFiles, name: &str) -> VmResult<()> {
+    process::validate_job_id(name)?;
     let tart = PackageTart::discover(files)?;
     process::run(
         &mut tart.compose_command(&format!(
-            "run --rm --no-deps --env {}={} {}",
-            job.variable(),
-            job.id(),
-            job.service(),
+            "run --rm --no-deps --env TOOL_NAME={name} tool-releaser",
         )),
-        "run the ephemeral package job",
+        "run the tool release job",
     )
 }
 

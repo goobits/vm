@@ -204,6 +204,11 @@ mod tests {
                 checkout_id: "checkout-1".into(),
             },
         }));
+        assert!(guest_allowed_command(&Command::Packages {
+            command: PackagesSubcommand::Release {
+                checkout_id: "checkout-1".into(),
+            },
+        }));
         assert!(!guest_allowed_command(&Command::Packages {
             command: PackagesSubcommand::Up {
                 runtime: crate::cli::PackageInfrastructureRuntime::Auto,
