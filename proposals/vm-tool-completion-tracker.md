@@ -243,17 +243,16 @@ git diff --check
 
 No Docker image, Tart base, guest, or release binary is built by this gate.
 
-Latest result on 2026-08-12: formatting, the serial all-feature workspace check,
-the full workspace build, and all-target workspace Clippy with warnings denied
-passed from an isolated container-local Cargo target. The VM suite passed 166
-tests, workspace libraries passed 489 tests, and the integration feature matrix
-passed 161 tests; 20 tests requiring a real runtime or performance environment
-remained ignored. Focused coverage includes reconciliation locks and cooldowns,
-stable source-image markers, repeat fake-Docker reconciliation, and a fatal
-fake-Tart sentinel proving Docker paths did not invoke Tart. `git diff --check`
-passed. Duplicate detection could not run because `jscpd` is not installed in
-this container. No Docker, Tart, host VM, network, or publication action was
-run.
+Latest result on 2026-08-13: formatting, the serial all-feature workspace check,
+all-target workspace Clippy with warnings denied, 497 workspace library tests,
+27 focused CLI tests, and the 160-test integration feature matrix passed; 20
+tests requiring a real runtime or performance environment remained ignored.
+Focused coverage includes consumer-bound agent capabilities, retryable package
+workflow state, persistent worker queues, private-only publication, automatic
+consumer rollout creation, source discovery, and repeat reconciliation. `git
+diff --check` passed. Duplicate detection could not run because `jscpd` is not
+installed in this container. No Docker, Tart, host VM, external network, or
+publication action was run.
 
 ## Post-Recreation Acceptance
 
@@ -411,9 +410,12 @@ e1254dcf chore(rust): keep cross-platform checks warning-free
 25507579 feat(packages): allow scoped guest package work
 0f39138b feat(packages): run durable infrastructure workers
 a6d06a41 feat(packages): automate private consumer releases
+bb6de4d4 refactor(packages): expose one guest release workflow
+9c5f24f2 chore(packages): satisfy workspace lint
 ```
 
-The user's dirty `vm.yaml` is intentionally outside these commits.
+The unrelated untracked `storage-5x-port/` directory is intentionally outside
+these commits.
 
 ## Related Documentation
 

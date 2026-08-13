@@ -1,6 +1,6 @@
 # Changelog
 
-<!-- CHANGELOG audit cutoff: 2026-08-13. commit a6d06a41 on main. -->
+<!-- CHANGELOG audit cutoff: 2026-08-13. commit 9c5f24f2 on main. -->
 
 ## [Unreleased]
 
