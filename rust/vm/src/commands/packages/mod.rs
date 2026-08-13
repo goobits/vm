@@ -29,6 +29,19 @@ pub(in crate::commands) fn git_auth_configured() -> VmResult<bool> {
     ApplianceFiles::discover()?.has_git_token()
 }
 
+pub(in crate::commands) fn diagnose_client_access(fix: bool) -> VmResult<Option<bool>> {
+    let files = ApplianceFiles::discover()?;
+    let Some(mut state) = files.read_state()? else {
+        return Ok(None);
+    };
+    if fix {
+        state = appliance::repair_client_access(&files, state)?;
+    }
+    Ok(Some(appliance::state_client_access_is_current(
+        &files, &state,
+    )?))
+}
+
 pub(super) async fn handle(
     command: PackagesSubcommand,
     config_path: Option<PathBuf>,

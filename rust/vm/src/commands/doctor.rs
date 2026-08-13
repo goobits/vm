@@ -9,15 +9,22 @@ use vm_core::{vm_hint, vm_println, vm_progress, vm_success, vm_warning};
 use vm_provider::docker::validate_docker_environment;
 
 /// Run diagnostics with optional auto-fix
-pub fn run_with_fix(fix: bool, provider: &str) -> Result<()> {
-    run_diagnostics(fix, provider)
+pub fn run_with_fix(fix: bool, provider: &str, configuration_error: Option<&str>) -> Result<()> {
+    run_diagnostics(fix, provider, configuration_error)
 }
 
 /// Internal diagnostic runner
-fn run_diagnostics(fix: bool, provider: &str) -> Result<()> {
+fn run_diagnostics(fix: bool, provider: &str, configuration_error: Option<&str>) -> Result<()> {
     vm_progress!("Running diagnostics...");
     let mut all_ok = true;
     let mut issues_fixed = 0;
+
+    if let Some(error) = configuration_error {
+        vm_println!("  Configuration: invalid ({error})");
+        all_ok = false;
+    } else {
+        vm_println!("  Configuration: ok");
+    }
 
     if Command::new("rustc")
         .arg("--version")
@@ -124,6 +131,20 @@ fn run_diagnostics(fix: bool, provider: &str) -> Result<()> {
                 vm_println!("  Config directory: created");
                 issues_fixed += 1;
             }
+        }
+    }
+
+    match crate::commands::packages::diagnose_client_access(fix) {
+        Ok(Some(true)) => vm_println!("  Package infrastructure access: ok"),
+        Ok(Some(false)) => {
+            vm_println!("  Package infrastructure access: stale");
+            vm_hint!("Run `vm doctor --fix` to repair managed package credentials");
+            all_ok = false;
+        }
+        Ok(None) => {}
+        Err(error) => {
+            vm_println!("  Package infrastructure access: {error}");
+            all_ok = false;
         }
     }
 

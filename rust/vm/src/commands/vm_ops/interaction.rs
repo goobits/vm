@@ -7,7 +7,7 @@ use tracing::debug;
 use crate::error::{VmError, VmResult};
 use vm_config::{config::VmConfig, ConfigLoader, GlobalConfig};
 use vm_core::{vm_progress, vm_success};
-use vm_provider::Provider;
+use vm_provider::{Provider, ProviderContext};
 
 use super::lifecycle::{ensure_running, ensure_running_for_shell};
 
@@ -54,7 +54,13 @@ pub async fn handle_ssh(
     );
     vm_progress!("Connecting to '{vm_name}'...");
     ensure_running_for_shell(provider.as_ref(), container, &config, &global_config).await?;
-    crate::commands::packages::reconcile_client_settings(provider.as_ref(), vm_name, &config)?;
+    reconcile_package_access(
+        provider.as_ref(),
+        container,
+        vm_name,
+        &config,
+        &global_config,
+    )?;
     if let Err(error) =
         crate::commands::base::reconcile_codex_in_background(provider.as_ref(), vm_name, &config)
     {
@@ -81,7 +87,40 @@ pub async fn handle_exec(
     );
 
     ensure_running(provider.as_ref(), container, &config, &global_config, true).await?;
+    let vm_name = container.unwrap_or_else(|| {
+        config
+            .project
+            .as_ref()
+            .and_then(|project| project.name.as_deref())
+            .unwrap_or("vm-project")
+    });
+    reconcile_package_access(
+        provider.as_ref(),
+        container,
+        vm_name,
+        &config,
+        &global_config,
+    )?;
     provider.exec(container, &command).map_err(VmError::from)
+}
+
+fn reconcile_package_access(
+    provider: &dyn Provider,
+    container: Option<&str>,
+    environment: &str,
+    config: &VmConfig,
+    global_config: &GlobalConfig,
+) -> VmResult<()> {
+    if config.package_edge.is_none() {
+        return Ok(());
+    }
+    provider
+        .reconcile_runtime(
+            container,
+            &ProviderContext::default().with_config(global_config.clone()),
+        )
+        .map_err(VmError::from)?;
+    crate::commands::packages::reconcile_client_settings(provider, environment, config)
 }
 
 /// View environment logs.

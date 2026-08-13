@@ -187,6 +187,8 @@ vm doctor --prune-pnpm-store [--container <environment>]
 
 `vm config validate` is read-only. `vm config render` also performs validation,
 redacts environment values and host paths, and does not contact the provider.
+`vm doctor` reports project-configuration errors and stale configured package
+access; `--fix` repairs the latter without recreating the project environment.
 pnpm pruning is explicit and never runs during create, start, or bootstrap.
 
 ## Package Infrastructure

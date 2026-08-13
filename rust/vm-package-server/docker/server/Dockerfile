@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Build with the Rust workspace as context:
 # docker build -f vm-package-server/docker/server/Dockerfile .
 FROM rust:1.97-bookworm AS builder
@@ -5,7 +6,10 @@ FROM rust:1.97-bookworm AS builder
 WORKDIR /source
 ENV CARGO_TARGET_DIR=/tmp/vm-rust-target
 COPY . .
-RUN cargo build --locked --release \
+RUN --mount=type=cache,id=vm-packages-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=vm-packages-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=vm-packages-rust-target,target=/tmp/vm-rust-target,sharing=locked \
+    cargo build --locked --release \
       --package vm-package-server \
       --features standalone-binary \
       --bin pkg-server \

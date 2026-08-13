@@ -20,8 +20,8 @@ mod validation;
 mod workflow;
 
 pub use appliance::{
-    ApplianceConfig, ApplianceState, InfrastructureRuntime, COMPOSE_PROJECT, COMPOSE_YAML,
-    GATEWAY_CONFIG, TART_INSTANCE_NAME,
+    ApplianceConfig, ApplianceState, InfrastructureRuntime, APPLIANCE_DEFINITION_REVISION,
+    COMPOSE_PROJECT, COMPOSE_YAML, GATEWAY_CONFIG, TART_INSTANCE_NAME,
 };
 pub use catalog::{PackageDefinition, RegisterPackage};
 pub use client::{InfrastructureStatus, PackageInfrastructureClient, PackageInventory};

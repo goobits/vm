@@ -301,7 +301,10 @@ a missing or stale `package-edge` sidecar with `--no-deps`. For Linux Tart it
 reconciles only the guest edge container. Both paths preserve the edge cache
 named volume and leave the primary environment and base image intact. Both also
 repair managed client files in place so a new shell no longer depends on the
-primary container's creation-time environment. It then
+primary container's creation-time environment. `vm ssh` and `vm exec` perform
+that package-edge and client-file repair before entering the guest or running
+the requested command. Tool and Codex reconciliation remains shell-specific.
+The explicit tool update then
 invokes base-owned Codex reconciliation in the foreground, waiting for any
 shell-triggered repair already in flight, before it verifies managed-tool links.
 A Codex replacement is staged and validated before activation, rolls back on
@@ -368,6 +371,8 @@ your infrastructure backup system to protect against physical disk loss.
 - The gateway is private by default and all workflow routes are authenticated.
 - Read, controller, reviewer, rollout, release, and publish credentials are
   separate.
+- Guest workflow reads are filtered to the capability's assigned consumer;
+  shared package and tool catalogs remain readable.
 - Project and integration agents never receive Git credentials.
 - Project environments consume registry protocols and never mount registry
   volumes.

@@ -514,6 +514,7 @@ mod tests {
 
     fn state(runtime: InfrastructureRuntime) -> ApplianceState {
         ApplianceState {
+            definition_revision: vm_packages::APPLIANCE_DEFINITION_REVISION,
             runtime,
             gateway_url: "http://192.0.2.8:3080".into(),
             gateway_port: 3080,

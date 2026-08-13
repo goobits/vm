@@ -5,6 +5,8 @@ pub const COMPOSE_PROJECT: &str = "vm-packages";
 pub const TART_INSTANCE_NAME: &str = "vm-packages-infra";
 pub const COMPOSE_YAML: &str = include_str!("resources/compose.yaml");
 pub const GATEWAY_CONFIG: &str = include_str!("resources/Caddyfile");
+/// Bump when running appliance services must be rebuilt or recreated.
+pub const APPLIANCE_DEFINITION_REVISION: u32 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -24,6 +26,8 @@ impl InfrastructureRuntime {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApplianceState {
+    #[serde(default)]
+    pub definition_revision: u32,
     pub runtime: InfrastructureRuntime,
     pub gateway_url: String,
     pub gateway_port: u16,
@@ -112,7 +116,8 @@ fn checked_image(value: String) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ApplianceConfig, ApplianceState, InfrastructureRuntime, COMPOSE_YAML, GATEWAY_CONFIG,
+        ApplianceConfig, ApplianceState, InfrastructureRuntime, APPLIANCE_DEFINITION_REVISION,
+        COMPOSE_YAML, GATEWAY_CONFIG,
     };
 
     #[test]
@@ -180,6 +185,7 @@ mod tests {
     #[test]
     fn state_round_trips() {
         let state = ApplianceState {
+            definition_revision: APPLIANCE_DEFINITION_REVISION,
             runtime: InfrastructureRuntime::Tart,
             gateway_url: "http://192.0.2.2:3080".into(),
             gateway_port: 3080,
@@ -209,5 +215,6 @@ mod tests {
         .unwrap();
 
         assert_eq!(state.tart_home, None);
+        assert_eq!(state.definition_revision, 0);
     }
 }

@@ -22,6 +22,7 @@ struct FakeProvider {
     creates: Arc<AtomicUsize>,
     shells: Arc<AtomicUsize>,
     execs: Arc<AtomicUsize>,
+    runtime_reconciliations: Arc<AtomicUsize>,
     command_ready_checks: Arc<AtomicUsize>,
     shell_ready_checks: Arc<AtomicUsize>,
     fail_start_after_transition: bool,
@@ -37,6 +38,7 @@ impl FakeProvider {
             creates: Arc::new(AtomicUsize::new(0)),
             shells: Arc::new(AtomicUsize::new(0)),
             execs: Arc::new(AtomicUsize::new(0)),
+            runtime_reconciliations: Arc::new(AtomicUsize::new(0)),
             command_ready_checks: Arc::new(AtomicUsize::new(0)),
             shell_ready_checks: Arc::new(AtomicUsize::new(0)),
             fail_start_after_transition: false,
@@ -161,6 +163,15 @@ impl Provider for FakeProvider {
     }
 
     fn provision(&self, _container: Option<&str>) -> ProviderResult<()> {
+        Ok(())
+    }
+
+    fn reconcile_runtime(
+        &self,
+        _container: Option<&str>,
+        _context: &ProviderContext,
+    ) -> ProviderResult<()> {
+        self.runtime_reconciliations.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
@@ -350,6 +361,40 @@ async fn exec_starts_a_stopped_environment_before_running() {
     assert_eq!(provider.creates.load(Ordering::SeqCst), 0);
     assert_eq!(provider.command_ready_checks.load(Ordering::SeqCst), 1);
     assert_eq!(provider.shell_ready_checks.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn shell_and_exec_reconcile_managed_package_access() {
+    let provider = FakeProvider::new(Some(InstanceState::Running));
+    let mut config = project_config();
+    config.package_edge = Some(vm_config::config::PackageEdgeConfig {
+        image: "package-edge:local".into(),
+        internal_gateway: "http://127.0.0.1:3080".into(),
+        client_gateway: "http://package-edge:3080".into(),
+        read_token: "read-token".into(),
+        revision: "revision-1".into(),
+    });
+
+    handle_ssh(
+        Box::new(provider.clone()),
+        Some("demo-dev"),
+        Some(PathBuf::from(".")),
+        config.clone(),
+        GlobalConfig::default(),
+    )
+    .await
+    .unwrap();
+    handle_exec(
+        Box::new(provider.clone()),
+        Some("demo-dev"),
+        vec!["true".to_string()],
+        config,
+        GlobalConfig::default(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(provider.runtime_reconciliations.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]

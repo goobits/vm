@@ -61,11 +61,15 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
                 )?;
                 maintenance::prune_pnpm_store(subject.provider, Some(subject.target.as_str()))?;
             }
-            let provider = AppConfig::load(args.config, args.profile, None)
+            let loaded = AppConfig::load(args.config, args.profile, None);
+            let provider = loaded
+                .as_ref()
                 .ok()
-                .and_then(|config| config.vm.provider)
+                .and_then(|config| config.vm.provider.clone())
                 .unwrap_or_else(|| "docker".to_string());
-            doctor::run_with_fix(fix, &provider).map_err(VmError::from)
+            let configuration_error = loaded.err().map(|error| error.to_string());
+            doctor::run_with_fix(fix, &provider, configuration_error.as_deref())
+                .map_err(VmError::from)
         }
         Command::Config { command } => {
             config::handle_config_command(&command, args.profile, args.config)

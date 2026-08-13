@@ -244,9 +244,18 @@ working trees and installed immutable releases are never treated as source.
 - [x] Repair missing credentials and current appliance definitions automatically
   when an existing controller predates scoped guest access; ordinary shell
   startup no longer requires a manual migration command.
-- [x] Reconcile the scoped workflow token and package client profile before
-  every interactive shell, including containers created before those settings
-  existed; the signing key remains controller-only.
+- [x] Reconcile the worker edge, scoped workflow token, and package client
+  profile before every interactive shell and command execution, including
+  containers created before those settings existed; the signing key remains
+  controller-only.
+- [x] Filter guest-readable workflow, consumer, drift, and rollout records by
+  the capability's assigned consumer while keeping shared package and tool
+  catalogs readable.
+- [x] Version appliance definitions independently from credentials so service
+  security upgrades run once, and reuse one locked Docker Cargo cache across
+  server/job image rebuilds without writing build output into the workspace.
+- [x] Make `vm doctor` report invalid project configuration and stale managed
+  package access instead of declaring the installation ready.
 
 Container tests cover fake Docker/provider execution, temporary controller
 state, fixture source discovery, repeat reconciliation, targeted sidecar

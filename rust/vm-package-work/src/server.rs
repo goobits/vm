@@ -236,8 +236,11 @@ async fn health() -> Json<serde_json::Value> {
 
 async fn list_checkouts(
     State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
 ) -> WorkResult<Json<Vec<vm_packages::CheckoutRecord>>> {
-    Ok(Json(state.store.list_checkouts().await?))
+    let mut checkouts = state.store.list_checkouts().await?;
+    checkouts.retain(|checkout| checkout_is_visible(&access, checkout));
+    Ok(Json(checkouts))
 }
 
 async fn list_packages(State(state): State<AppState>) -> WorkResult<Json<Vec<PackageDefinition>>> {
@@ -257,73 +260,143 @@ async fn get_package(
 
 async fn get_checkout(
     State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
     Path(checkout_id): Path<String>,
 ) -> WorkResult<Json<vm_packages::CheckoutRecord>> {
-    Ok(Json(state.store.get_checkout(&checkout_id).await?))
+    let checkout = state.store.get_checkout(&checkout_id).await?;
+    ensure_checkout_is_visible(&access, &checkout)?;
+    Ok(Json(checkout))
 }
 
 async fn get_receipt(
     State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
     Path(receipt_id): Path<String>,
 ) -> WorkResult<Json<vm_packages::WorkflowReceipt>> {
-    Ok(Json(state.store.get_receipt(&receipt_id).await?))
+    let receipt = state.store.get_receipt(&receipt_id).await?;
+    let checkout = state.store.get_checkout(&receipt.checkout_id).await?;
+    ensure_checkout_is_visible(&access, &checkout)?;
+    Ok(Json(receipt))
 }
 
 async fn list_submissions(
     State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
 ) -> WorkResult<Json<Vec<SubmissionRecord>>> {
-    Ok(Json(state.store.submissions().await))
+    let visible = visible_checkout_ids(&state.store, &access).await?;
+    let mut submissions = state.store.submissions().await;
+    submissions.retain(|submission| visible.contains(&submission.checkout_id));
+    Ok(Json(submissions))
 }
 
 async fn get_submission(
     State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
     Path(submission_id): Path<String>,
 ) -> WorkResult<Json<SubmissionRecord>> {
-    Ok(Json(state.store.submission(&submission_id).await?))
+    let submission = state.store.submission(&submission_id).await?;
+    let checkout = state.store.get_checkout(&submission.checkout_id).await?;
+    ensure_checkout_is_visible(&access, &checkout)?;
+    Ok(Json(submission))
 }
 
 async fn get_checkout_submission(
     State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
     Path(checkout_id): Path<String>,
 ) -> WorkResult<Json<SubmissionRecord>> {
+    let checkout = state.store.get_checkout(&checkout_id).await?;
+    ensure_checkout_is_visible(&access, &checkout)?;
     Ok(Json(state.store.checkout_submission(&checkout_id).await?))
 }
 
-async fn list_releases(State(state): State<AppState>) -> WorkResult<Json<Vec<ReleaseRecord>>> {
-    Ok(Json(state.store.releases().await))
+async fn list_releases(
+    State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
+) -> WorkResult<Json<Vec<ReleaseRecord>>> {
+    let visible = visible_checkout_ids(&state.store, &access).await?;
+    let mut releases = state.store.releases().await;
+    releases.retain(|release| visible.contains(&release.checkout_id));
+    Ok(Json(releases))
 }
 
 async fn get_release(
     State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
     Path(release_id): Path<String>,
 ) -> WorkResult<Json<ReleaseRecord>> {
-    Ok(Json(state.store.release(&release_id).await?))
+    let release = state.store.release(&release_id).await?;
+    let checkout = state.store.get_checkout(&release.checkout_id).await?;
+    ensure_checkout_is_visible(&access, &checkout)?;
+    Ok(Json(release))
 }
 
-async fn list_consumers(State(state): State<AppState>) -> WorkResult<Json<Vec<ConsumerRecord>>> {
-    Ok(Json(state.store.consumers().await))
+async fn list_consumers(
+    State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
+) -> WorkResult<Json<Vec<ConsumerRecord>>> {
+    let mut consumers = state.store.consumers().await;
+    if let Some(expected) = &access.0 {
+        consumers.retain(|consumer| &consumer.name == expected);
+    }
+    Ok(Json(consumers))
 }
 
 async fn package_consumers(
     State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
     Path(name): Path<String>,
 ) -> WorkResult<Json<Vec<ConsumerUsage>>> {
-    Ok(Json(state.store.package_consumers(&name).await?))
+    let mut consumers = state.store.package_consumers(&name).await?;
+    if let Some(expected) = &access.0 {
+        consumers.retain(|consumer| &consumer.consumer == expected);
+    }
+    Ok(Json(consumers))
 }
 
-async fn drift(State(state): State<AppState>) -> WorkResult<Json<Vec<PackageDrift>>> {
-    Ok(Json(state.store.drift().await))
+async fn drift(
+    State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
+) -> WorkResult<Json<Vec<PackageDrift>>> {
+    let mut drift = state.store.drift().await;
+    if let Some(expected) = &access.0 {
+        for package in &mut drift {
+            package
+                .consumers
+                .retain(|consumer| &consumer.consumer == expected);
+        }
+        drift.retain(|package| !package.consumers.is_empty());
+    }
+    Ok(Json(drift))
 }
 
-async fn list_rollouts(State(state): State<AppState>) -> WorkResult<Json<Vec<RolloutRecord>>> {
-    Ok(Json(state.store.rollouts().await))
+async fn list_rollouts(
+    State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
+) -> WorkResult<Json<Vec<RolloutRecord>>> {
+    let mut rollouts = state.store.rollouts().await;
+    if let Some(expected) = &access.0 {
+        rollouts.retain(|rollout| &rollout.consumer == expected);
+    }
+    Ok(Json(rollouts))
 }
 
 async fn get_rollout(
     State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
     Path(rollout_id): Path<String>,
 ) -> WorkResult<Json<RolloutRecord>> {
-    Ok(Json(state.store.rollout(&rollout_id).await?))
+    let rollout = state.store.rollout(&rollout_id).await?;
+    if access
+        .0
+        .as_ref()
+        .is_some_and(|expected| expected != &rollout.consumer)
+    {
+        return Err(WorkError::Unauthorized(
+            "package agent credential is bound to a different consumer".into(),
+        ));
+    }
+    Ok(Json(rollout))
 }
 
 async fn next_review(State(state): State<AppState>) -> Json<Option<SubmissionRecord>> {
@@ -807,14 +880,19 @@ async fn download_release_bundle(
 
 async fn read_auth(
     State(state): State<AppState>,
-    request: Request,
+    mut request: Request,
     next: Next,
 ) -> WorkResult<Response> {
     let token = request_token(&request)?;
-    if !state.access.tokens().contains(&token.as_str()) {
-        vm_packages::verify_agent_capability(&state.access.agent_signing_key, &token)
-            .map_err(|_| WorkError::Unauthorized("invalid read credential".into()))?;
-    }
+    let consumer = if state.access.tokens().contains(&token.as_str()) {
+        None
+    } else {
+        Some(
+            vm_packages::verify_agent_capability(&state.access.agent_signing_key, &token)
+                .map_err(|_| WorkError::Unauthorized("invalid read credential".into()))?,
+        )
+    };
+    request.extensions_mut().insert(AgentAccess(consumer));
     Ok(next.run(request).await)
 }
 
@@ -915,6 +993,39 @@ fn ensure_requested_consumer(access: &AgentAccess, consumers: &[String]) -> Work
     Ok(())
 }
 
+fn checkout_is_visible(access: &AgentAccess, checkout: &vm_packages::CheckoutRecord) -> bool {
+    access
+        .0
+        .as_ref()
+        .map_or(true, |consumer| checkout.consumers.contains(consumer))
+}
+
+fn ensure_checkout_is_visible(
+    access: &AgentAccess,
+    checkout: &vm_packages::CheckoutRecord,
+) -> WorkResult<()> {
+    if checkout_is_visible(access, checkout) {
+        Ok(())
+    } else {
+        Err(WorkError::Unauthorized(
+            "checkout is not assigned to this consumer".into(),
+        ))
+    }
+}
+
+async fn visible_checkout_ids(
+    store: &Store,
+    access: &AgentAccess,
+) -> WorkResult<std::collections::HashSet<String>> {
+    Ok(store
+        .list_checkouts()
+        .await?
+        .into_iter()
+        .filter(|checkout| checkout_is_visible(access, checkout))
+        .map(|checkout| checkout.checkout_id)
+        .collect())
+}
+
 async fn ensure_checkout_access(
     store: &Store,
     access: &AgentAccess,
@@ -965,7 +1076,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let store = Arc::new(Store::open(directory.path()).await.unwrap());
         let server = TestServer::new(router(
-            store,
+            store.clone(),
             WorkCredentials::new(
                 "read",
                 "controller",
@@ -1102,6 +1213,48 @@ mod tests {
                 .await
                 .status_code(),
             StatusCode::CREATED
+        );
+        let project_a = store
+            .create_checkout(serde_json::from_value(checkout()).unwrap())
+            .await
+            .unwrap()
+            .checkout;
+        let mut project_b_request = checkout();
+        project_b_request["consumers"] = serde_json::json!(["project-b"]);
+        project_b_request["lease_token"] =
+            serde_json::json!("other-lease-token-012345678901234567890123456789");
+        project_b_request["idempotency_key"] = serde_json::json!("create-2");
+        let project_b = store
+            .create_checkout(serde_json::from_value(project_b_request).unwrap())
+            .await
+            .unwrap()
+            .checkout;
+        let scoped_response = server
+            .get("/v1/checkouts")
+            .add_header(header::AUTHORIZATION, format!("Bearer {agent}"))
+            .await;
+        assert_eq!(scoped_response.status_code(), StatusCode::OK);
+        let scoped: Vec<vm_packages::CheckoutRecord> = scoped_response.json();
+        assert_eq!(scoped.len(), 1);
+        assert_eq!(scoped[0].checkout_id, project_a.checkout_id);
+        assert_eq!(
+            server
+                .get(&format!("/v1/checkouts/{}", project_b.checkout_id))
+                .add_header(header::AUTHORIZATION, format!("Bearer {agent}"))
+                .await
+                .status_code(),
+            StatusCode::UNAUTHORIZED
+        );
+        let controller_response = server
+            .get("/v1/checkouts")
+            .add_header(header::AUTHORIZATION, "Bearer read")
+            .await;
+        assert_eq!(controller_response.status_code(), StatusCode::OK);
+        assert_eq!(
+            controller_response
+                .json::<Vec<vm_packages::CheckoutRecord>>()
+                .len(),
+            2
         );
         assert_eq!(
             server

@@ -3,7 +3,7 @@ use std::time::Duration;
 use vm_core::{vm_println, vm_progress, vm_success};
 use vm_packages::{
     ApplianceConfig, ApplianceState, InfrastructureRuntime, PackageInfrastructureClient,
-    RegistryEndpoints,
+    RegistryEndpoints, APPLIANCE_DEFINITION_REVISION,
 };
 
 use crate::cli::PackageInfrastructureRuntime;
@@ -101,6 +101,7 @@ pub(super) async fn up(
     wait_for_gateway(&gateway_url).await?;
 
     files.write_state(&ApplianceState {
+        definition_revision: APPLIANCE_DEFINITION_REVISION,
         runtime,
         gateway_url: gateway_url.clone(),
         gateway_port: port,
@@ -126,13 +127,13 @@ pub(super) fn repair_client_access(
     files: &ApplianceFiles,
     fallback: ApplianceState,
 ) -> VmResult<ApplianceState> {
-    if files.runtime_credentials_ready()? {
+    if state_client_access_is_current(files, &fallback)? {
         return Ok(fallback);
     }
 
     let _lifecycle_lock = files.acquire_lifecycle_lock()?;
     let mut state = files.read_state()?.unwrap_or(fallback);
-    if files.runtime_credentials_ready()? {
+    if state_client_access_is_current(files, &state)? {
         return Ok(state);
     }
 
@@ -163,11 +164,20 @@ pub(super) fn repair_client_access(
     state.registry_image = config.registry_image;
     state.job_image = config.job_image;
     state.controller_version = env!("CARGO_PKG_VERSION").to_string();
+    state.definition_revision = APPLIANCE_DEFINITION_REVISION;
     if state.runtime == InfrastructureRuntime::Tart {
         state.tart_home = tart::storage_home(files)?;
     }
     files.write_state(&state)?;
     Ok(state)
+}
+
+pub(super) fn state_client_access_is_current(
+    files: &ApplianceFiles,
+    state: &ApplianceState,
+) -> VmResult<bool> {
+    Ok(state.definition_revision == APPLIANCE_DEFINITION_REVISION
+        && files.runtime_credentials_ready()?)
 }
 
 pub(super) fn down(
