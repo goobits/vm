@@ -94,9 +94,3 @@ Plugin-backed workflows stay top-level:
 vm db ls
 vm secret interactive
 ```
-
-Use the ordinary command with `--fleet` for a bulk operation:
-
-```bash
-vm exec --fleet -- npm test
-```

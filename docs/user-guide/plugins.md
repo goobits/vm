@@ -11,7 +11,5 @@ vm secret interactive
 
 A plugin can provide presets, services, or command integrations while keeping
 the core CLI focused on everyday environment lifecycle. Use `vm plugin --help`,
-`vm db --help`, or `vm secret --help` for the exact command inventory. Bulk
-environment operations use `--fleet` on the ordinary lifecycle or interaction
-command. The [CLI Reference](cli-reference.md#plugins) owns the documented
-workflow.
+`vm db --help`, or `vm secret --help` for the exact command inventory. The
+[CLI Reference](cli-reference.md#plugins) owns the documented workflow.

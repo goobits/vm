@@ -71,6 +71,19 @@ it does not select Docker merely because that provider is installed. Use
 `--profile docker` explicitly for a profile or `vm run ... --provider docker`
 for an advanced provider override.
 
+Bulk lifecycle and interaction stay on the ordinary command through `--fleet`:
+
+```bash
+vm exec --fleet [--provider <provider>] [--pattern <pattern>] -- <command>
+vm start --fleet [--provider <provider>] [--pattern <pattern>]
+vm stop --fleet [--provider <provider>] [--pattern <pattern>]
+vm restart --fleet [--provider <provider>] [--pattern <pattern>]
+vm copy --fleet [--provider <provider>] [--pattern <pattern>] <source> <destination>
+```
+
+Omit both filters to target every managed environment. `--provider` and
+`--pattern` are valid only with `--fleet`.
+
 ## Interaction
 
 ```bash
@@ -265,16 +278,6 @@ vm secret add <name> <value>
 vm secret ls
 vm secret rm <name>
 vm secret interactive
-```
-
-Bulk lifecycle and interaction use `--fleet` on the normal command:
-
-```bash
-vm exec --fleet [--provider <provider>] [--pattern <pattern>] -- <command>
-vm start --fleet [--provider <provider>] [--pattern <pattern>]
-vm stop --fleet [--provider <provider>] [--pattern <pattern>]
-vm restart --fleet [--provider <provider>] [--pattern <pattern>]
-vm copy --fleet [--provider <provider>] [--pattern <pattern>] <source> <destination>
 ```
 
 Prefer `vm secret interactive` when a value should not appear in shell history.

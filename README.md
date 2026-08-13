@@ -99,8 +99,7 @@ vm plugin install ./plugins/vibe-dev
 ```
 
 Plugin-backed workflows stay flat and user-facing. You use `vm db` or
-`vm secret`; the implementation can still come from plugins. Bulk environment
-operations stay on their ordinary commands through `--fleet`.
+`vm secret`; the implementation can still come from plugins.
 
 ## Configuration
 
