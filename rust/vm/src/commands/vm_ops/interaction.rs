@@ -54,6 +54,7 @@ pub async fn handle_ssh(
     );
     vm_progress!("Connecting to '{vm_name}'...");
     ensure_running_for_shell(provider.as_ref(), container, &config, &global_config).await?;
+    crate::commands::packages::reconcile_client_settings(provider.as_ref(), vm_name, &config)?;
     if let Err(error) =
         crate::commands::base::reconcile_codex_in_background(provider.as_ref(), vm_name, &config)
     {

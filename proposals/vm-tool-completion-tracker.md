@@ -244,6 +244,9 @@ working trees and installed immutable releases are never treated as source.
 - [x] Repair missing credentials and current appliance definitions automatically
   when an existing controller predates scoped guest access; ordinary shell
   startup no longer requires a manual migration command.
+- [x] Reconcile the scoped workflow token and package client profile before
+  every interactive shell, including containers created before those settings
+  existed; the signing key remains controller-only.
 
 Container tests cover fake Docker/provider execution, temporary controller
 state, fixture source discovery, repeat reconciliation, targeted sidecar
