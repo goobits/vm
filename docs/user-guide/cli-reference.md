@@ -238,25 +238,15 @@ vm tools update [environment] [--background]
 vm tools update --fleet [--provider <provider>] [--pattern <pattern>] [--background]
 ```
 
-Tool sources and immutable releases live in package infrastructure. `status`
-reads one guest and separates controller registration/publication from guest
-installation/consumability, including stale controller-only or guest-only rows.
-Publication is always an explicit `vm tools publish <name>` operation; the
-generic publisher currently accepts collections. `update` creates or starts the
-requested guest when necessary, updates only stale runtime sidecar
-infrastructure, repairs incomplete Codex state before checking publication, and
-validates every eligible managed-tool activation without a prompt or base
-rebuild. Newer releases configured as `off` remain disabled; required installs
-and pinned-version repairs still reconcile. `--fleet` applies the
-loaded tool configuration to every matching managed environment, starts stopped
-targets without recreating them, continues after individual failures, and
-prints a summary. It reconciles only base-owned Codex and managed tools, so it
-cannot project the invoking project's service configuration onto unrelated
-environments; use a targeted update within a project to reconcile its package
-edge. These commands must run on the controller host; a managed guest prints the
-exact host command and exits. Automatic shell-triggered refresh and activation
-are single-flight and reuse a successful pass for 60 seconds; explicit
-`refresh` and `update` commands bypass that recent-success window.
+`status` combines controller registration/publication with guest
+installation/consumability. Publication remains an explicit `vm tools publish`
+operation. `update` applies every eligible configured change without prompting
+or rebuilding the base. `--fleet` uses the loaded tool selection for matching
+managed environments, starts stopped targets in place, and summarizes failures;
+it does not copy the invoking project's services or package-edge configuration
+to unrelated targets. Run these commands on the controller host. See
+[Package Infrastructure](package-infrastructure.md#register-and-consume-tools)
+for update policy, runtime ownership, locking, and recovery behavior.
 
 ## Plugins
 

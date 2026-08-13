@@ -274,41 +274,19 @@ tools:
     updates: auto
 ```
 
-`updates` can be `prompt`, `auto`, or `off`, with an optional override per
-tool. `vm start` never contacts package infrastructure or waits for tool
-updates. An interactive `vm shell`/`vm ssh` attaches as soon as the shell is
-ready. From a fresh local catalog it starts required installs, pin repairs, and
-`auto` updates as detached guest downloads, while catalog refresh also runs in
-the background. A `prompt` update never opens a checklist during shell startup;
-it waits for an explicit update command. Vibe environments also launch their
-base-owned Codex probe/repair as a locked background guest job. Registry access,
-downloads, and repair therefore do not hold up the terminal. In an older broken
-environment, `yocodex` can remain unavailable briefly while that first repair
-finishes.
+`tools.updates` sets the default update policy; a tool-specific value overrides
+it. Supported values are:
 
-Shell-triggered work is single-flight. Concurrent terminals share the active
-catalog refresh, Codex reconciliation, and managed-tool installer instead of
-starting duplicate work. After a successful pass, further shell-triggered
-checks reuse it for 60 seconds. Explicit `vm tools refresh` and `vm tools
-update` are not suppressed by that success window; they still honor an active
-lock so state cannot be updated concurrently.
+| Value | Behavior |
+| --- | --- |
+| `auto` | Apply eligible updates during background shell reconciliation or an explicit update. |
+| `prompt` | Leave newer releases pending until an explicit update. |
+| `off` | Disable newer-release upgrades; required installs and pinned-version repairs still apply. |
 
-Use `vm tools update` for deterministic foreground reconciliation. The
-`--background` variant still reconciles the package edge and Codex first, then
-returns after launching managed-tool downloads. On a fresh controller, the
-command registers the built-in `agent-skills` definition when needed, but
-publication remains an explicit `vm tools publish agent-skills` operation.
-Rerunning it reconciles a stale package edge, incomplete Codex runtime, and
-non-consumable managed links without rebuilding the base. Use `vm tools update
---fleet` to apply this loaded tool configuration to all matching managed
-environments; `--provider` and `--pattern` narrow that bulk target set.
-Managed collections activate under the guest user's home; VM never rewrites the
-mounted project repository. A collection checkout or submodule at the matching
-project path is therefore a separate copy that can take precedence over the
-managed release. `vm tools status` reports it as `PROJECT_COPY=yes`, and
-`vm tools update` prints the exact project path. For a VM-managed project,
-remove that legacy checkout. For a portable repository-owned copy, update it
-through Git separately and disable the overlapping managed tool.
+Omitted versions track the latest release; explicit semantic versions remain
+pinned. Registration, publication, activation, locking, and fleet behavior are
+documented in
+[Package Infrastructure](package-infrastructure.md#register-and-consume-tools).
 
 Host sync is separate: it retains supported CLI state and credentials but does
 not install executables:
@@ -324,16 +302,9 @@ host_sync:
 
 `ai_tools: true` syncs all three state areas. The old `gemini` key remains a
 deprecated compatibility alias for `antigravity`; new configs should use
-`antigravity`. Executables are never downloaded directly by ordinary project
-provisioning; the Vibe base build owns the three standard AI CLI installers.
-The base runtime also owns Codex repair. Shell-triggered repairs share one
-per-guest lock and append diagnostics inside the guest at
-`${XDG_STATE_HOME:-$HOME/.local/state}/vm-runtime/codex.log`; concurrent shell
-starts coalesce and reuse a successful check for 60 seconds, while explicit
-`vm tools update` waits for an in-flight repair.
-Replacement is staged, validated, and rolled back on failure without writing
-executable content through host-synced `~/.codex` state or overwriting an
-unmanaged `/usr/local/bin/codex` launcher.
+`antigravity`. Host sync retains supported state and credentials only. The Vibe
+base owns the three executables and Codex repair; package infrastructure owns
+explicitly managed tools.
 
 ## Presets
 

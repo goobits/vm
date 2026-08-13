@@ -244,8 +244,9 @@ first install or pinned-version repair. Normal startup never waits for the
 registry, an update prompt, a guest download, or base-owned Codex repair. It
 launches only cached automatic tool
 work and the Vibe runtime probe/repair in the background. Prompt-policy upgrades
-remain pending for an explicit `vm tools update`; full Codex ownership, locking,
-and repair behavior is documented under [Managed Tools And AI State](configuration.md#managed-tools-and-ai-state).
+remain pending for an explicit `vm tools update`. The
+[configuration guide](configuration.md#managed-tools-and-ai-state) owns the
+`tools` policy syntax.
 When no managed tools are selected, update can repair base-owned Codex without
 requiring a tool catalog or package-appliance connection.
 
@@ -268,6 +269,9 @@ reconciles only the guest edge container. Both paths preserve the edge cache
 named volume and leave the primary environment and base image intact. It then
 invokes base-owned Codex reconciliation in the foreground, waiting for any
 shell-triggered repair already in flight, before it verifies managed-tool links.
+A Codex replacement is staged and validated before activation, rolls back on
+failure, never writes executable content through host-synced `~/.codex`, and
+does not overwrite an unmanaged `/usr/local/bin/codex` launcher.
 A matching installed release with broken links is treated as non-consumable and
 retried, including by the cached background startup path.
 
@@ -389,9 +393,3 @@ your infrastructure backup system to protect against physical disk loss.
 
 Use `vm packages status` for runtime health and `vm packages doctor` for the
 gateway, Compose definition, credentials, and workflow service checks.
-
-Run `vm tools update [environment]` to add or refresh a missing/stale worker
-edge and reconcile Codex/managed tools. The project image and base do not need
-rebuilding, unrelated services are not recreated, and edge cache volumes are
-preserved. Stable source-image identity and background shell reconciliation are
-implemented but awaiting host acceptance.

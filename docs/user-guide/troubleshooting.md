@@ -188,40 +188,26 @@ For an existing environment, run this on the controller host:
 ```bash
 vm tools status [environment]
 vm tools update [environment]
-vm tools update --fleet [--provider docker] [--pattern 'project-*']
 ```
 
-`status` distinguishes registered, published, installed, and consumable tools,
-including registrations or stale guest installs no longer selected by the
-project. `PROJECT_COPY=yes` means the project also contains a standalone Git
-checkout at one of that collection's activation paths. That checkout is not a
-failed sync: project Git is intentionally never mutated by `vm tools`. Remove
-the checkout when VM should own the collection, or update it separately and
-disable the overlapping managed tool when the repository should own it.
-`update` repairs a missing/stale package edge, incomplete standalone Codex
-package, and broken managed-tool links. Docker updates only the sidecar; Linux
-Tart updates only its edge container. Neither path rebuilds the base or removes
-the persistent edge cache volume. Codex replacement is transactional and
-refuses to overwrite an unmanaged `/usr/local/bin/codex`; inspect and resolve
-that ownership explicitly before retrying. Interactive shell startup launches
-this Codex probe/repair in the background, so a broken legacy environment can
-open before `yocodex` becomes usable. Inside that guest, inspect the append-only
-job log with:
+`PROJECT_COPY=yes` means a standalone project checkout shadows the managed
+collection. Remove it when VM should own the collection, or update it through
+Git and disable the managed tool when the repository should own it. VM never
+rewrites project Git.
+
+`update` repairs the worker edge, Codex package, and managed links without a
+base rebuild or persistent edge-cache removal. If it refuses to overwrite an
+unmanaged `/usr/local/bin/codex`, resolve that ownership before retrying. A
+background shell repair may finish after the terminal opens; inspect its guest
+log with:
 
 ```bash
 tail -n 50 "${XDG_STATE_HOME:-$HOME/.local/state}/vm-runtime/codex.log"
 ```
 
-For a foreground result, run `vm tools update [environment]` on the host.
-It waits for any repair already in flight and returns an error if Codex is still
-not consumable.
-
-Opening several terminals at once should produce only one active catalog,
-Codex, or managed-tool reconciliation job for that environment. Successful
-shell-triggered work is reused for 60 seconds. If a deterministic immediate
-check is needed, run `vm tools refresh` followed by `vm tools update
-[environment]` on the host; explicit commands are not delayed by that
-shell cooldown.
+For a deterministic foreground result, run `vm tools refresh` followed by `vm
+tools update [environment]` on the host. The update waits for an in-flight
+repair and fails if Codex remains unusable.
 
 If a package/tool command was run inside a managed guest, do not try to operate
 the controller from there. The error prints the exact shell-safe host command,
@@ -231,7 +217,9 @@ A built-in tool can be registered but not published on a fresh controller. That
 is intentional. Run the reported explicit command, normally
 `vm tools publish agent-skills`, then rerun `vm tools update`. The first update
 still reconciles the worker edge and Codex before reporting the unpublished
-collection.
+collection. See
+[Package Infrastructure](package-infrastructure.md#register-and-consume-tools)
+for normal update, locking, fleet, and package-state behavior.
 
 ## Secrets
 
