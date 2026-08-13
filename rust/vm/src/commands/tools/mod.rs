@@ -14,9 +14,7 @@ use vm_provider::{InstanceInfo, Provider, ProviderContext};
 use crate::cli::{FleetArgs, ToolsSubcommand};
 use crate::error::{VmError, VmResult};
 
-use super::command_context::{
-    load_or_create_runtime_subject, load_runtime_subject, RuntimeSubject,
-};
+use super::command_context::{load_runtime_subject, RuntimeSubject};
 use super::packages::tooling::{self, CachedToolCatalog, RefreshOutcome};
 use super::vm_ops::{self, ensure_running, FleetProgress, InstanceStateFilter};
 use super::{base, packages};
@@ -144,8 +142,7 @@ pub(super) async fn handle(
             if fleet.fleet {
                 update_fleet(config_path, profile, &fleet, mode).await
             } else {
-                let subject =
-                    load_or_create_runtime_subject(config_path, profile, environment).await?;
+                let subject = load_runtime_subject(config_path, profile, environment)?;
                 reconcile_subject(&subject).await?;
                 prepare_tool_catalog(&subject.config).await?;
                 apply_updates(

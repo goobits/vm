@@ -84,9 +84,11 @@ pub(super) fn find_runtime_target(
     let canonical = provider
         .resolve_instance_name(None)
         .map_err(VmError::from)?;
-    let instances = provider
-        .list_instances()
-        .map_err(VmError::from)?
+    let all_instances = provider.list_instances().map_err(VmError::from)?;
+    if let Some(exact) = exact_requested_target(&all_instances, requested) {
+        return Ok(Some(exact));
+    }
+    let instances = all_instances
         .into_iter()
         .filter(|instance| project_instance_matches(instance, project))
         .collect::<Vec<_>>();
@@ -96,6 +98,14 @@ pub(super) fn find_runtime_target(
         TargetChoice::Ambiguous(candidates) => select_ambiguous_target(candidates).map(Some),
         TargetChoice::Missing => Ok(None),
     }
+}
+
+fn exact_requested_target(instances: &[InstanceInfo], requested: Option<&str>) -> Option<String> {
+    let requested = requested?;
+    instances
+        .iter()
+        .find(|instance| instance.name == requested)
+        .map(|instance| instance.name.clone())
 }
 
 fn choose_target(
@@ -228,7 +238,8 @@ pub fn project_instance_matches(instance: &InstanceInfo, project_name: &str) -> 
 #[cfg(test)]
 mod tests {
     use super::{
-        canonical_instance_name, choose_target, copy_target, creation_instance_name, TargetChoice,
+        canonical_instance_name, choose_target, copy_target, creation_instance_name,
+        exact_requested_target, TargetChoice,
     };
     use vm_provider::InstanceInfo;
 
@@ -251,6 +262,18 @@ mod tests {
             choose_target(&instances, "demo", "demo-dev", None),
             TargetChoice::Selected(name) if name == "demo-dev"
         ));
+    }
+
+    #[test]
+    fn exact_environment_name_resolves_across_project_boundaries() {
+        let mut other = instance("projects-dev");
+        other.project = Some("projects".to_string());
+
+        assert_eq!(
+            exact_requested_target(&[other], Some("projects-dev")).as_deref(),
+            Some("projects-dev")
+        );
+        assert_eq!(exact_requested_target(&[], Some("projects-dev")), None);
     }
 
     #[test]
