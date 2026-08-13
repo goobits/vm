@@ -17,7 +17,7 @@ pub(crate) fn quote_posix_home_path(value: &str) -> String {
 pub(crate) fn worktree_repair_script(workspace: &str) -> String {
     let workspace = quote_posix_argument(workspace);
     format!(
-        "if [ -e {workspace}/.git ]; then git -C {workspace} worktree repair >/dev/null 2>&1 || true; fi"
+        "if [ -f {workspace}/.git ] && ! git -C {workspace} rev-parse --git-dir >/dev/null 2>&1; then git -C {workspace} worktree repair >/dev/null 2>&1 || true; fi"
     )
 }
 
@@ -31,7 +31,7 @@ mod tests {
 
         assert_eq!(
             script,
-            "if [ -e '/workspace/it'\"'\"'s here'/.git ]; then git -C '/workspace/it'\"'\"'s here' worktree repair >/dev/null 2>&1 || true; fi"
+            "if [ -f '/workspace/it'\"'\"'s here'/.git ] && ! git -C '/workspace/it'\"'\"'s here' rev-parse --git-dir >/dev/null 2>&1; then git -C '/workspace/it'\"'\"'s here' worktree repair >/dev/null 2>&1 || true; fi"
         );
     }
 

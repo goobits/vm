@@ -47,19 +47,23 @@ impl<'a> LifecycleOperations<'a> {
         // Resolve the container name first
         let container_name = self.resolve_target_container(container)?;
 
-        // Check if container is running before showing connection details
-        // Use a quick docker inspect to check status (suppress errors)
-        let status_check = duct::cmd(
+        // Confirm the target once. The command handler already made it ready;
+        // this final check preserves direct provider-call diagnostics without
+        // repeating separate existence and running inspections.
+        let status = duct::cmd(
             self.executable,
             &["inspect", "--format", "{{.State.Running}}", &container_name],
         )
         .stderr_null()
-        .read();
+        .read()
+        .map_err(|_| VmError::Internal(format!("No such container: {container_name}")))?;
+        if status.trim() != "true" {
+            return Err(VmError::Internal(format!(
+                "Container {container_name} is not running"
+            )));
+        }
 
-        let is_running = status_check.is_ok_and(|output| output.trim() == "true");
-
-        // Only show connection details if container is running and it's interactive
-        if is_running && std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
+        if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
             vm_println!(
                 "{}",
                 msg!(
@@ -69,37 +73,6 @@ impl<'a> LifecycleOperations<'a> {
                     shell = shell
                 )
             );
-        }
-
-        // First check if container exists to provide better error messages
-        let container_exists = duct::cmd(self.executable, &["inspect", &container_name])
-            .stdout_null()
-            .stderr_null()
-            .run()
-            .is_ok();
-
-        if !container_exists {
-            // Return error without printing raw Docker messages
-            return Err(VmError::Internal(format!(
-                "No such container: {container_name}"
-            )));
-        }
-
-        // Check if container is actually running before trying to exec
-        let container_running = duct::cmd(
-            self.executable,
-            &["inspect", "-f", "{{.State.Running}}", &container_name],
-        )
-        .stderr_null()
-        .read()
-        .map(|output| output.trim() == "true")
-        .unwrap_or(false);
-
-        if !container_running {
-            // Return error that will trigger the start prompt
-            return Err(VmError::Internal(format!(
-                "Container {container_name} is not running"
-            )));
         }
 
         Self::repair_home_state(self.executable, &container_name, &user_config)?;

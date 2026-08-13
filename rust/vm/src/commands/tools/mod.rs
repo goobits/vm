@@ -337,15 +337,18 @@ pub(in crate::commands) fn before_shell(
     }
 
     let result = (|| -> VmResult<()> {
-        let target = guest::platform_target(provider, environment)?;
-        let Some(catalog) = tooling::cached(config, &target)? else {
+        let state = guest::shell_state(provider, environment)?;
+        let Some(catalog) = tooling::cached(config, &state.target)? else {
             return Ok(());
         };
         report_missing(&catalog);
-        let installed = guest::installed(provider, environment)?;
-        let consumable = guest::consumable(provider, environment)?;
-        let selected =
-            updates::plan(config, &catalog.artifacts, &installed, &consumable).automatic();
+        let selected = updates::plan(
+            config,
+            &catalog.artifacts,
+            &state.installed,
+            &state.consumable,
+        )
+        .automatic();
         if selected.is_empty() {
             return Ok(());
         }

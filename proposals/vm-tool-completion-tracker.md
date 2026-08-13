@@ -192,6 +192,9 @@ test, merge, or publish package source directly.
 - [x] Require `vm tools update` to resolve an existing environment instead of
   creating from the invoking directory's configuration, while allowing an
   exact managed environment name to resolve across project boundaries.
+- [x] Keep interactive Docker startup lean by caching successful home repair
+  within one CLI run, combining cached tool-state probes, avoiding unnecessary
+  worktree repair, and removing the legacy job-control-producing shell hook.
 - [x] Cover fresh setup and existing-machine reconciliation with fake providers
   and temporary fixtures, then synchronize command help and user documentation.
 

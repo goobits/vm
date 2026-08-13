@@ -23,6 +23,10 @@ as_root() {
   fi
 }
 
+# Older images launched this on every interactive shell, leaking zsh job-control
+# messages and duplicating the targeted repair performed by the provider.
+as_root rm -f /etc/profile.d/vm-worktree-repair.sh
+
 stat_identity() {
   stat -c '%d:%u:%g:%a' "$1" 2>/dev/null || stat -f '%d:%u:%g:%Lp' "$1" 2>/dev/null
 }

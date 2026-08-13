@@ -3,6 +3,8 @@ use super::LifecycleOperations;
 use crate::context::ProviderContext;
 use crate::docker::UserConfig;
 use crate::progress::{AnsibleProgressParser, ProgressParser};
+use std::collections::HashSet;
+use std::sync::{Mutex, OnceLock};
 use vm_core::command_stream::{
     stream_command_with_progress_and_timeout, ProgressParser as CoreProgressParser,
 };
@@ -15,6 +17,8 @@ use super::{
 // Default timeout for Ansible provisioning (5 minutes)
 // Can be overridden via environment variable ANSIBLE_TIMEOUT
 const DEFAULT_ANSIBLE_TIMEOUT_SECS: u64 = 300;
+
+static REPAIRED_HOMES: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 
 /// Adapter to convert AnsibleProgressParser to CoreProgressParser trait
 struct AnsibleParserAdapter(AnsibleProgressParser);
@@ -38,6 +42,14 @@ impl<'a> LifecycleOperations<'a> {
         use std::process::Command;
 
         let home_dir = format!("/home/{}", user_config.username);
+        let repair_key = format!("{executable}\0{container_name}\0{home_dir}");
+        let mut repaired = REPAIRED_HOMES
+            .get_or_init(|| Mutex::new(HashSet::new()))
+            .lock()
+            .map_err(|_| VmError::Internal("Guest home-state repair lock is poisoned".into()))?;
+        if repaired.contains(&repair_key) {
+            return Ok(());
+        }
         let output = Command::new(executable)
             .args([
                 "exec",
@@ -63,6 +75,7 @@ impl<'a> LifecycleOperations<'a> {
             )));
         }
 
+        repaired.insert(repair_key);
         Ok(())
     }
 
@@ -237,6 +250,8 @@ impl<'a> LifecycleOperations<'a> {
 
 #[cfg(test)]
 mod tests {
+    use super::LifecycleOperations;
+    use crate::docker::UserConfig;
     use crate::resources::HOME_STATE_REPAIR;
 
     #[test]
@@ -245,5 +260,34 @@ mod tests {
         assert!(HOME_STATE_REPAIR.contains("$home_dir/.claude/projects"));
         assert!(HOME_STATE_REPAIR.contains("$home_dir/.codex/sessions"));
         assert!(HOME_STATE_REPAIR.contains("home_is_writable"));
+        assert!(HOME_STATE_REPAIR.contains("rm -f /etc/profile.d/vm-worktree-repair.sh"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn home_state_repair_runs_once_per_cli_target() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let executable = directory.path().join("fake-docker");
+        let log = directory.path().join("commands.log");
+        fs::write(
+            &executable,
+            format!("#!/bin/sh\nprintf 'call\\n' >> '{}'\n", log.display()),
+        )
+        .unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).unwrap();
+        let user = UserConfig {
+            uid: 1000,
+            gid: 1000,
+            username: "developer".into(),
+        };
+        let executable = executable.to_str().unwrap();
+
+        LifecycleOperations::repair_home_state(executable, "demo-dev", &user).unwrap();
+        LifecycleOperations::repair_home_state(executable, "demo-dev", &user).unwrap();
+
+        assert_eq!(fs::read_to_string(log).unwrap().lines().count(), 1);
     }
 }
