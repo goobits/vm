@@ -5,7 +5,7 @@ use std::{
 };
 
 use vm_core::{vm_println, vm_success};
-use vm_packages::{PackageEcosystem, PackageInventory, RegisterPackage};
+use vm_packages::{PackageEcosystem, PackageIdentity, PackageInventory, RegisterPackage};
 
 use crate::error::{VmError, VmResult};
 
@@ -155,27 +155,14 @@ fn package_is_published(
         PackageEcosystem::Cargo => "cargo",
         PackageEcosystem::Python => "pypi",
     };
+    let Ok(package) = PackageIdentity::new(ecosystem, name) else {
+        return false;
+    };
     inventory.get(registry).is_some_and(|packages| {
         packages
             .iter()
-            .any(|candidate| same_package(ecosystem, candidate, name))
+            .any(|candidate| package.matches_name(candidate))
     })
-}
-
-fn same_package(ecosystem: PackageEcosystem, left: &str, right: &str) -> bool {
-    if ecosystem != PackageEcosystem::Python {
-        return left == right;
-    }
-    let normalize = |value: &str| {
-        value
-            .to_ascii_lowercase()
-            .replace(['_', '.'], "-")
-            .split('-')
-            .filter(|part| !part.is_empty())
-            .collect::<Vec<_>>()
-            .join("-")
-    };
-    normalize(left) == normalize(right)
 }
 
 fn validated_source_roots(source_roots: &[String]) -> VmResult<Vec<String>> {
@@ -312,7 +299,7 @@ mod tests {
     use super::{package_is_published, validated_source_roots};
 
     #[test]
-    fn publication_state_uses_registry_names_and_python_normalization() {
+    fn publication_state_uses_native_registry_name_normalization() {
         let inventory = BTreeMap::from([
             ("npm".to_string(), vec!["@scope/shared".to_string()]),
             ("pypi".to_string(), vec!["shared_auth".to_string()]),
@@ -333,6 +320,11 @@ mod tests {
             &inventory,
             PackageEcosystem::Python,
             "shared-auth"
+        ));
+        assert!(package_is_published(
+            &inventory,
+            PackageEcosystem::Cargo,
+            "shared_core"
         ));
         assert!(!package_is_published(
             &inventory,

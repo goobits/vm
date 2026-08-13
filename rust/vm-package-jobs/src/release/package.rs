@@ -9,8 +9,8 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use vm_packages::{
     sha256_hex as digest_hex, BeginReleaseRequest, CleanupRequest, CompleteReleaseRequest,
-    PackageEcosystem, PackageInfrastructureClient, PublicationRequest, RegistryEndpoints,
-    ReleaseRecord, VersionRecommendation, WorkflowState,
+    PackageEcosystem, PackageIdentity, PackageInfrastructureClient, PublicationRequest,
+    RegistryEndpoints, ReleaseRecord, VersionRecommendation, WorkflowState,
 };
 
 use crate::runtime::{operation_key, required_secret as secret, run_command as run};
@@ -21,7 +21,7 @@ pub struct PackageReleaseOptions {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct PackageIdentity {
+struct PackageManifest {
     name: String,
     version: Version,
 }
@@ -91,8 +91,8 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
     clone_at(&bundle, &source, &integration.integration_commit)?;
     clone_at(&bundle, &canonical, &integration.canonical_commit)?;
 
-    let identity = package_identity(definition.ecosystem, &source, &definition.name)?;
-    let previous = package_identity(definition.ecosystem, &canonical, &definition.name)?;
+    let identity = package_manifest(definition.ecosystem, &source, &definition.name)?;
+    let previous = package_manifest(definition.ecosystem, &canonical, &definition.name)?;
     validate_version_bump(
         &previous.version,
         &identity.version,
@@ -237,17 +237,18 @@ fn clone_at(bundle: &Path, destination: &Path, commit: &str) -> Result<()> {
     Ok(())
 }
 
-fn package_identity(
+fn package_manifest(
     ecosystem: PackageEcosystem,
     source: &Path,
     expected_name: &str,
-) -> Result<PackageIdentity> {
+) -> Result<PackageManifest> {
     let identity = match ecosystem {
-        PackageEcosystem::Npm => npm_identity(source)?,
-        PackageEcosystem::Cargo => cargo_identity(source, expected_name)?,
-        PackageEcosystem::Python => python_identity(source)?,
+        PackageEcosystem::Npm => npm_manifest(source)?,
+        PackageEcosystem::Cargo => cargo_manifest(source, expected_name)?,
+        PackageEcosystem::Python => python_manifest(source)?,
     };
-    if !package_names_match(ecosystem, &identity.name, expected_name) {
+    let expected = PackageIdentity::new(ecosystem, expected_name)?;
+    if !expected.matches_name(&identity.name) {
         bail!(
             "package manifest identifies '{}' but the catalog expects '{expected_name}'",
             identity.name
@@ -259,44 +260,20 @@ fn package_identity(
     Ok(identity)
 }
 
-fn package_names_match(ecosystem: PackageEcosystem, left: &str, right: &str) -> bool {
-    if ecosystem != PackageEcosystem::Python {
-        return left == right;
-    }
-    normalize_python_name(left) == normalize_python_name(right)
-}
-
-fn normalize_python_name(value: &str) -> String {
-    let mut normalized = String::with_capacity(value.len());
-    let mut separator = false;
-    for character in value.chars() {
-        if matches!(character, '-' | '_' | '.') {
-            if !separator {
-                normalized.push('-');
-            }
-            separator = true;
-        } else {
-            normalized.push(character.to_ascii_lowercase());
-            separator = false;
-        }
-    }
-    normalized
-}
-
-fn npm_identity(source: &Path) -> Result<PackageIdentity> {
+fn npm_manifest(source: &Path) -> Result<PackageManifest> {
     #[derive(Deserialize)]
     struct Manifest {
         name: String,
         version: String,
     }
     let manifest: Manifest = serde_json::from_slice(&fs::read(source.join("package.json"))?)?;
-    Ok(PackageIdentity {
+    Ok(PackageManifest {
         name: manifest.name,
         version: Version::parse(&manifest.version)?,
     })
 }
 
-fn cargo_identity(source: &Path, expected_name: &str) -> Result<PackageIdentity> {
+fn cargo_manifest(source: &Path, expected_name: &str) -> Result<PackageManifest> {
     #[derive(Deserialize)]
     struct Metadata {
         packages: Vec<CargoPackage>,
@@ -314,18 +291,19 @@ fn cargo_identity(source: &Path, expected_name: &str) -> Result<PackageIdentity>
         "read Cargo package metadata",
     )?;
     let metadata: Metadata = serde_json::from_slice(&output.stdout)?;
+    let expected = PackageIdentity::new(PackageEcosystem::Cargo, expected_name)?;
     let package = metadata
         .packages
         .into_iter()
-        .find(|package| package.name == expected_name)
+        .find(|package| expected.matches_name(&package.name))
         .with_context(|| format!("Cargo workspace has no package named {expected_name}"))?;
-    Ok(PackageIdentity {
+    Ok(PackageManifest {
         name: package.name,
         version: Version::parse(&package.version)?,
     })
 }
 
-fn python_identity(source: &Path) -> Result<PackageIdentity> {
+fn python_manifest(source: &Path) -> Result<PackageManifest> {
     const SCRIPT: &str = r#"import json, pathlib, sys, tomllib
 data = tomllib.loads(pathlib.Path(sys.argv[1]).read_text())
 project = data.get("project", {})
@@ -347,7 +325,7 @@ print(json.dumps({"name": name, "version": version}))"#;
         version: String,
     }
     let identity: Identity = serde_json::from_slice(&output.stdout)?;
-    Ok(PackageIdentity {
+    Ok(PackageManifest {
         name: identity.name,
         version: Version::parse(&identity.version)?,
     })
@@ -590,7 +568,7 @@ fn remote_tag_commit(repository: &str, tag_ref: &str) -> Result<Option<String>> 
 
 fn verify_retry(
     release: &ReleaseRecord,
-    identity: &PackageIdentity,
+    identity: &PackageManifest,
     tag: &str,
     artifact: &BuiltArtifact,
     destination: &Destination,

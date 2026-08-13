@@ -28,6 +28,10 @@ impl PackageIdentity {
     pub fn key(&self) -> String {
         format!("{}:{}", self.ecosystem, self.name)
     }
+
+    pub fn matches_name(&self, name: &str) -> bool {
+        Self::new(self.ecosystem, name).is_ok_and(|candidate| candidate.eq(self))
+    }
 }
 
 /// Minimal, credential-free snapshot shared with package protocol services.
@@ -208,6 +212,8 @@ mod tests {
             package(PackageEcosystem::Python, "Goobits.Auth_core").name,
             "goobits-auth-core"
         );
+        assert!(package(PackageEcosystem::Cargo, "goobits-auth").matches_name("Goobits_Auth"));
+        assert!(package(PackageEcosystem::Python, "goobits-auth").matches_name("Goobits.Auth"));
     }
 
     #[test]
