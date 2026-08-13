@@ -208,17 +208,16 @@ git diff --check
 No Docker image, Tart base, guest, or release binary is built by this gate.
 
 Latest result on 2026-08-12: formatting, the serial all-feature workspace check,
-the complete unit suite, the supported non-network integration suite, and
-`git diff --check` passed from an isolated container-local Cargo target. Focused
-tests also cover the concurrent Codex repair lock, prompt-free shell startup,
-the Codex/tool recent-success gates, the managed-tool single-flight lock, the
-controller refresh lock/cooldown, stable and legacy source-image markers,
-repeat fake-Docker reconciliation, and a fatal fake-Tart sentinel that Docker
-paths never invoked. Scoped VM Clippy passed after allowing the recorded
-unrelated dead-code warning. Full workspace Clippy remains blocked by
-pre-existing Tart storage warnings and the existing unused Linux doctor parser.
-Duplicate detection could not run because `jscpd` is not installed in this
-container. No Docker, Tart, host VM, network, or publication action was run.
+the full workspace build, and all-target workspace Clippy with warnings denied
+passed from an isolated container-local Cargo target. The VM suite passed 166
+tests, workspace libraries passed 489 tests, and the integration feature matrix
+passed 161 tests; 20 tests requiring a real runtime or performance environment
+remained ignored. Focused coverage includes reconciliation locks and cooldowns,
+stable source-image markers, repeat fake-Docker reconciliation, and a fatal
+fake-Tart sentinel proving Docker paths did not invoke Tart. `git diff --check`
+passed. Duplicate detection could not run because `jscpd` is not installed in
+this container. No Docker, Tart, host VM, network, or publication action was
+run.
 
 ## Post-Recreation Acceptance
 
@@ -353,6 +352,12 @@ c16747bc fix(tools): report project collection overrides
 b5ad97f0 feat(runtime): reconcile codex without blocking shells
 fcc24a56 fix(packages): stabilize local appliance images
 9fc3b84b fix(shell): coalesce background reconciliation
+11ad87d3 refactor(cli): fold fleet into shared targeting flags
+ad4c7a74 feat(tools): reconcile managed environments with fleet flag
+6795cd9a docs(cli): replace fleet command with targeting flag
+e1254dcf chore(rust): keep cross-platform checks warning-free
+30ba7620 fix(tools): isolate fleet reconciliation scope
+8b7fa9d1 fix(tools): decouple empty tool reconciliation
 ```
 
 The user's dirty `vm.yaml` is intentionally outside these commits.
