@@ -161,15 +161,15 @@ fi"#
                 )
             })
             .unwrap_or_default();
-        let restart = (!mirror.is_empty())
-            .then_some(
-                r#"if command -v systemctl >/dev/null 2>&1; then
+        let restart = if mirror.is_empty() {
+            ""
+        } else {
+            r#"if command -v systemctl >/dev/null 2>&1; then
   sudo systemctl restart docker >/dev/null 2>&1
 elif command -v service >/dev/null 2>&1; then
   sudo service docker restart >/dev/null 2>&1
-fi"#,
-            )
-            .unwrap_or_default();
+fi"#
+        };
 
         Some(format!(
             r#"if ! command -v docker >/dev/null 2>&1; then
