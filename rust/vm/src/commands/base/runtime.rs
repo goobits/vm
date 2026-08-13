@@ -62,6 +62,8 @@ esac
 root="$system_prefix/lib/vm-ai-tools"
 bin_root="$system_prefix/bin"
 target="$root/codex-package"
+user_home=$HOME
+user_bin="$user_home/.local/bin"
 
 resolve_path() {
   candidate=$1
@@ -126,11 +128,47 @@ require_managed_launcher() {
   return 1
 }
 
-require_managed_launcher \
-  "$bin_root/codex" "$root/codex" "$target/bin/codex"
+legacy_nvm_codex_launcher() {
+  launcher=$1
+  if ! run_install test -L "$launcher"; then
+    return 1
+  fi
+  launcher_target="$(run_install readlink "$launcher")"
+  case "$launcher_target" in
+    "$user_home"/.nvm/versions/node/v*/bin/codex)
+      run_install test -x "$launcher_target"
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+legacy_user_codex_launcher() {
+  launcher=$1
+  if ! test -L "$launcher"; then
+    return 1
+  fi
+  launcher_target="$(readlink "$launcher")"
+  test "$launcher_target" = \
+    "$user_home/.codex/packages/standalone/current/bin/codex"
+}
+
+if ! legacy_nvm_codex_launcher "$bin_root/codex"; then
+  require_managed_launcher \
+    "$bin_root/codex" "$root/codex" "$target/bin/codex"
+fi
 require_managed_launcher \
   "$bin_root/codex-code-mode-host" \
   "$root/codex-code-mode-host" "$target/bin/codex-code-mode-host"
+mkdir -p "$user_bin"
+if ! legacy_user_codex_launcher "$user_bin/codex"; then
+  require_managed_launcher \
+    "$user_bin/codex" \
+    "$root/codex" "$target/bin/codex" "$bin_root/codex"
+fi
+require_managed_launcher \
+  "$user_bin/codex-code-mode-host" \
+  "$root/codex-code-mode-host" "$target/bin/codex-code-mode-host" \
+  "$bin_root/codex-code-mode-host"
 
 temporary="$(mktemp -d "${TMPDIR:-/tmp}/vm-codex-reconcile.XXXXXX")"
 stage=""
@@ -168,6 +206,8 @@ cleanup() {
     restore_path root-code-mode "$root/codex-code-mode-host"
     restore_path bin-codex "$bin_root/codex"
     restore_path bin-code-mode "$bin_root/codex-code-mode-host"
+    restore_path user-codex "$user_bin/codex"
+    restore_path user-code-mode "$user_bin/codex-code-mode-host"
   fi
   rm -rf "$temporary"
   if test -n "$stage"; then
@@ -218,6 +258,8 @@ backup_path "$root/codex" root-codex
 backup_path "$root/codex-code-mode-host" root-code-mode
 backup_path "$bin_root/codex" bin-codex
 backup_path "$bin_root/codex-code-mode-host" bin-code-mode
+backup_path "$user_bin/codex" user-codex
+backup_path "$user_bin/codex-code-mode-host" user-code-mode
 
 run_install mv "$stage" "$target"
 stage=""
@@ -226,7 +268,10 @@ run_install ln -s "$target/bin/codex" "$root/codex"
 run_install ln -s "$target/bin/codex-code-mode-host" "$root/codex-code-mode-host"
 run_install ln -s "$root/codex" "$bin_root/codex"
 run_install ln -s "$root/codex-code-mode-host" "$bin_root/codex-code-mode-host"
+ln -s "$root/codex" "$user_bin/codex"
+ln -s "$root/codex-code-mode-host" "$user_bin/codex-code-mode-host"
 test -x "$bin_root/codex-code-mode-host"
+test -x "$user_bin/codex-code-mode-host"
 "$bin_root/codex" --version >/dev/null
 rollback_needed=no
 run_install rm -rf "$backup"
@@ -787,6 +832,7 @@ ln -s "$target/bin/codex" "$HOME/.local/bin/codex"
                 prefix.to_str().unwrap(),
                 installer.to_str().unwrap(),
             ])
+            .env("HOME", directory.path().join("home"))
             .env("TMPDIR", temporary)
             .env("VM_FAKE_CODEX_PACKAGE", package);
         if let Some(launcher) = fail_launcher {
@@ -982,8 +1028,13 @@ ln -s "$target/bin/codex" "$HOME/.local/bin/codex"
 
         let managed_root = prefix.join("lib/vm-ai-tools");
         let installed_package = managed_root.join("codex-package");
+        let user_bin = directory.path().join("home/.local/bin");
         assert_eq!(
             fs::read_link(prefix.join("bin/codex")).unwrap(),
+            managed_root.join("codex")
+        );
+        assert_eq!(
+            fs::read_link(user_bin.join("codex")).unwrap(),
             managed_root.join("codex")
         );
         assert_eq!(
@@ -1063,6 +1114,87 @@ ln -s "$target/bin/codex" "$HOME/.local/bin/codex"
 
     #[cfg(unix)]
     #[test]
+    fn codex_repair_migrates_the_legacy_nvm_launcher() {
+        let directory = TempDir::new().unwrap();
+        let prefix = directory.path().join("prefix");
+        let bin = prefix.join("bin");
+        let legacy = directory
+            .path()
+            .join("home/.nvm/versions/node/v22/bin/codex");
+        fs::create_dir_all(&bin).unwrap();
+        fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        write_executable(&legacy, "#!/bin/sh\nprintf '%s\\n' legacy\n");
+        std::os::unix::fs::symlink(&legacy, bin.join("codex")).unwrap();
+        let installer = fake_codex_installer(&directory);
+        let package = fake_codex_package(&directory, "1.0.0");
+
+        let output = run_codex_repair(&directory, &prefix, &installer, &package, None);
+
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            fs::read_link(bin.join("codex")).unwrap(),
+            prefix.join("lib/vm-ai-tools/codex")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn codex_repair_migrates_the_official_user_standalone_launcher() {
+        let directory = TempDir::new().unwrap();
+        let prefix = directory.path().join("prefix");
+        let user_bin = directory.path().join("home/.local/bin");
+        let legacy = directory
+            .path()
+            .join("home/.codex/packages/standalone/current/bin/codex");
+        fs::create_dir_all(&user_bin).unwrap();
+        fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        write_executable(&legacy, "#!/bin/sh\nprintf '%s\\n' legacy\n");
+        std::os::unix::fs::symlink(&legacy, user_bin.join("codex")).unwrap();
+        let installer = fake_codex_installer(&directory);
+        let package = fake_codex_package(&directory, "1.0.0");
+
+        let output = run_codex_repair(&directory, &prefix, &installer, &package, None);
+
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            fs::read_link(user_bin.join("codex")).unwrap(),
+            prefix.join("lib/vm-ai-tools/codex")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn codex_repair_refuses_an_unmanaged_user_launcher() {
+        let directory = TempDir::new().unwrap();
+        let prefix = directory.path().join("prefix");
+        let user_bin = directory.path().join("home/.local/bin");
+        let unmanaged = directory.path().join("home/custom/codex");
+        fs::create_dir_all(&user_bin).unwrap();
+        fs::create_dir_all(unmanaged.parent().unwrap()).unwrap();
+        write_executable(&unmanaged, "#!/bin/sh\nprintf '%s\\n' unmanaged\n");
+        std::os::unix::fs::symlink(&unmanaged, user_bin.join("codex")).unwrap();
+        let installer = fake_codex_installer(&directory);
+        let package = fake_codex_package(&directory, "1.0.0");
+
+        let output = run_codex_repair(&directory, &prefix, &installer, &package, None);
+
+        assert!(!output.status.success());
+        assert!(String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("Refusing to replace unmanaged launcher"));
+        assert_eq!(fs::read_link(user_bin.join("codex")).unwrap(), unmanaged);
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn failed_initial_codex_repair_leaves_no_partial_runtime() {
         let directory = TempDir::new().unwrap();
         let prefix = directory.path().join("prefix");
@@ -1080,6 +1212,10 @@ ln -s "$target/bin/codex" "$HOME/.local/bin/codex"
             prefix.join("lib/vm-ai-tools/codex-code-mode-host"),
             launcher,
             prefix.join("bin/codex-code-mode-host"),
+            directory.path().join("home/.local/bin/codex"),
+            directory
+                .path()
+                .join("home/.local/bin/codex-code-mode-host"),
         ] {
             assert!(fs::symlink_metadata(path).is_err());
         }
