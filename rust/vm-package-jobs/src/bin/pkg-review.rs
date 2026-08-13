@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::Command;
 
 use anyhow::{bail, Context, Result};
+use vm_package_jobs::runtime::{command_text, run_command};
 use vm_packages::{
     PackageEcosystem, PackageInfrastructureClient, PublicApiDiff, RegistryEndpoints,
     ReviewDecision, ReviewRequest, VersionRecommendation, WorkflowState,
@@ -55,19 +56,21 @@ async fn review(client: &PackageInfrastructureClient, submission_id: &str) -> Re
 
     let review_root = tempfile::tempdir()?;
     let source = review_root.path().join("source");
-    command(
+    run_command(
         Command::new("git")
             .arg("clone")
             .arg(&managed_source)
             .arg(&source),
+        "clone package review source",
     )?;
-    command(
+    run_command(
         Command::new("git")
             .arg("-C")
             .arg(&source)
             .arg("checkout")
             .arg("--detach")
             .arg(&submission.submitted_commit),
+        "check out package review commit",
     )?;
 
     let changed_paths = git_lines(
@@ -80,17 +83,18 @@ async fn review(client: &PackageInfrastructureClient, submission_id: &str) -> Re
                 submission.base_commit, submission.submitted_commit
             ),
         ],
+        "list changed package paths",
     )?;
-    let diff = git_text(
-        &source,
-        &[
+    let diff = command_text(
+        Command::new("git").arg("-C").arg(&source).args([
             "diff",
             "--unified=0",
             &format!(
                 "{}..{}",
                 submission.base_commit, submission.submitted_commit
             ),
-        ],
+        ]),
+        "inspect package review diff",
     )?;
     let api_paths = public_api_paths(definition.ecosystem, &changed_paths);
     let potentially_breaking = removed_public_surface(&diff);
@@ -239,31 +243,18 @@ fn generated_path(paths: &[String]) -> Option<&str> {
     })
 }
 
-fn git_lines(repository: &Path, arguments: &[&str]) -> Result<Vec<String>> {
-    Ok(git_text(repository, arguments)?
-        .lines()
-        .map(str::to_string)
-        .filter(|line| !line.is_empty())
-        .collect())
-}
-
-fn git_text(repository: &Path, arguments: &[&str]) -> Result<String> {
-    let output = command(
+fn git_lines(repository: &Path, arguments: &[&str], operation: &str) -> Result<Vec<String>> {
+    Ok(command_text(
         Command::new("git")
             .arg("-C")
             .arg(repository)
             .args(arguments),
-    )?;
-    String::from_utf8(output.stdout).context("git returned invalid UTF-8")
-}
-
-fn command(command: &mut Command) -> Result<Output> {
-    let output = command.output()?;
-    if output.status.success() {
-        Ok(output)
-    } else {
-        bail!("command failed with {}", output.status)
-    }
+        operation,
+    )?
+    .lines()
+    .map(str::to_string)
+    .filter(|line| !line.is_empty())
+    .collect())
 }
 
 #[cfg(test)]

@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
@@ -16,7 +15,9 @@ use vm_packages::{
     ToolKind,
 };
 
-use crate::runtime::{command_text, operation_key, required_secret, run_command};
+use crate::runtime::{operation_key, required_secret, run_command};
+
+use super::{git, git_text};
 
 const DEFAULT_GATEWAY: &str = "http://gateway:8080";
 const TOOL_TARGET: &str = "any";
@@ -238,25 +239,6 @@ async fn upload_archive(
     Ok(())
 }
 
-fn git_text(repository: &Path, arguments: &[&str], operation: &str) -> Result<String> {
-    Ok(
-        command_text(git().arg("-C").arg(repository).args(arguments), operation)?
-            .trim()
-            .to_string(),
-    )
-}
-
-fn git() -> Command {
-    let mut command = Command::new("git");
-    command.env("GIT_TERMINAL_PROMPT", "0");
-    if let Ok(token_file) = std::env::var("PKG_RELEASE_GIT_TOKEN_FILE") {
-        command
-            .env("GIT_ASKPASS", "pkg-git-askpass")
-            .env("PKG_WORK_GIT_TOKEN_FILE", token_file);
-    }
-    command
-}
-
 /// Verify an archive once and derive the exact workflow metadata from its bytes.
 pub fn publication_request(
     archive: &Path,
@@ -308,6 +290,7 @@ pub fn verify_record(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
 
     fn collection_repository() -> tempfile::TempDir {
         let directory = tempfile::tempdir().unwrap();

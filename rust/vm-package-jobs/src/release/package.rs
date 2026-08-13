@@ -1,7 +1,7 @@
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::Command;
 
 use anyhow::{bail, Context, Result};
 use semver::Version;
@@ -14,6 +14,8 @@ use vm_packages::{
 };
 
 use crate::runtime::{operation_key, required_secret as secret, run_command as run};
+
+use super::{git, git_text};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackageReleaseOptions {
@@ -283,7 +285,7 @@ fn cargo_manifest(source: &Path, expected_name: &str) -> Result<PackageManifest>
         name: String,
         version: String,
     }
-    let output = output(
+    let output = run(
         Command::new("cargo")
             .args(["metadata", "--no-deps", "--format-version", "1"])
             .arg("--manifest-path")
@@ -313,7 +315,7 @@ version = project.get("version") or poetry.get("version")
 if not name or not version:
     raise SystemExit("pyproject.toml must declare a static name and version")
 print(json.dumps({"name": name, "version": version}))"#;
-    let output = output(
+    let output = run(
         Command::new("python3")
             .args(["-c", SCRIPT])
             .arg(source.join("pyproject.toml")),
@@ -367,7 +369,7 @@ fn build_artifact(
 ) -> Result<BuiltArtifact> {
     let path = match ecosystem {
         PackageEcosystem::Npm => {
-            let result = output(
+            let result = run(
                 Command::new("npm")
                     .args(["pack", "--json", "--pack-destination"])
                     .arg(release_root)
@@ -418,7 +420,7 @@ fn build_artifact(
 }
 
 fn ensure_clean_source(source: &Path) -> Result<()> {
-    let status = git_text(source, &["status", "--porcelain"])?;
+    let status = git_text(source, &["status", "--porcelain"], "inspect Git source")?;
     if !status.is_empty() {
         bail!("package build modified release source:\n{status}");
     }
@@ -474,7 +476,12 @@ fn push_source(
             .args(["config", "user.email", "packages@vm.internal"]),
         "configure release Git identity",
     )?;
-    let local_tag = git_text(source, &["rev-parse", &format!("refs/tags/{tag}^{{}}")]).ok();
+    let local_tag = git_text(
+        source,
+        &["rev-parse", &format!("refs/tags/{tag}^{{}}")],
+        "inspect local release tag",
+    )
+    .ok();
     match local_tag.as_deref() {
         Some(commit) if commit != release_commit => {
             bail!("release tag {tag} already points to a different commit")
@@ -541,7 +548,7 @@ fn push_source(
 }
 
 fn remote_ref(repository: &str, reference: &str) -> Result<Option<String>> {
-    let output = output(
+    let output = run(
         git().args(["ls-remote", repository, reference]),
         "inspect canonical Git reference",
     )?;
@@ -553,7 +560,7 @@ fn remote_ref(repository: &str, reference: &str) -> Result<Option<String>> {
 
 fn remote_tag_commit(repository: &str, tag_ref: &str) -> Result<Option<String>> {
     let peeled = format!("{tag_ref}^{{}}");
-    let output = output(
+    let output = run(
         git().args(["ls-remote", repository, tag_ref, &peeled]),
         "inspect canonical release tag",
     )?;
@@ -676,29 +683,6 @@ fn write_secret_file(path: &Path, content: &[u8]) -> Result<()> {
         file.set_permissions(fs::Permissions::from_mode(0o600))?;
     }
     Ok(())
-}
-
-fn git_text(repository: &Path, arguments: &[&str]) -> Result<String> {
-    let output = output(
-        git().arg("-C").arg(repository).args(arguments),
-        "inspect Git source",
-    )?;
-    Ok(String::from_utf8(output.stdout)?.trim().to_string())
-}
-
-fn git() -> Command {
-    let mut command = Command::new("git");
-    command.env("GIT_TERMINAL_PROMPT", "0");
-    if let Ok(token_file) = std::env::var("PKG_RELEASE_GIT_TOKEN_FILE") {
-        command
-            .env("GIT_ASKPASS", "pkg-git-askpass")
-            .env("PKG_WORK_GIT_TOKEN_FILE", token_file);
-    }
-    command
-}
-
-fn output(command: &mut Command, operation: &str) -> Result<Output> {
-    run(command, operation)
 }
 
 #[cfg(test)]
