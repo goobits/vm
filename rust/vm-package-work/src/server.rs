@@ -335,7 +335,30 @@ async fn next_release(State(state): State<AppState>) -> Json<Option<SubmissionRe
 }
 
 async fn next_rollout(State(state): State<AppState>) -> Json<Option<RolloutRecord>> {
+    reconcile_rollout_queue(&state).await;
     Json(state.store.next_rollout().await)
+}
+
+async fn reconcile_rollout_queue(state: &AppState) {
+    let mut rollouts = state
+        .store
+        .rollouts()
+        .await
+        .into_iter()
+        .filter(|rollout| rollout.state == RolloutState::Created)
+        .collect::<Vec<_>>();
+    match state.store.ensure_automatic_rollouts().await {
+        Ok(created) => rollouts.extend(created),
+        Err(error) => tracing::warn!(%error, "failed to reconcile automatic package rollouts"),
+    }
+    rollouts.sort_by_key(|rollout| rollout.created_at);
+    let mut seen = std::collections::HashSet::new();
+    rollouts.retain(|rollout| seen.insert(rollout.rollout_id.clone()));
+    for rollout in rollouts {
+        if let Err(error) = state.source.prepare_rollout(&state.store, &rollout).await {
+            tracing::warn!(rollout_id = %rollout.rollout_id, %error, "failed to prepare package rollout");
+        }
+    }
 }
 
 async fn create_checkout(
@@ -1050,8 +1073,7 @@ mod tests {
                     "name": "auth",
                     "ecosystem": "cargo",
                     "repository": "https://example.com/auth.git",
-                    "default_branch": "main",
-                    "ci_registry": null
+                    "default_branch": "main"
                 }))
                 .await
                 .status_code(),

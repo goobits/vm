@@ -204,7 +204,6 @@ impl Store {
             if existing.ecosystem == request.ecosystem
                 && existing.repository == request.repository
                 && existing.default_branch == request.default_branch
-                && existing.ci_registry == request.ci_registry
             {
                 self.materialize_catalog_locked(&current).await?;
                 return Ok(existing);
@@ -219,7 +218,6 @@ impl Store {
             ecosystem: request.ecosystem,
             repository: request.repository,
             default_branch: request.default_branch,
-            ci_registry: request.ci_registry,
             registered_at: Utc::now(),
         };
         let mut next = current.clone();

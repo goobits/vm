@@ -42,7 +42,6 @@ async fn package_checkout_lifecycle_stays_inside_managed_agent_storage() {
             ecosystem: PackageEcosystem::Cargo,
             repository: url::Url::from_file_path(&repository).unwrap().into(),
             default_branch: "main".into(),
-            ci_registry: None,
         })
         .await
         .unwrap();
@@ -224,7 +223,6 @@ async fn consumer_rollout_isolated_bundle_pushes_only_its_upgrade_branch() {
                 .unwrap()
                 .into(),
             default_branch: "main".into(),
-            ci_registry: None,
         })
         .await
         .unwrap();
@@ -244,7 +242,7 @@ async fn consumer_rollout_isolated_bundle_pushes_only_its_upgrade_branch() {
             tag: "v1.1.0".into(),
             artifact_digest: "b".repeat(64),
             source_pushed: true,
-            expected_registries: vec!["https://packages.example/cargo/".into()],
+            registry: "https://packages.example/cargo/".into(),
             publications: vec![PublicationRecord {
                 registry: "https://packages.example/cargo/".into(),
                 artifact_digest: "b".repeat(64),

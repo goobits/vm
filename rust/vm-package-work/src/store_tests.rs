@@ -142,7 +142,6 @@ async fn catalog_retries_are_exact_and_checkout_archives_are_consumer_scoped() {
         ecosystem: PackageEcosystem::Cargo,
         repository: "https://example.com/auth.git".into(),
         default_branch: "main".into(),
-        ci_registry: None,
     };
     assert_eq!(
         store.register_package(package.clone()).await.unwrap(),
@@ -154,7 +153,6 @@ async fn catalog_retries_are_exact_and_checkout_archives_are_consumer_scoped() {
             ecosystem: PackageEcosystem::Cargo,
             repository: "https://example.com/other.git".into(),
             default_branch: "main".into(),
-            ci_registry: None,
         })
         .await
         .is_err());

@@ -83,7 +83,6 @@ pub(super) async fn handle(
             ecosystem,
             repository,
             branch,
-            ci_registry,
             recursive,
         } => {
             catalog::register(
@@ -93,7 +92,6 @@ pub(super) async fn handle(
                     ecosystem,
                     repository,
                     branch,
-                    ci_registry,
                     recursive,
                 },
             )
@@ -164,10 +162,8 @@ pub(super) async fn handle(
         PackagesSubcommand::Auth {
             token_file,
             github,
-            ci_token_file,
             clear,
-            clear_ci,
-        } => catalog::configure_auth(&files, token_file, github, ci_token_file, clear, clear_ci),
+        } => catalog::configure_auth(&files, token_file, github, clear),
     }
 }
 

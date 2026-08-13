@@ -10,7 +10,7 @@ pub struct BeginReleaseRequest {
     pub source_commit: String,
     pub artifact_digest: String,
     pub source_pushed: bool,
-    pub expected_registries: Vec<String>,
+    pub registry: String,
     pub actor: String,
     pub idempotency_key: String,
 }
@@ -48,7 +48,7 @@ pub struct ReleaseRecord {
     pub tag: String,
     pub artifact_digest: String,
     pub source_pushed: bool,
-    pub expected_registries: Vec<String>,
+    pub registry: String,
     pub publications: Vec<PublicationRecord>,
     pub state: WorkflowState,
     pub created_at: DateTime<Utc>,

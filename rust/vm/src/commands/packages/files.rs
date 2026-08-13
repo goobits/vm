@@ -15,7 +15,6 @@ const RELEASE_TOKEN_FILE: &str = "release-token";
 const ROLLOUT_TOKEN_FILE: &str = "rollout-token";
 const AGENT_SIGNING_KEY_FILE: &str = "agent-signing-key";
 const GIT_TOKEN_FILE: &str = "git-token";
-const CI_PUBLISH_TOKEN_FILE: &str = "ci-publish-token";
 const STATE_FILE: &str = "state.json";
 const MAINTENANCE_LOCK_FILE: &str = "maintenance.lock";
 const TOOL_CACHE_LOCK_FILE: &str = "tool-cache.lock";
@@ -71,10 +70,6 @@ impl ApplianceFiles {
         self.root.join(GIT_TOKEN_FILE)
     }
 
-    pub(super) fn ci_publish_token_path(&self) -> PathBuf {
-        self.root.join(CI_PUBLISH_TOKEN_FILE)
-    }
-
     pub(super) fn reviewer_token_path(&self) -> PathBuf {
         self.root.join(REVIEWER_TOKEN_FILE)
     }
@@ -113,10 +108,6 @@ impl ApplianceFiles {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
             Err(error) => Err(VmError::from(error)),
         }
-    }
-
-    pub(super) fn set_ci_publish_token(&self, token: &str) -> VmResult<()> {
-        self.set_external_token(&self.ci_publish_token_path(), token, "CI registry")
     }
 
     fn set_external_token(&self, path: &Path, token: &str, kind: &str) -> VmResult<()> {
@@ -278,9 +269,6 @@ impl ApplianceFiles {
         if !self.git_token_path().exists() {
             write_private(&self.git_token_path(), b"")?;
         }
-        if !self.ci_publish_token_path().exists() {
-            write_private(&self.ci_publish_token_path(), b"")?;
-        }
         Ok(())
     }
 
@@ -378,7 +366,6 @@ mod tests {
         assert!(files.rollout_token_path().is_file());
         assert!(files.agent_signing_key_path().is_file());
         assert!(files.git_token_path().is_file());
-        assert!(files.ci_publish_token_path().is_file());
         assert_eq!(
             std::fs::read_to_string(files.publish_token_path())
                 .unwrap()

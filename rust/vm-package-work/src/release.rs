@@ -16,11 +16,9 @@ impl Store {
     pub async fn begin_release(
         &self,
         submission_id: &str,
-        mut request: BeginReleaseRequest,
+        request: BeginReleaseRequest,
     ) -> WorkResult<ReleaseRecord> {
         validate_begin(&request)?;
-        request.expected_registries.sort();
-        request.expected_registries.dedup();
         let fingerprint = operation_fingerprint("begin_release", Some(submission_id), &request)?;
         let mut current = self.database.lock().await;
         if let Some(existing) = current.idempotency.get(&request.idempotency_key) {
@@ -102,7 +100,7 @@ impl Store {
             tag: request.tag,
             artifact_digest: request.artifact_digest,
             source_pushed: request.source_pushed,
-            expected_registries: request.expected_registries,
+            registry: request.registry,
             publications: Vec::new(),
             state: WorkflowState::Publishing,
             created_at: now,
@@ -189,11 +187,7 @@ impl Store {
                 "published artifact digest does not match the release".into(),
             ));
         }
-        if !release
-            .expected_registries
-            .iter()
-            .any(|registry| registry == &request.registry)
-        {
+        if release.registry != request.registry {
             return Err(WorkError::Conflict(
                 "publication registry was not declared for this release".into(),
             ));
@@ -278,12 +272,11 @@ impl Store {
         if release.state != WorkflowState::Publishing {
             return Err(WorkError::Conflict("release is not publishing".into()));
         }
-        if release.expected_registries.iter().any(|registry| {
-            !release
-                .publications
-                .iter()
-                .any(|publication| &publication.registry == registry)
-        }) {
+        if !release
+            .publications
+            .iter()
+            .any(|publication| publication.registry == release.registry)
+        {
             return Err(WorkError::Conflict(
                 "not every declared registry publication has completed".into(),
             ));
@@ -327,14 +320,7 @@ fn validate_begin(request: &BeginReleaseRequest) -> WorkResult<()> {
     validate_label("release actor", &request.actor)?;
     validate_hex("source commit", &request.source_commit, &[40, 64])?;
     validate_hex("artifact digest", &request.artifact_digest, &[64])?;
-    if request.expected_registries.is_empty() || request.expected_registries.len() > 2 {
-        return Err(WorkError::Invalid(
-            "release must declare one or two registry destinations".into(),
-        ));
-    }
-    for registry in &request.expected_registries {
-        validate_registry_url(registry)?;
-    }
+    validate_registry_url(&request.registry)?;
     validate_idempotency_key(&request.idempotency_key)
 }
 
@@ -377,7 +363,6 @@ mod tests {
                 ecosystem: PackageEcosystem::Cargo,
                 repository: "https://example.com/auth.git".into(),
                 default_branch: "main".into(),
-                ci_registry: None,
             })
             .await
             .unwrap();
@@ -500,7 +485,7 @@ mod tests {
                     source_commit: "3333333333333333333333333333333333333333".into(),
                     artifact_digest: "b".repeat(64),
                     source_pushed: true,
-                    expected_registries: vec![registry.into()],
+                    registry: registry.into(),
                     actor: "release-service".into(),
                     idempotency_key: "begin-release".into(),
                 },

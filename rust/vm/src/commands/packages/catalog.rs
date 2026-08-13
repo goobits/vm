@@ -16,7 +16,6 @@ pub(super) struct RegistrationIntent {
     pub(super) ecosystem: Option<String>,
     pub(super) repository: Option<String>,
     pub(super) branch: Option<String>,
-    pub(super) ci_registry: Option<String>,
     pub(super) recursive: bool,
 }
 
@@ -54,7 +53,6 @@ pub(super) async fn register(files: &ApplianceFiles, intent: RegistrationIntent)
             ecosystem,
             repository,
             default_branch: intent.branch.unwrap_or_else(|| "main".into()),
-            ci_registry: intent.ci_registry,
         };
         request
             .validate()
@@ -66,7 +64,6 @@ pub(super) async fn register(files: &ApplianceFiles, intent: RegistrationIntent)
             intent.recursive,
             ecosystem,
             intent.branch.as_deref(),
-            intent.ci_registry.as_deref(),
         )?;
         (discovery.packages, discovery.tools)
     };
@@ -94,9 +91,6 @@ async fn apply_registration(
         let package = client.register_package(&request).await?;
         vm_success!("Registered {} ({})", package.name, package.ecosystem);
         vm_println!("Repository: {}", package.repository);
-        if let Some(registry) = package.ci_registry {
-            vm_println!("CI registry: {registry}");
-        }
     }
     Ok(())
 }
@@ -231,13 +225,11 @@ pub(super) fn configure_auth(
     files: &ApplianceFiles,
     git_token_file: Option<PathBuf>,
     github: bool,
-    ci_token_file: Option<PathBuf>,
     clear_git: bool,
-    clear_ci: bool,
 ) -> VmResult<()> {
-    if git_token_file.is_none() && !github && ci_token_file.is_none() && !clear_git && !clear_ci {
+    if git_token_file.is_none() && !github && !clear_git {
         return Err(VmError::validation(
-            "Provide --github, a Git/CI token file, or a clear flag",
+            "Provide --github, a Git token file, or --clear",
             None::<String>,
         ));
     }
@@ -249,10 +241,6 @@ pub(super) fn configure_auth(
     if let Some(token) = git_token {
         files.set_git_token(&token)?;
         vm_success!("Package Git credential updated");
-    }
-    if let Some(token) = credential(ci_token_file, clear_ci, "CI registry")? {
-        files.set_ci_publish_token(&token)?;
-        vm_success!("Package CI registry credential updated");
     }
     vm_println!("Run `vm packages up` to apply it to the appliance");
     Ok(())

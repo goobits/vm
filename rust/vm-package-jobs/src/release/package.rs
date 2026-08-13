@@ -112,20 +112,10 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
     )?;
 
     let endpoints = RegistryEndpoints::new(&gateway)?;
-    let mut destinations = vec![Destination {
+    let destination = Destination {
         registry: local_publish_registry(definition.ecosystem, &endpoints),
         token: publish_token,
-    }];
-    if let Some(registry) = definition.ci_registry.clone() {
-        destinations.push(Destination {
-            registry,
-            token: secret("PKG_RELEASE_CI_TOKEN_FILE")?,
-        });
-    }
-    let expected_registries = destinations
-        .iter()
-        .map(|destination| destination.registry.clone())
-        .collect::<Vec<_>>();
+    };
     let release = match submission.state {
         WorkflowState::ReadyToRelease => {
             client
@@ -137,7 +127,7 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
                         source_commit: integration.integration_commit.clone(),
                         artifact_digest: artifact.digest.clone(),
                         source_pushed: true,
-                        expected_registries,
+                        registry: destination.registry.clone(),
                         actor: "package-release-service".into(),
                         idempotency_key: operation_key("release", &submission.submission_id),
                     },
@@ -150,21 +140,18 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
                 .as_deref()
                 .context("publishing submission has no release record")?;
             let release = client.release(release_id).await?;
-            verify_retry(&release, &identity, &tag, &artifact, &destinations)?;
+            verify_retry(&release, &identity, &tag, &artifact, &destination)?;
             release
         }
         _ => unreachable!("release state was validated"),
     };
 
     let mut release = release;
-    for destination in destinations {
-        if release
-            .publications
-            .iter()
-            .any(|publication| publication.registry == destination.registry)
-        {
-            continue;
-        }
+    if !release
+        .publications
+        .iter()
+        .any(|publication| publication.registry == destination.registry)
+    {
         publish_artifact(
             definition.ecosystem,
             &source,
@@ -606,22 +593,12 @@ fn verify_retry(
     identity: &PackageIdentity,
     tag: &str,
     artifact: &BuiltArtifact,
-    destinations: &[Destination],
+    destination: &Destination,
 ) -> Result<()> {
-    let mut expected = destinations
-        .iter()
-        .map(|destination| destination.registry.as_str())
-        .collect::<Vec<_>>();
-    expected.sort_unstable();
     if release.version != identity.version.to_string()
         || release.tag != tag
         || release.artifact_digest != artifact.digest
-        || release
-            .expected_registries
-            .iter()
-            .map(String::as_str)
-            .collect::<Vec<_>>()
-            != expected
+        || release.registry != destination.registry
     {
         bail!("retry no longer matches the durable release record");
     }

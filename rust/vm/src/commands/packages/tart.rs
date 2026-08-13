@@ -360,7 +360,6 @@ fn sync_controller_files(tart: &PackageTart, files: &ApplianceFiles) -> VmResult
         (files.rollout_token_path(), "rollout-token"),
         (files.agent_signing_key_path(), "agent-signing-key"),
         (files.git_token_path(), "git-token"),
-        (files.ci_publish_token_path(), "ci-publish-token"),
     ] {
         let content = std::fs::read(&source).map_err(|error| {
             VmError::filesystem(

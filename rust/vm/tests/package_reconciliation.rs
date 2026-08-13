@@ -94,7 +94,6 @@ fn handle_request(stream: &mut TcpStream, requests: &Arc<Mutex<Vec<String>>>) {
                 "ecosystem": registered["ecosystem"],
                 "repository": registered["repository"],
                 "default_branch": registered["default_branch"],
-                "ci_registry": registered["ci_registry"],
                 "registered_at": "2026-08-11T00:00:00Z"
             })
             .to_string(),

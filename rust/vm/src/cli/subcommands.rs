@@ -88,9 +88,6 @@ pub enum PackagesSubcommand {
         /// Override the inferred default branch
         #[arg(long)]
         branch: Option<String>,
-        /// CI-accessible registry endpoint used for synchronized releases
-        #[arg(long)]
-        ci_registry: Option<String>,
         /// Discover Git repositories below each supplied directory
         #[arg(long)]
         recursive: bool,
@@ -166,12 +163,8 @@ pub enum PackagesSubcommand {
         /// Import the active GitHub CLI token without printing it
         #[arg(long, conflicts_with = "clear")]
         github: bool,
-        #[arg(long, conflicts_with = "clear_ci")]
-        ci_token_file: Option<PathBuf>,
         #[arg(long, conflicts_with = "github")]
         clear: bool,
-        #[arg(long)]
-        clear_ci: bool,
     },
 }
 

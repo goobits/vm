@@ -34,13 +34,12 @@ pub(super) fn discover(
     recursive: bool,
     ecosystem: Option<PackageEcosystem>,
     branch: Option<&str>,
-    ci_registry: Option<&str>,
 ) -> VmResult<Discovery> {
-    discover_with_policy(targets, recursive, ecosystem, branch, ci_registry, false)
+    discover_with_policy(targets, recursive, ecosystem, branch, false)
 }
 
 pub(super) fn discover_configured(targets: &[String]) -> VmResult<Discovery> {
-    discover_with_policy(targets, true, None, None, None, true)
+    discover_with_policy(targets, true, None, None, true)
 }
 
 fn discover_with_policy(
@@ -48,14 +47,13 @@ fn discover_with_policy(
     recursive: bool,
     ecosystem: Option<PackageEcosystem>,
     branch: Option<&str>,
-    ci_registry: Option<&str>,
     allow_empty: bool,
 ) -> VmResult<Discovery> {
     let roots = repository_roots(targets, recursive, allow_empty)?;
     let packages = roots
         .packages
         .iter()
-        .map(|root| discover_one(root, ecosystem, branch, ci_registry))
+        .map(|root| discover_one(root, ecosystem, branch))
         .collect::<VmResult<_>>()?;
     Ok(Discovery {
         packages,
@@ -163,7 +161,6 @@ fn discover_one(
     root: &Path,
     override_ecosystem: Option<PackageEcosystem>,
     branch: Option<&str>,
-    ci_registry: Option<&str>,
 ) -> VmResult<RegisterPackage> {
     let repository = detect_repository(root).map_err(VmError::from)?;
     if repository.root != root {
@@ -183,7 +180,6 @@ fn discover_one(
             .map(str::to_string)
             .or(repository.default_branch)
             .unwrap_or_else(|| "main".into()),
-        ci_registry: ci_registry.map(str::to_string),
     };
     request.validate().map_err(|error| {
         VmError::validation(

@@ -1,7 +1,7 @@
 use chrono::Utc;
 use vm_packages::{
-    validate_label, validate_repository_url, ConsumerRecord, ConsumerUsage, CreateRollout,
-    PackageDrift, RegisterConsumer, RolloutRecord, RolloutState, RolloutTransition,
+    sha256_hex, validate_label, validate_repository_url, ConsumerRecord, ConsumerUsage,
+    CreateRollout, PackageDrift, RegisterConsumer, RolloutRecord, RolloutState, RolloutTransition,
     RolloutValidationRequest, WorkflowState,
 };
 
@@ -140,6 +140,25 @@ impl Store {
                 .cloned()
                 .ok_or_else(|| WorkError::Internal("idempotency target is missing".into()));
         }
+        if let Some(existing) = current.rollouts.values().find(|rollout| {
+            rollout.package == request.package
+                && rollout.consumer == request.consumer
+                && matches!(
+                    rollout.state,
+                    RolloutState::Created
+                        | RolloutState::Active
+                        | RolloutState::Validating
+                        | RolloutState::ReadyForReview
+                )
+        }) {
+            if existing.version == request.version {
+                return Ok(existing.clone());
+            }
+            return Err(WorkError::Conflict(format!(
+                "consumer '{}' already has a pending '{}' rollout",
+                request.consumer, request.package
+            )));
+        }
         let package = current
             .packages
             .get(&request.package)
@@ -232,6 +251,38 @@ impl Store {
             .values()
             .cloned()
             .collect()
+    }
+
+    pub async fn ensure_automatic_rollouts(&self) -> WorkResult<Vec<RolloutRecord>> {
+        let mut candidates = Vec::new();
+        for package in self.drift().await {
+            let Some(version) = package.latest_version else {
+                continue;
+            };
+            for consumer in package.consumers {
+                if consumer.version == version || consumer.pending_version.is_some() {
+                    continue;
+                }
+                candidates.push(CreateRollout {
+                    package: package.package.clone(),
+                    version: version.clone(),
+                    consumer: consumer.consumer.clone(),
+                    actor: "package-rollout-service".into(),
+                    idempotency_key: format!(
+                        "auto-rollout-{}",
+                        sha256_hex(format!(
+                            "{}:{}:{}",
+                            package.package, version, consumer.consumer
+                        ))
+                    ),
+                });
+            }
+        }
+        let mut rollouts = Vec::with_capacity(candidates.len());
+        for request in candidates {
+            rollouts.push(self.create_rollout(request).await?);
+        }
+        Ok(rollouts)
     }
 
     pub async fn next_rollout(&self) -> Option<RolloutRecord> {
@@ -510,7 +561,7 @@ mod tests {
     use vm_packages::{PackageEcosystem, PublicationRecord, RegisterPackage, ReleaseRecord};
 
     #[tokio::test]
-    async fn drift_keeps_consumers_pinned_while_rollout_is_pending() {
+    async fn published_versions_automatically_queue_each_drifted_consumer_once() {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::open(directory.path()).await.unwrap();
         store
@@ -519,7 +570,6 @@ mod tests {
                 ecosystem: PackageEcosystem::Cargo,
                 repository: "https://example.com/auth.git".into(),
                 default_branch: "main".into(),
-                ci_registry: None,
             })
             .await
             .unwrap();
@@ -537,7 +587,64 @@ mod tests {
                 tag: "v1.5.0".into(),
                 artifact_digest: "b".repeat(64),
                 source_pushed: true,
-                expected_registries: vec!["https://packages.example/cargo/".into()],
+                registry: "https://packages.example/cargo/".into(),
+                publications: vec![],
+                state: WorkflowState::Published,
+                created_at: now,
+                updated_at: now,
+            },
+        );
+        for consumer in ["project-a", "project-b"] {
+            store
+                .register_consumer(RegisterConsumer {
+                    name: consumer.into(),
+                    repository: format!("https://example.com/{consumer}.git"),
+                    default_branch: "main".into(),
+                    dependencies: std::collections::BTreeMap::from([(
+                        "auth".into(),
+                        "1.4.0".into(),
+                    )]),
+                })
+                .await
+                .unwrap();
+        }
+
+        let queued = store.ensure_automatic_rollouts().await.unwrap();
+        assert_eq!(queued.len(), 2);
+        assert!(queued.iter().all(|rollout| {
+            rollout.version == "1.5.0" && rollout.state == RolloutState::Created
+        }));
+        assert!(store.ensure_automatic_rollouts().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn drift_keeps_consumers_pinned_while_rollout_is_pending() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).await.unwrap();
+        store
+            .register_package(RegisterPackage {
+                name: "auth".into(),
+                ecosystem: PackageEcosystem::Cargo,
+                repository: "https://example.com/auth.git".into(),
+                default_branch: "main".into(),
+            })
+            .await
+            .unwrap();
+        let now = Utc::now();
+        store.database.lock().await.releases.insert(
+            "rel-auth".into(),
+            ReleaseRecord {
+                release_id: "rel-auth".into(),
+                submission_id: "sub-auth".into(),
+                checkout_id: "checkout-auth".into(),
+                package: "auth".into(),
+                version: "1.5.0".into(),
+                source_repository: "https://example.com/auth.git".into(),
+                source_commit: "a".repeat(40),
+                tag: "v1.5.0".into(),
+                artifact_digest: "b".repeat(64),
+                source_pushed: true,
+                registry: "https://packages.example/cargo/".into(),
                 publications: vec![PublicationRecord {
                     registry: "https://packages.example/cargo/".into(),
                     artifact_digest: "b".repeat(64),

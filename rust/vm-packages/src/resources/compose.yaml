@@ -184,7 +184,6 @@ services:
       PKG_RELEASE_TOKEN_FILE: /run/secrets/release_token
       PKG_RELEASE_PUBLISH_TOKEN_FILE: /run/secrets/publish_token
       PKG_RELEASE_GIT_TOKEN_FILE: /run/secrets/git_token
-      PKG_RELEASE_CI_TOKEN_FILE: /run/secrets/ci_publish_token
       PKG_CLIENT_GATEWAY: http://gateway:8080
       PKG_CLIENT_READ_TOKEN_FILE: /run/secrets/releaser_read_token
       CARGO_HOME: /tmp/cargo-home
@@ -196,7 +195,7 @@ services:
       - |
         . /usr/local/lib/pkg-client-env.sh
         exec pkg-release --watch
-    secrets: [releaser_read_token, release_token, publish_token, git_token, ci_publish_token]
+    secrets: [releaser_read_token, release_token, publish_token, git_token]
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
     read_only: true
@@ -374,9 +373,6 @@ secrets:
     file: ./rollout-token
   git_token:
     file: ./git-token
-  ci_publish_token:
-    file: ./ci-publish-token
-
 volumes:
   gateway-data:
   gateway-config:
