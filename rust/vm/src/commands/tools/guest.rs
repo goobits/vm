@@ -116,16 +116,17 @@ resolved_below() {
 for state in "$states"/*.state; do
   test -f "$state" || continue
   tab="$(printf '\t')"
-  IFS="$tab" read -r name _version _target _digest < "$state"
+  IFS="$tab" read -r name version _target digest < "$state"
   links="$states/$name.links"
+  release="$releases/$name/$version-$digest"
   result=yes
-  if test ! -s "$links"; then
+  if test ! -d "$release" || test ! -s "$links"; then
     result=no
   else
     while IFS= read -r destination; do
       if test -z "$destination" || test ! -L "$destination" \
         || test ! -e "$destination" \
-        || ! resolved_below "$releases/$name" "$destination"; then
+        || ! resolved_below "$release" "$destination"; then
         result=no
         break
       fi
@@ -444,6 +445,55 @@ mod tests {
             .success());
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn consumability_requires_links_to_the_recorded_release() {
+        let directory = tempfile::tempdir().unwrap();
+        let home = directory.path().join("home");
+        let data = directory.path().join("data");
+        let root = data.join("vm-tools");
+        let states = root.join("state");
+        let releases = root.join("releases/agent-skills");
+        let old_release = releases.join(format!("1.0.0-{}", "a".repeat(64)));
+        let current_release = releases.join(format!("2.0.0-{}", "b".repeat(64)));
+        fs::create_dir_all(old_release.join("skills")).unwrap();
+        fs::create_dir_all(current_release.join("skills")).unwrap();
+        fs::create_dir_all(&states).unwrap();
+        fs::create_dir_all(&home).unwrap();
+        let destination = home.join("skills");
+        std::os::unix::fs::symlink(old_release.join("skills"), &destination).unwrap();
+        fs::write(
+            states.join("agent-skills.state"),
+            format!("agent-skills\t2.0.0\tany\t{}\n", "b".repeat(64)),
+        )
+        .unwrap();
+        fs::write(
+            states.join("agent-skills.links"),
+            format!("{}\n", destination.display()),
+        )
+        .unwrap();
+
+        let inspect = || {
+            Command::new("sh")
+                .args(["-c", CONSUMABLE_SCRIPT])
+                .env("HOME", &home)
+                .env("XDG_DATA_HOME", &data)
+                .output()
+                .unwrap()
+        };
+        assert_eq!(
+            String::from_utf8_lossy(&inspect().stdout),
+            "agent-skills\tno\n"
+        );
+
+        fs::remove_file(&destination).unwrap();
+        std::os::unix::fs::symlink(current_release.join("skills"), &destination).unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&inspect().stdout),
+            "agent-skills\tyes\n"
+        );
+    }
+
     #[test]
     fn finds_only_standalone_project_collection_checkouts() {
         let directory = tempfile::tempdir().unwrap();
@@ -611,7 +661,7 @@ mod tests {
     }
 
     #[test]
-    fn collection_installer_merges_skill_siblings_into_an_existing_root() {
+    fn collection_installer_retargets_managed_links_without_duplicate_copies() {
         let directory = tempfile::tempdir().unwrap();
         let home = directory.path().join("home");
         let data = directory.path().join("data");
@@ -629,7 +679,7 @@ mod tests {
         let installer = directory.path().join("installer.sh");
         fs::write(&installer, INSTALLER).unwrap();
         let manifest = format!(
-            "agent-skills\t1.0.0\tany\tcollection\t{digest}\thttp://unused\n.codex/skills\tskills"
+            "agent-skills\t1.0.0\tany\tcollection\t{digest}\thttp://unused\n.agents/skills\tskills\n.codex/skills\tskills"
         );
 
         let output = Command::new("sh")
@@ -651,7 +701,7 @@ mod tests {
         assert!(home.join(".codex/skills/x-one").is_symlink());
         assert!(home.join(".codex/skills/x-two").is_symlink());
         let links = fs::read_to_string(data.join("vm-tools/state/agent-skills.links")).unwrap();
-        assert_eq!(links.lines().count(), 2);
+        assert_eq!(links.lines().count(), 3);
 
         #[cfg(unix)]
         {
@@ -676,6 +726,51 @@ mod tests {
                 String::from_utf8_lossy(&retry.stderr)
             );
             assert!(home.join(".codex/skills/x-one/SKILL.md").is_file());
+
+            let next_digest = "b".repeat(64);
+            let next_release = data
+                .join("vm-tools/releases/agent-skills")
+                .join(format!("2.0.0-{next_digest}"))
+                .join("skills");
+            for skill in ["x-one", "x-two"] {
+                let skill = next_release.join(skill);
+                fs::create_dir_all(&skill).unwrap();
+                fs::write(skill.join("SKILL.md"), "# Updated\n").unwrap();
+            }
+            let next_manifest = format!(
+                "agent-skills\t2.0.0\tany\tcollection\t{next_digest}\thttp://unused\n.agents/skills\tskills\n.codex/skills\tskills"
+            );
+            let update = Command::new("sh")
+                .arg(&installer)
+                .arg("wait")
+                .arg(&next_manifest)
+                .env("HOME", &home)
+                .env("XDG_DATA_HOME", &data)
+                .env("CARGO_REGISTRIES_VM_TOKEN", "test-token")
+                .output()
+                .unwrap();
+            assert!(
+                update.status.success(),
+                "{}",
+                String::from_utf8_lossy(&update.stderr)
+            );
+            assert_eq!(
+                fs::read_link(home.join(".agents/skills")).unwrap(),
+                next_release
+            );
+            assert_eq!(
+                fs::read_link(home.join(".codex/skills/x-one")).unwrap(),
+                next_release.join("x-one")
+            );
+            assert!(
+                fs::read_to_string(home.join(".codex/skills/x-one/SKILL.md"))
+                    .unwrap()
+                    .contains("Updated")
+            );
+            assert!(!fs::read_dir(&release)
+                .unwrap()
+                .flatten()
+                .any(|entry| entry.file_name().to_string_lossy().starts_with(".vm-tool-")));
         }
     }
 }

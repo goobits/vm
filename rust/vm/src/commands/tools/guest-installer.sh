@@ -252,6 +252,19 @@ install_tool() (
     printf '%s\n' "$link_destination" >> "$new_links"
   }
 
+  replace_link() {
+    pending=$1
+    destination=$2
+    if test -L "$destination"; then
+      if mv -fT "$pending" "$destination" 2>/dev/null; then
+        return 0
+      fi
+      mv -fh "$pending" "$destination"
+      return
+    fi
+    mv -f "$pending" "$destination"
+  }
+
   while IFS="$tab" read -r destination source; do
     resolved_below "$release" "$release/$source" || {
       echo "$name activation source is unavailable: $source" >&2
@@ -275,7 +288,7 @@ install_tool() (
   done < "$links"
 
   while IFS="$tab" read -r pending destination_path; do
-    mv -f "$pending" "$destination_path"
+    replace_link "$pending" "$destination_path"
   done < "$prepared"
   : > "$prepared"
 
