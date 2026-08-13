@@ -113,7 +113,6 @@ mod tests {
         );
         assert!(ANSIBLE_PLAYBOOK.contains("ai_sync_all_enabled"));
         assert!(ANSIBLE_PLAYBOOK.contains("ai_sync_tools.get('antigravity'"));
-        assert!(ANSIBLE_PLAYBOOK.contains("ai_sync_tools.get('gemini', false)"));
         assert!(!ANSIBLE_PLAYBOOK.contains("project_config.host_sync.ai_tools is defined"));
     }
 

@@ -294,15 +294,6 @@ $SUDO chmod 0555 "$target""#
             }
         }
 
-        if let Some(image) = config.tart.as_ref().and_then(|t| t.image.as_deref()) {
-            if image.contains("macos") {
-                return "macos";
-            }
-            if image.contains("ubuntu") || image.contains("debian") || image.contains("linux") {
-                return "linux";
-            }
-        }
-
         "macos"
     }
 
@@ -612,10 +603,6 @@ mod tests {
         let config = VmConfig {
             vm: Some(VmSettings {
                 r#box: Some(BoxSpec::String("custom-team-base".to_string())),
-                ..Default::default()
-            }),
-            tart: Some(vm_config::config::TartConfig {
-                image: Some("ghcr.io/example/custom-base:latest".to_string()),
                 ..Default::default()
             }),
             ..Default::default()

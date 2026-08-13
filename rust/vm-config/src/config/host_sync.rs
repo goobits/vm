@@ -54,10 +54,11 @@ impl AiSyncConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AiSyncTools {
     #[serde(default = "default_true")]
     pub claude: bool,
-    #[serde(default = "default_true", alias = "gemini")]
+    #[serde(default = "default_true")]
     pub antigravity: bool,
     #[serde(default)]
     pub codex: bool,

@@ -163,7 +163,6 @@ fn add_vm_schema_fields(cache: &mut HashMap<String, SchemaType>) {
     // Tart fields
     add_strings!(
         cache,
-        "tart.image",
         "tart.guest_os",
         "tart.disk_size",
         "tart.ssh_user",
@@ -237,7 +236,6 @@ fn add_terminal_and_package_fields(cache: &mut HashMap<String, SchemaType>) {
         "host_sync.ai_tools",
         "host_sync.ai_tools.claude",
         "host_sync.ai_tools.antigravity",
-        "host_sync.ai_tools.gemini",
         "host_sync.ai_tools.codex",
         "host_sync.worktrees.enabled"
     );

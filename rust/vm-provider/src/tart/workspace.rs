@@ -113,13 +113,7 @@ impl TartProvider {
                 return false;
             }
         }
-        config
-            .tart
-            .as_ref()
-            .and_then(|tart| tart.image.as_deref())
-            .map_or(true, |image| {
-                !image.contains("ubuntu") && !image.contains("linux")
-            })
+        true
     }
 
     pub(super) fn guest_exec_args(

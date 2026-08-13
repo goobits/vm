@@ -119,7 +119,7 @@ working trees and installed immutable releases are never treated as source.
   service containers from environment discovery, and reuse only their exact
   occupied host ports during environment creation.
 - [x] Replace duplicated AI-sync templates with one valid policy covering
-  boolean and granular Claude, Codex, Antigravity, and legacy Gemini settings.
+  boolean and granular Claude, Codex, and Antigravity settings.
 - [x] Accept Tart 2.32.1's capitalized VM inventory fields when starting the
   shared package appliance.
 - [x] Let Docker appliance acceptance use locally built immutable image

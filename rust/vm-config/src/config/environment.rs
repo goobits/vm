@@ -117,9 +117,8 @@ pub struct TerminalConfig {
 
 /// Tart virtualization provider configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct TartConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub image: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub guest_os: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

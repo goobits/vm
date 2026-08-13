@@ -303,11 +303,9 @@ host_sync:
     codex: true
 ```
 
-`ai_tools: true` syncs all three state areas. The old `gemini` key remains a
-deprecated compatibility alias for `antigravity`; new configs should use
-`antigravity`. Host sync retains supported state and credentials only. The Vibe
-base owns the three executables and Codex repair; package infrastructure owns
-explicitly managed tools.
+`ai_tools: true` syncs all three state areas. Host sync retains supported state
+and credentials only. The Vibe base owns the three executables and Codex repair;
+package infrastructure owns explicitly managed tools.
 
 ## Presets
 

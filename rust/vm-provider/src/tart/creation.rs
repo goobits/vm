@@ -109,9 +109,6 @@ impl TartProvider {
                 _ => Err(VmError::Internal("Invalid box type for Tart".into())),
             };
         }
-        if let Some(image) = config.tart.as_ref().and_then(|config| config.image.clone()) {
-            return Ok(image);
-        }
         Ok(DEFAULT_TART_IMAGE.to_string())
     }
 

@@ -215,24 +215,16 @@ impl VmConfig {
 
 #[cfg(test)]
 mod container_policy_tests {
-    use super::{AiSyncConfig, MemoryLimit, VmConfig, VolumeRetention, VolumeScope};
+    use super::{MemoryLimit, VmConfig, VolumeRetention, VolumeScope};
 
     #[test]
-    fn legacy_gemini_sync_key_enables_antigravity() {
-        let config: VmConfig = serde_yaml_ng::from_str(
-            "host_sync:\n  ai_tools:\n    claude: false\n    gemini: true\n    codex: false\n",
-        )
-        .unwrap();
-        let AiSyncConfig::Detailed(tools) = config
-            .host_sync
-            .and_then(|sync| sync.ai_tools)
-            .expect("AI sync config should parse")
-        else {
-            panic!("expected detailed AI sync config");
-        };
-        assert!(tools.antigravity);
-        assert!(!tools.claude);
-        assert!(!tools.codex);
+    fn retired_nested_configuration_is_rejected() {
+        for yaml in [
+            "tart:\n  image: obsolete\n",
+            "host_sync:\n  ai_tools:\n    gemini: false\n",
+        ] {
+            assert!(serde_yaml_ng::from_str::<VmConfig>(yaml).is_err());
+        }
     }
 
     #[test]
