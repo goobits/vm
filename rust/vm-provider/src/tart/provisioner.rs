@@ -486,8 +486,8 @@ mod tests {
             labels,
             [
                 "shell configuration",
-                "Node.js toolchain",
                 "Docker runtime",
+                "Node.js toolchain",
                 "Node.js project dependencies",
                 "database services",
             ]

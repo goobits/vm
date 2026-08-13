@@ -1,42 +1,26 @@
 use super::{
-    host_sync::collect_host_sync_mounts, instance::TartInstanceManager, mounts::TartDirShare,
-    provisioner::TartProvisioner, readiness::SharedShellProbeCache, TartCommand,
+    instance::TartInstanceManager, provisioner::TartProvisioner, readiness::SharedShellProbeCache,
+    TartCommand,
 };
 use crate::tart_storage as storage;
 use crate::{
     common::instance::{extract_project_name, InstanceInfo, InstanceResolver},
     context::ProviderContext,
-    progress::ProgressReporter,
     project_plan::ProjectPlan,
-    resource_limits::ResolvedResources,
-    shell_session, tart_base, BoxConfig, InstanceState, Provider, ResourceUsage, ServiceStatus,
-    TempProvider, VmError, VmStatusReport,
+    shell_session, InstanceState, Provider, TempProvider, VmError, VmStatusReport,
 };
 use duct::cmd;
-use serde::Deserialize;
 use std::ffi::OsStr;
-use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use std::sync::{Arc, Mutex};
-use tracing::{error, info, warn};
-use vm_config::config::{BoxSpec, VmConfig};
+use tracing::{error, info};
+use vm_config::config::VmConfig;
 use vm_core::command_stream::{
     is_tool_installed, stream_command, stream_command_visible_with_env, stream_command_with_env,
 };
 use vm_core::error::Result;
 use vm_core::msg;
-use vm_core::{get_cpu_core_count, get_total_memory_gb, vm_warning};
 use vm_messages::messages::MESSAGES;
-
-// Constants for Tart provider
-const DEFAULT_TART_IMAGE: &str = "ghcr.io/cirruslabs/macos-sequoia-base:latest";
-
-struct CollectedMetrics {
-    resources: ResourceUsage,
-    services: Vec<ServiceStatus>,
-    uptime: Option<String>,
-}
 
 pub(crate) fn sanitize_log_name(input: &str) -> String {
     input
@@ -88,7 +72,7 @@ impl TartProvider {
         &self.command
     }
 
-    fn stream_tart_command<A: AsRef<OsStr>>(&self, args: &[A]) -> Result<()> {
+    pub(super) fn stream_tart_command<A: AsRef<OsStr>>(&self, args: &[A]) -> Result<()> {
         if let Some(tart_home) = self.tart_home() {
             stream_command_with_env("tart", args, &[("TART_HOME", tart_home.as_str())])
         } else {
@@ -115,7 +99,7 @@ impl TartProvider {
         Ok(None)
     }
 
-    fn tart_image_exists(&self, image_name: &str) -> Result<bool> {
+    pub(super) fn tart_image_exists(&self, image_name: &str) -> Result<bool> {
         let output = self.tart_expr(&["list", "--format", "json"]).read()?;
         let vms: Vec<serde_json::Value> = serde_json::from_str(&output)?;
         Ok(vms.iter().any(|vm| vm["Name"].as_str() == Some(image_name)))
@@ -132,371 +116,17 @@ impl TartProvider {
         matches!(state, Some("running"))
     }
 
-    fn collect_metrics(&self, instance: &str) -> Result<CollectedMetrics> {
-        let metrics_script = include_str!("scripts/collect_metrics.sh");
-        let output = self
-            .tart_expr(&["exec", instance, "sh", "-c", metrics_script])
-            .stderr_capture()
-            .read()
-            .map_err(|e| VmError::Provider(format!("SSH command failed: {}", e)))?;
-
-        self.parse_metrics_json(&output)
-    }
-
-    pub(super) fn host_workspace_path(&self) -> Result<PathBuf> {
-        if let Some(source) = &self.config.source_path {
-            let resolved = if source.is_absolute() {
-                source.clone()
-            } else {
-                std::env::current_dir()
-                    .map_err(|e| {
-                        VmError::Internal(format!("Failed to determine host workspace path: {e}"))
-                    })?
-                    .join(source)
-            };
-
-            if resolved.is_dir() {
-                return Self::normalize_host_workspace_path(&resolved);
-            }
-
-            if let Some(parent) = resolved.parent() {
-                return Self::normalize_host_workspace_path(parent);
-            }
-        }
-
-        let current_dir = std::env::current_dir().map_err(|e| {
-            VmError::Internal(format!("Failed to determine host workspace path: {e}"))
-        })?;
-        Self::normalize_host_workspace_path(&current_dir)
-    }
-
-    fn normalize_host_workspace_path(path: &Path) -> Result<PathBuf> {
-        let canonical_path = path.canonicalize().map_err(|e| {
-            VmError::Internal(format!(
-                "Failed to resolve host workspace path {}: {e}",
-                path.display()
-            ))
-        })?;
-
-        if Self::looks_like_project_root(&canonical_path) {
-            return Ok(canonical_path);
-        }
-
-        let nested_workspace = canonical_path.join("workspace");
-        if canonical_path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| name == "workspace")
-            && nested_workspace.is_dir()
-            && Self::looks_like_project_root(&nested_workspace)
-        {
-            return nested_workspace.canonicalize().map_err(|e| {
-                VmError::Internal(format!(
-                    "Failed to resolve nested host workspace path {}: {e}",
-                    nested_workspace.display()
-                ))
-            });
-        }
-
-        Ok(canonical_path)
-    }
-
-    fn looks_like_project_root(path: &Path) -> bool {
-        [
-            "vm.yaml",
-            ".git",
-            "Cargo.toml",
-            "package.json",
-            "pyproject.toml",
-        ]
-        .iter()
-        .any(|marker| path.join(marker).exists())
-    }
-
-    fn effective_sync_directory(&self) -> String {
-        let configured = self
-            .config
-            .project
-            .as_ref()
-            .and_then(|p| p.workspace_path.as_deref())
-            .unwrap_or("/workspace");
-
-        if configured == "/workspace" && Self::is_macos_guest_config(&self.config) {
-            let user = self
-                .config
-                .tart
-                .as_ref()
-                .and_then(|tart| tart.ssh_user.as_deref())
-                .unwrap_or("admin");
-            return format!("/Users/{user}/workspace");
-        }
-
-        configured.to_string()
-    }
-
-    pub(super) fn is_macos_guest_config(config: &VmConfig) -> bool {
-        if matches!(config.os.as_deref(), Some("macos")) {
-            return true;
-        }
-
-        if matches!(config.os.as_deref(), Some("linux")) {
-            return false;
-        }
-
-        if matches!(
-            config.tart.as_ref().and_then(|t| t.guest_os.as_deref()),
-            Some("macos")
-        ) {
-            return true;
-        }
-
-        if matches!(
-            config.tart.as_ref().and_then(|t| t.guest_os.as_deref()),
-            Some("linux")
-        ) {
-            return false;
-        }
-
-        if let Some(BoxSpec::String(name)) = config.vm.as_ref().and_then(|vm| vm.get_box_spec()) {
-            if let Some(guest_os) = tart_base::guest_os(&name) {
-                return guest_os == "macos";
-            }
-            if name.contains("ubuntu") || name.contains("debian") || name.contains("linux") {
-                return false;
-            }
-        }
-
-        match config.tart.as_ref().and_then(|tart| tart.image.as_deref()) {
-            Some(image) => !image.contains("ubuntu") && !image.contains("linux"),
-            None => true,
-        }
-    }
-
-    fn start_vm_background(&self, vm_name: &str) -> Result<()> {
-        self.start_vm_background_with_dir_shares(vm_name, &[])
-    }
-
-    pub(super) fn start_vm_background_with_dir_shares(
-        &self,
-        vm_name: &str,
-        extra_dir_shares: &[TartDirShare],
-    ) -> Result<()> {
-        let host_path = self.host_workspace_path()?;
-        let raw_log_path = tart_run_log_path(vm_name);
-        info!("Tart run log for '{}': {}", vm_name, raw_log_path);
-        let workspace_access = self
-            .config
-            .project
-            .as_ref()
-            .map(|project| project.workspace_access)
-            .unwrap_or_default();
-        let workspace = TartDirShare {
-            tag: "workspace".to_string(),
-            host_path,
-            guest_path: Some(PathBuf::from(self.effective_sync_directory())),
-            access: workspace_access,
-        };
-        let mut dir_args = vec![workspace.tart_argument()];
-        for mount in collect_host_sync_mounts(&self.config) {
-            dir_args.push(format!("{}:tag={}", mount.host_path.display(), mount.tag));
-        }
-        for share in self.configured_dir_shares()? {
-            dir_args.push(share.tart_argument());
-        }
-        for share in extra_dir_shares {
-            dir_args.push(share.tart_argument());
-        }
-
-        let stdout = File::create(&raw_log_path).map_err(|error| {
-            VmError::Provider(format!("Failed to create Tart run log: {error}"))
-        })?;
-        let stderr = stdout
-            .try_clone()
-            .map_err(|error| VmError::Provider(format!("Failed to open Tart run log: {error}")))?;
-        let mut command = std::process::Command::new("nohup");
-        self.command.configure(&mut command);
-        command.args(self.build_run_args(vm_name, &dir_args));
-
-        command
-            .stdin(Stdio::null())
-            .stdout(stdout)
-            .stderr(stderr)
-            .spawn()
-            .map_err(|e| {
-                VmError::Provider(format!(
-                    "Failed to start Tart VM: {}. See {}",
-                    e, raw_log_path
-                ))
-            })?;
-
-        Ok(())
-    }
-
-    fn build_run_args(&self, vm_name: &str, dir_args: &[String]) -> Vec<String> {
-        let tart = self.config.tart.as_ref();
-        let nested = tart.and_then(|tart| tart.nested).unwrap_or(false)
-            && tart.and_then(|tart| tart.guest_os.as_deref()) != Some("macos");
-        let mut args = vec![
-            "tart".to_string(),
-            "run".to_string(),
-            "--no-graphics".to_string(),
-        ];
-        if nested {
-            args.push("--nested".to_string());
-        }
-        for directory in dir_args {
-            args.push("--dir".to_string());
-            args.push(directory.clone());
-        }
-        args.push(vm_name.to_string());
-        args
-    }
-
-    fn parse_metrics_json(&self, raw: &str) -> Result<CollectedMetrics> {
-        #[derive(Deserialize)]
-        struct Payload {
-            cpu_percent: Option<f64>,
-            memory_used_mb: Option<u64>,
-            memory_limit_mb: Option<u64>,
-            disk_used_gb: Option<f64>,
-            disk_total_gb: Option<f64>,
-            uptime: Option<String>,
-            services: Vec<ServiceEntry>,
-        }
-
-        #[derive(Deserialize)]
-        struct ServiceEntry {
-            name: String,
-            is_running: bool,
-        }
-
-        let payload: Payload = serde_json::from_str(raw)
-            .map_err(|e| VmError::Provider(format!("Failed to parse metrics JSON: {}", e)))?;
-
-        let resources = ResourceUsage {
-            cpu_percent: payload.cpu_percent,
-            memory_used_mb: payload.memory_used_mb,
-            memory_limit_mb: payload.memory_limit_mb,
-            disk_used_gb: payload.disk_used_gb,
-            disk_total_gb: payload.disk_total_gb,
-        };
-
-        let services = payload
-            .services
-            .into_iter()
-            .map(|svc| ServiceStatus {
-                name: svc.name,
-                is_running: svc.is_running,
-                port: None,
-                host_port: None,
-                metrics: None,
-                error: None,
-            })
-            .collect();
-
-        Ok(CollectedMetrics {
-            resources,
-            services,
-            uptime: payload.uptime,
-        })
-    }
-
-    fn apply_runtime_config(&self, instance: &str, config: &VmConfig) -> Result<()> {
-        let resources = Self::resolved_tart_resources(config)?;
-
-        if let Some(count) = resources.cpus {
-            info!("Setting CPU count to {}", count);
-            self.tart_expr(&["set", instance, "--cpu", &count.to_string()])
-                .run()
-                .map_err(|e| VmError::Provider(format!("Failed to set CPU: {}", e)))?;
-        }
-
-        if let Some(memory_mb) = resources.memory_mb {
-            info!("Setting memory to {}MB", memory_mb);
-            self.tart_expr(&["set", instance, "--memory", &memory_mb.to_string()])
-                .run()
-                .map_err(|e| VmError::Provider(format!("Failed to set memory: {}", e)))?;
-        }
-
-        Ok(())
-    }
-
-    fn adjust_cpu_count(requested_cpus: u32) -> u32 {
-        let system_cpus = get_cpu_core_count().unwrap_or(2);
-        if requested_cpus > system_cpus {
-            (system_cpus / 2).max(1).min(system_cpus)
-        } else {
-            requested_cpus
-        }
-    }
-
-    fn adjust_memory_mb(requested_mb: u32) -> u32 {
-        let system_memory_gb = get_total_memory_gb().unwrap_or(4);
-        let requested_gb = (requested_mb as u64) / 1024;
-        let max_safe_memory_gb = system_memory_gb.saturating_sub(2).max(1);
-
-        if requested_gb > max_safe_memory_gb {
-            (max_safe_memory_gb * 1024) as u32
-        } else {
-            requested_mb
-        }
-    }
-
-    fn resolved_tart_resources(config: &VmConfig) -> Result<ResolvedResources> {
-        let requested = ResolvedResources::resolve(config)?;
-        let cpus = requested.cpus.map(|count| {
-            let adjusted = Self::adjust_cpu_count(count);
-            if adjusted != count {
-                vm_warning!(
-                    "Tart requested {count} CPUs, but the host can safely apply {adjusted}; using {adjusted}"
-                );
-            }
-            adjusted
-        });
-        let memory_mb = requested.memory_mb.map(|memory| {
-            let adjusted = Self::adjust_memory_mb(memory);
-            if adjusted != memory {
-                vm_warning!(
-                    "Tart requested {memory} MB RAM, but the host can safely apply {adjusted} MB; using {adjusted} MB"
-                );
-            }
-            adjusted
-        });
-
-        let host_cpus = get_cpu_core_count().unwrap_or(2);
-        let host_memory_mb = get_total_memory_gb().unwrap_or(4).saturating_mul(1024);
-        if Self::uses_most_of_host(cpus, memory_mb, host_cpus, host_memory_mb) {
-            vm_warning!(
-                "Tart is configured for at least 75% of this host; Docker Desktop or another VM may oversubscribe macOS"
-            );
-        }
-
-        Ok(ResolvedResources { memory_mb, cpus })
-    }
-
-    fn uses_most_of_host(
-        cpus: Option<u32>,
-        memory_mb: Option<u32>,
-        host_cpus: u32,
-        host_memory_mb: u64,
-    ) -> bool {
-        cpus.is_some_and(|count| count.saturating_mul(4) >= host_cpus.saturating_mul(3))
-            || memory_mb.is_some_and(|memory| {
-                u64::from(memory).saturating_mul(4) >= host_memory_mb.saturating_mul(3)
-            })
-    }
-
     fn vm_name(&self) -> String {
         extract_project_name(&self.config).to_string()
     }
 
     /// Create instance manager for multi-instance operations
-    fn instance_manager(&self) -> TartInstanceManager<'_> {
+    pub(super) fn instance_manager(&self) -> TartInstanceManager<'_> {
         TartInstanceManager::new(&self.config, self.command.clone())
     }
 
     /// Resolve VM name with instance support
-    fn vm_name_with_instance(&self, instance: Option<&str>) -> Result<String> {
+    pub(super) fn vm_name_with_instance(&self, instance: Option<&str>) -> Result<String> {
         match instance {
             Some(name) if self.get_instance_state(name)?.is_some() => Ok(name.to_string()),
             Some(_) => {
@@ -505,226 +135,6 @@ impl TartProvider {
             }
             None => Ok(self.vm_name()), // Use existing default behavior for backward compatibility
         }
-    }
-
-    /// Get Tart OCI image with BoxConfig support
-    fn get_tart_image(&self, config: &VmConfig) -> Result<String> {
-        // Try new vm.box first
-        if let Some(vm_settings) = &config.vm {
-            if let Some(box_spec) = vm_settings.get_box_spec() {
-                let box_config = BoxConfig::parse_for_tart(&box_spec)?;
-                return match box_config {
-                    BoxConfig::TartImage(image) if image == tart_base::LINUX_NAME => {
-                        Ok(tart_base::versioned_cache_name())
-                    }
-                    BoxConfig::TartImage(image) => Ok(image),
-                    BoxConfig::Snapshot(name) => Err(VmError::Config(format!(
-                        "Use 'vm revert {}' for snapshots",
-                        name
-                    ))),
-                    _ => Err(VmError::Internal("Invalid box type for Tart".into())),
-                };
-            }
-        }
-
-        // Fall back to deprecated tart.image
-        if let Some(tart_config) = &config.tart {
-            if let Some(image) = &tart_config.image {
-                return Ok(image.clone());
-            }
-        }
-
-        Ok(DEFAULT_TART_IMAGE.to_string())
-    }
-
-    /// Internal VM creation logic shared by create() and create_instance()
-    fn create_vm_internal(
-        &self,
-        vm_name: &str,
-        instance_label: Option<&str>,
-        config: &VmConfig,
-    ) -> Result<()> {
-        self.create_vm_internal_with_dir_shares(vm_name, instance_label, config, &[])
-    }
-
-    pub(super) fn create_vm_internal_with_dir_shares(
-        &self,
-        vm_name: &str,
-        instance_label: Option<&str>,
-        config: &VmConfig,
-        extra_dir_shares: &[TartDirShare],
-    ) -> Result<()> {
-        let progress = ProgressReporter::new();
-        let phase_msg = match instance_label {
-            Some(label) => format!("Creating Tart VM instance '{}'", label),
-            None => "Creating Tart VM".to_string(),
-        };
-        let main_phase = progress.start_phase(&phase_msg);
-
-        // Check if VM already exists
-        ProgressReporter::task(&main_phase, "Checking if VM exists...");
-        if self.get_instance_state(vm_name)?.is_some() {
-            ProgressReporter::task(&main_phase, "Existing VM found.");
-            ProgressReporter::finish_phase(&main_phase, "VM already exists.");
-            return Err(VmError::Provider(format!(
-                "Tart VM '{vm_name}' already exists"
-            )));
-        }
-        ProgressReporter::task(&main_phase, "VM not found, proceeding with creation.");
-
-        // Check for orphaned VMs (same project, different instance/suffix)
-        let existing_vms = self
-            .instance_manager()
-            .parse_tart_list()?
-            .into_iter()
-            .map(|instance| instance.name)
-            .collect::<Vec<_>>();
-        let project_prefix = format!("{}-", extract_project_name(&self.config));
-        let orphans: Vec<String> = existing_vms
-            .into_iter()
-            .filter(|name| name.starts_with(&project_prefix) && name != vm_name)
-            .collect();
-
-        if !orphans.is_empty() {
-            warn!("Found potential orphaned VMs from previous runs/instances");
-            vm_warning!(
-                "Other Tart environments exist for this project: {}",
-                orphans.join(", ")
-            );
-        }
-
-        // Get image from config using new BoxConfig system
-        let image = self.get_tart_image(config)?;
-
-        if (image == tart_base::MACOS_NAME || image == tart_base::versioned_cache_name())
-            && !self.tart_image_exists(&image)?
-        {
-            return Err(VmError::Config(format!(
-                "Tart vibe base '{}' was not found. Run `vm system base build vibe --provider tart` first.",
-                image
-            )));
-        }
-
-        // Clone the base image
-        ProgressReporter::task(&main_phase, &format!("Cloning image '{}'...", image));
-        let clone_result = self.stream_tart_command(&["clone", &image, vm_name]);
-        if clone_result.is_err() {
-            ProgressReporter::task(&main_phase, "Clone failed.");
-            ProgressReporter::finish_phase(&main_phase, "Creation failed.");
-            return clone_result;
-        }
-        ProgressReporter::task(&main_phase, "Image cloned successfully.");
-        self.command.remember_instance(vm_name)?;
-
-        // Resolve percentages once and apply the same host-relative values used by
-        // container providers. Tart still enforces a small host-safety margin.
-        let resources = Self::resolved_tart_resources(config)?;
-        if let Some(memory_mb) = resources.memory_mb {
-            ProgressReporter::task(
-                &main_phase,
-                &format!("Setting memory to {} MB...", memory_mb),
-            );
-            self.stream_tart_command(&["set", vm_name, "--memory", &memory_mb.to_string()])?;
-            ProgressReporter::task(&main_phase, "Memory configured.");
-        }
-
-        if let Some(cpus) = resources.cpus {
-            ProgressReporter::task(&main_phase, &format!("Setting CPUs to {}...", cpus));
-            self.stream_tart_command(&["set", vm_name, "--cpu", &cpus.to_string()])?;
-            ProgressReporter::task(&main_phase, "CPUs configured.");
-        }
-
-        // Set disk size if specified
-        if let Some(tart_config) = &config.tart {
-            if let Some(disk_limit) = &tart_config.disk_size {
-                if let Some(disk_gb) = disk_limit.to_gb() {
-                    ProgressReporter::task(
-                        &main_phase,
-                        &format!("Setting disk size to {} GB...", disk_gb),
-                    );
-                    self.stream_tart_command(&[
-                        "set",
-                        vm_name,
-                        "--disk-size",
-                        &disk_gb.to_string(),
-                    ])?;
-                    ProgressReporter::task(&main_phase, "Disk size configured.");
-                }
-            }
-        }
-
-        // Start VM (non-blocking)
-        ProgressReporter::task(&main_phase, "Starting VM...");
-        let start_result = self.start_vm_background_with_dir_shares(vm_name, extra_dir_shares);
-        if start_result.is_err() {
-            ProgressReporter::task(&main_phase, "VM start failed.");
-            ProgressReporter::finish_phase(&main_phase, "Creation failed.");
-            return start_result;
-        }
-        ProgressReporter::task(&main_phase, "VM started successfully.");
-
-        // Run initial provisioning using the effective config
-        ProgressReporter::task(&main_phase, "Running initial provisioning...");
-        let provisioner = TartProvisioner::new(
-            vm_name.to_string(),
-            self.get_sync_directory(),
-            self.command.clone(),
-        );
-        let project_plan = ProjectPlan::detect(&self.host_workspace_path()?, config);
-        if let Err(e) = provisioner.provision(config, &project_plan) {
-            warn!(
-                "Initial provisioning failed: {}. The VM is created but may not be fully configured.",
-                e
-            );
-            // This is treated as a hard failure for create, as an un-provisioned VM is not useful.
-            ProgressReporter::finish_phase(&main_phase, "Provisioning failed.");
-            return Err(VmError::Provider(format!(
-                "{}. Tart run log: {}",
-                e,
-                tart_run_log_path(vm_name)
-            )));
-        }
-        ProgressReporter::task(&main_phase, "Initial provisioning complete.");
-
-        let mut guest_shares = self.configured_dir_shares()?;
-        guest_shares.extend_from_slice(extra_dir_shares);
-        if !guest_shares.is_empty() {
-            ProgressReporter::task(&main_phase, "Mounting shared directories...");
-            self.mount_tart_dir_shares_in_guest(vm_name, &guest_shares)?;
-            ProgressReporter::task(&main_phase, "Shared directories mounted.");
-        }
-
-        ProgressReporter::finish_phase(&main_phase, "Environment ready.");
-
-        info!("{}", MESSAGES.service.provider_tart_created_success);
-        info!("{}", MESSAGES.service.provider_tart_connect_hint);
-        Ok(())
-    }
-
-    fn guest_exec_args(&self, container: Option<&str>, cmd: &[String]) -> Result<Vec<String>> {
-        let vm_name = self.vm_name_with_instance(container)?;
-        let shell = self
-            .config
-            .terminal
-            .as_ref()
-            .and_then(|terminal| terminal.shell.as_deref())
-            .unwrap_or("zsh");
-        let sync_dir = self.get_sync_directory();
-        self.ensure_workspace_mount_ready(&vm_name, &sync_dir)?;
-        self.ensure_configured_mounts_ready(&vm_name)?;
-        self.ensure_shell_config_ready(&vm_name, &sync_dir)?;
-        let sync_dir_quoted = shell_session::quote_posix_argument(&sync_dir);
-        let worktree_repair = shell_session::worktree_repair_script(&sync_dir);
-        let mut args = vec![
-            "exec".to_string(),
-            vm_name,
-            shell.to_string(),
-            "-ilc".to_string(),
-            format!("{worktree_repair}\ncd {sync_dir_quoted} && exec \"$@\""),
-            "vm-exec".to_string(),
-        ];
-        args.extend(cmd.iter().cloned());
-        Ok(args)
     }
 }
 
