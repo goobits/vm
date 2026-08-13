@@ -80,6 +80,7 @@ pbkdf2 = "0.13.0"
 rand = "0.10"
 sha1 = "0.11.0"
 sha2 = "0.11.0"
+hmac = "0.13.0"
 semver = "1.0"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["fmt", "env-filter", "json"] }

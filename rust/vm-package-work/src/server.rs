@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use axum::{
     body::Body,
-    extract::{Path, Query, Request, State},
+    extract::{Extension, Path, Query, Request, State},
     http::{header, HeaderMap, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -34,6 +34,7 @@ pub struct WorkCredentials {
     reviewer_token: String,
     release_token: String,
     rollout_token: String,
+    agent_signing_key: String,
 }
 
 impl WorkCredentials {
@@ -43,6 +44,7 @@ impl WorkCredentials {
         reviewer_token: impl Into<String>,
         release_token: impl Into<String>,
         rollout_token: impl Into<String>,
+        agent_signing_key: impl Into<String>,
     ) -> Self {
         Self {
             read_token: read_token.into(),
@@ -50,6 +52,7 @@ impl WorkCredentials {
             reviewer_token: reviewer_token.into(),
             release_token: release_token.into(),
             rollout_token: rollout_token.into(),
+            agent_signing_key: agent_signing_key.into(),
         }
     }
 
@@ -79,9 +82,17 @@ impl WorkCredentials {
                 "read, controller, reviewer, release, and rollout tokens must be distinct".into(),
             ));
         }
+        if self.agent_signing_key.len() < 32 {
+            return Err(WorkError::Invalid(
+                "package agent signing key must contain at least 32 characters".into(),
+            ));
+        }
         Ok(())
     }
 }
+
+#[derive(Debug, Clone)]
+struct AgentAccess(Option<String>);
 
 #[derive(Clone)]
 pub(crate) struct AppState {
@@ -121,19 +132,25 @@ pub fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router {
         .route_layer(middleware::from_fn_with_state(state.clone(), read_auth));
     let writes = Router::new()
         .route("/v1/packages", post(register_package))
-        .route("/v1/checkouts", post(create_checkout))
         .route("/v1/consumers", post(register_consumer))
         .route("/v1/rollouts", post(create_rollout))
+        .route(
+            "/v1/checkouts/{checkout_id}/cleanup",
+            post(cleanup_checkout),
+        )
+        .merge(crate::tools::controller_routes())
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            controller_auth,
+        ));
+    let agent_writes = Router::new()
+        .route("/v1/checkouts", post(create_checkout))
         .route("/v1/checkouts/{checkout_id}/lease/renew", post(renew_lease))
         .route(
             "/v1/checkouts/{checkout_id}/lease/release",
             post(release_lease),
         )
         .route("/v1/checkouts/{checkout_id}/transition", post(transition))
-        .route(
-            "/v1/checkouts/{checkout_id}/cleanup",
-            post(cleanup_checkout),
-        )
         .route(
             "/v1/submissions/{submission_id}/validate",
             post(validate_submission),
@@ -146,11 +163,7 @@ pub fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router {
             "/v1/submissions/{submission_id}/integration/complete",
             post(complete_integration),
         )
-        .merge(crate::tools::controller_routes())
-        .route_layer(middleware::from_fn_with_state(
-            state.clone(),
-            controller_auth,
-        ));
+        .route_layer(middleware::from_fn_with_state(state.clone(), agent_auth));
     let reviews = Router::new()
         .route(
             "/v1/submissions/{submission_id}/review",
@@ -193,6 +206,7 @@ pub fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router {
         )
         .merge(reads)
         .merge(writes)
+        .merge(agent_writes)
         .merge(reviews)
         .merge(releases)
         .merge(rollouts)
@@ -311,8 +325,10 @@ async fn get_rollout(
 
 async fn create_checkout(
     State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
     Json(request): Json<CreateCheckout>,
 ) -> WorkResult<(StatusCode, Json<CheckoutLease>)> {
+    ensure_requested_consumer(&access, &request.consumers)?;
     state.store.package(&request.package).await?;
     let mut checkout = state.store.create_checkout(request).await?;
     checkout.checkout = state.source.prepare(&state.store, &checkout).await?;
@@ -350,17 +366,21 @@ async fn create_rollout(
 
 async fn renew_lease(
     State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
     Path(checkout_id): Path<String>,
     Json(request): Json<LeaseRequest>,
 ) -> WorkResult<Json<vm_packages::CheckoutRecord>> {
+    ensure_checkout_access(&state.store, &access, &checkout_id).await?;
     Ok(Json(state.store.renew_lease(&checkout_id, request).await?))
 }
 
 async fn release_lease(
     State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
     Path(checkout_id): Path<String>,
     Json(request): Json<LeaseRequest>,
 ) -> WorkResult<Json<vm_packages::CheckoutRecord>> {
+    ensure_checkout_access(&state.store, &access, &checkout_id).await?;
     Ok(Json(
         state.store.release_lease(&checkout_id, request).await?,
     ))
@@ -368,17 +388,31 @@ async fn release_lease(
 
 async fn transition(
     State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
     Path(checkout_id): Path<String>,
     Json(request): Json<TransitionRequest>,
 ) -> WorkResult<Json<vm_packages::CheckoutRecord>> {
+    ensure_checkout_access(&state.store, &access, &checkout_id).await?;
+    if access.0.is_some()
+        && !matches!(
+            request.next,
+            WorkflowState::Active | WorkflowState::Cancelled | WorkflowState::Failed
+        )
+    {
+        return Err(WorkError::Unauthorized(
+            "package agents cannot perform this workflow transition".into(),
+        ));
+    }
     Ok(Json(state.store.transition(&checkout_id, request).await?))
 }
 
 async fn validate_submission(
     State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
     Path(submission_id): Path<String>,
     Json(request): Json<ValidationRequest>,
 ) -> WorkResult<Json<SubmissionRecord>> {
+    ensure_submission_access(&state.store, &access, &submission_id).await?;
     Ok(Json(
         state
             .store
@@ -389,9 +423,11 @@ async fn validate_submission(
 
 async fn prepare_integration(
     State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
     Path(submission_id): Path<String>,
     Json(request): Json<IntegrationRequest>,
 ) -> WorkResult<Json<SubmissionRecord>> {
+    ensure_submission_access(&state.store, &access, &submission_id).await?;
     let submission = state.store.submission(&submission_id).await?;
     Ok(Json(
         state
@@ -403,9 +439,11 @@ async fn prepare_integration(
 
 async fn complete_integration(
     State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
     Path(submission_id): Path<String>,
     Json(request): Json<ValidationRequest>,
 ) -> WorkResult<Json<SubmissionRecord>> {
+    ensure_submission_access(&state.store, &access, &submission_id).await?;
     let completed = state
         .store
         .complete_integration(&submission_id, request)
@@ -734,7 +772,29 @@ async fn read_auth(
     request: Request,
     next: Next,
 ) -> WorkResult<Response> {
-    authorize(&request, &state.access.tokens(), "read")?;
+    let token = request_token(&request)?;
+    if !state.access.tokens().contains(&token.as_str()) {
+        vm_packages::verify_agent_capability(&state.access.agent_signing_key, &token)
+            .map_err(|_| WorkError::Unauthorized("invalid read credential".into()))?;
+    }
+    Ok(next.run(request).await)
+}
+
+async fn agent_auth(
+    State(state): State<AppState>,
+    mut request: Request,
+    next: Next,
+) -> WorkResult<Response> {
+    let token = request_token(&request)?;
+    let consumer = if token == state.access.controller_token {
+        None
+    } else {
+        Some(
+            vm_packages::verify_agent_capability(&state.access.agent_signing_key, &token)
+                .map_err(|_| WorkError::Unauthorized("invalid package agent credential".into()))?,
+        )
+    };
+    request.extensions_mut().insert(AgentAccess(consumer));
     Ok(next.run(request).await)
 }
 
@@ -806,6 +866,46 @@ fn request_token(request: &Request) -> WorkResult<String> {
         .ok_or_else(|| WorkError::Unauthorized("missing authorization credential".into()))
 }
 
+fn ensure_requested_consumer(access: &AgentAccess, consumers: &[String]) -> WorkResult<()> {
+    if let Some(expected) = &access.0 {
+        if consumers.len() != 1 || consumers.first() != Some(expected) {
+            return Err(WorkError::Unauthorized(
+                "package agent credential is bound to a different consumer".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+async fn ensure_checkout_access(
+    store: &Store,
+    access: &AgentAccess,
+    checkout_id: &str,
+) -> WorkResult<()> {
+    if let Some(consumer) = &access.0 {
+        let checkout = store.get_checkout(checkout_id).await?;
+        ensure_requested_consumer(access, &checkout.consumers)?;
+        if !checkout.consumers.contains(consumer) {
+            return Err(WorkError::Unauthorized(
+                "checkout is not assigned to this consumer".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+async fn ensure_submission_access(
+    store: &Store,
+    access: &AgentAccess,
+    submission_id: &str,
+) -> WorkResult<()> {
+    if access.0.is_some() {
+        let submission = store.submission(submission_id).await?;
+        ensure_checkout_access(store, access, &submission.checkout_id).await?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -828,7 +928,14 @@ mod tests {
         let store = Arc::new(Store::open(directory.path()).await.unwrap());
         let server = TestServer::new(router(
             store,
-            WorkCredentials::new("read", "controller", "reviewer", "release", "rollout"),
+            WorkCredentials::new(
+                "read",
+                "controller",
+                "reviewer",
+                "release",
+                "rollout",
+                "agent-signing-key-012345678901234567890123456789",
+            ),
         ));
 
         assert_eq!(server.get("/health").await.status_code(), StatusCode::OK);
@@ -836,6 +943,11 @@ mod tests {
             server.get("/v1/checkouts").await.status_code(),
             StatusCode::UNAUTHORIZED
         );
+        let agent = vm_packages::issue_agent_capability(
+            "agent-signing-key-012345678901234567890123456789",
+            "project-a",
+        )
+        .unwrap();
         assert_eq!(
             server
                 .get("/v1/checkouts")
@@ -871,6 +983,26 @@ mod tests {
                     "repository": "https://example.com/blocked.git",
                     "default_branch": "main"
                 }))
+                .await
+                .status_code(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            server
+                .post("/v1/checkouts")
+                .add_header(header::AUTHORIZATION, format!("Bearer {agent}"))
+                .json(&checkout())
+                .await
+                .status_code(),
+            StatusCode::NOT_FOUND
+        );
+        let mut other_checkout = checkout();
+        other_checkout["consumers"] = serde_json::json!(["project-b"]);
+        assert_eq!(
+            server
+                .post("/v1/checkouts")
+                .add_header(header::AUTHORIZATION, format!("Bearer {agent}"))
+                .json(&other_checkout)
                 .await
                 .status_code(),
             StatusCode::UNAUTHORIZED

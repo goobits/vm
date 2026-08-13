@@ -3830,6 +3830,7 @@ dependencies = [
  "anyhow",
  "base64",
  "chrono",
+ "hmac",
  "reqwest",
  "semver",
  "serde",

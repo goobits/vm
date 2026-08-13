@@ -2,10 +2,11 @@ use serde::{Deserialize, Serialize};
 use vm_core::vm_println;
 use vm_packages::PackageEcosystem;
 
-use crate::commands::command_context::RuntimeSubject;
 use crate::error::{VmError, VmResult};
 
-use super::runtime::{checkout_root, copy_private, exec, exec_in_workspace, exec_output};
+use super::runtime::{
+    checkout_root, copy_private, exec, exec_in_workspace, exec_output, PackageExecutor,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct OverrideRecord {
@@ -36,13 +37,13 @@ impl OverrideRecord {
         }
     }
 
-    pub(super) fn write(&self, subject: &RuntimeSubject, root: &str) -> VmResult<()> {
+    pub(super) fn write(&self, subject: &impl PackageExecutor, root: &str) -> VmResult<()> {
         let content = serde_json::to_vec_pretty(self).map_err(VmError::from)?;
         copy_private(subject, &content, &format!("{root}/override.json"))
     }
 
     pub(super) fn load(
-        subject: &RuntimeSubject,
+        subject: &impl PackageExecutor,
         root: &str,
         checkout: &vm_packages::CheckoutRecord,
         consumer: &str,
@@ -64,7 +65,7 @@ impl OverrideRecord {
         Ok(record)
     }
 
-    pub(super) fn activate(&self, subject: &RuntimeSubject) -> VmResult<()> {
+    pub(super) fn activate(&self, subject: &impl PackageExecutor) -> VmResult<()> {
         if self.ecosystem == PackageEcosystem::Cargo {
             self.install_cargo(subject)
         } else {
@@ -79,7 +80,7 @@ impl OverrideRecord {
         }
     }
 
-    pub(super) fn restore(&self, subject: &RuntimeSubject) -> VmResult<()> {
+    pub(super) fn restore(&self, subject: &impl PackageExecutor) -> VmResult<()> {
         if self.ecosystem == PackageEcosystem::Cargo {
             return remove_cargo(subject, &self.checkout_id);
         }
@@ -139,7 +140,7 @@ impl OverrideRecord {
             })
     }
 
-    fn install_cargo(&self, subject: &RuntimeSubject) -> VmResult<()> {
+    fn install_cargo(&self, subject: &impl PackageExecutor) -> VmResult<()> {
         let root = self.root()?;
         let home = self.home()?;
         let wrapper = format!("{home}/.local/bin/cargo");
@@ -191,7 +192,7 @@ impl OverrideRecord {
     }
 }
 
-pub(super) fn cleanup_failed_attach(subject: &RuntimeSubject, root: &str) -> VmResult<()> {
+pub(super) fn cleanup_failed_attach(subject: &impl PackageExecutor, root: &str) -> VmResult<()> {
     let has_record = exec_output(
         subject,
         [
@@ -240,7 +241,7 @@ exec {actual} "$@"
     )
 }
 
-fn remove_cargo(subject: &RuntimeSubject, checkout_id: &str) -> VmResult<()> {
+fn remove_cargo(subject: &impl PackageExecutor, checkout_id: &str) -> VmResult<()> {
     let root = checkout_root(subject, checkout_id)?;
     let fragment = format!("{root}/cargo.config");
     exec(subject, ["rm", "-f", "--", fragment.as_str()])?;

@@ -358,6 +358,7 @@ fn sync_controller_files(tart: &PackageTart, files: &ApplianceFiles) -> VmResult
         (files.reviewer_token_path(), "reviewer-token"),
         (files.release_token_path(), "release-token"),
         (files.rollout_token_path(), "rollout-token"),
+        (files.agent_signing_key_path(), "agent-signing-key"),
         (files.git_token_path(), "git-token"),
         (files.ci_publish_token_path(), "ci-publish-token"),
     ] {

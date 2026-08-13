@@ -7,14 +7,14 @@ use vm_packages::{
     ValidationRequest, WorkflowState,
 };
 
-use crate::commands::command_context::{load_runtime_subject, project_name, RuntimeSubject};
+use crate::commands::command_context::{load_runtime_subject, project_name};
 use crate::error::{VmError, VmResult};
 
 use super::{
     appliance::{configured_state_and_client, launch_review},
     files::ApplianceFiles,
     overrides::cargo_patch,
-    runtime::{checkout_root, exec, exec_in_workspace, gateway_for_provider},
+    runtime::{checkout_root, exec, exec_in_workspace, gateway_for_provider, PackageExecutor},
 };
 
 pub(super) async fn handle(
@@ -130,7 +130,7 @@ pub(super) async fn handle(
     Ok(())
 }
 
-fn ensure_clean(subject: &RuntimeSubject, source: &str) -> VmResult<()> {
+fn ensure_clean(subject: &impl PackageExecutor, source: &str) -> VmResult<()> {
     exec(
         subject,
         [
@@ -150,7 +150,7 @@ fn ensure_clean(subject: &RuntimeSubject, source: &str) -> VmResult<()> {
 }
 
 pub(super) fn run_package_check(
-    subject: &RuntimeSubject,
+    subject: &impl PackageExecutor,
     ecosystem: PackageEcosystem,
     source: &str,
 ) -> VmResult<()> {
@@ -170,7 +170,7 @@ pub(super) fn run_package_check(
 }
 
 pub(super) fn run_consumer_check(
-    subject: &RuntimeSubject,
+    subject: &impl PackageExecutor,
     ecosystem: PackageEcosystem,
     package: &str,
     source: &str,

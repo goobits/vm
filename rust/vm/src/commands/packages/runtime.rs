@@ -1,4 +1,6 @@
 use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use vm_config::config::{PackageEdgeConfig, VmConfig};
 use vm_packages::{ApplianceState, ClientEnvironment, InfrastructureRuntime, RegistryEndpoints};
@@ -11,6 +13,81 @@ use super::files::ApplianceFiles;
 // Bump when edge labels, environment, mounts, or lifecycle policy change
 // without requiring a new registry image.
 const PACKAGE_EDGE_POLICY_REVISION: &str = "2";
+
+pub(super) trait PackageExecutor {
+    fn checkout_root(&self, checkout_id: &str) -> VmResult<String>;
+    fn workspace(&self) -> &str;
+    fn run(&self, command: &[String]) -> VmResult<()>;
+    fn output(&self, command: &[String]) -> VmResult<String>;
+    fn write_private(&self, content: &[u8], destination: &str) -> VmResult<()>;
+}
+
+pub(super) struct GuestRuntime {
+    consumer: String,
+    gateway: String,
+    agent_token: String,
+    workspace: String,
+    home: PathBuf,
+}
+
+impl GuestRuntime {
+    pub(super) fn discover() -> VmResult<Self> {
+        let consumer = required_guest_variable("VM_PACKAGES_CONSUMER")?;
+        vm_packages::validate_label("consumer", &consumer).map_err(VmError::from)?;
+        let gateway = required_guest_variable("VM_PACKAGES_WORK_GATEWAY")?;
+        RegistryEndpoints::new(&gateway).map_err(VmError::from)?;
+        let agent_token = required_guest_variable("VM_PACKAGES_AGENT_TOKEN")?;
+        let workspace = std::env::current_dir()
+            .map_err(VmError::from)?
+            .to_string_lossy()
+            .into_owned();
+        let home = dirs::home_dir().ok_or_else(|| {
+            VmError::validation("Guest home directory is unavailable", None::<String>)
+        })?;
+        Ok(Self {
+            consumer,
+            gateway,
+            agent_token,
+            workspace,
+            home,
+        })
+    }
+
+    pub(super) fn consumer(&self) -> &str {
+        &self.consumer
+    }
+
+    pub(super) fn gateway(&self) -> &str {
+        &self.gateway
+    }
+
+    pub(super) fn request_state_path(&self, key: &str) -> VmResult<PathBuf> {
+        vm_packages::validate_managed_id("request key", key).map_err(VmError::from)?;
+        Ok(self
+            .home
+            .join(".local/state/vm/package-requests")
+            .join(format!("{key}.json")))
+    }
+
+    pub(super) fn client(&self) -> VmResult<vm_packages::PackageInfrastructureClient> {
+        Ok(vm_packages::PackageInfrastructureClient::new(
+            RegistryEndpoints::new(&self.gateway).map_err(VmError::from)?,
+        )
+        .with_agent_token(&self.agent_token))
+    }
+}
+
+fn required_guest_variable(name: &str) -> VmResult<String> {
+    std::env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            VmError::validation(
+                format!("Managed guest package access is missing {name}"),
+                Some("Restart this environment after `vm packages up` reconciles the appliance"),
+            )
+        })
+}
 
 pub(in crate::commands) fn apply_client_environment(config: &mut VmConfig) -> VmResult<()> {
     let files = ApplianceFiles::discover()?;
@@ -31,7 +108,18 @@ pub(in crate::commands) fn apply_client_environment(config: &mut VmConfig) -> Vm
             Some("Use the vibe-tart Linux profile"),
         ));
     }
-    let (client, edge) = client_environment(&state, files.read_token()?, provider)?;
+    let consumer = config
+        .project
+        .as_ref()
+        .and_then(|project| project.name.as_deref())
+        .unwrap_or("vm-project");
+    let (client, edge) = client_environment(
+        &state,
+        files.read_token()?,
+        &files.agent_signing_key()?,
+        consumer,
+        provider,
+    )?;
     config.package_edge = Some(edge);
     apply_environment(config, &client);
     Ok(())
@@ -44,6 +132,8 @@ fn apply_environment(config: &mut VmConfig, client: &ClientEnvironment) {
 fn client_environment(
     state: &ApplianceState,
     read_token: String,
+    agent_signing_key: &str,
+    consumer: &str,
     provider: &str,
 ) -> VmResult<(ClientEnvironment, PackageEdgeConfig)> {
     if state.registry_image.trim().is_empty() {
@@ -71,11 +161,14 @@ fn client_environment(
         read_token: read_token.clone(),
         revision,
     };
+    let agent_token =
+        vm_packages::issue_agent_capability(agent_signing_key, consumer).map_err(VmError::from)?;
     let client = ClientEnvironment::new(
         RegistryEndpoints::new(client_gateway).map_err(VmError::from)?,
         read_token,
     )
     .and_then(|client| client.with_oci_mirror(internal_gateway))
+    .and_then(|client| client.with_agent_access(&edge.internal_gateway, agent_token, consumer))
     .map_err(VmError::from)?;
     Ok((client, edge))
 }
@@ -115,8 +208,8 @@ pub(super) fn gateway_for_provider(state: &ApplianceState, provider: &str) -> Vm
     }
 }
 
-pub(super) fn checkout_root(subject: &RuntimeSubject, checkout_id: &str) -> VmResult<String> {
-    checkout_root_for(&subject.config, subject.provider.name(), checkout_id)
+pub(super) fn checkout_root(subject: &impl PackageExecutor, checkout_id: &str) -> VmResult<String> {
+    subject.checkout_root(checkout_id)
 }
 
 fn checkout_root_for(config: &VmConfig, provider: &str, checkout_id: &str) -> VmResult<String> {
@@ -153,50 +246,33 @@ fn checkout_root_for(config: &VmConfig, provider: &str, checkout_id: &str) -> Vm
     ))
 }
 
-pub(super) fn exec<I, S>(subject: &RuntimeSubject, command: I) -> VmResult<()>
+pub(super) fn exec<I, S>(subject: &impl PackageExecutor, command: I) -> VmResult<()>
 where
     I: IntoIterator<Item = S>,
     S: Into<String>,
 {
     let command = command.into_iter().map(Into::into).collect::<Vec<_>>();
-    subject
-        .provider
-        .exec(Some(subject.target.as_str()), &command)
-        .map_err(VmError::from)
+    subject.run(&command)
 }
 
-pub(super) fn exec_output<I, S>(subject: &RuntimeSubject, command: I) -> VmResult<String>
+pub(super) fn exec_output<I, S>(subject: &impl PackageExecutor, command: I) -> VmResult<String>
 where
     I: IntoIterator<Item = S>,
     S: Into<String>,
 {
     let command = command.into_iter().map(Into::into).collect::<Vec<_>>();
-    subject
-        .provider
-        .exec_output(Some(subject.target.as_str()), &command)
-        .map_err(VmError::from)
+    subject.output(&command)
 }
 
 pub(super) fn copy_private(
-    subject: &RuntimeSubject,
+    subject: &impl PackageExecutor,
     content: &[u8],
     destination: &str,
 ) -> VmResult<()> {
-    let mut temporary = tempfile::NamedTempFile::new().map_err(VmError::from)?;
-    temporary.write_all(content).map_err(VmError::from)?;
-    temporary.flush().map_err(VmError::from)?;
-    subject
-        .provider
-        .copy(
-            &temporary.path().to_string_lossy(),
-            destination,
-            Some(subject.target.as_str()),
-        )
-        .map_err(VmError::from)?;
-    exec(subject, ["chmod", "600", destination])
+    subject.write_private(content, destination)
 }
 
-pub(super) fn exec_in_workspace<I, S>(subject: &RuntimeSubject, command: I) -> VmResult<()>
+pub(super) fn exec_in_workspace<I, S>(subject: &impl PackageExecutor, command: I) -> VmResult<()>
 where
     I: IntoIterator<Item = S>,
     S: Into<String>,
@@ -206,13 +282,10 @@ where
         "-c".to_string(),
         "cd \"$1\"; shift; exec \"$@\"".to_string(),
         "vm-package-workspace".to_string(),
-        workspace_path(&subject.config).to_string(),
+        subject.workspace().to_string(),
     ];
     wrapped.extend(command.into_iter().map(Into::into));
-    subject
-        .provider
-        .exec(Some(subject.target.as_str()), &wrapped)
-        .map_err(VmError::from)
+    subject.run(&wrapped)
 }
 
 fn workspace_path(config: &VmConfig) -> &str {
@@ -221,6 +294,111 @@ fn workspace_path(config: &VmConfig) -> &str {
         .as_ref()
         .and_then(|project| project.workspace_path.as_deref())
         .unwrap_or("/workspace")
+}
+
+impl PackageExecutor for RuntimeSubject {
+    fn checkout_root(&self, checkout_id: &str) -> VmResult<String> {
+        checkout_root_for(&self.config, self.provider.name(), checkout_id)
+    }
+
+    fn workspace(&self) -> &str {
+        workspace_path(&self.config)
+    }
+
+    fn run(&self, command: &[String]) -> VmResult<()> {
+        self.provider
+            .exec(Some(self.target.as_str()), command)
+            .map_err(VmError::from)
+    }
+
+    fn output(&self, command: &[String]) -> VmResult<String> {
+        self.provider
+            .exec_output(Some(self.target.as_str()), command)
+            .map_err(VmError::from)
+    }
+
+    fn write_private(&self, content: &[u8], destination: &str) -> VmResult<()> {
+        let mut temporary = tempfile::NamedTempFile::new().map_err(VmError::from)?;
+        temporary.write_all(content).map_err(VmError::from)?;
+        temporary.flush().map_err(VmError::from)?;
+        self.provider
+            .copy(
+                &temporary.path().to_string_lossy(),
+                destination,
+                Some(self.target.as_str()),
+            )
+            .map_err(VmError::from)?;
+        self.run(&["chmod".into(), "600".into(), destination.into()])
+    }
+}
+
+impl PackageExecutor for GuestRuntime {
+    fn checkout_root(&self, checkout_id: &str) -> VmResult<String> {
+        vm_packages::validate_managed_id("checkout ID", checkout_id).map_err(VmError::from)?;
+        Ok(self
+            .home
+            .join(".local/share/vm/package-checkouts")
+            .join(checkout_id)
+            .to_string_lossy()
+            .into_owned())
+    }
+
+    fn workspace(&self) -> &str {
+        &self.workspace
+    }
+
+    fn run(&self, command: &[String]) -> VmResult<()> {
+        let (program, arguments) = command.split_first().ok_or_else(|| {
+            VmError::validation("Package command cannot be empty", None::<String>)
+        })?;
+        let status = Command::new(program)
+            .args(arguments)
+            .stdin(Stdio::null())
+            .status()
+            .map_err(VmError::from)?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(VmError::validation(
+                format!("Package command failed with {status}: {program}"),
+                None::<String>,
+            ))
+        }
+    }
+
+    fn output(&self, command: &[String]) -> VmResult<String> {
+        let (program, arguments) = command.split_first().ok_or_else(|| {
+            VmError::validation("Package command cannot be empty", None::<String>)
+        })?;
+        let output = Command::new(program)
+            .args(arguments)
+            .stdin(Stdio::null())
+            .output()
+            .map_err(VmError::from)?;
+        if !output.status.success() {
+            return Err(VmError::validation(
+                format!("Package command failed with {}: {program}", output.status),
+                None::<String>,
+            ));
+        }
+        String::from_utf8(output.stdout)
+            .map_err(|error| VmError::general(error, "Package command returned non-UTF-8 output"))
+    }
+
+    fn write_private(&self, content: &[u8], destination: &str) -> VmResult<()> {
+        let destination = Path::new(destination);
+        if let Some(parent) = destination.parent() {
+            std::fs::create_dir_all(parent).map_err(VmError::from)?;
+        }
+        vm_core::file_system::atomic_write(destination, content).map_err(VmError::from)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(destination, std::fs::Permissions::from_mode(0o600))
+                .map_err(VmError::from)?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -249,9 +427,23 @@ mod tests {
     #[test]
     fn tart_appliance_has_one_provider_neutral_client_shape() {
         let state = state(InfrastructureRuntime::Tart);
-        let (docker, docker_edge) =
-            client_environment(&state, "read-token".into(), "docker").unwrap();
-        let (tart, tart_edge) = client_environment(&state, "read-token".into(), "tart").unwrap();
+        let signing_key = "agent-signing-key-012345678901234567890123456789";
+        let (docker, docker_edge) = client_environment(
+            &state,
+            "read-token".into(),
+            signing_key,
+            "project-a",
+            "docker",
+        )
+        .unwrap();
+        let (tart, tart_edge) = client_environment(
+            &state,
+            "read-token".into(),
+            signing_key,
+            "project-a",
+            "tart",
+        )
+        .unwrap();
         let docker_variables = docker
             .variables()
             .into_iter()
@@ -263,6 +455,11 @@ mod tests {
         assert!(docker_variables["NPM_CONFIG_REGISTRY"].contains("package-edge"));
         assert!(tart_variables["NPM_CONFIG_REGISTRY"].contains("127.0.0.1"));
         assert_eq!(docker_variables["VM_OCI_MIRROR"], state.gateway_url);
+        assert_eq!(docker_variables["VM_PACKAGES_CONSUMER"], "project-a");
+        assert_eq!(
+            docker_variables["VM_PACKAGES_WORK_GATEWAY"],
+            state.gateway_url
+        );
         assert_eq!(tart_variables["VM_OCI_MIRROR"], state.gateway_url);
         assert_eq!(docker_edge.client_gateway, "http://package-edge:3080");
         assert_eq!(tart_edge.client_gateway, "http://127.0.0.1:3080");

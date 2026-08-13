@@ -216,6 +216,17 @@ pub(super) async fn show(files: &ApplianceFiles, checkout_id: &str) -> VmResult<
     Ok(())
 }
 
+pub(super) async fn show_guest(checkout_id: &str) -> VmResult<()> {
+    let checkout = super::runtime::GuestRuntime::discover()?
+        .client()?
+        .checkout(checkout_id)
+        .await?;
+    let json = serde_json::to_string_pretty(&checkout)
+        .map_err(|error| VmError::general(error, "Failed to render checkout"))?;
+    vm_println!("{json}");
+    Ok(())
+}
+
 pub(super) fn configure_auth(
     files: &ApplianceFiles,
     git_token_file: Option<PathBuf>,

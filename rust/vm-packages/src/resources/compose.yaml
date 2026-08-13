@@ -128,8 +128,9 @@ services:
         export PKG_WORK_REVIEWER_TOKEN="$$(cat /run/secrets/work_reviewer_token)"
         export PKG_WORK_RELEASE_TOKEN="$$(cat /run/secrets/work_release_token)"
         export PKG_WORK_ROLLOUT_TOKEN="$$(cat /run/secrets/work_rollout_token)"
+        export PKG_WORK_AGENT_SIGNING_KEY="$$(cat /run/secrets/work_agent_signing_key)"
         exec pkg-work start --host 0.0.0.0 --port 3091 --data /data
-    secrets: [work_read_token, work_controller_token, work_reviewer_token, work_release_token, work_rollout_token, git_token]
+    secrets: [work_read_token, work_controller_token, work_reviewer_token, work_release_token, work_rollout_token, work_agent_signing_key, git_token]
     expose: ["3091"]
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:3091/health"]
@@ -357,6 +358,8 @@ secrets:
     file: ./release-token
   work_rollout_token:
     file: ./rollout-token
+  work_agent_signing_key:
+    file: ./agent-signing-key
   reviewer_read_token:
     file: ./read-token
   reviewer_token:

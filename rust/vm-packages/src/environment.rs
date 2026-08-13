@@ -52,6 +52,14 @@ pub struct ClientEnvironment {
     endpoints: RegistryEndpoints,
     read_token: String,
     oci_mirror: String,
+    agent_access: Option<AgentAccess>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AgentAccess {
+    gateway: String,
+    token: String,
+    consumer: String,
 }
 
 impl ClientEnvironment {
@@ -64,6 +72,7 @@ impl ClientEnvironment {
             oci_mirror: endpoints.gateway().to_string(),
             endpoints,
             read_token,
+            agent_access: None,
         })
     }
 
@@ -72,8 +81,29 @@ impl ClientEnvironment {
         Ok(self)
     }
 
+    pub fn with_agent_access(
+        mut self,
+        gateway: impl Into<String>,
+        token: impl Into<String>,
+        consumer: impl Into<String>,
+    ) -> Result<Self> {
+        let gateway = RegistryEndpoints::new(gateway)?.gateway().to_string();
+        let token = token.into();
+        let consumer = consumer.into();
+        if token.trim().is_empty() {
+            bail!("package agent token cannot be empty");
+        }
+        crate::validate_label("consumer", &consumer)?;
+        self.agent_access = Some(AgentAccess {
+            gateway,
+            token,
+            consumer,
+        });
+        Ok(self)
+    }
+
     pub fn variables(&self) -> Vec<(String, String)> {
-        vec![
+        let mut variables = vec![
             ("NPM_CONFIG_REGISTRY".into(), self.authenticated_url("npm/")),
             (
                 "PIP_INDEX_URL".into(),
@@ -94,7 +124,15 @@ impl ClientEnvironment {
                 "cargo:token".into(),
             ),
             ("VM_OCI_MIRROR".into(), self.oci_mirror.clone()),
-        ]
+        ];
+        if let Some(access) = &self.agent_access {
+            variables.extend([
+                ("VM_PACKAGES_WORK_GATEWAY".into(), access.gateway.clone()),
+                ("VM_PACKAGES_AGENT_TOKEN".into(), access.token.clone()),
+                ("VM_PACKAGES_CONSUMER".into(), access.consumer.clone()),
+            ]);
+        }
+        variables
     }
 
     pub fn read_token(&self) -> &str {
@@ -128,6 +166,13 @@ mod tests {
         let variables = environment.variables();
         assert_eq!(variables.len(), 8);
         assert!(variables[0].1.contains("reader:read%20secret@"));
+
+        let agent = environment
+            .with_agent_access("https://packages.internal", "agent-token", "project-a")
+            .unwrap()
+            .variables();
+        assert_eq!(agent.len(), 11);
+        assert!(agent.contains(&("VM_PACKAGES_CONSUMER".into(), "project-a".into())));
         assert_eq!(variables[3].1, "read secret");
         assert_eq!(variables[7].1, "https://packages.internal");
     }

@@ -1,13 +1,15 @@
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
+
 use vm_core::{vm_hint, vm_println, vm_progress, vm_success};
 use vm_packages::{
-    ApplianceState, CreateCheckout, PackageEcosystem, PackageInfrastructureClient,
-    RegistryEndpoints, TransitionRequest, WorkflowState,
+    CreateCheckout, PackageEcosystem, PackageInfrastructureClient, RegistryEndpoints,
+    TransitionRequest, WorkflowState,
 };
 
 use crate::commands::command_context::{
-    load_or_create_runtime_subject, load_runtime_subject, project_name, RuntimeSubject,
+    load_or_create_runtime_subject, load_runtime_subject, project_name,
 };
 use crate::error::{VmError, VmResult};
 
@@ -15,7 +17,9 @@ use super::{
     appliance::configured_state_and_client,
     files::ApplianceFiles,
     overrides::{cleanup_failed_attach, OverrideRecord},
-    runtime::{checkout_root, copy_private, exec, gateway_for_provider},
+    runtime::{
+        checkout_root, copy_private, exec, gateway_for_provider, GuestRuntime, PackageExecutor,
+    },
 };
 
 pub(super) struct CheckoutIntent {
@@ -98,9 +102,10 @@ pub(super) async fn handle(files: &ApplianceFiles, intent: CheckoutIntent) -> Vm
             Some("Create a fresh checkout or use its existing assigned environment"),
         )
     })?;
+    let gateway = gateway_for_provider(&state, subject.provider.name())?;
     if let Err(error) = attach(
         &subject,
-        &state,
+        &gateway,
         &checkout.checkout,
         lease_token,
         &consumer,
@@ -147,8 +152,8 @@ pub(super) async fn handle(files: &ApplianceFiles, intent: CheckoutIntent) -> Vm
 }
 
 fn attach(
-    subject: &RuntimeSubject,
-    state: &ApplianceState,
+    subject: &impl PackageExecutor,
+    gateway: &str,
     checkout: &vm_packages::CheckoutRecord,
     lease_token: &str,
     consumer: &str,
@@ -158,7 +163,6 @@ fn attach(
     let root = checkout_root(subject, &checkout.checkout_id)?;
     let source = format!("{root}/source");
     let archive = format!("/tmp/{}.bundle", checkout.checkout_id);
-    let gateway = gateway_for_provider(state, subject.provider.name())?;
     let archive_client =
         PackageInfrastructureClient::new(RegistryEndpoints::new(gateway).map_err(VmError::from)?);
     let url = archive_client.checkout_archive_url(&checkout.checkout_id, consumer);
@@ -213,4 +217,115 @@ fn attach(
         return Err(error);
     }
     Ok(())
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct GuestRequestState {
+    lease_token: String,
+    idempotency_key: String,
+}
+
+pub(super) async fn handle_guest(intent: CheckoutIntent) -> VmResult<()> {
+    let subject = GuestRuntime::discover()?;
+    let consumer = intent
+        .consumer
+        .unwrap_or_else(|| subject.consumer().to_string());
+    if consumer != subject.consumer() {
+        return Err(VmError::validation(
+            "Package agent credential is bound to a different consumer",
+            None::<String>,
+        ));
+    }
+    let client = subject.client()?;
+    let definition = client.package_definition(&intent.package).await?;
+    let pinned_version = client
+        .package_consumers(&intent.package)
+        .await?
+        .iter()
+        .find(|usage| usage.consumer == consumer)
+        .map(|usage| usage.version.clone())
+        .ok_or_else(|| {
+            VmError::validation(
+                format!(
+                    "Consumer '{consumer}' has no registered '{}' dependency",
+                    intent.package
+                ),
+                Some("Register the consumer dependency before creating a checkout"),
+            )
+        })?;
+    let intent_key = format!(
+        "checkout-{}",
+        &vm_packages::sha256_hex(format!(
+            "{}\0{}\0{}\0{}",
+            consumer, intent.package, intent.agent, intent.task
+        ))[..32]
+    );
+    let request_path = subject.request_state_path(&intent_key)?;
+    let request = read_or_create_request(&subject, &request_path, &intent_key)?;
+    vm_progress!(
+        "Preparing isolated '{}' checkout in package infrastructure...",
+        intent.package
+    );
+    let checkout = client
+        .create_checkout(&CreateCheckout {
+            package: intent.package,
+            agent: intent.agent.clone(),
+            consumers: vec![consumer.clone()],
+            task: intent.task,
+            lease_token: request.lease_token.clone(),
+            idempotency_key: request.idempotency_key,
+        })
+        .await?;
+    if let Err(error) = attach(
+        &subject,
+        subject.gateway(),
+        &checkout.checkout,
+        &request.lease_token,
+        &consumer,
+        definition.ecosystem,
+        &pinned_version,
+    ) {
+        if let Ok(root) = checkout_root(&subject, &checkout.checkout.checkout_id) {
+            let _ = cleanup_failed_attach(&subject, &root);
+        }
+        return Err(error);
+    }
+    let active = client
+        .transition(
+            &checkout.checkout.checkout_id,
+            &TransitionRequest {
+                next: WorkflowState::Active,
+                actor: intent.agent,
+                reason: format!("override attached to {consumer}"),
+                commit: checkout.checkout.base_commit,
+                validation_result: Some("override_ready".into()),
+                idempotency_key: format!("active-{}", checkout.checkout.checkout_id),
+            },
+        )
+        .await?;
+    let _ = std::fs::remove_file(request_path);
+    let root = checkout_root(&subject, &active.checkout_id)?;
+    vm_success!("Checkout {} is active", active.checkout_id);
+    vm_println!("Source: {root}/source");
+    Ok(())
+}
+
+fn read_or_create_request(
+    subject: &GuestRuntime,
+    path: &std::path::Path,
+    idempotency_key: &str,
+) -> VmResult<GuestRequestState> {
+    match std::fs::read(path) {
+        Ok(content) => serde_json::from_slice(&content).map_err(VmError::from),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let request = GuestRequestState {
+                lease_token: vm_core::secrets::generate_random_password(48),
+                idempotency_key: idempotency_key.to_string(),
+            };
+            let content = serde_json::to_vec(&request).map_err(VmError::from)?;
+            subject.write_private(&content, &path.to_string_lossy())?;
+            Ok(request)
+        }
+        Err(error) => Err(VmError::from(error)),
+    }
 }

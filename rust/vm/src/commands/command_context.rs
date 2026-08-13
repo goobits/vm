@@ -4,22 +4,19 @@ use std::path::PathBuf;
 
 use super::environment::resolve_environment;
 use super::{packages, vm_ops};
-use crate::cli::Command;
+use crate::cli::{Command, PackagesSubcommand};
 use crate::error::{VmError, VmResult};
 use vm_config::{config::VmConfig, AppConfig, GlobalConfig};
 use vm_core::vm_progress;
 use vm_provider::{get_provider, Provider};
 
 pub(super) fn ensure_controller_host(command: &Command) -> VmResult<()> {
-    if !matches!(command, Command::Packages { .. } | Command::Tools { .. })
-        || !is_managed_guest(
-            std::env::var("VM_MANAGED_GUEST").ok().as_deref(),
-            std::env::var("VM_IMAGE_IDENTITY").ok().as_deref(),
-            std::path::Path::new("/.dockerenv").exists(),
-            std::path::Path::new("/etc/vm/managed-guest").exists()
-                || std::path::Path::new("/etc/vm/package-edge.env").exists(),
-        )
+    if !managed_guest_context()
+        || !matches!(command, Command::Packages { .. } | Command::Tools { .. })
     {
+        return Ok(());
+    }
+    if guest_allowed_command(command) {
         return Ok(());
     }
 
@@ -31,6 +28,25 @@ pub(super) fn ensure_controller_host(command: &Command) -> VmResult<()> {
         "Package and managed-tool commands must run on the controller host",
         Some(format!("Run on the host: {}", host_command(&arguments))),
     ))
+}
+
+fn guest_allowed_command(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::Packages {
+            command: PackagesSubcommand::Checkout { .. } | PackagesSubcommand::Show { .. }
+        }
+    )
+}
+
+pub(super) fn managed_guest_context() -> bool {
+    is_managed_guest(
+        std::env::var("VM_MANAGED_GUEST").ok().as_deref(),
+        std::env::var("VM_IMAGE_IDENTITY").ok().as_deref(),
+        std::path::Path::new("/.dockerenv").exists(),
+        std::path::Path::new("/etc/vm/managed-guest").exists()
+            || std::path::Path::new("/etc/vm/package-edge.env").exists(),
+    )
 }
 
 fn is_managed_guest(
@@ -168,7 +184,8 @@ pub(super) fn project_name(config: &VmConfig) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::{host_command, is_managed_guest};
+    use super::{guest_allowed_command, host_command, is_managed_guest};
+    use crate::cli::{Command, PackagesSubcommand};
 
     #[test]
     fn detects_new_and_compatible_managed_guest_markers() {
@@ -176,6 +193,23 @@ mod tests {
         assert!(is_managed_guest(None, None, false, true));
         assert!(is_managed_guest(None, Some("demo:latest"), true, false));
         assert!(!is_managed_guest(None, None, true, false));
+    }
+
+    #[test]
+    fn guests_can_only_enter_agent_safe_package_commands() {
+        assert!(guest_allowed_command(&Command::Packages {
+            command: PackagesSubcommand::Show {
+                checkout_id: "checkout-1".into(),
+            },
+        }));
+        assert!(!guest_allowed_command(&Command::Packages {
+            command: PackagesSubcommand::Up {
+                runtime: crate::cli::PackageInfrastructureRuntime::Auto,
+                port: 3080,
+                registry_image: None,
+                job_image: None,
+            },
+        }));
     }
 
     #[test]

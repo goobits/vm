@@ -17,6 +17,7 @@ pub(in crate::commands) mod tooling;
 use std::path::PathBuf;
 
 use crate::cli::PackagesSubcommand;
+use crate::commands::command_context::managed_guest_context;
 use crate::error::VmResult;
 use vm_core::vm_success;
 
@@ -40,6 +41,9 @@ pub(super) async fn handle(
     config_path: Option<PathBuf>,
     profile: Option<String>,
 ) -> VmResult<()> {
+    if managed_guest_context() {
+        return handle_guest(command, config_path, profile).await;
+    }
     let files = ApplianceFiles::discover()?;
     let _operation_lock = match &command {
         PackagesSubcommand::Backups { .. }
@@ -160,6 +164,36 @@ pub(super) async fn handle(
             clear,
             clear_ci,
         } => catalog::configure_auth(&files, token_file, github, ci_token_file, clear, clear_ci),
+    }
+}
+
+async fn handle_guest(
+    command: PackagesSubcommand,
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+) -> VmResult<()> {
+    match command {
+        PackagesSubcommand::Checkout {
+            package,
+            agent,
+            consumer,
+            task,
+        } => {
+            checkout::handle_guest(checkout::CheckoutIntent {
+                config_path,
+                profile,
+                package,
+                agent,
+                consumer,
+                task,
+            })
+            .await
+        }
+        PackagesSubcommand::Show { checkout_id } => catalog::show_guest(&checkout_id).await,
+        _ => Err(crate::error::VmError::validation(
+            "This package command is restricted to the controller host",
+            Some("Run package administration commands on the host"),
+        )),
     }
 }
 

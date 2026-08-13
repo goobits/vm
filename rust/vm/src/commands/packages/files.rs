@@ -13,6 +13,7 @@ const CONTROLLER_TOKEN_FILE: &str = "controller-token";
 const REVIEWER_TOKEN_FILE: &str = "reviewer-token";
 const RELEASE_TOKEN_FILE: &str = "release-token";
 const ROLLOUT_TOKEN_FILE: &str = "rollout-token";
+const AGENT_SIGNING_KEY_FILE: &str = "agent-signing-key";
 const GIT_TOKEN_FILE: &str = "git-token";
 const CI_PUBLISH_TOKEN_FILE: &str = "ci-publish-token";
 const STATE_FILE: &str = "state.json";
@@ -86,12 +87,20 @@ impl ApplianceFiles {
         self.root.join(ROLLOUT_TOKEN_FILE)
     }
 
+    pub(super) fn agent_signing_key_path(&self) -> PathBuf {
+        self.root.join(AGENT_SIGNING_KEY_FILE)
+    }
+
     pub(super) fn read_token(&self) -> VmResult<String> {
         self.token(&self.read_token_path())
     }
 
     pub(super) fn controller_token(&self) -> VmResult<String> {
         self.token(&self.controller_token_path())
+    }
+
+    pub(super) fn agent_signing_key(&self) -> VmResult<String> {
+        self.token(&self.agent_signing_key_path())
     }
 
     pub(super) fn set_git_token(&self, token: &str) -> VmResult<()> {
@@ -259,6 +268,7 @@ impl ApplianceFiles {
             self.reviewer_token_path(),
             self.release_token_path(),
             self.rollout_token_path(),
+            self.agent_signing_key_path(),
         ] {
             if !path.exists() {
                 let token = vm_core::secrets::generate_random_password(48);
@@ -366,6 +376,7 @@ mod tests {
         assert!(files.reviewer_token_path().is_file());
         assert!(files.release_token_path().is_file());
         assert!(files.rollout_token_path().is_file());
+        assert!(files.agent_signing_key_path().is_file());
         assert!(files.git_token_path().is_file());
         assert!(files.ci_publish_token_path().is_file());
         assert_eq!(

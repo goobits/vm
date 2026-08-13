@@ -32,6 +32,7 @@ pub struct PackageInfrastructureClient {
     http: reqwest::Client,
     endpoints: RegistryEndpoints,
     read_token: Option<String>,
+    agent_token: Option<String>,
     controller_token: Option<String>,
     reviewer_token: Option<String>,
     release_token: Option<String>,
@@ -48,6 +49,7 @@ impl PackageInfrastructureClient {
                 .expect("static package client settings are valid"),
             endpoints,
             read_token: None,
+            agent_token: None,
             controller_token: None,
             reviewer_token: None,
             release_token: None,
@@ -57,6 +59,11 @@ impl PackageInfrastructureClient {
 
     pub fn with_read_token(mut self, token: impl Into<String>) -> Self {
         self.read_token = Some(token.into());
+        self
+    }
+
+    pub fn with_agent_token(mut self, token: impl Into<String>) -> Self {
+        self.agent_token = Some(token.into());
         self
     }
 
@@ -457,6 +464,7 @@ impl PackageInfrastructureClient {
         let token = self
             .read_token
             .as_ref()
+            .or(self.agent_token.as_ref())
             .or(self.controller_token.as_ref())
             .or(self.reviewer_token.as_ref())
             .or(self.release_token.as_ref())
@@ -480,8 +488,15 @@ impl PackageInfrastructureClient {
         T: serde::de::DeserializeOwned,
         B: Serialize + ?Sized,
     {
-        self.post_authenticated(path, body, self.controller_token.as_deref(), "controller")
-            .await
+        self.post_authenticated(
+            path,
+            body,
+            self.controller_token
+                .as_deref()
+                .or(self.agent_token.as_deref()),
+            "agent or controller",
+        )
+        .await
     }
 
     async fn post_release<T, B>(&self, path: &str, body: &B) -> Result<T>

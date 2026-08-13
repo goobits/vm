@@ -39,6 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let reviewer_token = std::env::var("PKG_WORK_REVIEWER_TOKEN")?;
             let release_token = std::env::var("PKG_WORK_RELEASE_TOKEN")?;
             let rollout_token = std::env::var("PKG_WORK_ROLLOUT_TOKEN")?;
+            let agent_signing_key = std::env::var("PKG_WORK_AGENT_SIGNING_KEY")?;
             tokio::runtime::Runtime::new()?.block_on(vm_package_work::run(
                 host,
                 port,
@@ -49,6 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     reviewer_token,
                     release_token,
                     rollout_token,
+                    agent_signing_key,
                 ),
             ))?;
         }
