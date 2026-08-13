@@ -1,37 +1,41 @@
 version: '2.0'
-provider: tart
-tart:
-  guest_os: linux
-  disk_size: 80
-  ssh_user: admin
-  install_docker: true
+provider: docker
+os: auto
 project:
   hostname: dev.vm.local
   name: vm
   workspace_path: /workspace
 vm:
-  box: vibe-tart-linux-base
-  cpus: 75%
+  box: '@vibe-box'
+  cpus: 6
   gui: false
-  memory: 75%
+  memory: 8192
   port_binding: 127.0.0.1
   swap: 2048
   swappiness: 60
   timezone: auto
   user: developer
+versions:
+  node: '22'
+  python: '3.11'
 ports:
   _range: [3120, 3129]
+services:
+  postgresql:
+    database: '{{ project.name }}_dev'
+    enabled: true
+    password: postgres
+    port: 3129
+    user: postgres
+    version: '15'
 terminal:
+  emoji: 🚀
   show_git_branch: true
   show_timestamp: false
   theme: dracula
   username: vm-dev
-tools:
-  updates: prompt
-  antigravity: {}
-  claude: {}
-  codex: {}
-  agent-skills: {}
 host_sync:
   git_config: true
   ai_tools: true
+preset: vibe
+networking: {}
