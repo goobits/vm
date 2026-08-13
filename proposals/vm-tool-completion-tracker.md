@@ -86,6 +86,9 @@ test, merge, or publish package source directly.
 - [x] Keep Codex's immutable executable outside host-synced `~/.codex` state,
   preserve its canonical package and code-mode helper beside it, and include
   the base image ID in derived-image cache keys.
+- [x] Reject stale Docker Vibe bases before deriving a new environment when the
+  complete Codex package or code-mode host is unavailable, with the exact
+  non-destructive host rebuild command.
 - [x] Build Docker Vibe bases through the current snapshot API, exclude managed
   service containers from environment discovery, and reuse only their exact
   occupied host ports during environment creation.
@@ -181,8 +184,14 @@ test, merge, or publish package source directly.
 - [x] Repair an incomplete existing Codex standalone runtime without writing
   through host-synced `~/.codex` state, overwriting unmanaged launchers, or
   leaving a partial package/link transaction.
+- [x] Put the repaired standalone Codex first through managed user launchers,
+  migrate legacy NVM-backed system and official standalone user launchers, and
+  continue to reject arbitrary unmanaged launchers.
 - [x] Detect managed guest context and print the exact command to run on the
   controller host.
+- [x] Require `vm tools update` to resolve an existing environment instead of
+  creating from the invoking directory's configuration, while allowing an
+  exact managed environment name to resolve across project boundaries.
 - [x] Cover fresh setup and existing-machine reconciliation with fake providers
   and temporary fixtures, then synchronize command help and user documentation.
 
@@ -308,6 +317,9 @@ requires a tool catalog or package-appliance connection.
   `project.workspace_access: read_only`; verify nested mountpoints are prepared,
   the second start is a no-op, and project source, container identity, and
   service volumes remain unchanged (implemented but awaiting host acceptance).
+- [ ] Rebuild `@vibe-box`, create a fresh Docker worker, and launch `yocodex`
+  immediately; verify the code-mode host is already executable without waiting
+  for background reconciliation (implemented but awaiting host acceptance).
 - [ ] Start a separate Docker worker on the same managed network.
 - [ ] Prove npm, Cargo, and Python public proxying, immutable internal artifacts,
   per-worker override isolation, persistent-cache restart recovery, and clear
