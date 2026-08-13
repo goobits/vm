@@ -138,8 +138,11 @@ mounts:
 ```
 
 Relative sources resolve from `vm.yaml`. Docker and Tart enforce the same access
-values. Read-only Node workspaces keep `node_modules` writable in guest-managed
-storage; language caches and Rust build output remain outside the source mount.
+values. Before Docker starts a read-only workspace, VM idempotently prepares
+host directories for nested configured volumes, tmpfs, explicit or temporary
+mounts, detected Git worktrees, and the automatic Node `node_modules` volume. It
+refuses any file or symlink encountered at those mountpoints. Language caches
+and Rust build output remain outside the source mount.
 
 ## Container Storage And Bootstrap
 

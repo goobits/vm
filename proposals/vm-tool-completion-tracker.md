@@ -304,6 +304,10 @@ requires a tool catalog or package-appliance connection.
   matching workers reconcile in place, the second pass is a no-op, and no
   primary container ID or service volume changes (implemented but awaiting host
   acceptance).
+- [ ] Create and restart a Docker worker with
+  `project.workspace_access: read_only`; verify nested mountpoints are prepared,
+  the second start is a no-op, and project source, container identity, and
+  service volumes remain unchanged (implemented but awaiting host acceptance).
 - [ ] Start a separate Docker worker on the same managed network.
 - [ ] Prove npm, Cargo, and Python public proxying, immutable internal artifacts,
   per-worker override isolation, persistent-cache restart recovery, and clear
