@@ -415,13 +415,8 @@ impl PackageInfrastructureClient {
         self.get_work(&format!("v1/rollouts/{rollout_id}")).await
     }
 
-    pub async fn next_rollout(&self) -> Result<Option<RolloutRecord>> {
-        self.get_authenticated(
-            "v1/jobs/rollout/next",
-            self.rollout_token.as_deref(),
-            "rollout",
-        )
-        .await
+    pub async fn reconcile_rollout_queue(&self) -> Result<Option<RolloutRecord>> {
+        self.post_rollout("v1/jobs/rollout/reconcile", &()).await
     }
 
     pub async fn complete_rollout(

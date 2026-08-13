@@ -190,7 +190,7 @@ pub fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router {
         .merge(crate::tools::release_routes())
         .route_layer(middleware::from_fn_with_state(state.clone(), release_auth));
     let rollouts = Router::new()
-        .route("/v1/jobs/rollout/next", get(next_rollout))
+        .route("/v1/jobs/rollout/reconcile", post(reconcile_rollout_queue))
         .route("/v1/rollouts/{rollout_id}/bundle", get(download_rollout))
         .route("/v1/rollouts/{rollout_id}/submission", post(upload_rollout))
         .route("/v1/rollouts/{rollout_id}/complete", post(complete_rollout))
@@ -334,12 +334,12 @@ async fn next_release(State(state): State<AppState>) -> Json<Option<SubmissionRe
     Json(state.store.next_release().await)
 }
 
-async fn next_rollout(State(state): State<AppState>) -> Json<Option<RolloutRecord>> {
-    reconcile_rollout_queue(&state).await;
+async fn reconcile_rollout_queue(State(state): State<AppState>) -> Json<Option<RolloutRecord>> {
+    prepare_rollout_queue(&state).await;
     Json(state.store.next_rollout().await)
 }
 
-async fn reconcile_rollout_queue(state: &AppState) {
+async fn prepare_rollout_queue(state: &AppState) {
     let mut rollouts = state
         .store
         .rollouts()
@@ -1022,6 +1022,30 @@ mod tests {
                 .await
                 .status_code(),
             StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            server
+                .get("/v1/jobs/rollout/reconcile")
+                .add_header(header::AUTHORIZATION, "Bearer rollout")
+                .await
+                .status_code(),
+            StatusCode::METHOD_NOT_ALLOWED
+        );
+        assert_eq!(
+            server
+                .post("/v1/jobs/rollout/reconcile")
+                .add_header(header::AUTHORIZATION, "Bearer reviewer")
+                .await
+                .status_code(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            server
+                .post("/v1/jobs/rollout/reconcile")
+                .add_header(header::AUTHORIZATION, "Bearer rollout")
+                .await
+                .status_code(),
+            StatusCode::OK
         );
         assert_eq!(
             server

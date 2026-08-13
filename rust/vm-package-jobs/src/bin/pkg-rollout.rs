@@ -19,7 +19,7 @@ async fn main() -> Result<()> {
     let client = PackageInfrastructureClient::new(RegistryEndpoints::new(gateway)?)
         .with_rollout_token(token.clone());
     loop {
-        match client.next_rollout().await {
+        match client.reconcile_rollout_queue().await {
             Ok(Some(rollout)) => {
                 if let Err(error) = run_rollout(&client, &token, &rollout.rollout_id).await {
                     eprintln!("rollout {} failed: {error:#}", rollout.rollout_id);
