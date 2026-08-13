@@ -98,6 +98,26 @@ impl ApplianceFiles {
         self.token(&self.agent_signing_key_path())
     }
 
+    pub(super) fn runtime_credentials_ready(&self) -> VmResult<bool> {
+        for path in [
+            self.read_token_path(),
+            self.publish_token_path(),
+            self.controller_token_path(),
+            self.reviewer_token_path(),
+            self.release_token_path(),
+            self.rollout_token_path(),
+            self.agent_signing_key_path(),
+        ] {
+            match fs::read_to_string(path) {
+                Ok(value) if !value.trim().is_empty() => {}
+                Ok(_) => return Ok(false),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+                Err(error) => return Err(VmError::from(error)),
+            }
+        }
+        Ok(true)
+    }
+
     pub(super) fn set_git_token(&self, token: &str) -> VmResult<()> {
         self.set_external_token(&self.git_token_path(), token, "Git")
     }
@@ -375,9 +395,26 @@ mod tests {
         assert_eq!(files.read_token().unwrap().len(), 48);
         assert_eq!(files.controller_token().unwrap().len(), 48);
         assert!(!files.has_git_token().unwrap());
+        assert!(files.runtime_credentials_ready().unwrap());
         files.set_git_token("github-token").unwrap();
         assert!(files.has_git_token().unwrap());
         assert!(!files.root().join("npm").exists());
+    }
+
+    #[test]
+    fn materialization_repairs_missing_client_credentials() {
+        let directory = tempfile::tempdir().unwrap();
+        let files = ApplianceFiles::at(directory.path().join("packages"));
+        let config =
+            ApplianceConfig::new("127.0.0.1", 3080, "registry/image:1", "review/image:1").unwrap();
+
+        files.materialize(&config).unwrap();
+        std::fs::remove_file(files.agent_signing_key_path()).unwrap();
+        assert!(!files.runtime_credentials_ready().unwrap());
+
+        files.materialize(&config).unwrap();
+        assert!(files.runtime_credentials_ready().unwrap());
+        assert_eq!(files.agent_signing_key().unwrap().len(), 48);
     }
 
     #[test]

@@ -241,6 +241,9 @@ working trees and installed immutable releases are never treated as source.
   client repair instead of retaining a second reconciliation path.
 - [x] Make installed tool releases read-only and replace legacy writable
   installations from their immutable private artifacts during reconciliation.
+- [x] Repair missing credentials and current appliance definitions automatically
+  when an existing controller predates scoped guest access; ordinary shell
+  startup no longer requires a manual migration command.
 
 Container tests cover fake Docker/provider execution, temporary controller
 state, fixture source discovery, repeat reconciliation, targeted sidecar

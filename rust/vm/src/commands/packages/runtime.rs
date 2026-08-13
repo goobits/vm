@@ -9,7 +9,7 @@ use vm_provider::Provider;
 use crate::commands::command_context::RuntimeSubject;
 use crate::error::{VmError, VmResult};
 
-use super::files::ApplianceFiles;
+use super::{appliance, files::ApplianceFiles};
 
 // Bump when edge labels, environment, mounts, or lifecycle policy change
 // without requiring a new registry image.
@@ -195,6 +195,7 @@ fn configured_client_environment(
     let Some(state) = files.read_state()? else {
         return Ok(None);
     };
+    let state = appliance::repair_client_access(&files, state)?;
     let provider = config.provider.as_deref().unwrap_or("docker");
     if provider == "tart"
         && (config.os.as_deref() == Some("macos")

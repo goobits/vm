@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use vm_core::{vm_println, vm_success};
+use vm_core::{vm_println, vm_progress, vm_success};
 use vm_packages::{
     ApplianceConfig, ApplianceState, InfrastructureRuntime, PackageInfrastructureClient,
     RegistryEndpoints,
@@ -117,6 +117,57 @@ pub(super) async fn up(
     vm_println!("Gateway: {gateway_url}");
     vm_println!("Runtime: {}", runtime.as_str());
     Ok(())
+}
+
+/// Upgrade an existing appliance whose controller files predate scoped guest
+/// credentials. This is intentionally limited to already-configured
+/// infrastructure and runs only when required credentials are absent.
+pub(super) fn repair_client_access(
+    files: &ApplianceFiles,
+    fallback: ApplianceState,
+) -> VmResult<ApplianceState> {
+    if files.runtime_credentials_ready()? {
+        return Ok(fallback);
+    }
+
+    let _lifecycle_lock = files.acquire_lifecycle_lock()?;
+    let mut state = files.read_state()?.unwrap_or(fallback);
+    if files.runtime_credentials_ready()? {
+        return Ok(state);
+    }
+
+    vm_progress!("Repairing package infrastructure client credentials...");
+    let registry_image = resolve_image(
+        None,
+        Some((&state.controller_version, &state.registry_image)),
+        default_registry_image(),
+    );
+    let job_image = resolve_image(
+        None,
+        Some((&state.controller_version, &state.job_image)),
+        default_job_image(),
+    );
+    let bind = match state.runtime {
+        InfrastructureRuntime::Docker => "127.0.0.1",
+        InfrastructureRuntime::Tart => "0.0.0.0",
+    };
+    let config = ApplianceConfig::new(bind, state.gateway_port, registry_image, job_image)
+        .map_err(VmError::from)?;
+    let allow_source_build = config.registry_image == default_registry_image()
+        && config.job_image == default_job_image();
+    files.materialize(&config)?;
+    state.gateway_url = match state.runtime {
+        InfrastructureRuntime::Docker => docker::up(files, &config, allow_source_build)?,
+        InfrastructureRuntime::Tart => tart::up(files, state.gateway_port)?,
+    };
+    state.registry_image = config.registry_image;
+    state.job_image = config.job_image;
+    state.controller_version = env!("CARGO_PKG_VERSION").to_string();
+    if state.runtime == InfrastructureRuntime::Tart {
+        state.tart_home = tart::storage_home(files)?;
+    }
+    files.write_state(&state)?;
+    Ok(state)
 }
 
 pub(super) fn down(
