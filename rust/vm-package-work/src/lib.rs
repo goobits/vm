@@ -4,6 +4,7 @@ mod consumer;
 mod error;
 mod io;
 mod release;
+mod rollout;
 mod server;
 mod source;
 mod store;

@@ -1,11 +1,24 @@
 use chrono::Utc;
 use vm_packages::{InternalPackageCatalog, PackageDefinition, RegisterPackage};
 
-use crate::store::{Database, SourceDefinition, Store};
+use crate::io::atomic_write;
+use crate::store::{pretty_json, Database, SourceDefinition, Store};
 use crate::{WorkError, WorkResult};
 use vm_packages::SourceKind;
 
+const CATALOG_FILE: &str = "catalog/packages.json";
+
 impl Store {
+    pub(crate) async fn materialize_catalog(&self) -> WorkResult<()> {
+        let database = self.database.lock().await;
+        self.materialize_catalog_locked(&database).await
+    }
+
+    async fn materialize_catalog_locked(&self, database: &Database) -> WorkResult<()> {
+        let catalog = InternalPackageCatalog::from_definitions(database.packages.values())?;
+        atomic_write(self.root().join(CATALOG_FILE), pretty_json(&catalog)?).await
+    }
+
     pub async fn register_package(
         &self,
         request: RegisterPackage,
