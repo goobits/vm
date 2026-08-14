@@ -220,12 +220,22 @@ fn is_source_built(inspect: &ImageInspect) -> bool {
 }
 
 fn source_build_command(workspace: &Path, dockerfile: &str, image: &str) -> Command {
+    let (context, dockerfile) = workspace
+        .parent()
+        .filter(|root| {
+            workspace.file_name().is_some_and(|name| name == "rust")
+                && root.join("configs/defaults.yaml").is_file()
+        })
+        .map_or_else(
+            || (workspace.to_path_buf(), dockerfile.to_string()),
+            |root| (root.to_path_buf(), format!("rust/{dockerfile}")),
+        );
     let mut command = Command::new("docker");
     command
-        .current_dir(workspace)
+        .current_dir(context)
         .args(["build", "--provenance=false", "--label"])
         .arg(format!("{SOURCE_BUILD_LABEL}=true"))
-        .args(["--tag", image, "--file", dockerfile, "."]);
+        .args(["--tag", image, "--file", dockerfile.as_str(), "."]);
     command
 }
 
@@ -307,7 +317,11 @@ mod tests {
         fs::write(workspace.join("vm-package-jobs/Dockerfile"), "FROM scratch").unwrap();
 
         let executable = workspace.join("target/source-install/vm");
-        assert_eq!(source_workspace_from(&executable), Some(workspace));
+        let discovered = source_workspace_from(&executable).unwrap();
+        assert_eq!(
+            fs::canonicalize(discovered).unwrap(),
+            fs::canonicalize(workspace).unwrap()
+        );
     }
 
     #[test]
@@ -332,7 +346,11 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(source_workspace_from(&executable), Some(workspace));
+        let discovered = source_workspace_from(&executable).unwrap();
+        assert_eq!(
+            fs::canonicalize(discovered).unwrap(),
+            fs::canonicalize(workspace).unwrap()
+        );
     }
 
     #[cfg(unix)]
@@ -392,6 +410,31 @@ mod tests {
                 ".",
             ]
         );
+    }
+
+    #[test]
+    fn source_image_build_includes_repository_configuration_assets() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("checkout");
+        let workspace = root.join("rust");
+        fs::create_dir_all(root.join("configs")).unwrap();
+        fs::create_dir_all(&workspace).unwrap();
+        fs::write(root.join("configs/defaults.yaml"), "version: '2.0'\n").unwrap();
+
+        let command = source_build_command(
+            &workspace,
+            "vm-package-server/docker/server/Dockerfile",
+            "registry.example/server:1",
+        );
+        let arguments = command
+            .get_args()
+            .map(|argument| argument.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        assert_eq!(command.get_current_dir(), Some(root.as_path()));
+        assert!(arguments.windows(2).any(|arguments| {
+            arguments == ["--file", "rust/vm-package-server/docker/server/Dockerfile"]
+        }));
     }
 
     #[test]

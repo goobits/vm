@@ -106,6 +106,12 @@ Inside a managed guest, `vm packages status` verifies the workflow gateway and
 consumer-bound agent credential using read-only requests. It creates no
 checkout and does not repair, publish, or activate anything.
 
+Package reconciliation installs the matching Linux `vm` guest client from the
+authenticated appliance and verifies its SHA-256 digest. `vm tools update`
+repairs existing environments in place; it does not require rebuilding or
+recreating them. If an older appliance does not yet expose the client, run
+`vm packages up` on the controller host once, then rerun `vm tools update`.
+
 The appliance fetches the registered canonical repository, creates a unique
 task branch, and returns a writable checkout under
 `~/.local/share/vm/package-checkouts/<checkout-id>`. Edit that returned path,

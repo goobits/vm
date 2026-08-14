@@ -139,6 +139,10 @@ impl ClientEnvironment {
         ];
         if let Some(access) = &self.agent_access {
             variables.extend([
+                (
+                    "VM_PACKAGES_CLIENT_URL".into(),
+                    format!("{}/vm-client", access.gateway),
+                ),
                 ("VM_PACKAGES_WORK_GATEWAY".into(), access.gateway.clone()),
                 ("VM_PACKAGES_AGENT_TOKEN".into(), access.token.clone()),
                 ("VM_PACKAGES_CONSUMER".into(), access.consumer.clone()),
@@ -223,8 +227,12 @@ mod tests {
             .with_agent_access("https://packages.internal", "agent-token", "project-a")
             .unwrap()
             .variables();
-        assert_eq!(agent.len(), 11);
+        assert_eq!(agent.len(), 12);
         assert!(agent.contains(&("VM_PACKAGES_CONSUMER".into(), "project-a".into())));
+        assert!(agent.contains(&(
+            "VM_PACKAGES_CLIENT_URL".into(),
+            "https://packages.internal/vm-client".into()
+        )));
         assert_eq!(variables[3].1, "read secret");
         assert_eq!(variables[7].1, "https://packages.internal");
     }

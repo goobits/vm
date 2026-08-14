@@ -92,6 +92,7 @@ impl<'a> LifecycleOperations<'a> {
                 &format!("USER={project_user}"),
                 &format!("LOGNAME={project_user}"),
                 &format!("SHELL={shell}"),
+                "VM_MANAGED_GUEST=1",
                 "sh",
                 "-lc",
                 &format!(
@@ -210,6 +211,7 @@ impl<'a> LifecycleOperations<'a> {
             format!("USER={project_user}"),
             format!("LOGNAME={project_user}"),
             format!("SHELL={shell}"),
+            "VM_MANAGED_GUEST=1".to_string(),
             shell.to_string(),
             "-ilc".to_string(),
             format!("{worktree_repair}\ncd {workspace_quoted} && exec \"$@\""),

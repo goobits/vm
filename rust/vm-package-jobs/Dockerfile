@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1
-# Build with the Rust workspace as context:
-# docker build -f vm-package-jobs/Dockerfile .
+# Build with the repository root as context:
+# docker build -f rust/vm-package-jobs/Dockerfile .
 FROM rust:1.97-bookworm AS builder
 
 WORKDIR /source
 ENV CARGO_TARGET_DIR=/tmp/vm-rust-target
-COPY . .
+COPY rust/ .
 RUN --mount=type=cache,id=vm-packages-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=vm-packages-cargo-git,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,id=vm-packages-rust-target,target=/tmp/vm-rust-target,sharing=locked \
@@ -36,7 +36,7 @@ COPY --from=builder /usr/local/bin/pkg-rollout /usr/local/bin/pkg-rollout
 COPY --from=builder /usr/local/bin/pkg-git-askpass /usr/local/bin/pkg-git-askpass
 COPY --from=builder /usr/local/cargo /usr/local/cargo
 COPY --from=builder /usr/local/rustup /usr/local/rustup
-COPY vm-package-jobs/pkg-client-env.sh /usr/local/lib/pkg-client-env.sh
+COPY rust/vm-package-jobs/pkg-client-env.sh /usr/local/lib/pkg-client-env.sh
 
 USER 10001:10001
 ENV PATH="/opt/package-tools/bin:/usr/local/cargo/bin:${PATH}" \

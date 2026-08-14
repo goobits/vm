@@ -407,6 +407,12 @@ requires a tool catalog or package-appliance connection.
   matching workers reconcile in place, the second pass is a no-op, and no
   primary container ID or service volume changes (implemented but awaiting host
   acceptance).
+- [x] Deliver the platform-matched guest `vm` client from the authenticated
+  package appliance, preserve managed-guest identity through shell launchers,
+  and bind credentials to the selected environment's owning project. Live
+  Docker acceptance removed the client from `projects-dev`, restored it with
+  targeted reconciliation, verified guest package access, and confirmed both
+  the second client update and the primary container ID were unchanged.
 - [ ] From a writable Docker worker, create and release an `agent-skills`
   checkout; verify review, integration, canonical push/tag, private publication,
   cleanup, and receipts complete without a host source checkout or approval.

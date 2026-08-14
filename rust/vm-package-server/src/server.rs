@@ -32,6 +32,8 @@ use crate::{
 };
 use vm_core::validation as core_validation;
 
+const GUEST_CLIENT_PATH: &str = "/usr/local/lib/vm-packages/vm";
+
 pub async fn run_server_background(host: String, port: u16, data_dir: PathBuf) -> Result<()> {
     run_server_with_shutdown(host, port, data_dir, None).await
 }
@@ -159,6 +161,8 @@ fn app_router(state: AppState) -> Router {
         .route("/status", get(status_handler))
         .route("/api/status", get(status_handler))
         .route("/setup.sh", get(setup_script_handler))
+        .route("/vm-client", get(guest_client_handler))
+        .route("/vm-client.sha256", get(guest_client_digest_handler))
         .route("/api/packages", get(list_packages_handler))
         .route("/npm/{package}/-/{filename}", get(npm::download_tarball))
         .route("/npm/{package}", get(npm::package_metadata))
@@ -204,6 +208,47 @@ fn app_router(state: AppState) -> Router {
         app = app.merge(writes).merge(crate::tools::router());
     }
     app.with_state(Arc::new(state))
+}
+
+async fn guest_client_handler() -> Response {
+    match tokio::fs::read(GUEST_CLIENT_PATH).await {
+        Ok(client) => (
+            [
+                (header::CONTENT_TYPE, "application/octet-stream"),
+                (header::CONTENT_DISPOSITION, "attachment; filename=vm"),
+            ],
+            client,
+        )
+            .into_response(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            (StatusCode::NOT_FOUND, "guest VM client is unavailable").into_response()
+        }
+        Err(error) => {
+            error!(error = %error, "failed to read guest VM client");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "guest VM client is unavailable",
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn guest_client_digest_handler() -> Response {
+    match tokio::fs::read(GUEST_CLIENT_PATH).await {
+        Ok(client) => format!("{}\n", vm_packages::sha256_hex(&client)).into_response(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            (StatusCode::NOT_FOUND, "guest VM client is unavailable").into_response()
+        }
+        Err(error) => {
+            error!(error = %error, "failed to read guest VM client");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "guest VM client is unavailable",
+            )
+                .into_response()
+        }
+    }
 }
 
 fn start_catalog_refresh(resolver: Arc<ResolverService>) {
@@ -334,6 +379,18 @@ mod tests {
         assert_eq!(
             server.get("/api/status").await.status_code(),
             StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            server.get("/vm-client").await.status_code(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            server
+                .get("/vm-client")
+                .add_header(header::AUTHORIZATION, "Bearer read")
+                .await
+                .status_code(),
+            StatusCode::NOT_FOUND
         );
         assert_eq!(
             server

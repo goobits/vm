@@ -1,11 +1,12 @@
 # syntax=docker/dockerfile:1
-# Build with the Rust workspace as context:
-# docker build -f vm-package-server/docker/server/Dockerfile .
+# Build with the repository root as context:
+# docker build -f rust/vm-package-server/docker/server/Dockerfile .
 FROM rust:1.97-bookworm AS builder
 
 WORKDIR /source
 ENV CARGO_TARGET_DIR=/tmp/vm-rust-target
-COPY . .
+COPY rust/ .
+COPY configs/ /configs/
 RUN --mount=type=cache,id=vm-packages-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=vm-packages-cargo-git,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,id=vm-packages-rust-target,target=/tmp/vm-rust-target,sharing=locked \
@@ -15,10 +16,13 @@ RUN --mount=type=cache,id=vm-packages-cargo-registry,target=/usr/local/cargo/reg
       --bin pkg-server \
       --package vm-package-work \
       --bin pkg-work \
-      --bin pkg-git-askpass && \
+      --bin pkg-git-askpass \
+      --package goobits-vm \
+      --bin vm && \
     install -m 0755 "$CARGO_TARGET_DIR/release/pkg-server" /usr/local/bin/pkg-server && \
     install -m 0755 "$CARGO_TARGET_DIR/release/pkg-work" /usr/local/bin/pkg-work && \
-    install -m 0755 "$CARGO_TARGET_DIR/release/pkg-git-askpass" /usr/local/bin/pkg-git-askpass
+    install -m 0755 "$CARGO_TARGET_DIR/release/pkg-git-askpass" /usr/local/bin/pkg-git-askpass && \
+    install -D -m 0755 "$CARGO_TARGET_DIR/release/vm" /usr/local/lib/vm-packages/vm
 
 FROM debian:bookworm-slim
 
@@ -34,6 +38,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 COPY --from=builder /usr/local/bin/pkg-server /usr/local/bin/pkg-server
 COPY --from=builder /usr/local/bin/pkg-work /usr/local/bin/pkg-work
 COPY --from=builder /usr/local/bin/pkg-git-askpass /usr/local/bin/pkg-git-askpass
+COPY --from=builder /usr/local/lib/vm-packages/vm /usr/local/lib/vm-packages/vm
 
 USER 10001:10001
 WORKDIR /data

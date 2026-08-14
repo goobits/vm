@@ -62,6 +62,7 @@
 - 🌐 `vm packages auth --github` validates and imports the active GitHub CLI credential into controller-only storage without printing it or exposing it to project workers.
 - 🌐 Flat package source shelves can mark managed tool repositories with `vm-tool.yaml`, preventing recursive language-package registration from misclassifying them.
 - 🌐 Managed tool downloads receive read credentials over standard input, and collections merge into existing skill roots without replacing personal or system skills.
+- 🌐 Package reconciliation installs the platform-matched guest `vm` client from the authenticated appliance, verifies its digest, preserves managed-guest identity through shell launchers, and binds scoped credentials to the selected environment's project.
 - 🌐 Tart package-appliance startup accepts Tart 2.32.1's `Name` and `State` inventory fields.
 - 🌐 Docker image pulls retry transient transport failures while permanent authentication and image errors fail immediately.
 - 🌐 Single-port ranges and explicit create-time port mappings now validate correctly.

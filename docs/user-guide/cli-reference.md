@@ -250,11 +250,13 @@ vm tools update --fleet [--provider <provider>] [--pattern <pattern>] [--backgro
 
 `status` combines controller registration/publication with guest
 installation/consumability. Collection publication uses the managed
-`vm packages checkout` / `vm packages release` workflow. `update` applies eligible changes without prompting
-or rebuilding the base. `--fleet` uses the loaded tool selection for matching
-managed environments, starts stopped targets in place, repairs shared package
-routing, and summarizes failures; it does not copy the invoking project's
-application services to unrelated targets. Run these commands on the controller host. See
+`vm packages checkout` / `vm packages release` workflow. `update` applies
+eligible changes without prompting or rebuilding the base, including the
+authenticated, digest-verified guest `vm` client used by that workflow.
+`--fleet` uses the loaded tool selection for matching managed environments,
+starts stopped targets in place, repairs shared package routing, and summarizes
+failures; it does not copy the invoking project's application services to
+unrelated targets. Run these commands on the controller host. See
 [Package Infrastructure](package-infrastructure.md#register-and-consume-tools)
 for update policy, runtime ownership, locking, and recovery behavior.
 

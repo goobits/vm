@@ -69,6 +69,7 @@ replace("/etc/vm/npmrc", settings["npmrc"], sensitive_mode, owner)
 replace("/etc/vm/pip.conf", settings["pip_conf"], sensitive_mode, owner)
 replace("/etc/vm/cargo-config.toml", settings["cargo_config"], sensitive_mode, owner)
 replace("/etc/vm/package-client.revision", settings["revision"] + "\n", sensitive_mode, owner)
+replace("/etc/vm/managed-guest", "1\n", 0o644, (0, 0))
 
 source = "[ -r /etc/profile.d/vm-packages.sh ] && . /etc/profile.d/vm-packages.sh"
 for candidate in ("/etc/bash.bashrc", "/etc/zsh/zshrc"):
@@ -80,6 +81,59 @@ for candidate in ("/etc/bash.bashrc", "/etc/zsh/zshrc"):
     content = path.read_text()
     if source not in content.splitlines():
         replace(path, content.rstrip("\n") + "\n" + source + "\n")
+"#;
+
+const INSTALL_GUEST_CLIENT: &str = r#"set -eu
+. /etc/profile.d/vm-packages.sh
+url=${VM_PACKAGES_CLIENT_URL:?managed guest client URL unavailable}
+token=${CARGO_REGISTRIES_VM_TOKEN:?package read token unavailable}
+destination="$HOME/.local/bin/vm"
+state="$HOME/.local/state/vm"
+mkdir -p "$(dirname "$destination")" "$state"
+task=$(mktemp -d "$state/client.XXXXXX")
+cleanup() {
+  rm -rf "$task"
+}
+trap cleanup EXIT HUP INT TERM
+curl_args="--fail --silent --show-error --location --connect-timeout 5 --max-time 600 --retry 2"
+printf 'header = "Authorization: Bearer %s"\n' "$token" > "$task/curl.conf"
+chmod 0600 "$task/curl.conf"
+if ! curl $curl_args --config "$task/curl.conf" \
+    --output "$task/digest" "$url.sha256"; then
+  if test -x "$destination"; then
+    exit 0
+  fi
+  echo "Managed guest VM client is unavailable; run 'vm packages up' on the controller host" >&2
+  exit 1
+fi
+expected=$(tr -d '[:space:]' < "$task/digest")
+case "$expected" in
+  *[!0-9a-f]*|'') echo "Managed guest VM client digest is invalid" >&2; exit 1 ;;
+esac
+test "${#expected}" -eq 64 || {
+  echo "Managed guest VM client digest is invalid" >&2
+  exit 1
+}
+installed=$(cat "$state/client.sha256" 2>/dev/null || true)
+if test -x "$destination" && test "$installed" = "$expected"; then
+  exit 0
+fi
+curl $curl_args --config "$task/curl.conf" \
+  --output "$task/vm" "$url"
+if command -v sha256sum >/dev/null 2>&1; then
+  printf '%s  %s\n' "$expected" "$task/vm" | sha256sum -c - >/dev/null
+elif command -v shasum >/dev/null 2>&1; then
+  actual=$(shasum -a 256 "$task/vm" | awk '{print $1}')
+  test "$actual" = "$expected"
+else
+  echo "No SHA-256 verifier is installed" >&2
+  exit 1
+fi
+chmod 0755 "$task/vm"
+"$task/vm" --version >/dev/null
+mv -f "$task/vm" "$destination"
+printf '%s\n' "$expected" > "$task/client.sha256"
+mv -f "$task/client.sha256" "$state/client.sha256"
 "#;
 
 pub(super) trait PackageExecutor {
@@ -171,7 +225,23 @@ pub(in crate::commands) fn reconcile_client_settings(
     environment: &str,
     config: &VmConfig,
 ) -> VmResult<()> {
-    let Some((client, _)) = configured_client_environment(config)? else {
+    if !config.environment.contains_key("VM_PACKAGES_AGENT_TOKEN") {
+        return Ok(());
+    }
+    let mut effective_config = config.clone();
+    if let Ok(instances) = provider.list_instances() {
+        if let Some(project) = instances
+            .iter()
+            .find(|instance| instance.name == environment)
+            .and_then(|instance| instance.project.as_deref())
+        {
+            effective_config
+                .project
+                .get_or_insert_with(Default::default)
+                .name = Some(project.to_string());
+        }
+    }
+    let Some((client, _)) = configured_client_environment(&effective_config)? else {
         return Ok(());
     };
     let content = serde_json::to_vec(&client.managed_settings())
@@ -185,6 +255,16 @@ pub(in crate::commands) fn reconcile_client_settings(
     ];
     provider
         .exec_with_stdin(Some(environment), &command, &content)
+        .map_err(VmError::from)?;
+    provider
+        .exec(
+            Some(environment),
+            &[
+                "/bin/sh".to_string(),
+                "-c".to_string(),
+                INSTALL_GUEST_CLIENT.to_string(),
+            ],
+        )
         .map_err(VmError::from)
 }
 
@@ -505,7 +585,7 @@ impl PackageExecutor for GuestRuntime {
 mod tests {
     use super::{
         apply_environment, checkout_root_for, client_environment, gateway_for_provider,
-        package_edge_revision, INSTALL_CLIENT_SETTINGS,
+        package_edge_revision, INSTALL_CLIENT_SETTINGS, INSTALL_GUEST_CLIENT,
     };
     use vm_config::config::{TartConfig, VmConfig, VmSettings};
     use vm_packages::{
@@ -612,7 +692,17 @@ mod tests {
         assert!(INSTALL_CLIENT_SETTINGS.contains("/etc/profile.d/vm-packages.sh"));
         assert!(INSTALL_CLIENT_SETTINGS.contains("/etc/bash.bashrc"));
         assert!(INSTALL_CLIENT_SETTINGS.contains("/etc/zsh/zshrc"));
+        assert!(INSTALL_CLIENT_SETTINGS.contains("/etc/vm/managed-guest"));
         assert!(INSTALL_CLIENT_SETTINGS.contains("refusing managed file symlink"));
+    }
+
+    #[test]
+    fn guest_client_repair_is_authenticated_verified_and_atomic() {
+        assert!(INSTALL_GUEST_CLIENT.contains("VM_PACKAGES_CLIENT_URL"));
+        assert!(INSTALL_GUEST_CLIENT.contains("--config \"$task/curl.conf\""));
+        assert!(INSTALL_GUEST_CLIENT.contains("sha256sum -c"));
+        assert!(INSTALL_GUEST_CLIENT.contains("mv -f \"$task/vm\" \"$destination\""));
+        assert!(!INSTALL_GUEST_CLIENT.contains("--header \"Authorization"));
     }
 
     #[test]
