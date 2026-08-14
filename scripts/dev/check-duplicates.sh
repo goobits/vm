@@ -7,7 +7,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}Running duplicate code detection and complexity analysis...${NC}\n"
+echo -e "${GREEN}Running duplicate code detection...${NC}\n"
 
 require_tool() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -18,33 +18,7 @@ require_tool() {
 }
 
 require_tool jscpd "Install with: npm install -g jscpd"
-require_tool rust-code-analysis-cli "Install with: cargo install rust-code-analysis-cli"
-require_tool jq "Install with: brew install jq, apt-get install jq, or your platform package manager."
-
-mkdir -p .build
 
 # Run jscpd (duplicate detection)
 echo -e "${YELLOW}=== jscpd: Duplicate Code Detection ===${NC}"
 jscpd -c .jscpd.json rust/
-echo ""
-
-# Run rust-code-analysis (complexity metrics)
-echo -e "${YELLOW}=== rust-code-analysis: Complexity Metrics ===${NC}"
-rust-code-analysis-cli --metrics -p rust/ -O json > .build/rust-code-analysis-report.json
-echo "✓ Metrics saved to .build/rust-code-analysis-report.json"
-echo ""
-
-# Find high complexity functions (Cyclomatic Complexity > 10)
-echo -e "${YELLOW}=== High Complexity Functions (CC > 10) ===${NC}"
-jq -r '
-  .. |
-  objects |
-  select(.metrics.cyclomatic.sum? > 10) |
-  "\(.name // "unknown"):\(.start_line) - CC: \(.metrics.cyclomatic.sum) | Cognitive: \(.metrics.cognitive.sum)"
-' .build/rust-code-analysis-report.json | head -20
-
-echo ""
-echo -e "${GREEN}Reports location:${NC}"
-echo "  - Duplicates (HTML): .build/jscpd-report/html/index.html"
-echo "  - Duplicates (JSON):  .build/jscpd-report/jscpd-report.json"
-echo "  - Complexity (JSON):  .build/rust-code-analysis-report.json"

@@ -67,7 +67,7 @@ dist/
 build/
 out/
 
-# Build artifacts (moved to .build/)
+# Build artifacts (ignored defensively; supported builds use external targets)
 .build/
 target/
 rust/target/

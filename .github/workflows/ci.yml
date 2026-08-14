@@ -13,6 +13,8 @@ jobs:
   test:
     name: Test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    env:
+      CARGO_TARGET_DIR: ${{ runner.temp }}/vm-rust-target
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
@@ -28,7 +30,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            .build/target
+            ${{ runner.temp }}/vm-rust-target
           key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
 
       - name: Set up Rust toolchain
@@ -47,6 +49,8 @@ jobs:
   clippy:
     name: Run clippy
     runs-on: ubuntu-latest
+    env:
+      CARGO_TARGET_DIR: ${{ runner.temp }}/vm-rust-target
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -57,7 +61,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            .build/target
+            ${{ runner.temp }}/vm-rust-target
           key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
 
       - name: Set up Rust toolchain

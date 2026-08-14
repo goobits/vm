@@ -70,6 +70,8 @@ jobs:
   release:
     name: Create GitHub Release
     runs-on: ${{ matrix.os }}
+    env:
+      CARGO_TARGET_DIR: ${{ runner.temp }}/vm-rust-target
     strategy:
       matrix:
         include:
@@ -109,32 +111,30 @@ jobs:
     - name: Package binary (Unix)
       if: runner.os != 'Windows'
       run: |
-        mkdir -p release_assets
-        cp rust/target/${{ matrix.target }}/release/vm release_assets/vm-${{ matrix.target }}
-        cd release_assets
+        mkdir -p "$RUNNER_TEMP/release-assets"
+        cp "$CARGO_TARGET_DIR/${{ matrix.target }}/release/vm" "$RUNNER_TEMP/release-assets/vm-${{ matrix.target }}"
+        cd "$RUNNER_TEMP/release-assets"
         tar czf vm-${{ matrix.target }}.tar.gz vm-${{ matrix.target }}
         sha256sum vm-${{ matrix.target }}.tar.gz > vm-${{ matrix.target }}.tar.gz.sha256
-        cd ..
 
     - name: Package binary (Windows)
       if: runner.os == 'Windows'
       run: |
-        New-Item -ItemType Directory -Force -Path release_assets
-        Copy-Item rust/target/${{ matrix.target }}/release/vm.exe release_assets/vm-${{ matrix.target }}.exe
-        cd release_assets
+        New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/release-assets"
+        Copy-Item "$env:CARGO_TARGET_DIR/${{ matrix.target }}/release/vm.exe" "$env:RUNNER_TEMP/release-assets/vm-${{ matrix.target }}.exe"
+        cd "$env:RUNNER_TEMP/release-assets"
         Compress-Archive -Path vm-${{ matrix.target }}.exe -DestinationPath vm-${{ matrix.target }}.zip
         $hash = (Get-FileHash vm-${{ matrix.target }}.zip -Algorithm SHA256).Hash.ToLowerInvariant()
         "$hash  vm-${{ matrix.target }}.zip" | Out-File vm-${{ matrix.target }}.zip.sha256 -Encoding ascii
-        cd ..
 
     - name: Upload release assets
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          release_assets/vm-*.tar.gz
-          release_assets/vm-*.tar.gz.sha256
-          release_assets/vm-*.zip
-          release_assets/vm-*.zip.sha256
+          ${{ runner.temp }}/release-assets/vm-*.tar.gz
+          ${{ runner.temp }}/release-assets/vm-*.tar.gz.sha256
+          ${{ runner.temp }}/release-assets/vm-*.zip
+          ${{ runner.temp }}/release-assets/vm-*.zip.sha256
         body: |
           ## Installation
 

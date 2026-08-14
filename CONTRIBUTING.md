@@ -81,7 +81,6 @@ We also use:
 
 - **Code Duplication**: `jscpd`
 - **Security Auditing**: `cargo-audit`
-- **Code Complexity**: `rust-code-analysis-cli`
 - **Test Coverage**: `cargo-tarpaulin`
 
 For instructions on how to install and run these tools, please see the [Development Tools](docs/development/guide.md#development-tools) section in our developer guide.

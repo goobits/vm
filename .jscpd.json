@@ -1,6 +1,6 @@
 {
   "threshold": 10,
-  "reporters": ["html", "console", "json"],
+  "reporters": ["console"],
   "ignore": [
     "**/target/**",
     "**/node_modules/**",
@@ -24,7 +24,6 @@
   "minLines": 5,
   "minTokens": 50,
   "maxSize": "100kb",
-  "output": "./.build/jscpd-report",
   "formatsExts": {
     "rust": ["rs"],
     "toml": ["toml"],
