@@ -308,7 +308,9 @@ workflow store now owns only persistence and commits; checkout, receipt,
 catalog, consumer, and rollout state each live with their canonical domain
 owner. Shared Git execution and managed-path enforcement remain in the source
 manager, while worktree, submission, integration, and rollout source lifecycles
-are isolated behind their existing workflow API.
+are isolated behind their existing workflow API. Configuration validation now
+borrows one configuration through a single ordered pipeline, with pure project,
+network, runtime, and storage checks separated from mutable host checks.
 Formatting, focused package/CLI tests, scoped all-target Clippy with warnings
 denied, and `git diff --check` passed. Rollout reconciliation remains an
 explicit authenticated `POST` command with no obsolete compatibility path.

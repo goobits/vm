@@ -82,7 +82,7 @@ impl fmt::Display for ValidationReport {
 }
 
 /// A validator for checking the `VmConfig` against the host system's resources.
-struct ConfigValidator {
+struct HostValidator {
     system: System,
 }
 
@@ -92,21 +92,21 @@ pub(super) fn validate(
     check_port_availability: bool,
     reusable_host_ports: &[u16],
 ) -> Result<()> {
-    let validator = ConfigValidator::new();
+    let validator = HostValidator::new();
     validator.validate_cpu(config, report)?;
     validator.validate_memory(config, report)?;
     validator.validate_ports(config, report, check_port_availability, reusable_host_ports)?;
     validator.validate_user(config, report)
 }
 
-impl Default for ConfigValidator {
+impl Default for HostValidator {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ConfigValidator {
-    /// Creates a new `ConfigValidator`.
+impl HostValidator {
+    /// Creates a new host validator.
     pub fn new() -> Self {
         let mut system = System::new();
         system.refresh_cpu();

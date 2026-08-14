@@ -1,581 +1,40 @@
-use crate::config::{
-    mounts::{resolve_mount_source, validate_mount_target},
-    BoxSpec, VmConfig,
-};
-use std::collections::HashSet;
-use std::path::PathBuf;
-use tracing::warn;
-use vm_core::error::{Result, VmError};
+mod network;
+mod project;
+mod runtime;
+mod storage;
 
-/// Validate box spec configurations are compatible with the provider
-pub fn validate_box_spec(config: &VmConfig, provider: &str) -> Vec<String> {
-    let mut errors = Vec::new();
+use crate::config::VmConfig;
+use vm_core::error::Result;
 
-    let Some(vm) = &config.vm else {
-        return errors;
-    };
-    let Some(box_spec) = vm.get_box_spec() else {
-        return errors;
-    };
-
-    match provider {
-        "docker" | "podman" => validate_docker_box_spec(&box_spec, &mut errors),
-        "tart" => validate_tart_box_spec(&box_spec, &mut errors),
-        _ => {}
-    }
-
-    errors
+struct StructuralValidator<'a> {
+    config: &'a VmConfig,
 }
 
-fn validate_docker_box_spec(box_spec: &BoxSpec, errors: &mut Vec<String>) {
-    if let BoxSpec::Build { dockerfile, .. } = box_spec {
-        let path = std::path::Path::new(dockerfile);
-        if !path.exists() {
-            errors.push(format!("Dockerfile not found: {}", dockerfile));
-        }
-    }
-}
-
-fn validate_tart_box_spec(box_spec: &BoxSpec, errors: &mut Vec<String>) {
-    if matches!(box_spec, BoxSpec::Build { .. }) {
-        errors.push("Tart does not support Dockerfile builds".to_string());
-    }
-}
-
-struct ConfigValidator {
-    config: VmConfig,
-}
-
-impl ConfigValidator {
-    pub fn new(
-        config: VmConfig,
-        _schema_path: PathBuf,
-        _skip_port_availability_check: bool,
-    ) -> Self {
+impl<'a> StructuralValidator<'a> {
+    fn new(config: &'a VmConfig) -> Self {
         Self { config }
     }
 
-    pub fn validate(&self) -> Result<()> {
-        self.validate_manual()?;
-        Ok(())
-    }
-
-    fn validate_manual(&self) -> Result<()> {
-        self.validate_required_fields()?;
-        self.validate_provider()?;
-        self.validate_box_spec_compat()?;
-        self.validate_project()?;
-        self.validate_ports()?;
-        self.validate_services()?;
-        self.validate_versions()?;
-        self.validate_networking()?;
-        self.validate_runtime()?;
-        self.validate_resource_limits()?;
-        self.validate_bootstrap()?;
-        self.validate_mounts()?;
+    fn validate(&self) -> Result<()> {
+        project::validate_required_fields(self.config)?;
+        project::validate_provider(self.config)?;
+        project::validate_box_spec_compat(self.config)?;
+        project::validate_project(self.config)?;
+        network::validate_ports(self.config)?;
+        network::validate_services(self.config)?;
+        runtime::validate_versions(self.config)?;
+        network::validate_networking(self.config)?;
+        runtime::validate_runtime(self.config)?;
+        runtime::validate_resource_limits(self.config)?;
+        runtime::validate_bootstrap(self.config)?;
+        storage::validate_mounts(self.config)?;
         self.config.tools.validate()?;
-        self.validate_storage()?;
-        Ok(())
-    }
-
-    fn validate_required_fields(&self) -> Result<()> {
-        if self.config.provider.is_none() {
-            return Err(vm_core::error::VmError::Config(
-                "Missing required field: provider".to_string(),
-            ));
-        }
-
-        if let Some(project) = &self.config.project {
-            if project.name.is_none() {
-                return Err(vm_core::error::VmError::Config(
-                    "Missing required field: project.name".to_string(),
-                ));
-            }
-        } else {
-            return Err(vm_core::error::VmError::Config(
-                "Missing required field: project".to_string(),
-            ));
-        }
-
-        Ok(())
-    }
-
-    fn validate_provider(&self) -> Result<()> {
-        if let Some(provider) = &self.config.provider {
-            #[cfg(feature = "test-helpers")]
-            let valid_providers = ["docker", "podman", "tart", "mock"];
-            #[cfg(not(feature = "test-helpers"))]
-            let valid_providers = ["docker", "podman", "tart"];
-
-            if valid_providers.contains(&provider.as_str()) {
-                Ok(())
-            } else {
-                Err(vm_core::error::VmError::Config(format!(
-                    "Invalid provider '{}'. Valid providers are: {}",
-                    provider,
-                    valid_providers.join(", ")
-                )))
-            }
-        } else {
-            Ok(())
-        }
-    }
-
-    fn validate_box_spec_compat(&self) -> Result<()> {
-        if let Some(provider) = &self.config.provider {
-            let errors = validate_box_spec(&self.config, provider);
-            if !errors.is_empty() {
-                return Err(vm_core::error::VmError::Config(errors.join("; ")));
-            }
-        }
-        Ok(())
-    }
-
-    fn validate_project(&self) -> Result<()> {
-        if let Some(project) = &self.config.project {
-            if let Some(name) = &project.name {
-                let is_valid = !name.is_empty()
-                    && name
-                        .chars()
-                        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-                if !is_valid {
-                    return Err(vm_core::error::VmError::Config(format!(
-                        "Invalid project name '{name}': use only alphanumeric characters, dashes, and underscores"
-                    )));
-                }
-            }
-
-            if let Some(hostname) = &project.hostname {
-                let is_valid = !hostname.is_empty()
-                    && hostname
-                        .chars()
-                        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.');
-                if !is_valid {
-                    return Err(vm_core::error::VmError::Config(format!(
-                        "Invalid hostname '{hostname}'"
-                    )));
-                }
-            }
-
-            if let Some(path) = &project.workspace_path {
-                validate_mount_target(std::path::Path::new(path))?;
-            }
-        }
-
-        Ok(())
-    }
-
-    fn validate_ports(&self) -> Result<()> {
-        let mut used_host_ports = HashSet::new();
-        for mapping in &self.config.ports.mappings {
-            if !used_host_ports.insert(mapping.host) {
-                return Err(VmError::Config(format!(
-                    "Duplicate host port mapping: {}",
-                    mapping.host
-                )));
-            }
-
-            if mapping.host == 0 || mapping.guest == 0 {
-                return Err(VmError::Config(
-                    "Port numbers must be greater than 0".to_string(),
-                ));
-            }
-
-            if mapping.host < 1024 {
-                warn!(
-                    "Host port {} may require root/admin privileges",
-                    mapping.host
-                );
-            }
-        }
-
-        if let Some(range) = &self.config.ports.range {
-            if range.len() != 2 {
-                return Err(vm_core::error::VmError::Config(
-                    "Invalid port range: must have exactly 2 elements".to_string(),
-                ));
-            }
-            let (start, end) = (range[0], range[1]);
-            if start == 0 {
-                return Err(vm_core::error::VmError::Config(
-                    "Invalid port range: port 0 is reserved".to_string(),
-                ));
-            }
-            crate::ports::PortRange::new(start, end)?;
-
-            for mapping in &self.config.ports.mappings {
-                if mapping.guest >= start && mapping.guest <= end {
-                    warn!(
-                        "Guest port {} from explicit mapping conflicts with auto-allocated range {}-{}",
-                        mapping.guest, start, end
-                    );
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn validate_services(&self) -> Result<()> {
-        for (name, service) in &self.config.services {
-            if service.enabled && service.port.is_none() && name != "docker" {
-                return Err(VmError::Config(format!(
-                    "Service '{name}' is enabled but has no port specified"
-                )));
-            }
-            if let Some(port) = service.port {
-                if port == 0 {
-                    return Err(vm_core::error::VmError::Config(format!(
-                        "Invalid port {port} for service {name}: port 0 is reserved"
-                    )));
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn validate_resource_limits(&self) -> Result<()> {
-        let Some(vm) = &self.config.vm else {
-            return Ok(());
-        };
-        if vm.cpus.as_ref().and_then(|cpus| cpus.to_count()) == Some(0) {
-            return Err(VmError::Config("VM CPU count cannot be 0".to_string()));
-        }
-        if vm.memory.as_ref().and_then(|memory| memory.to_mb()) == Some(0) {
-            return Err(VmError::Config(
-                "VM memory allocation cannot be 0".to_string(),
-            ));
-        }
-        Ok(())
-    }
-
-    fn validate_versions(&self) -> Result<()> {
-        if let Some(versions) = &self.config.versions {
-            if let Some(node) = &versions.node {
-                if !Self::is_valid_version(node) {
-                    return Err(vm_core::error::VmError::Config(format!(
-                        "Invalid Node.js version: {node}"
-                    )));
-                }
-            }
-
-            if let Some(python) = &versions.python {
-                if !Self::is_valid_version(python) {
-                    return Err(vm_core::error::VmError::Config(format!(
-                        "Invalid Python version: {python}"
-                    )));
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn is_valid_version(version: &str) -> bool {
-        if version == "latest" || version == "lts" || version.parse::<u32>().is_ok() {
-            return true;
-        }
-
-        let parts: Vec<&str> = version.split('.').collect();
-
-        if parts.len() < 2 || parts.len() > 3 {
-            return false; // Must have 2-3 parts (X.Y or X.Y.Z)
-        }
-
-        for part in parts {
-            if part.is_empty() || !part.chars().all(|c| c.is_ascii_digit()) {
-                return false;
-            }
-        }
-
-        true
-    }
-
-    fn validate_networking(&self) -> Result<()> {
-        if let Some(networking) = &self.config.networking {
-            for network_name in &networking.networks {
-                // Docker network names must be 1-64 characters
-                if network_name.is_empty() || network_name.len() > 64 {
-                    return Err(VmError::Config(format!(
-                        "Invalid network name '{}': must be 1-64 characters long",
-                        network_name
-                    )));
-                }
-
-                // Docker network names must contain only alphanumeric, hyphens, underscores, and periods
-                // and cannot start with a period or hyphen
-                // Regex was: ^[a-zA-Z0-9_][a-zA-Z0-9_\-\.]*$
-
-                let first_char_valid = network_name
-                    .chars()
-                    .next()
-                    .map(|c| c.is_ascii_alphanumeric() || c == '_')
-                    .unwrap_or(false);
-
-                let rest_valid = network_name
-                    .chars()
-                    .skip(1)
-                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.');
-
-                if !first_char_valid || !rest_valid {
-                    return Err(VmError::Config(format!(
-                        "Invalid network name '{}': must start with alphanumeric or underscore, and contain only alphanumeric, hyphens, underscores, and periods",
-                        network_name
-                    )));
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn validate_runtime(&self) -> Result<()> {
-        if self.config.provider.as_deref() == Some("tart") {
-            if let Some(user) = self
-                .config
-                .tart
-                .as_ref()
-                .and_then(|tart| tart.ssh_user.as_deref())
-            {
-                let mut characters = user.chars();
-                let valid_first = characters
-                    .next()
-                    .is_some_and(|character| character.is_ascii_alphanumeric() || character == '_');
-                let valid_rest = characters.all(|character| {
-                    character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.')
-                });
-                if !valid_first || !valid_rest {
-                    return Err(VmError::Config(format!(
-                        "Invalid tart.ssh_user '{user}': use a Unix username, not SSH options or shell syntax"
-                    )));
-                }
-            }
-        }
-
-        let Some(vm) = &self.config.vm else {
-            return Ok(());
-        };
-
-        if vm.pids_limit == Some(0) {
-            return Err(VmError::Config(
-                "vm.pids_limit must be greater than zero".to_string(),
-            ));
-        }
-        if vm.stop_grace_period == Some(0) {
-            return Err(VmError::Config(
-                "vm.stop_grace_period must be greater than zero".to_string(),
-            ));
-        }
-
-        if let Some(logging) = &vm.logging {
-            if !matches!(logging.driver.as_str(), "local" | "json-file") {
-                return Err(VmError::Config(
-                    "vm.logging.driver must be 'local' or 'json-file'".to_string(),
-                ));
-            }
-            if !valid_size_string(&logging.max_size) {
-                return Err(VmError::Config(
-                    "vm.logging.max_size must be a positive size such as '20m'".to_string(),
-                ));
-            }
-            if logging.max_files == 0 {
-                return Err(VmError::Config(
-                    "vm.logging.max_files must be greater than zero".to_string(),
-                ));
-            }
-        }
-
-        if self.config.provider.as_deref() == Some("tart")
-            && (vm.pids_limit.is_some() || vm.stop_grace_period.is_some() || vm.logging.is_some())
-        {
-            return Err(VmError::Config(
-                "Container runtime limits and logging are not supported by Tart".to_string(),
-            ));
-        }
-
-        Ok(())
-    }
-
-    fn validate_storage(&self) -> Result<()> {
-        if self.config.storage.is_empty() {
-            return Ok(());
-        }
-        if self.config.provider.as_deref() == Some("tart") {
-            return Err(VmError::Config(
-                "Named volumes and tmpfs mounts are not supported by Tart".to_string(),
-            ));
-        }
-
-        let username = self
-            .config
-            .vm
-            .as_ref()
-            .and_then(|vm| vm.user.as_deref())
-            .unwrap_or("developer");
-        let workspace = self
-            .config
-            .project
-            .as_ref()
-            .and_then(|project| project.workspace_path.as_deref())
-            .unwrap_or("/workspace");
-        let mut targets = HashSet::from([format!("/home/{username}/.shell_history")]);
-        targets.extend(
-            self.config
-                .mounts
-                .iter()
-                .map(|mount| mount.target.display().to_string()),
-        );
-        if self
-            .config
-            .services
-            .get("postgresql")
-            .is_some_and(|service| service.enabled)
-        {
-            targets.insert("/var/lib/postgresql/data".to_string());
-        }
-        for (name, volume) in &self.config.storage.volumes {
-            if !valid_storage_name(name) {
-                return Err(VmError::Config(format!(
-                    "Invalid storage volume name '{name}': use letters, numbers, dashes, or underscores"
-                )));
-            }
-            if matches!(name.as_str(), "shell_history" | "postgres_data") {
-                return Err(VmError::Config(format!(
-                    "Storage volume name '{name}' is reserved by the VM tool"
-                )));
-            }
-            validate_mount_target(std::path::Path::new(&volume.target))?;
-            if volume.target == workspace {
-                return Err(VmError::Config(
-                    format!(
-                        "A named volume cannot replace the {workspace} source bind; use a nested target"
-                    ),
-                ));
-            }
-            if !targets.insert(volume.target.clone()) {
-                return Err(VmError::Config(format!(
-                    "Duplicate storage target: {}",
-                    volume.target
-                )));
-            }
-        }
-
-        for tmpfs in &self.config.storage.tmpfs {
-            validate_mount_target(std::path::Path::new(&tmpfs.target))?;
-            if !targets.insert(tmpfs.target.clone()) {
-                return Err(VmError::Config(format!(
-                    "Duplicate storage target: {}",
-                    tmpfs.target
-                )));
-            }
-            if !matches!(tmpfs.size.to_mb(), Some(size) if size > 0) {
-                return Err(VmError::Config(format!(
-                    "tmpfs mount '{}' requires a fixed, positive size",
-                    tmpfs.target
-                )));
-            }
-            if !(3..=4).contains(&tmpfs.mode.len())
-                || !tmpfs
-                    .mode
-                    .chars()
-                    .all(|character| matches!(character, '0'..='7'))
-            {
-                return Err(VmError::Config(format!(
-                    "tmpfs mount '{}' has invalid mode '{}'; use three or four octal digits",
-                    tmpfs.target, tmpfs.mode
-                )));
-            }
-        }
-
-        Ok(())
-    }
-
-    fn validate_mounts(&self) -> Result<()> {
-        let workspace = self
-            .config
-            .project
-            .as_ref()
-            .and_then(|project| project.workspace_path.as_deref())
-            .unwrap_or("/workspace");
-        let mut targets = HashSet::from([workspace.to_string()]);
-        let mut sources = HashSet::new();
-        let project_dir = self
-            .config
-            .source_path
-            .as_deref()
-            .and_then(|path| {
-                if path.is_dir() {
-                    Some(path)
-                } else {
-                    path.parent()
-                }
-            })
-            .map(PathBuf::from)
-            .unwrap_or(std::env::current_dir().map_err(|error| {
-                VmError::Internal(format!("Failed to determine current directory: {error}"))
-            })?);
-
-        for mount in &self.config.mounts {
-            validate_mount_target(&mount.target)?;
-            let source = resolve_mount_source(&mount.source, &project_dir)?;
-            if !sources.insert(source.clone()) {
-                return Err(VmError::Config(format!(
-                    "Duplicate mount source: {}",
-                    source.display()
-                )));
-            }
-            let target = mount.target.display().to_string();
-            if !targets.insert(target.clone()) {
-                return Err(VmError::Config(format!("Duplicate mount target: {target}")));
-            }
-        }
-        Ok(())
-    }
-
-    fn validate_bootstrap(&self) -> Result<()> {
-        let Some(bootstrap) = &self.config.bootstrap else {
-            return Ok(());
-        };
-        let mut browsers = HashSet::new();
-        for browser in &bootstrap.playwright.browsers {
-            let valid = !browser.is_empty()
-                && browser.chars().all(|character| {
-                    character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-')
-                });
-            if !valid {
-                return Err(VmError::Config(format!(
-                    "Invalid Playwright browser '{browser}': use letters, numbers, dots, dashes, or underscores"
-                )));
-            }
-            if !browsers.insert(browser) {
-                return Err(VmError::Config(format!(
-                    "Duplicate Playwright browser: {browser}"
-                )));
-            }
-        }
-        Ok(())
+        storage::validate_storage(self.config)
     }
 }
 
 pub(super) fn validate(config: &VmConfig) -> Result<()> {
-    ConfigValidator::new(config.clone(), PathBuf::new(), true).validate()
-}
-
-fn valid_storage_name(name: &str) -> bool {
-    !name.is_empty()
-        && name
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
-}
-
-fn valid_size_string(value: &str) -> bool {
-    let value = value.trim();
-    if value.len() < 2 {
-        return false;
-    }
-    let (number, suffix) = value.split_at(value.len() - 1);
-    number.parse::<u64>().is_ok_and(|number| number > 0)
-        && matches!(suffix.to_ascii_lowercase().as_str(), "k" | "m" | "g")
+    StructuralValidator::new(config).validate()
 }
 
 #[cfg(test)]
@@ -585,6 +44,10 @@ mod tests {
         BootstrapConfig, MemoryLimit, PlaywrightBootstrapConfig, StorageConfig, TmpfsMountConfig,
         VolumeMountConfig, VolumeRetention, VolumeScope,
     };
+
+    fn validate_owned(config: VmConfig) -> Result<()> {
+        validate(&config)
+    }
 
     #[test]
     fn test_valid_config() {
@@ -603,8 +66,7 @@ mod tests {
             env_template_path: None,
         });
 
-        let validator = ConfigValidator::new(config, std::path::PathBuf::from("test.yaml"), false);
-        assert!(validator.validate().is_ok());
+        assert!(validate_owned(config).is_ok());
     }
 
     #[test]
@@ -616,8 +78,7 @@ mod tests {
             ..Default::default()
         });
 
-        let validator = ConfigValidator::new(config, std::path::PathBuf::from("test.yaml"), false);
-        assert!(validator.validate().is_err());
+        assert!(validate_owned(config).is_err());
     }
 
     #[test]
@@ -635,14 +96,8 @@ mod tests {
             ..Default::default()
         };
 
-        assert!(ConfigValidator::new(config("admin"), PathBuf::new(), true)
-            .validate()
-            .is_ok());
-        assert!(
-            ConfigValidator::new(config("-oProxyCommand=bad"), PathBuf::new(), true)
-                .validate()
-                .is_err()
-        );
+        assert!(validate_owned(config("admin")).is_ok());
+        assert!(validate_owned(config("-oProxyCommand=bad")).is_err());
     }
 
     #[test]
@@ -655,8 +110,7 @@ mod tests {
         });
         config.ports.range = Some(vec![0, 10]); // Port 0 is invalid
 
-        let validator = ConfigValidator::new(config, std::path::PathBuf::from("test.yaml"), false);
-        assert!(validator.validate().is_err());
+        assert!(validate_owned(config).is_err());
     }
 
     #[test]
@@ -669,8 +123,7 @@ mod tests {
         });
         config.ports.range = Some(vec![3320, 3320]);
 
-        let validator = ConfigValidator::new(config, PathBuf::from("test.yaml"), true);
-        assert!(validator.validate().is_ok());
+        assert!(validate_owned(config).is_ok());
     }
 
     #[test]
@@ -683,8 +136,7 @@ mod tests {
         });
         config.ports.range = Some(vec![3321, 3320]);
 
-        let validator = ConfigValidator::new(config, PathBuf::from("test.yaml"), true);
-        assert!(validator.validate().is_err());
+        assert!(validate_owned(config).is_err());
     }
 
     #[test]
@@ -712,8 +164,7 @@ mod tests {
             mode: "1777".to_string(),
         });
 
-        let validator = ConfigValidator::new(config, PathBuf::from("test.yaml"), true);
-        assert!(validator.validate().is_ok());
+        assert!(validate_owned(config).is_ok());
     }
 
     #[test]
@@ -741,9 +192,7 @@ mod tests {
             ..Default::default()
         };
 
-        let error = ConfigValidator::new(config, PathBuf::from("test.yaml"), true)
-            .validate()
-            .unwrap_err();
+        let error = validate_owned(config).unwrap_err();
         assert!(error.to_string().contains("cannot replace the /workspace"));
     }
 
@@ -769,9 +218,7 @@ mod tests {
             "shell_history".to_string(),
             volume("/home/developer/history-copy"),
         );
-        let error = ConfigValidator::new(reserved, PathBuf::from("test.yaml"), true)
-            .validate()
-            .unwrap_err();
+        let error = validate_owned(reserved).unwrap_err();
         assert!(error.to_string().contains("reserved"));
 
         let mut unnormalized = base();
@@ -779,9 +226,7 @@ mod tests {
             .storage
             .volumes
             .insert("cache".to_string(), volume("/home/developer//cache"));
-        let error = ConfigValidator::new(unnormalized, PathBuf::from("test.yaml"), true)
-            .validate()
-            .unwrap_err();
+        let error = validate_owned(unnormalized).unwrap_err();
         assert!(error.to_string().contains("normalized absolute path"));
     }
 
@@ -808,14 +253,10 @@ mounts:
         .unwrap();
         config.source_path = Some(root.path().join("vm.yaml"));
 
-        assert!(ConfigValidator::new(config.clone(), PathBuf::new(), true)
-            .validate()
-            .is_ok());
+        assert!(validate_owned(config.clone()).is_ok());
 
         config.mounts[1].target = std::path::PathBuf::from("/packages/auth");
-        let error = ConfigValidator::new(config, PathBuf::new(), true)
-            .validate()
-            .unwrap_err();
+        let error = validate_owned(config).unwrap_err();
         assert!(error.to_string().contains("Duplicate mount target"));
     }
 
@@ -844,13 +285,7 @@ mounts:
         };
 
         for browsers in [&["chromium; false"] as &[_], &["webkit", "webkit"]] {
-            assert!(ConfigValidator::new(
-                with_browsers(browsers),
-                PathBuf::from("test.yaml"),
-                true
-            )
-            .validate()
-            .is_err());
+            assert!(validate_owned(with_browsers(browsers)).is_err());
         }
     }
 }
