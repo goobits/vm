@@ -306,7 +306,9 @@ domain owner, release publishers share one credential-aware Git command owner,
 and repeated workflow fixtures are consolidated without reducing coverage. The
 workflow store now owns only persistence and commits; checkout, receipt,
 catalog, consumer, and rollout state each live with their canonical domain
-owner.
+owner. Shared Git execution and managed-path enforcement remain in the source
+manager, while worktree, submission, integration, and rollout source lifecycles
+are isolated behind their existing workflow API.
 Formatting, focused package/CLI tests, scoped all-target Clippy with warnings
 denied, and `git diff --check` passed. Rollout reconciliation remains an
 explicit authenticated `POST` command with no obsolete compatibility path.

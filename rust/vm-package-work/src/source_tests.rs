@@ -1,10 +1,11 @@
 use std::process::{Command as StdCommand, Stdio};
 
 use super::*;
+use crate::Store;
 use vm_packages::{
     CreateCheckout, CreateRollout, IntegrationRecord, PackageEcosystem, PublicationRecord,
     RegisterConsumer, RegisterPackage, RegisterTool, ReleaseRecord, RolloutState, SourceKind,
-    ToolKind,
+    ToolKind, WorkflowState,
 };
 
 fn git(repository: &Path, args: &[&str]) {

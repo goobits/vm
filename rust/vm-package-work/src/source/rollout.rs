@@ -2,8 +2,47 @@ use std::path::{Path, PathBuf};
 
 use vm_packages::{RolloutRecord, RolloutState};
 
-use super::{allowed_rollout_path, git_output, run, source_key, SourceManager};
+use super::{git_output, run, source_key, SourceManager};
 use crate::{Store, WorkError, WorkResult};
+
+impl SourceManager {
+    fn rollout_source(&self, rollout: &RolloutRecord) -> WorkResult<PathBuf> {
+        let source = rollout
+            .worktree
+            .as_deref()
+            .map(PathBuf::from)
+            .ok_or_else(|| WorkError::Conflict("rollout source is not ready".into()))?;
+        let expected = self
+            .root
+            .join("rollouts")
+            .join(&rollout.rollout_id)
+            .join("source");
+        if source != expected {
+            return Err(WorkError::Internal(
+                "rollout source escaped its managed directory".into(),
+            ));
+        }
+        Ok(source)
+    }
+}
+
+fn allowed_rollout_path(ecosystem: vm_packages::PackageEcosystem, path: &str) -> bool {
+    match ecosystem {
+        vm_packages::PackageEcosystem::Npm => matches!(
+            path,
+            "package.json"
+                | "package-lock.json"
+                | "npm-shrinkwrap.json"
+                | "pnpm-lock.yaml"
+                | "yarn.lock"
+        ),
+        vm_packages::PackageEcosystem::Cargo => matches!(path, "Cargo.toml" | "Cargo.lock"),
+        vm_packages::PackageEcosystem::Python => matches!(
+            path,
+            "pyproject.toml" | "uv.lock" | "poetry.lock" | "requirements.txt"
+        ),
+    }
+}
 
 impl SourceManager {
     pub async fn prepare_rollout(
