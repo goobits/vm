@@ -85,6 +85,11 @@ fn handle_request(stream: &mut TcpStream, requests: &Arc<Mutex<Vec<String>>>) {
     let path = request_line.next().unwrap();
     requests.lock().unwrap().push(format!("{method} {path}"));
 
+    let authorized_agent = headers.lines().any(|line| {
+        line.split_once(':').is_some_and(|(name, value)| {
+            name.eq_ignore_ascii_case("authorization") && value.trim() == "Bearer agent-token"
+        })
+    });
     let (status, body) = if method == "POST" && path == "/work/v1/packages" {
         let registered: Value = serde_json::from_slice(&request[header_end..]).unwrap();
         (
@@ -98,6 +103,32 @@ fn handle_request(stream: &mut TcpStream, requests: &Arc<Mutex<Vec<String>>>) {
             })
             .to_string(),
         )
+    } else if method == "GET" && path == "/work/v1/packages" && authorized_agent {
+        (
+            "200 OK",
+            json!([{
+                "name": "shared-auth",
+                "ecosystem": "npm",
+                "repository": "https://example.com/shared-auth.git",
+                "default_branch": "main",
+                "registered_at": "2026-08-13T00:00:00Z"
+            }])
+            .to_string(),
+        )
+    } else if method == "GET" && path == "/work/v1/tools" && authorized_agent {
+        (
+            "200 OK",
+            json!([{
+                "name": "agent-skills",
+                "kind": "collection",
+                "repository": "https://example.com/agent-skills.git",
+                "default_branch": "main",
+                "registered_at": "2026-08-13T00:00:00Z"
+            }])
+            .to_string(),
+        )
+    } else if method == "GET" && matches!(path, "/work/v1/packages" | "/work/v1/tools") {
+        ("401 Unauthorized", "{}".to_string())
     } else if matches!(path, "/health" | "/work/health" | "/v2/") {
         ("200 OK", "{}".to_string())
     } else {
@@ -336,6 +367,43 @@ fn configured_empty_shelf_is_a_successful_noop() {
         .unwrap()
         .contains("Package source scan complete; no package or tool repositories found"));
     assert_eq!(gateway.package_registrations(), 0);
+}
+
+#[test]
+fn guest_package_status_verifies_access_without_mutating_state() {
+    let directory = TempDir::new().unwrap();
+    let gateway = FakeGateway::start();
+    let output = Command::new(cargo_bin!("vm"))
+        .args(["packages", "status"])
+        .current_dir(directory.path())
+        .env("HOME", directory.path())
+        .env("VM_TOOL_DIR", directory.path().join(".vm"))
+        .env("VM_MANAGED_GUEST", "1")
+        .env("VM_PACKAGES_CONSUMER", "package-test")
+        .env(
+            "VM_PACKAGES_WORK_GATEWAY",
+            format!("http://127.0.0.1:{}", gateway.port),
+        )
+        .env("VM_PACKAGES_AGENT_TOKEN", "agent-token")
+        .env("VM_TEST_MODE", "1")
+        .env("CI", "1")
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(output.status.success(), "{stderr}");
+    assert!(stdout.contains("Context: managed guest"), "{stdout}");
+    assert!(stdout.contains("Consumer: package-test"), "{stdout}");
+    assert!(stdout.contains("Workflow: connected"), "{stdout}");
+    assert!(stdout.contains("Agent access: authorized"), "{stdout}");
+    assert!(stdout.contains("Registered packages: 1"), "{stdout}");
+    assert!(stdout.contains("Registered tools: 1"), "{stdout}");
+    assert!(stdout.contains("Check: read-only"), "{stdout}");
+
+    let mut requests = gateway.requests.lock().unwrap().clone();
+    requests.sort();
+    assert_eq!(requests, ["GET /work/v1/packages", "GET /work/v1/tools"]);
 }
 
 #[test]

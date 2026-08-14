@@ -242,6 +242,22 @@ pub(super) async fn show_guest(checkout_id: &str) -> VmResult<()> {
     Ok(())
 }
 
+pub(super) async fn status_guest() -> VmResult<()> {
+    let runtime = super::runtime::GuestRuntime::discover()?;
+    let client = runtime.client()?;
+    let (packages, tools) = tokio::try_join!(client.package_definitions(), client.tools())?;
+
+    vm_println!("Package infrastructure");
+    vm_println!("  Context: managed guest");
+    vm_println!("  Consumer: {}", runtime.consumer());
+    vm_println!("  Workflow: connected");
+    vm_println!("  Agent access: authorized");
+    vm_println!("  Registered packages: {}", packages.len());
+    vm_println!("  Registered tools: {}", tools.len());
+    vm_println!("  Check: read-only");
+    Ok(())
+}
+
 pub(super) fn configure_auth(
     files: &ApplianceFiles,
     git_token_file: Option<PathBuf>,

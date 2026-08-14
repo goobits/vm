@@ -95,10 +95,16 @@ in application code.
 From a writable Docker or Tart project environment, request an isolated source:
 
 ```bash
+vm packages status  # read-only connection and scoped-credential check
+
 vm packages checkout agent-skills \
   --agent codex \
   --task "update the owner checklist"
 ```
+
+Inside a managed guest, `vm packages status` verifies the workflow gateway and
+consumer-bound agent credential using read-only requests. It creates no
+checkout and does not repair, publish, or activate anything.
 
 The appliance fetches the registered canonical repository, creates a unique
 task branch, and returns a writable checkout under
@@ -382,5 +388,6 @@ your infrastructure backup system to protect against physical disk loss.
 - Receipts contain identities, commits, digests, outcomes, and timestamps—not
   secrets.
 
-Use `vm packages status` for runtime health and `vm packages doctor` for the
-gateway, Compose definition, credentials, and workflow service checks.
+On the controller host, use `vm packages status` for runtime health and
+`vm packages doctor` for the gateway, Compose definition, credentials, and
+workflow service checks.

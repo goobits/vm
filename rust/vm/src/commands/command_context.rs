@@ -34,7 +34,8 @@ fn guest_allowed_command(command: &Command) -> bool {
     matches!(
         command,
         Command::Packages {
-            command: PackagesSubcommand::Checkout { .. }
+            command: PackagesSubcommand::Status { .. }
+                | PackagesSubcommand::Checkout { .. }
                 | PackagesSubcommand::Show { .. }
                 | PackagesSubcommand::Release { .. }
         }
@@ -199,6 +200,11 @@ mod tests {
 
     #[test]
     fn guests_can_only_enter_agent_safe_package_commands() {
+        assert!(guest_allowed_command(&Command::Packages {
+            command: PackagesSubcommand::Status {
+                runtime: crate::cli::PackageInfrastructureRuntime::Auto,
+            },
+        }));
         assert!(guest_allowed_command(&Command::Packages {
             command: PackagesSubcommand::Show {
                 checkout_id: "checkout-1".into(),

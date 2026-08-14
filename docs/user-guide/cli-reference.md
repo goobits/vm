@@ -224,6 +224,9 @@ controller-wide list; `vm packages up` reconciles those roots on fresh and
 existing appliance state without replacing credentials or named volumes. Roots
 are scanned before appliance mutation; configured empty shelves are accepted,
 while manual recursive registration still requires at least one repository.
+On the controller host, `status` reports appliance runtime health. Inside a
+managed guest, the same command performs a read-only workflow and scoped-agent
+credential check; it does not reconcile or change infrastructure.
 `vm packages list` separates registered, published, installed, and consumable
 state; environment-only states are reported as not applicable.
 Package checkout and release commands are the managed agent workflow inside the

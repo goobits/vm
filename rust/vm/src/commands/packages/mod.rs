@@ -162,6 +162,7 @@ async fn handle_guest(
     profile: Option<String>,
 ) -> VmResult<()> {
     match command {
+        PackagesSubcommand::Status { .. } => catalog::status_guest().await,
         PackagesSubcommand::Checkout {
             package,
             agent,

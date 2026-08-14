@@ -75,6 +75,8 @@ working trees and installed immutable releases are never treated as source.
   or registry-write credentials.
 - [x] Let the assigned Docker or Tart agent run checkout, validation,
   integration checks, and `vm packages release` directly.
+- [x] Let managed guests verify their workflow connection and scoped agent
+  credential with a read-only `vm packages status`.
 - [x] Run review, release, and rollout as persistent restartable appliance
   workers rather than host-launched one-shot jobs.
 - [x] Publish npm, Cargo, and Python artifacts only to the private VM gateway;
