@@ -111,6 +111,9 @@ authenticated appliance and verifies its SHA-256 digest. `vm tools update`
 repairs existing environments in place; it does not require rebuilding or
 recreating them. If an older appliance does not yet expose the client, run
 `vm packages up` on the controller host once, then rerun `vm tools update`.
+The same reconciliation activates installed Node and Cargo toolchains for
+non-interactive package checks and refreshes the host Git author identity when
+`host_sync.git_config` is enabled.
 
 The appliance fetches the registered canonical repository, creates a unique
 task branch, and returns a writable checkout under

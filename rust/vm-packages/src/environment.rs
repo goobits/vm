@@ -165,7 +165,7 @@ impl ClientEnvironment {
             ("PIP_CONFIG_FILE".into(), "/etc/vm/pip.conf".into()),
         ]);
         variables.sort_by(|left, right| left.0.cmp(&right.0));
-        let profile = std::iter::once(
+        let mut profile = std::iter::once(
             "# Managed by VM; changes are replaced during VM reconciliation.\n".to_string(),
         )
         .chain(
@@ -174,6 +174,21 @@ impl ClientEnvironment {
                 .map(|(name, value)| format!("export {name}={}\n", shell_quote(&value))),
         )
         .collect::<String>();
+        profile.push_str(
+            r#"if [ -d "$HOME/.cargo/bin" ]; then
+  PATH="$HOME/.cargo/bin:$PATH"
+fi
+vm_node_executable=""
+if [ -d "$HOME/.nvm/versions/node" ]; then
+  vm_node_executable="$(find "$HOME/.nvm/versions/node" -mindepth 3 -maxdepth 3 -name npm -print 2>/dev/null | sort | tail -n 1)"
+fi
+if [ -n "$vm_node_executable" ]; then
+  PATH="${vm_node_executable%/npm}:$PATH"
+fi
+export PATH
+unset vm_node_executable
+"#,
+        );
         let npmrc = format!("registry={npm_registry}\nalways-auth=true\n");
         let pip_conf = format!("[global]\nindex-url = {pip_index}\n");
         let cargo_config = format!(
@@ -260,5 +275,18 @@ mod tests {
         assert!(settings.pip_conf.contains("/pypi/simple/"));
         assert!(settings.cargo_config.contains("replace-with = \"vm\""));
         assert_eq!(settings.revision.len(), 64);
+    }
+
+    #[test]
+    fn managed_settings_activate_real_tool_paths() {
+        let settings = ClientEnvironment::new(
+            RegistryEndpoints::new("https://packages.internal").unwrap(),
+            "read secret",
+        )
+        .unwrap()
+        .managed_settings();
+
+        assert!(settings.profile.contains("$HOME/.cargo/bin"));
+        assert!(settings.profile.contains("$HOME/.nvm/versions/node"));
     }
 }

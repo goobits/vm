@@ -413,6 +413,9 @@ requires a tool catalog or package-appliance connection.
   Docker acceptance removed the client from `projects-dev`, restored it with
   targeted reconciliation, verified guest package access, and confirmed both
   the second client update and the primary container ID were unchanged.
+- [x] Reconcile real Node/Cargo executable paths and host Git author identity
+  into existing managed guests so an agent can check and commit a managed
+  checkout without relying on interactive shell functions or rebuilding it.
 - [ ] From a writable Docker worker, create and release an `agent-skills`
   checkout; verify review, integration, canonical push/tag, private publication,
   cleanup, and receipts complete without a host source checkout or approval.

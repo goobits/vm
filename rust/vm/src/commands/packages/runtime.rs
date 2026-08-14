@@ -136,6 +136,11 @@ printf '%s\n' "$expected" > "$task/client.sha256"
 mv -f "$task/client.sha256" "$state/client.sha256"
 "#;
 
+const RECONCILE_GIT_SETTING: &str = r#"current=$(git config --global --get "$1" 2>/dev/null || true)
+if [ "$current" != "$2" ]; then
+  git config --global "$1" "$2"
+fi"#;
+
 pub(super) trait PackageExecutor {
     fn checkout_root(&self, checkout_id: &str) -> VmResult<String>;
     fn workspace(&self) -> &str;
@@ -256,6 +261,7 @@ pub(in crate::commands) fn reconcile_client_settings(
     provider
         .exec_with_stdin(Some(environment), &command, &content)
         .map_err(VmError::from)?;
+    reconcile_git_identity(provider, environment, &effective_config)?;
     provider
         .exec(
             Some(environment),
@@ -266,6 +272,59 @@ pub(in crate::commands) fn reconcile_client_settings(
             ],
         )
         .map_err(VmError::from)
+}
+
+fn reconcile_git_identity(
+    provider: &dyn Provider,
+    environment: &str,
+    config: &VmConfig,
+) -> VmResult<()> {
+    for (key, value) in configured_git_identity(config)? {
+        provider
+            .exec(
+                Some(environment),
+                &[
+                    "/bin/sh".to_string(),
+                    "-c".to_string(),
+                    RECONCILE_GIT_SETTING.to_string(),
+                    "vm-git-identity".to_string(),
+                    key.to_string(),
+                    value,
+                ],
+            )
+            .map_err(VmError::from)?;
+    }
+    Ok(())
+}
+
+fn configured_git_identity(config: &VmConfig) -> VmResult<Vec<(&'static str, String)>> {
+    if config
+        .host_sync
+        .as_ref()
+        .is_some_and(|host_sync| !host_sync.git_config)
+    {
+        return Ok(Vec::new());
+    }
+    let Some(git) = &config.git_config else {
+        return Ok(Vec::new());
+    };
+    let mut settings = Vec::new();
+    for (key, value) in [
+        ("user.name", git.user_name.as_deref()),
+        ("user.email", git.user_email.as_deref()),
+    ] {
+        let Some(value) = value else {
+            continue;
+        };
+        if value.trim().is_empty() || value.contains(['\0', '\n', '\r']) {
+            return Err(VmError::validation(
+                format!("Host Git {key} must be one non-empty line"),
+                Some("Fix the host Git configuration and rerun `vm tools update`"),
+            ));
+        }
+        settings.push((key, value.to_string()));
+    }
+    Ok(settings)
 }
 
 fn configured_client_environment(
@@ -584,10 +643,12 @@ impl PackageExecutor for GuestRuntime {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_environment, checkout_root_for, client_environment, gateway_for_provider,
-        package_edge_revision, INSTALL_CLIENT_SETTINGS, INSTALL_GUEST_CLIENT,
+        apply_environment, checkout_root_for, client_environment, configured_git_identity,
+        gateway_for_provider, package_edge_revision, INSTALL_CLIENT_SETTINGS, INSTALL_GUEST_CLIENT,
+        RECONCILE_GIT_SETTING,
     };
-    use vm_config::config::{TartConfig, VmConfig, VmSettings};
+    use vm_config::config::{HostSyncConfig, TartConfig, VmConfig, VmSettings};
+    use vm_config::detector::git::GitConfig;
     use vm_packages::{
         ApplianceState, ClientEnvironment, InfrastructureRuntime, RegistryEndpoints,
     };
@@ -703,6 +764,46 @@ mod tests {
         assert!(INSTALL_GUEST_CLIENT.contains("sha256sum -c"));
         assert!(INSTALL_GUEST_CLIENT.contains("mv -f \"$task/vm\" \"$destination\""));
         assert!(!INSTALL_GUEST_CLIENT.contains("--header \"Authorization"));
+    }
+
+    #[test]
+    fn git_identity_reconciliation_is_idempotent_and_honors_host_sync() {
+        let mut config = VmConfig {
+            git_config: Some(GitConfig {
+                user_name: Some("Agent User".into()),
+                user_email: Some("agent@example.test".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            configured_git_identity(&config).unwrap(),
+            [
+                ("user.name", "Agent User".to_string()),
+                ("user.email", "agent@example.test".to_string())
+            ]
+        );
+        assert!(RECONCILE_GIT_SETTING.contains("current=$(git config --global --get"));
+        assert!(RECONCILE_GIT_SETTING.contains("if [ \"$current\" != \"$2\" ]"));
+
+        config.host_sync = Some(HostSyncConfig {
+            git_config: false,
+            ..Default::default()
+        });
+        assert!(configured_git_identity(&config).unwrap().is_empty());
+    }
+
+    #[test]
+    fn git_identity_rejects_multiline_values() {
+        let config = VmConfig {
+            git_config: Some(GitConfig {
+                user_name: Some("Agent\nInjected".into()),
+                user_email: Some("agent@example.test".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert!(configured_git_identity(&config).is_err());
     }
 
     #[test]
