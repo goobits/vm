@@ -315,16 +315,6 @@ vm config preset nodejs
 vm config preset python,postgres
 ```
 
-## Package Infrastructure And Secrets
-
-```bash
-vm packages status
-vm packages list
-vm tools list
-vm secret status
-vm secret ls
-```
-
 ## Worktrees And Workspace Paths
 
 Open a shell with:

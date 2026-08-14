@@ -27,7 +27,7 @@ Goobits VM is built using a **layered architecture** designed around the princip
 | Application | `vm` | Main CLI orchestration and commands | `cargo test -p goobits-vm` / `cargo run -p goobits-vm -- --help` |
 | Application | `vm-installer` | Self-installation flow for distributing the CLI | `cargo run -p vm-installer -- --help` |
 | Domain | `vm-packages` | Package protocols, workflow records, appliance definition, client | `cargo test -p vm-packages` |
-| Service | `vm-package-server` | Immutable npm, Cargo, PyPI, and tool artifacts | `cargo test -p vm-package-server` |
+| Service | `vm-package-server` | Private registry protocols and worker read edge | `cargo test -p vm-package-server` |
 | Service | `vm-package-work` | Deterministic checkout, review, release, and rollout state | `cargo test -p vm-package-work` |
 | Service | `vm-package-jobs` | Persistent review, release, and rollout workers | `cargo test -p vm-package-jobs` |
 | Service | `vm-auth-proxy` | Authentication proxy that fronts API/services | `cargo run -p vm-auth-proxy -- --help` |
@@ -150,13 +150,13 @@ import/export entry points
 records, appliance resources
 
 #### vm-package-server
-**Role**: Package registry and artifact management service.
+**Role**: Private registry data plane and worker-local read edge.
 
 **Responsibilities**:
-- Local package registry for VM artifacts
-- Package upload, download, and management
-- Version control and metadata tracking
-- HTTP API for package operations
+- Native npm, Cargo, Python, and tool artifact protocols
+- Authenticated central publication endpoints
+- Read-only worker caching and approved public fallback
+- Immutable internal artifact storage and metadata
 
 **Key Exports**: Package server implementation, HTTP handlers, registry operations
 

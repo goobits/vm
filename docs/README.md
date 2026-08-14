@@ -13,7 +13,8 @@ architecture notes stay beside the package they describe.
   target-selection behavior.
 - [Configuration Guide](user-guide/configuration.md) owns `vm.yaml` semantics.
 - [Package Infrastructure](user-guide/package-infrastructure.md) owns shared
-  package registries, development, release, rollout, and recovery workflows.
+  package registries, managed source releases, automatic consumer upgrades,
+  and recovery workflows.
 - [Troubleshooting](user-guide/troubleshooting.md) owns recovery guidance.
 - [Testing Guide](development/testing.md) owns supported quality commands.
 - [Architecture](development/architecture.md) owns code boundaries.

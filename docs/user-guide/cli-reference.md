@@ -196,6 +196,7 @@ pnpm pruning is explicit and never runs during create, start, or bootstrap.
 ```bash
 vm config set packages.source_roots <absolute-path>... --global
 vm packages up [--runtime <auto|docker|tart>]
+vm packages down [--runtime <auto|docker|tart>]
 vm packages status
 vm packages doctor
 vm packages backup
@@ -204,6 +205,8 @@ vm packages restore <backup-id>
 vm packages register <name> --ecosystem <npm|cargo|python> --repository <url>
 vm packages register <path>... [--recursive]
 vm packages auth --github
+vm packages auth --token-file <path>
+vm packages auth --clear
 vm packages list
 vm packages checkout <package-or-collection> --agent <agent> --task <task>
 vm packages show <checkout-id>

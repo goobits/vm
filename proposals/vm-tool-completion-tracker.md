@@ -301,16 +301,21 @@ publication action was run.
 
 The focused package-boundary and consolidation audits on 2026-08-13 found no
 dependency cycles, cross-crate source imports, misplaced workspace members, or
-competing documentation/task owners. Package identity normalization now has one
-domain owner, release publishers share one credential-aware Git command owner,
-and repeated workflow fixtures are consolidated without reducing coverage. The
-workflow store now owns only persistence and commits; checkout, receipt,
-catalog, consumer, and rollout state each live with their canonical domain
-owner. Shared Git execution and managed-path enforcement remain in the source
-manager, while worktree, submission, integration, and rollout source lifecycles
-are isolated behind their existing workflow API. Configuration validation now
-borrows one configuration through a single ordered pipeline, with pure project,
-network, runtime, and storage checks separated from mutable host checks.
+competing documentation/task owners. The obsolete standalone package-server
+manual and component changelog were removed in favor of the canonical package
+infrastructure guide and root changelog. Legacy project-local agent prompts and
+the outdated Docker-in-Docker note were removed because the managed
+`agent-skills` collection and testing guide own those workflows. Package
+identity normalization now has one domain owner, release publishers share one
+credential-aware Git command owner, and repeated workflow fixtures are
+consolidated without reducing coverage. The workflow store now owns only
+persistence and commits; checkout, receipt, catalog, consumer, and rollout state
+each live with their canonical domain owner. Shared Git execution and
+managed-path enforcement remain in the source manager, while worktree,
+submission, integration, and rollout source lifecycles are isolated behind
+their existing workflow API. Configuration validation now borrows one
+configuration through a single ordered pipeline, with pure project, network,
+runtime, and storage checks separated from mutable host checks.
 Formatting, focused package/CLI tests, scoped all-target Clippy with warnings
 denied, and `git diff --check` passed. Rollout reconciliation remains an
 explicit authenticated `POST` command with no obsolete compatibility path.
@@ -485,10 +490,26 @@ f80e144d docs(packages): record boundary audit
 91e37c3f refactor(packages): centralize package identity
 82d6f5ed refactor(packages): consolidate release Git commands
 8f13e180 test(packages): consolidate workflow fixtures
+8d89fe88 docs(packages): record consolidation pass
+d91728f2 feat(packages): enforce managed source releases
+d710b9ac fix(runtime): externalize build artifacts
+828261d5 docs(packages): document managed guest releases
+f8071ae3 test(cli): preserve actionable io errors
+03ae44d0 fix(build): reuse one machine target cache
+87f4ca69 fix(packages): migrate scoped guest credentials
+aa258c70 fix(shell): install scoped package access
+87f2d244 fix(packages): harden guest reconciliation
+3b59431f refactor(config): unify validation pipeline
+ae3f32c8 refactor(config): split model by domain
+2517e717 refactor(packages): split work server boundaries
+26389c14 refactor(packages): align store domain modules
+2029448f refactor(tart): split provider orchestration
+12329e7f refactor: remove duplicate and retired paths
+e02bd5b1 fix(build): keep generated artifacts outside workspace
+6b67fa3f refactor(packages): finish workflow state ownership
+30d0d1e5 refactor(packages): split source control lifecycles
+75b0c45b refactor(config): separate validation domains
 ```
-
-The unrelated untracked `storage-5x-port/` directory is intentionally outside
-these commits.
 
 ## Related Documentation
 
