@@ -36,6 +36,18 @@ impl Store {
                 && existing.repository == request.repository
                 && existing.default_branch == request.default_branch
             {
+                if request.workspace_release && !existing.workspace_release {
+                    let mut next = current.clone();
+                    let definition = next
+                        .packages
+                        .get_mut(&request.name)
+                        .expect("package remains registered");
+                    definition.workspace_release = true;
+                    let definition = definition.clone();
+                    self.commit(&mut current, next).await?;
+                    self.materialize_catalog_locked(&current).await?;
+                    return Ok(definition);
+                }
                 self.materialize_catalog_locked(&current).await?;
                 return Ok(existing);
             }
@@ -49,6 +61,7 @@ impl Store {
             ecosystem: request.ecosystem,
             repository: request.repository,
             default_branch: request.default_branch,
+            workspace_release: request.workspace_release,
             registered_at: Utc::now(),
         };
         let mut next = current.clone();
@@ -101,18 +114,18 @@ pub(crate) fn source_definition(
             name: package.name.clone(),
             repository: package.repository.clone(),
             default_branch: package.default_branch.clone(),
+            workspace_release: package.workspace_release,
         })),
-        (None, Some(tool)) if tool.kind == vm_packages::ToolKind::Collection => {
-            Ok(Some(SourceDefinition {
-                kind: SourceKind::ToolCollection,
-                name: tool.name.clone(),
-                repository: tool.repository.clone(),
-                default_branch: tool.default_branch.clone(),
-            }))
-        }
-        (None, Some(_)) => Err(WorkError::Invalid(format!(
-            "tool {name} is not an editable collection"
-        ))),
+        (None, Some(tool)) => Ok(Some(SourceDefinition {
+            kind: match tool.kind {
+                vm_packages::ToolKind::Binary => SourceKind::ToolBinary,
+                vm_packages::ToolKind::Collection => SourceKind::ToolCollection,
+            },
+            name: tool.name.clone(),
+            repository: tool.repository.clone(),
+            default_branch: tool.default_branch.clone(),
+            workspace_release: tool.workspace_release,
+        })),
         (Some(_), Some(_)) => Err(WorkError::Conflict(format!(
             "source name {name} is ambiguous between a package and tool"
         ))),

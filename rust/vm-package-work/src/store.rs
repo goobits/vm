@@ -67,6 +67,7 @@ pub(crate) struct SourceDefinition {
     pub(crate) name: String,
     pub(crate) repository: String,
     pub(crate) default_branch: String,
+    pub(crate) workspace_release: bool,
 }
 
 impl Store {

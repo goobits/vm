@@ -61,6 +61,15 @@ pub(super) async fn begin_release(
     Path(id): Path<String>,
     Json(request): Json<BeginReleaseRequest>,
 ) -> WorkResult<Json<ReleaseRecord>> {
+    if !request.source_pushed {
+        let submission = state.store.submission(&id).await?;
+        let retained = state.source.retain_release_source(&submission).await?;
+        if request.source_archive_digest.as_deref() != Some(retained.as_str()) {
+            return Err(WorkError::Conflict(
+                "retained source archive digest does not match the release request".into(),
+            ));
+        }
+    }
     Ok(Json(state.store.begin_release(&id, request).await?))
 }
 

@@ -44,6 +44,7 @@ async fn tool_collection_checkout_uses_the_same_managed_source_boundary() {
             kind: ToolKind::Collection,
             repository: url::Url::from_file_path(&repository).unwrap().into(),
             default_branch: "main".into(),
+            workspace_release: false,
         })
         .await
         .unwrap();
@@ -53,6 +54,7 @@ async fn tool_collection_checkout_uses_the_same_managed_source_boundary() {
             agent: "codex".into(),
             consumers: vec!["project-a".into()],
             task: "update owner checklist".into(),
+            workspace_release: false,
             lease_token: "lease-token-012345678901234567890123456789".into(),
             idempotency_key: "tool-checkout-1".into(),
         })
@@ -101,6 +103,7 @@ async fn package_checkout_lifecycle_stays_inside_managed_agent_storage() {
             ecosystem: PackageEcosystem::Cargo,
             repository: url::Url::from_file_path(&repository).unwrap().into(),
             default_branch: "main".into(),
+            workspace_release: false,
         })
         .await
         .unwrap();
@@ -110,6 +113,7 @@ async fn package_checkout_lifecycle_stays_inside_managed_agent_storage() {
             agent: "agent-1".into(),
             consumers: vec!["project-a".into()],
             task: "change auth".into(),
+            workspace_release: false,
             lease_token: "lease-token-012345678901234567890123456789".into(),
             idempotency_key: "checkout-1".into(),
         })
@@ -225,6 +229,16 @@ async fn package_checkout_lifecycle_stays_inside_managed_agent_storage() {
         .exists());
     assert!(!integration_source.exists());
     assert!(integration_root.join("integration.bundle").is_file());
+    let retained_digest = source.retain_release_source(&submission).await.unwrap();
+    let retained = data
+        .join("agents/releases")
+        .join(&submission.submission_id)
+        .join(format!("{retained_digest}.bundle"));
+    assert!(retained.is_file());
+    assert!(std::fs::metadata(&retained)
+        .unwrap()
+        .permissions()
+        .readonly());
     assert!(repository.join(".git").is_dir());
     assert!(repository.join("Cargo.toml").is_file());
     assert!(data.join("sources").is_dir());
@@ -241,6 +255,7 @@ async fn package_checkout_lifecycle_stays_inside_managed_agent_storage() {
     source.cleanup_checkout(&active).await.unwrap();
     source.cleanup_checkout(&active).await.unwrap();
     assert!(!data.join("agents").join(&active.checkout_id).exists());
+    assert!(retained.is_file());
     assert!(repository.join(".git").is_dir());
     assert!(repository.join("Cargo.toml").is_file());
     assert!(data.join("sources").is_dir());
@@ -273,6 +288,7 @@ async fn consumer_rollout_isolated_bundle_pushes_only_its_upgrade_branch() {
                 .unwrap()
                 .into(),
             default_branch: "main".into(),
+            workspace_release: false,
         })
         .await
         .unwrap();
@@ -292,7 +308,9 @@ async fn consumer_rollout_isolated_bundle_pushes_only_its_upgrade_branch() {
             tag: "v1.1.0".into(),
             artifact_digest: "b".repeat(64),
             source_pushed: true,
+            source_archive_digest: None,
             registry: "https://packages.example/cargo/".into(),
+            expected_publications: Vec::new(),
             publications: vec![PublicationRecord {
                 registry: "https://packages.example/cargo/".into(),
                 artifact_digest: "b".repeat(64),

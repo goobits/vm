@@ -282,6 +282,24 @@ container ID before and after. The current development container has no Docker
 binary, so its first live execution is intentionally delegated to the Docker CI
 runner rather than replaced with another fake-provider test.
 
+## Canonical Workspace and Binary Tool Releases
+
+- [x] Extend the existing source, manifest, and release records for attested
+  canonical workspaces, durable internal source archives, and binary tools.
+- [ ] Detect and resume canonical-workspace releases without repository-local
+  state, checkout identifiers, or mutations.
+- [ ] Build and publish validated binary artifacts through the existing isolated
+  release job and private artifact registry.
+- [ ] Reuse target-aware managed-tool installation and activation for explicitly
+  configured environments.
+- [ ] Prove workspace release, rework, private publication, activation, and
+  Docker persistence in the real acceptance suite.
+
+The implementation must remain an adapter over checkout, submission, review,
+integration, publication, and activation services. It must not introduce a
+second release engine or tool installer, and fixtures must remain generic rather
+than encode a particular downstream tool.
+
 ## Deferred Environment Apply (Not A Release Blocker)
 
 - [ ] Design a transactional `vm apply <environment>` operation for reconciling

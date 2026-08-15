@@ -118,12 +118,23 @@ impl Store {
                 request.name
             )));
         }
-        if let Some(existing) = current.tools.get(&request.name) {
+        if let Some(existing) = current.tools.get(&request.name).cloned() {
             if existing.kind == request.kind
                 && existing.repository == request.repository
                 && existing.default_branch == request.default_branch
             {
-                return Ok(existing.clone());
+                if request.workspace_release && !existing.workspace_release {
+                    let mut next = current.clone();
+                    let definition = next
+                        .tools
+                        .get_mut(&request.name)
+                        .expect("tool remains registered");
+                    definition.workspace_release = true;
+                    let definition = definition.clone();
+                    self.commit(&mut current, next).await?;
+                    return Ok(definition);
+                }
+                return Ok(existing);
             }
             return Err(WorkError::Conflict(format!(
                 "tool '{}' is already registered with different settings",
@@ -136,6 +147,7 @@ impl Store {
             kind: request.kind,
             repository: request.repository,
             default_branch: request.default_branch,
+            workspace_release: request.workspace_release,
             registered_at: Utc::now(),
         };
         let mut next = current.clone();
@@ -380,6 +392,7 @@ mod tests {
             kind,
             repository: format!("https://example.com/{name}.git"),
             default_branch: "main".into(),
+            workspace_release: false,
         }
     }
 

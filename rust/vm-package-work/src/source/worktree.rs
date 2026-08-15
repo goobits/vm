@@ -9,6 +9,62 @@ use crate::store::SourceDefinition;
 use crate::{Store, WorkError, WorkResult};
 
 impl SourceManager {
+    /// Preserve the validated integration bundle outside mutable checkout data.
+    /// The content-addressed file is never overwritten or removed by checkout cleanup.
+    pub(crate) async fn retain_release_source(
+        &self,
+        submission: &SubmissionRecord,
+    ) -> WorkResult<String> {
+        let lock = self
+            .lock(&format!("release:{}", submission.submission_id))
+            .await;
+        let _guard = lock.lock().await;
+        let source = self.integration_bundle(submission)?;
+        let digest_source = source.clone();
+        let digest = tokio::task::spawn_blocking(move || {
+            let file = std::fs::File::open(digest_source)?;
+            vm_packages::sha256_reader(std::io::BufReader::new(file))
+        })
+        .await
+        .map_err(|error| WorkError::Internal(format!("hash retained source archive: {error}")))??
+        .0;
+        let directory = self
+            .root
+            .join("agents/releases")
+            .join(super::managed_component(
+                "submission ID",
+                &submission.submission_id,
+            )?);
+        tokio::fs::create_dir_all(&directory).await?;
+        let destination = directory.join(format!("{digest}.bundle"));
+        if tokio::fs::try_exists(&destination).await? {
+            return Ok(digest);
+        }
+        let temporary = directory.join(format!(
+            ".{digest}.{}",
+            vm_core::secrets::generate_random_password(12)
+        ));
+        tokio::fs::copy(&source, &temporary).await?;
+        let file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .open(&temporary)
+            .await?;
+        file.sync_all().await?;
+        drop(file);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            tokio::fs::set_permissions(&temporary, std::fs::Permissions::from_mode(0o444)).await?;
+        }
+        if let Err(error) = tokio::fs::rename(&temporary, &destination).await {
+            let _ = tokio::fs::remove_file(&temporary).await;
+            if !tokio::fs::try_exists(&destination).await? {
+                return Err(error.into());
+            }
+        }
+        Ok(digest)
+    }
+
     pub async fn prepare(
         &self,
         store: &Store,

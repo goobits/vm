@@ -12,6 +12,7 @@ fn request(key: &str, agent: &str) -> CreateCheckout {
         agent: agent.into(),
         consumers: vec!["project-b".into(), "project-a".into(), "project-a".into()],
         task: "fix token refresh".into(),
+        workspace_release: false,
         lease_token: format!("lease-token-{agent}-012345678901234567890123456789"),
         idempotency_key: key.into(),
     }
@@ -198,10 +199,20 @@ async fn catalog_retries_are_exact_and_checkout_archives_are_consumer_scoped() {
         ecosystem: PackageEcosystem::Cargo,
         repository: "https://example.com/auth.git".into(),
         default_branch: "main".into(),
+        workspace_release: false,
     };
     assert_eq!(
         store.register_package(package.clone()).await.unwrap(),
-        store.register_package(package).await.unwrap()
+        store.register_package(package.clone()).await.unwrap()
+    );
+    let mut managed = package;
+    managed.workspace_release = true;
+    assert!(
+        store
+            .register_package(managed)
+            .await
+            .unwrap()
+            .workspace_release
     );
     assert!(store
         .register_package(RegisterPackage {
@@ -209,6 +220,7 @@ async fn catalog_retries_are_exact_and_checkout_archives_are_consumer_scoped() {
             ecosystem: PackageEcosystem::Cargo,
             repository: "https://example.com/other.git".into(),
             default_branch: "main".into(),
+            workspace_release: false,
         })
         .await
         .is_err());

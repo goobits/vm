@@ -23,6 +23,9 @@ pub struct RegisterTool {
     pub repository: String,
     #[serde(default = "default_branch")]
     pub default_branch: String,
+    /// Controller-attested membership in a configured package source root.
+    #[serde(default)]
+    pub workspace_release: bool,
 }
 
 impl RegisterTool {
@@ -39,7 +42,133 @@ pub struct ToolDefinition {
     pub kind: ToolKind,
     pub repository: String,
     pub default_branch: String,
+    #[serde(default)]
+    pub workspace_release: bool,
     pub registered_at: DateTime<Utc>,
+}
+
+pub const TOOL_SOURCE_SCHEMA: u32 = 1;
+
+/// Versioned source contract for managed tools. The legacy collection shape
+/// (`kind: collection`) remains valid; binary tools require schema 1.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToolSourceManifest {
+    #[serde(default)]
+    pub schema: Option<u32>,
+    pub kind: ToolKind,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub builds: Vec<ToolBuild>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToolBuild {
+    pub target: String,
+    pub command: Vec<String>,
+    pub archive: String,
+    pub links: BTreeMap<String, String>,
+    #[serde(default)]
+    pub verify: Option<Vec<String>>,
+}
+
+impl ToolSourceManifest {
+    pub fn validate(&self) -> Result<(), PackageValidationError> {
+        if self
+            .schema
+            .is_some_and(|schema| schema != TOOL_SOURCE_SCHEMA)
+        {
+            return Err(PackageValidationError::new(
+                "unsupported tool manifest schema",
+            ));
+        }
+        match self.kind {
+            ToolKind::Collection => {
+                if self.version.is_some() || !self.builds.is_empty() {
+                    return Err(PackageValidationError::new(
+                        "collection manifests cannot declare binary release fields",
+                    ));
+                }
+            }
+            ToolKind::Binary => {
+                if self.schema != Some(TOOL_SOURCE_SCHEMA) {
+                    return Err(PackageValidationError::new(
+                        "binary tool manifests require schema 1",
+                    ));
+                }
+                let version = self.version.as_deref().ok_or_else(|| {
+                    PackageValidationError::new("binary tool manifest requires a version")
+                })?;
+                let version = validate_version(version)?;
+                if !version.pre.is_empty() || !version.build.is_empty() {
+                    return Err(PackageValidationError::new(
+                        "binary tool version must be stable without build metadata",
+                    ));
+                }
+                if self.builds.is_empty() || self.builds.len() > 16 {
+                    return Err(PackageValidationError::new(
+                        "binary tool manifest must define 1 to 16 builds",
+                    ));
+                }
+                let mut targets = std::collections::BTreeSet::new();
+                for build in &self.builds {
+                    build.validate()?;
+                    if !targets.insert(&build.target) {
+                        return Err(PackageValidationError::new(
+                            "binary tool build targets must be unique",
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl ToolBuild {
+    fn validate(&self) -> Result<(), PackageValidationError> {
+        validate_tool_target(&self.target)?;
+        if self.target == "any" {
+            return Err(PackageValidationError::new(
+                "binary tool builds require an OS and architecture target",
+            ));
+        }
+        validate_command("build command", &self.command)?;
+        validate_relative_path("build archive", &self.archive)?;
+        if !self.archive.ends_with(".tar.gz") {
+            return Err(PackageValidationError::new(
+                "binary tool build archive must end in .tar.gz",
+            ));
+        }
+        validate_links(&self.links)?;
+        if let Some(command) = &self.verify {
+            validate_command("verification command", command)?;
+            if !self.links.values().any(|source| source == &command[0]) {
+                return Err(PackageValidationError::new(
+                    "verification command must execute a linked artifact path",
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+fn validate_command(field: &str, command: &[String]) -> Result<(), PackageValidationError> {
+    if command.is_empty() || command.len() > 64 {
+        return Err(PackageValidationError::new(format!(
+            "{field} must contain 1 to 64 arguments"
+        )));
+    }
+    if command.iter().any(|argument| {
+        argument.is_empty() || argument.len() > 4_096 || argument.contains(['\0', '\n', '\r'])
+    }) {
+        return Err(PackageValidationError::new(format!(
+            "{field} contains an invalid argument"
+        )));
+    }
+    Ok(())
 }
 
 /// Metadata recorded after the registry has accepted the immutable archive.
@@ -226,6 +355,10 @@ fn validate_artifact_fields(
             "tool artifact size must be greater than zero",
         ));
     }
+    validate_links(links)
+}
+
+fn validate_links(links: &BTreeMap<String, String>) -> Result<(), PackageValidationError> {
     if links.is_empty() {
         return Err(PackageValidationError::new(
             "tool artifact must define at least one activation link",
@@ -379,5 +512,58 @@ mod tests {
 
         record.artifact_path = "/tools/artifacts/other.tar.gz".into();
         assert!(record.validate().is_err());
+    }
+
+    #[test]
+    fn binary_source_manifest_is_versioned_and_argument_safe() {
+        let manifest: ToolSourceManifest = serde_yaml_ng::from_str(
+            r#"
+schema: 1
+kind: binary
+version: 1.2.3
+builds:
+  - target: linux-arm64
+    command: [npm, run, build:linux-arm64]
+    archive: dist/tool-linux-arm64.tar.gz
+    links:
+      .local/bin/tool: bin/tool
+    verify: [bin/tool, --version]
+"#,
+        )
+        .unwrap();
+        manifest.validate().unwrap();
+
+        let shell_command = serde_yaml_ng::from_str::<ToolSourceManifest>(
+            "schema: 1\nkind: binary\nversion: 1.2.3\nbuilds:\n  - target: linux-arm64\n    command: npm run build\n    archive: dist/tool.tar.gz\n    links: {'.local/bin/tool': bin/tool}\n",
+        );
+        assert!(shell_command.is_err());
+    }
+
+    #[test]
+    fn binary_source_manifest_rejects_unsafe_or_ambiguous_artifacts() {
+        let mut manifest = ToolSourceManifest {
+            schema: Some(TOOL_SOURCE_SCHEMA),
+            kind: ToolKind::Binary,
+            version: Some("1.0.0".into()),
+            builds: vec![ToolBuild {
+                target: "linux-amd64".into(),
+                command: vec!["make".into()],
+                archive: "../tool.tar.gz".into(),
+                links: BTreeMap::from([(".local/bin/tool".into(), "bin/tool".into())]),
+                verify: None,
+            }],
+        };
+        assert!(manifest.validate().is_err());
+
+        manifest.builds[0].archive = "dist/tool.tar.gz".into();
+        manifest.builds.push(manifest.builds[0].clone());
+        assert!(manifest.validate().is_err());
+    }
+
+    #[test]
+    fn legacy_collection_manifest_remains_valid() {
+        let manifest: ToolSourceManifest = serde_yaml_ng::from_str("kind: collection\n").unwrap();
+        manifest.validate().unwrap();
+        assert_eq!(manifest.schema, None);
     }
 }

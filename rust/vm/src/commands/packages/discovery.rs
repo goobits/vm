@@ -2,11 +2,10 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
 use url::Url;
 use vm_config::detector::{git::detect_repository, ProjectFacts};
 use vm_packages::SourceKind;
-use vm_packages::{PackageEcosystem, RegisterPackage, RegisterTool, ToolKind};
+use vm_packages::{PackageEcosystem, RegisterPackage, RegisterTool, ToolSourceManifest};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::error::{VmError, VmResult};
@@ -33,11 +32,6 @@ struct RepositoryRoots {
     tools: BTreeSet<PathBuf>,
 }
 
-#[derive(Deserialize)]
-struct ToolManifest {
-    kind: ToolKind,
-}
-
 pub(super) fn discover(
     targets: &[String],
     recursive: bool,
@@ -52,8 +46,10 @@ pub(super) fn discover_configured(targets: &[String]) -> VmResult<Discovery> {
     let mut discovery = Discovery::default();
     for (source_root, repository) in repositories {
         let result = match is_tool_repository(&repository) {
-            Ok(true) => discover_tool(&repository, None).map(|tool| discovery.tools.push(tool)),
-            Ok(false) => discover_one(&repository, None, None)
+            Ok(true) => {
+                discover_tool(&repository, None, true).map(|tool| discovery.tools.push(tool))
+            }
+            Ok(false) => discover_one(&repository, None, None, true)
                 .map(|package| discovery.packages.push(package)),
             Err(error) => Err(error),
         };
@@ -104,7 +100,11 @@ pub(super) fn source_identity(root: &Path) -> VmResult<(String, SourceKind)> {
                     Some("Rename the repository directory, then rerun `vm packages doctor --fix`"),
                 )
             })?;
-        return Ok((name.to_string(), SourceKind::ToolCollection));
+        let kind = match tool_manifest(root)?.kind {
+            vm_packages::ToolKind::Binary => SourceKind::ToolBinary,
+            vm_packages::ToolKind::Collection => SourceKind::ToolCollection,
+        };
+        return Ok((name.to_string(), kind));
     }
     let facts = ProjectFacts::detect(root);
     let ecosystem = resolve_ecosystem(root, &facts, None)?;
@@ -153,12 +153,12 @@ fn discover_with_policy(
     let packages = roots
         .packages
         .iter()
-        .map(|root| discover_one(root, ecosystem, branch))
+        .map(|root| discover_one(root, ecosystem, branch, false))
         .collect::<VmResult<_>>()?;
     let tools = roots
         .tools
         .iter()
-        .map(|root| discover_tool(root, branch))
+        .map(|root| discover_tool(root, branch, false))
         .collect::<VmResult<_>>()?;
     Ok(Discovery {
         packages,
@@ -235,15 +235,26 @@ fn is_tool_repository(root: &Path) -> VmResult<bool> {
     if !path.is_file() {
         return Ok(false);
     }
+    tool_manifest(root)?;
+    Ok(true)
+}
+
+pub(super) fn tool_manifest(root: &Path) -> VmResult<ToolSourceManifest> {
+    let path = root.join(TOOL_MANIFEST);
     let manifest =
-        serde_yaml_ng::from_str::<ToolManifest>(&read_manifest(&path)?).map_err(|error| {
+        serde_yaml_ng::from_str::<ToolSourceManifest>(&read_manifest(&path)?).map_err(|error| {
             VmError::validation(
                 format!("Invalid {}: {error}", path.display()),
-                Some("Expected `kind: binary` or `kind: collection`"),
+                Some("Fix vm-tool.yaml, then rerun the same command"),
             )
         })?;
-    let _kind = manifest.kind;
-    Ok(true)
+    manifest.validate().map_err(|error| {
+        VmError::validation(
+            format!("Invalid {}: {error}", path.display()),
+            Some("Fix vm-tool.yaml, then rerun the same command"),
+        )
+    })?;
+    Ok(manifest)
 }
 
 fn should_visit(entry: &DirEntry) -> bool {
@@ -275,6 +286,7 @@ fn discover_one(
     root: &Path,
     override_ecosystem: Option<PackageEcosystem>,
     branch: Option<&str>,
+    workspace_release: bool,
 ) -> VmResult<RegisterPackage> {
     let repository = detect_repository(root).map_err(VmError::from)?;
     if repository.root != root {
@@ -294,6 +306,7 @@ fn discover_one(
             .map(str::to_string)
             .or(repository.default_branch)
             .unwrap_or_else(|| "main".into()),
+        workspace_release,
     };
     request.validate().map_err(|error| {
         VmError::validation(
@@ -304,15 +317,12 @@ fn discover_one(
     Ok(request)
 }
 
-fn discover_tool(root: &Path, branch: Option<&str>) -> VmResult<RegisterTool> {
-    let manifest_path = root.join(TOOL_MANIFEST);
-    let manifest = serde_yaml_ng::from_str::<ToolManifest>(&read_manifest(&manifest_path)?)
-        .map_err(|error| {
-            VmError::validation(
-                format!("Invalid {}: {error}", manifest_path.display()),
-                Some("Expected `kind: binary` or `kind: collection`"),
-            )
-        })?;
+fn discover_tool(
+    root: &Path,
+    branch: Option<&str>,
+    workspace_release: bool,
+) -> VmResult<RegisterTool> {
+    let manifest = tool_manifest(root)?;
     let repository = detect_repository(root).map_err(VmError::from)?;
     let name = root
         .file_name()
@@ -332,6 +342,7 @@ fn discover_tool(root: &Path, branch: Option<&str>) -> VmResult<RegisterTool> {
             .map(str::to_string)
             .or(repository.default_branch)
             .unwrap_or_else(|| "main".into()),
+        workspace_release,
     };
     request.validate().map_err(|error| {
         VmError::validation(

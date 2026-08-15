@@ -547,8 +547,12 @@ fn validate_consumer_results(
     consumers: &std::collections::BTreeMap<String, vm_packages::CheckOutcome>,
 ) -> WorkResult<()> {
     let matches_source = match checkout.source_kind {
-        vm_packages::SourceKind::Package => consumers.keys().eq(checkout.consumers.iter()),
-        vm_packages::SourceKind::ToolCollection => consumers.is_empty(),
+        vm_packages::SourceKind::Package if !checkout.workspace_release => {
+            consumers.keys().eq(checkout.consumers.iter())
+        }
+        vm_packages::SourceKind::Package
+        | vm_packages::SourceKind::ToolBinary
+        | vm_packages::SourceKind::ToolCollection => consumers.is_empty(),
     };
     if matches_source {
         Ok(())
@@ -591,6 +595,7 @@ mod tests {
                 kind: ToolKind::Collection,
                 repository: "https://example.invalid/agent-skills.git".into(),
                 default_branch: "main".into(),
+                workspace_release: false,
             })
             .await
             .unwrap();
@@ -600,6 +605,7 @@ mod tests {
                 agent: "agent-1".into(),
                 consumers: vec!["project-a".into()],
                 task: "change skills".into(),
+                workspace_release: false,
                 lease_token: "lease-token-012345678901234567890123456789".into(),
                 idempotency_key: "create-collection".into(),
             })
@@ -679,6 +685,7 @@ mod tests {
                 agent: "agent-1".into(),
                 consumers: vec!["project-a".into()],
                 task: "change auth".into(),
+                workspace_release: false,
                 lease_token: "lease-token-012345678901234567890123456789".into(),
                 idempotency_key: "create".into(),
             })

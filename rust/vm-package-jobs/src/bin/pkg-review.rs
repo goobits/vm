@@ -47,7 +47,7 @@ async fn review(client: &PackageInfrastructureClient, submission_id: &str) -> Re
                 .await?
                 .ecosystem,
         ),
-        SourceKind::ToolCollection => None,
+        SourceKind::ToolBinary | SourceKind::ToolCollection => None,
     };
     let managed_source = PathBuf::from(
         checkout
@@ -208,6 +208,12 @@ fn run_required_checks(
             ),
             ("/tmp/package-review-venv/bin/python", &["-m", "pytest"]),
         ],
+        (SourceKind::ToolBinary, None) => {
+            let manifest: vm_packages::ToolSourceManifest =
+                serde_yaml_ng::from_slice(&std::fs::read(source.join("vm-tool.yaml"))?)?;
+            manifest.validate()?;
+            return Ok(manifest.kind == vm_packages::ToolKind::Binary);
+        }
         (SourceKind::ToolCollection, None) => &[("npm", &["test", "--if-present"])],
         _ => bail!("source kind and package ecosystem do not match"),
     };
@@ -251,6 +257,7 @@ fn public_api_paths(
                     || path.as_str() == "SKILL.md"
                     || path.ends_with("/SKILL.md")
             }
+            (SourceKind::ToolBinary, None) => path.as_str() == "vm-tool.yaml",
             _ => false,
         })
         .cloned()
@@ -270,6 +277,7 @@ fn manifest_has_public_changes(
         (SourceKind::Package, Some(PackageEcosystem::Npm)) | (SourceKind::ToolCollection, None) => {
             "package.json"
         }
+        (SourceKind::ToolBinary, None) => "vm-tool.yaml",
         _ => return Ok(false),
     };
     if !paths.iter().any(|path| path == manifest) {
@@ -320,6 +328,19 @@ fn manifest_content_has_public_changes(
                 serde_json::from_str(submitted).context("submitted package.json is invalid")?;
             remove_json_version(&mut base);
             remove_json_version(&mut submitted);
+            Ok(base != submitted)
+        }
+        (SourceKind::ToolBinary, None) => {
+            let mut base: serde_yaml_ng::Value =
+                serde_yaml_ng::from_str(base).context("base vm-tool.yaml is invalid")?;
+            let mut submitted: serde_yaml_ng::Value =
+                serde_yaml_ng::from_str(submitted).context("submitted vm-tool.yaml is invalid")?;
+            if let Some(mapping) = base.as_mapping_mut() {
+                mapping.remove(serde_yaml_ng::Value::String("version".into()));
+            }
+            if let Some(mapping) = submitted.as_mapping_mut() {
+                mapping.remove(serde_yaml_ng::Value::String("version".into()));
+            }
             Ok(base != submitted)
         }
         _ => Ok(false),

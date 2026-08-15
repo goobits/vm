@@ -60,6 +60,7 @@ pub(super) async fn handle(
                     kind,
                     repository,
                     default_branch: branch,
+                    workspace_release: false,
                 })
                 .await?;
             vm_success!("Registered tool '{}'", definition.name);
@@ -288,6 +289,7 @@ async fn ensure_builtin_releases(config: &VmConfig) -> VmResult<()> {
                     kind: tool.kind,
                     repository: tool.repository.into(),
                     default_branch: tool.branch.into(),
+                    workspace_release: false,
                 })
                 .await?;
             vm_success!("Registered built-in tool '{}'", tool.name);

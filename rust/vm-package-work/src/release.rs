@@ -59,9 +59,9 @@ impl Store {
                 "release source commit does not match the validated integration".into(),
             ));
         }
-        if !request.source_pushed {
+        if !request.source_pushed && request.source_archive_digest.is_none() {
             return Err(WorkError::Conflict(
-                "source commit and tag must be pushed before publication".into(),
+                "release source must be pushed externally or retained internally".into(),
             ));
         }
         let checkout_id = submission.checkout_id.clone();
@@ -75,10 +75,9 @@ impl Store {
                 .packages
                 .get(&package)
                 .map(|definition| definition.repository.clone()),
-            SourceKind::ToolCollection => next
+            SourceKind::ToolBinary | SourceKind::ToolCollection => next
                 .tools
                 .get(&package)
-                .filter(|definition| definition.kind == vm_packages::ToolKind::Collection)
                 .map(|definition| definition.repository.clone()),
         }
         .ok_or_else(|| WorkError::Internal("release source definition is missing".into()))?;
@@ -95,8 +94,16 @@ impl Store {
             WorkflowState::Publishing,
             ReceiptKind::Release,
             &request.actor,
-            "source commit and release tag pushed; publication started",
-            Some("source_pushed".into()),
+            if request.source_pushed {
+                "source commit and release tag pushed; publication started"
+            } else {
+                "immutable source archive retained; publication started"
+            },
+            Some(if request.source_pushed {
+                "source_pushed".into()
+            } else {
+                "source_retained".into()
+            }),
         )?;
         let now = Utc::now();
         let release = ReleaseRecord {
@@ -110,7 +117,9 @@ impl Store {
             tag: request.tag,
             artifact_digest: request.artifact_digest,
             source_pushed: request.source_pushed,
+            source_archive_digest: request.source_archive_digest,
             registry: request.registry,
+            expected_publications: request.expected_publications,
             publications: Vec::new(),
             state: WorkflowState::Publishing,
             created_at: now,
@@ -256,14 +265,22 @@ impl Store {
         if release.state != WorkflowState::Publishing {
             return Err(WorkError::Conflict("release is not publishing".into()));
         }
-        if release.artifact_digest != request.artifact_digest {
+        if release.expected_publications.is_empty() {
+            if release.artifact_digest != request.artifact_digest {
+                return Err(WorkError::Conflict(
+                    "published artifact digest does not match the release".into(),
+                ));
+            }
+            if release.registry != request.registry {
+                return Err(WorkError::Conflict(
+                    "publication registry was not declared for this release".into(),
+                ));
+            }
+        } else if !release.expected_publications.iter().any(|target| {
+            target.registry == request.registry && target.artifact_digest == request.artifact_digest
+        }) {
             return Err(WorkError::Conflict(
-                "published artifact digest does not match the release".into(),
-            ));
-        }
-        if release.registry != request.registry {
-            return Err(WorkError::Conflict(
-                "publication registry was not declared for this release".into(),
+                "publication was not declared for this release".into(),
             ));
         }
         if let Some(existing) = release
@@ -346,11 +363,20 @@ impl Store {
         if release.state != WorkflowState::Publishing {
             return Err(WorkError::Conflict("release is not publishing".into()));
         }
-        if !release
-            .publications
-            .iter()
-            .any(|publication| publication.registry == release.registry)
-        {
+        let publications_complete = if release.expected_publications.is_empty() {
+            release
+                .publications
+                .iter()
+                .any(|publication| publication.registry == release.registry)
+        } else {
+            release.expected_publications.iter().all(|expected| {
+                release.publications.iter().any(|publication| {
+                    publication.registry == expected.registry
+                        && publication.artifact_digest == expected.artifact_digest
+                })
+            })
+        };
+        if !publications_complete {
             return Err(WorkError::Conflict(
                 "not every declared registry publication has completed".into(),
             ));
@@ -413,7 +439,29 @@ fn validate_begin(request: &BeginReleaseRequest) -> WorkResult<()> {
     validate_label("release actor", &request.actor)?;
     validate_hex("source commit", &request.source_commit, &[40, 64])?;
     validate_hex("artifact digest", &request.artifact_digest, &[64])?;
+    if let Some(digest) = &request.source_archive_digest {
+        validate_hex("source archive digest", digest, &[64])?;
+    }
+    if !request.source_pushed && request.source_archive_digest.is_none() {
+        return Err(WorkError::Invalid(
+            "release requires an external source push or retained source archive".into(),
+        ));
+    }
     validate_registry_url(&request.registry)?;
+    let mut registries = std::collections::BTreeSet::new();
+    for target in &request.expected_publications {
+        validate_registry_url(&target.registry)?;
+        validate_hex(
+            "expected publication digest",
+            &target.artifact_digest,
+            &[64],
+        )?;
+        if !registries.insert(&target.registry) {
+            return Err(WorkError::Invalid(
+                "expected publication registries must be unique".into(),
+            ));
+        }
+    }
     validate_idempotency_key(&request.idempotency_key)
 }
 
@@ -456,6 +504,7 @@ mod tests {
                 ecosystem: PackageEcosystem::Cargo,
                 repository: "https://example.com/auth.git".into(),
                 default_branch: "main".into(),
+                workspace_release: false,
             })
             .await
             .unwrap();
@@ -465,6 +514,7 @@ mod tests {
                 agent: "agent-1".into(),
                 consumers: vec!["project-a".into()],
                 task: "release auth".into(),
+                workspace_release: false,
                 lease_token: "lease-token-012345678901234567890123456789".into(),
                 idempotency_key: "create-release".into(),
             })
@@ -667,6 +717,7 @@ mod tests {
             submission.submission_id
         );
         let registry = "http://gateway:8080/cargo/index/";
+        let second_registry = "http://gateway:8080/tools/linux-amd64/";
         let release = store
             .begin_release(
                 &submission.submission_id,
@@ -675,8 +726,19 @@ mod tests {
                     tag: "v1.0.1".into(),
                     source_commit: "5555555555555555555555555555555555555555".into(),
                     artifact_digest: "b".repeat(64),
-                    source_pushed: true,
+                    source_pushed: false,
+                    source_archive_digest: Some("d".repeat(64)),
                     registry: registry.into(),
+                    expected_publications: vec![
+                        vm_packages::PublicationTarget {
+                            registry: registry.into(),
+                            artifact_digest: "b".repeat(64),
+                        },
+                        vm_packages::PublicationTarget {
+                            registry: second_registry.into(),
+                            artifact_digest: "c".repeat(64),
+                        },
+                    ],
                     actor: "release-service".into(),
                     idempotency_key: "begin-release".into(),
                 },
@@ -700,6 +762,29 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(published.publications.len(), 1);
+        assert!(store
+            .complete_release(
+                &release.release_id,
+                CompleteReleaseRequest {
+                    actor: "release-service".into(),
+                    idempotency_key: "complete-too-early".into(),
+                },
+            )
+            .await
+            .is_err());
+        let published = store
+            .record_publication(
+                &release.release_id,
+                PublicationRequest {
+                    registry: second_registry.into(),
+                    artifact_digest: "c".repeat(64),
+                    actor: "release-service".into(),
+                    idempotency_key: "publish-second-release".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(published.publications.len(), 2);
         let complete = store
             .complete_release(
                 &release.release_id,

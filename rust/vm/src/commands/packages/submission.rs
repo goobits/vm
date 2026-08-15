@@ -141,6 +141,10 @@ async fn run_checks(
                 CheckOutcome::Passed,
             )]))
         }
+        SourceKind::ToolBinary => {
+            run_binary_check(subject, source)?;
+            Ok(BTreeMap::new())
+        }
         SourceKind::ToolCollection => {
             run_collection_check(subject, source)?;
             Ok(BTreeMap::new())
@@ -223,6 +227,22 @@ pub(super) fn run_package_check(
 
 pub(super) fn run_collection_check(subject: &impl PackageExecutor, source: &str) -> VmResult<()> {
     exec(subject, ["npm", "--prefix", source, "test", "--if-present"])
+}
+
+pub(super) fn run_binary_check(subject: &impl PackageExecutor, source: &str) -> VmResult<()> {
+    let content =
+        super::runtime::exec_output(subject, ["git", "-C", source, "show", "HEAD:vm-tool.yaml"])?;
+    let manifest: vm_packages::ToolSourceManifest =
+        serde_yaml_ng::from_str(&content).map_err(|error| {
+            VmError::validation(format!("Invalid vm-tool.yaml: {error}"), None::<String>)
+        })?;
+    if manifest.kind != vm_packages::ToolKind::Binary {
+        return Err(VmError::validation(
+            "Binary tool checkout has a non-binary vm-tool.yaml",
+            None::<String>,
+        ));
+    }
+    manifest.validate().map_err(VmError::from)
 }
 
 pub(super) fn run_consumer_check(

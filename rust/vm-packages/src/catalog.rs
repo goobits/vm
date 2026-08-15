@@ -10,6 +10,9 @@ pub struct RegisterPackage {
     pub repository: String,
     #[serde(default = "default_branch")]
     pub default_branch: String,
+    /// Controller-attested membership in a configured package source root.
+    #[serde(default)]
+    pub workspace_release: bool,
 }
 
 impl RegisterPackage {
@@ -27,6 +30,8 @@ pub struct PackageDefinition {
     pub ecosystem: PackageEcosystem,
     pub repository: String,
     pub default_branch: String,
+    #[serde(default)]
+    pub workspace_release: bool,
     pub registered_at: DateTime<Utc>,
 }
 

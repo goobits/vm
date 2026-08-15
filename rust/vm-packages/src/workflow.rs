@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub enum SourceKind {
     #[default]
     Package,
+    ToolBinary,
     ToolCollection,
 }
 
@@ -76,6 +77,10 @@ pub struct CreateCheckout {
     #[serde(default)]
     pub consumers: Vec<String>,
     pub task: String,
+    /// The submitted source comes from a validated canonical workspace rather
+    /// than the managed editable checkout.
+    #[serde(default)]
+    pub workspace_release: bool,
     /// Client-generated capability used for checkout archive and submission access.
     pub lease_token: String,
     pub idempotency_key: String,
@@ -129,6 +134,8 @@ pub struct CheckoutRecord {
     pub agent: String,
     pub consumers: Vec<String>,
     pub task: String,
+    #[serde(default)]
+    pub workspace_release: bool,
     pub state: WorkflowState,
     pub base_branch: Option<String>,
     pub base_commit: Option<String>,
@@ -190,7 +197,7 @@ pub struct WorkflowReceipt {
 
 #[cfg(test)]
 mod tests {
-    use super::WorkflowState;
+    use super::{SourceKind, WorkflowState};
 
     #[test]
     fn state_machine_allows_progress_and_rework_but_not_skips() {
@@ -201,5 +208,15 @@ mod tests {
         assert!(WorkflowState::Published.can_transition_to(WorkflowState::Closed));
         assert!(!WorkflowState::Created.can_transition_to(WorkflowState::Published));
         assert!(!WorkflowState::Closed.can_transition_to(WorkflowState::Active));
+    }
+
+    #[test]
+    fn serialized_collection_source_kind_remains_compatible() {
+        let source: SourceKind = serde_json::from_str("\"tool_collection\"").unwrap();
+        assert_eq!(source, SourceKind::ToolCollection);
+        assert_eq!(
+            serde_json::to_string(&SourceKind::ToolCollection).unwrap(),
+            "\"tool_collection\""
+        );
     }
 }

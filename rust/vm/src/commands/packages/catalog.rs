@@ -68,6 +68,7 @@ pub(super) async fn register(files: &ApplianceFiles, intent: RegistrationIntent)
             ecosystem,
             repository,
             default_branch: intent.branch.unwrap_or_else(|| "main".into()),
+            workspace_release: false,
         };
         request
             .validate()
@@ -249,11 +250,17 @@ pub(super) async fn repair_quarantined_sources(
     for package in packages {
         registered.insert((package.name, "package"), package.repository);
     }
-    for tool in tools
-        .into_iter()
-        .filter(|tool| tool.kind == ToolKind::Collection)
-    {
-        registered.insert((tool.name, "collection"), tool.repository);
+    for tool in tools {
+        registered.insert(
+            (
+                tool.name,
+                match tool.kind {
+                    ToolKind::Binary => "binary",
+                    ToolKind::Collection => "collection",
+                },
+            ),
+            tool.repository,
+        );
     }
 
     let mut outcome = SourceReconcileOutcome::default();
@@ -264,6 +271,7 @@ pub(super) async fn repair_quarantined_sources(
                 let (name, kind) = discovery::source_identity(&repository)?;
                 let kind = match kind {
                     SourceKind::Package => "package",
+                    SourceKind::ToolBinary => "binary",
                     SourceKind::ToolCollection => "collection",
                 };
                 let remote = registered.get(&(name.clone(), kind)).ok_or_else(|| {

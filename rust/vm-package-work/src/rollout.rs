@@ -395,6 +395,7 @@ mod tests {
                 ecosystem: PackageEcosystem::Cargo,
                 repository: "https://example.com/auth.git".into(),
                 default_branch: "main".into(),
+                workspace_release: false,
             })
             .await
             .unwrap();
@@ -412,7 +413,9 @@ mod tests {
                 tag: "v1.5.0".into(),
                 artifact_digest: "b".repeat(64),
                 source_pushed: true,
+                source_archive_digest: None,
                 registry: "https://packages.example/cargo/".into(),
+                expected_publications: Vec::new(),
                 publications: recorded_publication
                     .then(|| PublicationRecord {
                         registry: "https://packages.example/cargo/".into(),

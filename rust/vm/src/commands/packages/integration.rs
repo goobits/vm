@@ -10,7 +10,7 @@ use crate::error::{VmError, VmResult};
 
 use super::{
     runtime::{checkout_root, exec, GuestRuntime, PackageExecutor},
-    submission::{run_collection_check, run_consumer_check, run_package_check},
+    submission::{run_binary_check, run_collection_check, run_consumer_check, run_package_check},
 };
 
 pub(super) async fn handle_guest(
@@ -121,6 +121,10 @@ async fn integrate(
             run_package_check(subject, definition.ecosystem, &source)?;
             run_consumer_check(subject, definition.ecosystem, &submission.package, &source)?;
             BTreeMap::from([(consumer, CheckOutcome::Passed)])
+        }
+        SourceKind::ToolBinary => {
+            run_binary_check(subject, &source)?;
+            BTreeMap::new()
         }
         SourceKind::ToolCollection => {
             run_collection_check(subject, &source)?;

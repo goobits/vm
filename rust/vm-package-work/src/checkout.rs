@@ -216,8 +216,20 @@ impl Store {
             });
         }
 
-        let source_kind = source_definition(&current, &request.package)?
-            .map_or(SourceKind::Package, |source| source.kind);
+        let source = source_definition(&current, &request.package)?;
+        let source_kind = if request.workspace_release {
+            let source = source.ok_or_else(|| {
+                WorkError::NotFound(format!("registered source {}", request.package))
+            })?;
+            if !source.workspace_release {
+                return Err(WorkError::Unauthorized(
+                    "workspace release requires a source registered from a configured root".into(),
+                ));
+            }
+            source.kind
+        } else {
+            source.map_or(SourceKind::Package, |source| source.kind)
+        };
         let mut next = current.clone();
         let now = Utc::now();
         let checkout_id = id(&request.package, now, next_id(&mut next));
@@ -261,6 +273,7 @@ impl Store {
             agent: request.agent.clone(),
             consumers: normalized_consumers(request.consumers),
             task: request.task,
+            workspace_release: request.workspace_release,
             state: WorkflowState::Created,
             base_branch: None,
             base_commit: None,

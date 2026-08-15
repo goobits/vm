@@ -35,7 +35,7 @@ pub use ecosystem::{PackageEcosystem, ParsePackageEcosystemError};
 pub use environment::{ClientEnvironment, ManagedClientSettings, RegistryEndpoints};
 pub use release::{
     BeginReleaseRequest, CompleteReleaseRequest, PublicationRecord, PublicationRequest,
-    ReleaseRecord, ReleaseReworkRequest,
+    PublicationTarget, ReleaseRecord, ReleaseReworkRequest,
 };
 pub use resolver::{
     InternalPackageCatalog, OverrideAvailability, PackageIdentity, PackageResolver,
@@ -49,8 +49,8 @@ pub use submission::{
 pub use tools::{
     artifact_key as tool_artifact_key, tool_artifact_path, validate_sha256, validate_tool_name,
     validate_tool_target, validate_version as validate_tool_version, PublishToolArtifact,
-    RegisterTool, ToolArtifactRecord, ToolDefinition, ToolIndex, ToolInventory, ToolKind,
-    ToolPublicationReceipt,
+    RegisterTool, ToolArtifactRecord, ToolBuild, ToolDefinition, ToolIndex, ToolInventory,
+    ToolKind, ToolPublicationReceipt, ToolSourceManifest, TOOL_SOURCE_SCHEMA,
 };
 pub use validation::{
     validate_label, validate_managed_id, validate_registry_url, validate_repository_url,
