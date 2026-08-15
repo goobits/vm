@@ -162,13 +162,15 @@ async fn work(files: &ApplianceFiles, source: String, task: String) -> VmResult<
         source.clone(),
         task.clone(),
     ]);
+    let config_path = PathBuf::from(config_path);
+    let profile = global.packages.work_profile;
     let session = {
         let _operation_lock = files.acquire_operation_lock()?;
         checkout::prepare(
             files,
             checkout::CheckoutIntent {
-                config_path: Some(PathBuf::from(config_path)),
-                profile: global.packages.work_profile,
+                config_path: Some(config_path.clone()),
+                profile: profile.clone(),
                 package: source.clone(),
                 agent: "codex".into(),
                 consumer: None,
@@ -221,6 +223,26 @@ async fn work(files: &ApplianceFiles, source: String, task: String) -> VmResult<
         ));
     }
     vm_success!("Published {source}");
+    if session.checkout.source_kind == vm_packages::SourceKind::ToolCollection {
+        let mut activation_arguments = vec![
+            "--config".to_string(),
+            config_path.to_string_lossy().into_owned(),
+        ];
+        if let Some(profile) = &profile {
+            activation_arguments.extend(["--profile".into(), profile.clone()]);
+        }
+        activation_arguments.extend(["tools".into(), "update".into(), "--fleet".into()]);
+        let activation_retry =
+            crate::commands::command_context::host_command(&activation_arguments);
+        super::tools::activate_project_tool(config_path, profile, &source)
+            .await
+            .map_err(|error| {
+                VmError::validation(
+                    format!("Published '{source}', but automatic activation failed: {error}"),
+                    Some(format!("Run `{activation_retry}`")),
+                )
+            })?;
+    }
     Ok(())
 }
 
