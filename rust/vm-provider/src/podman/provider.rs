@@ -120,6 +120,16 @@ impl Provider for PodmanProvider {
         self.docker_provider.exec(container, cmd)
     }
 
+    fn exec_interactive(
+        &self,
+        container: Option<&str>,
+        working_dir: &Path,
+        cmd: &[String],
+    ) -> Result<()> {
+        self.docker_provider
+            .exec_interactive(container, working_dir, cmd)
+    }
+
     fn exec_with_stdin(&self, container: Option<&str>, cmd: &[String], input: &[u8]) -> Result<()> {
         self.docker_provider.exec_with_stdin(container, cmd, input)
     }

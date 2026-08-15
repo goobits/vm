@@ -77,7 +77,7 @@ fn truthy(value: &str) -> bool {
     )
 }
 
-fn host_command(arguments: &[String]) -> String {
+pub(super) fn host_command(arguments: &[String]) -> String {
     std::iter::once("vm".to_string())
         .chain(arguments.iter().map(|argument| shell_quote(argument)))
         .collect::<Vec<_>>()
@@ -219,7 +219,7 @@ mod tests {
         }));
         assert!(guest_allowed_command(&Command::Packages {
             command: PackagesSubcommand::Release {
-                checkout_id: "checkout-1".into(),
+                checkout_id: Some("checkout-1".into()),
             },
         }));
         assert!(!guest_allowed_command(&Command::Packages {

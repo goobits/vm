@@ -36,6 +36,13 @@ pub enum PackagesSubcommand {
         #[arg(value_name = "SOURCE_ROOT")]
         source_root: PathBuf,
     },
+    /// Open a managed source checkout and launch Codex with one task
+    Work {
+        #[arg(value_name = "SOURCE")]
+        source: String,
+        #[arg(value_name = "TASK")]
+        task: String,
+    },
     /// Prepare or reconcile the shared package-infrastructure appliance and configured sources
     Up {
         #[arg(long, value_enum, default_value = "auto")]
@@ -126,7 +133,7 @@ pub enum PackagesSubcommand {
     /// Show one managed source checkout
     Show { checkout_id: String },
     /// Validate, review, integrate, and privately release an active checkout
-    Release { checkout_id: String },
+    Release { checkout_id: Option<String> },
     /// Cancel an eligible checkout and remove its temporary data
     Cancel { checkout_id: String },
     /// Remove a terminal checkout's temporary service and project data

@@ -329,6 +329,33 @@ fn package_init_parses_the_source_shelf() {
 }
 
 #[test]
+fn package_work_parses_the_brainless_interface() {
+    assert!(matches!(
+        Args::parse_from([
+            "vm",
+            "packages",
+            "work",
+            "agent-skills",
+            "update the skills"
+        ])
+        .command,
+        Command::Packages {
+            command: PackagesSubcommand::Work { source, task }
+        } if source == "agent-skills" && task == "update the skills"
+    ));
+}
+
+#[test]
+fn package_release_accepts_an_inferred_checkout() {
+    assert!(matches!(
+        Args::parse_from(["vm", "packages", "release"]).command,
+        Command::Packages {
+            command: PackagesSubcommand::Release { checkout_id: None }
+        }
+    ));
+}
+
+#[test]
 fn package_doctor_parses_safe_fix_mode() {
     assert!(matches!(
         Args::parse_from(["vm", "packages", "doctor", "--fix"]).command,
@@ -377,7 +404,7 @@ fn package_release_parses_guest_workflow() {
                 command: PackagesSubcommand::Release { checkout_id }
             },
             ..
-        } if checkout_id == "checkout-auth-1"
+        } if checkout_id.as_deref() == Some("checkout-auth-1")
     ));
 }
 

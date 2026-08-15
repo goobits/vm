@@ -31,6 +31,12 @@ pub(super) struct CheckoutIntent {
     pub(super) task: String,
 }
 
+pub(super) struct ManagedCheckout {
+    pub(super) subject: crate::commands::command_context::RuntimeSubject,
+    pub(super) checkout: vm_packages::CheckoutRecord,
+    pub(super) source: PathBuf,
+}
+
 #[derive(Clone, Copy)]
 enum EditableSource {
     Package(PackageEcosystem),
@@ -86,6 +92,14 @@ fn cleanup_runtime(
 }
 
 pub(super) async fn handle(files: &ApplianceFiles, intent: CheckoutIntent) -> VmResult<()> {
+    prepare(files, intent, false).await.map(|_| ())
+}
+
+pub(super) async fn prepare(
+    files: &ApplianceFiles,
+    intent: CheckoutIntent,
+    resume: bool,
+) -> VmResult<ManagedCheckout> {
     let subject = load_or_create_runtime_subject(intent.config_path, intent.profile, None).await?;
     let current_project = project_name(&subject.config).to_string();
     let consumer = intent.consumer.unwrap_or_else(|| current_project.clone());
@@ -99,6 +113,63 @@ pub(super) async fn handle(files: &ApplianceFiles, intent: CheckoutIntent) -> Vm
     let (state, client) = configured_state_and_client(files)?;
     let source = editable_source(&client, &intent.package).await?;
     let pinned_version = pinned_version(&client, &intent.package, &consumer, source).await?;
+    if resume {
+        let matching = client
+            .checkouts()
+            .await?
+            .into_iter()
+            .filter(|checkout| {
+                checkout.package == intent.package
+                    && checkout.agent == intent.agent
+                    && checkout.consumers.len() == 1
+                    && checkout.consumers[0] == consumer
+                    && checkout.task == intent.task
+                    && matches!(
+                        checkout.state,
+                        WorkflowState::Created
+                            | WorkflowState::CheckedOut
+                            | WorkflowState::Active
+                            | WorkflowState::Submitted
+                            | WorkflowState::Validating
+                            | WorkflowState::Reviewing
+                            | WorkflowState::NeedsChanges
+                            | WorkflowState::Approved
+                            | WorkflowState::Integrating
+                            | WorkflowState::ReadyToRelease
+                            | WorkflowState::Publishing
+                    )
+            })
+            .collect::<Vec<_>>();
+        if matching.len() > 1 {
+            return Err(VmError::validation(
+                format!("{} matching managed checkouts are active", matching.len()),
+                Some(format!(
+                    "Run `vm packages cancel {}`",
+                    matching[0].checkout_id
+                )),
+            ));
+        }
+        if let Some(checkout) = matching.into_iter().next() {
+            let root = checkout_root(&subject, &checkout.checkout_id)?;
+            let source = PathBuf::from(format!("{root}/source"));
+            let source_path = source.to_string_lossy();
+            if exec(&subject, ["test", "-d", source_path.as_ref()]).is_err() {
+                return Err(VmError::validation(
+                    format!(
+                        "Managed checkout {} is active but its source directory is missing",
+                        checkout.checkout_id
+                    ),
+                    Some(format!("Run `vm packages cancel {}`", checkout.checkout_id)),
+                ));
+            }
+            vm_success!("Resuming checkout {}", checkout.checkout_id);
+            return Ok(ManagedCheckout {
+                subject,
+                checkout,
+                source,
+            });
+        }
+    }
     vm_progress!(
         "Preparing isolated '{}' checkout in package infrastructure...",
         intent.package
@@ -165,7 +236,11 @@ pub(super) async fn handle(files: &ApplianceFiles, intent: CheckoutIntent) -> Vm
     let root = checkout_root(&subject, &active.checkout_id)?;
     vm_success!("Checkout {} is active", active.checkout_id);
     vm_println!("Source: {root}/source");
-    Ok(())
+    Ok(ManagedCheckout {
+        subject,
+        checkout: active,
+        source: PathBuf::from(format!("{root}/source")),
+    })
 }
 
 fn attach(

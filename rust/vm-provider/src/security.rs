@@ -5,6 +5,46 @@ use vm_core::error::{Result, VmError};
 pub struct SecurityValidator;
 
 impl SecurityValidator {
+    /// Validate the source directory of a VM-managed package checkout.
+    pub fn validate_managed_checkout_path(path: &Path, home: &Path) -> Result<PathBuf> {
+        if !path.is_absolute() || !home.is_absolute() {
+            return Err(VmError::Internal(
+                "Managed checkout and guest home paths must be absolute".into(),
+            ));
+        }
+        if path.to_string_lossy().len() > 4096 {
+            return Err(VmError::Internal(
+                "Managed checkout path is too long".into(),
+            ));
+        }
+        let base = home.join(".local/share/vm/package-checkouts");
+        let relative = path.strip_prefix(&base).map_err(|_| {
+            VmError::Internal(format!(
+                "Path is outside the managed checkout root: {}",
+                path.display()
+            ))
+        })?;
+        let components = relative.components().collect::<Vec<_>>();
+        let valid_id = components.first().is_some_and(|component| {
+            let value = component.as_os_str().to_string_lossy();
+            !value.is_empty()
+                && value.len() <= 128
+                && value
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || "-_".contains(character))
+        });
+        if components.len() != 2
+            || !valid_id
+            || components[1].as_os_str() != std::ffi::OsStr::new("source")
+        {
+            return Err(VmError::Internal(format!(
+                "Path is not a managed checkout source directory: {}",
+                path.display()
+            )));
+        }
+        Ok(path.to_path_buf())
+    }
+
     /// Validate a relative path to prevent directory traversal attacks
     ///
     /// This function ensures that:
@@ -239,6 +279,28 @@ mod tests {
         assert_eq!(
             result.expect("Validation should succeed for a valid path"),
             Path::new("/home/user/documents/file.txt")
+        );
+    }
+
+    #[test]
+    fn managed_checkout_paths_are_narrowly_scoped() {
+        let home = Path::new("/home/developer");
+        assert_eq!(
+            SecurityValidator::validate_managed_checkout_path(
+                Path::new("/home/developer/.local/share/vm/package-checkouts/checkout-123/source"),
+                home,
+            )
+            .unwrap(),
+            Path::new("/home/developer/.local/share/vm/package-checkouts/checkout-123/source")
+        );
+        assert!(SecurityValidator::validate_managed_checkout_path(
+            Path::new("/home/developer/.local/share/vm/package-checkouts/checkout-123/../source"),
+            home,
+        )
+        .is_err());
+        assert!(
+            SecurityValidator::validate_managed_checkout_path(Path::new("/workspace"), home,)
+                .is_err()
         );
     }
 

@@ -15,6 +15,70 @@ use vm_messages::messages::MESSAGES;
 use super::DEFAULT_SHELL;
 
 impl<'a> LifecycleOperations<'a> {
+    #[must_use = "interactive command results should be handled"]
+    pub fn exec_interactive_in_container(
+        &self,
+        container: Option<&str>,
+        working_dir: &Path,
+        command: &[String],
+    ) -> Result<()> {
+        if command.is_empty() {
+            return Err(VmError::Internal(
+                "Interactive command cannot be empty".into(),
+            ));
+        }
+        let target_container = self.resolve_target_container(container)?;
+        let user_config = UserConfig::from_vm_config(self.config);
+        let project_user = &user_config.username;
+        let project_home = if project_user == "root" {
+            "/root".to_string()
+        } else {
+            format!("/home/{project_user}")
+        };
+        let working_dir = SecurityValidator::validate_managed_checkout_path(
+            working_dir,
+            Path::new(&project_home),
+        )?;
+        let shell = self
+            .config
+            .terminal
+            .as_ref()
+            .and_then(|terminal| terminal.shell.as_deref())
+            .unwrap_or(DEFAULT_SHELL);
+        Self::repair_home_state(self.executable, &target_container, &user_config)?;
+
+        let tty_flag = if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
+            "-it"
+        } else {
+            "-i"
+        };
+        let mut arguments = vec![
+            "exec".to_string(),
+            tty_flag.to_string(),
+            target_container,
+            "sudo".to_string(),
+            "-Hu".to_string(),
+            project_user.to_string(),
+            "env".to_string(),
+            format!("HOME={project_home}"),
+            format!("USER={project_user}"),
+            format!("LOGNAME={project_user}"),
+            format!("SHELL={shell}"),
+            "VM_MANAGED_GUEST=1".to_string(),
+            shell.to_string(),
+            "-ilc".to_string(),
+            "cd \"$1\"; shift; exec \"$@\"".to_string(),
+            "vm-interactive".to_string(),
+            working_dir.to_string_lossy().into_owned(),
+        ];
+        arguments.extend(command.iter().cloned());
+        let argument_refs = arguments.iter().map(String::as_str).collect::<Vec<_>>();
+        duct::cmd(self.executable, &argument_refs)
+            .run()
+            .map(|_| ())
+            .map_err(|_| VmError::Internal("Interactive guest command failed".into()))
+    }
+
     #[must_use = "SSH connection results should be handled"]
     pub fn ssh_into_container(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
         let workspace_path = self

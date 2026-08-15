@@ -281,6 +281,16 @@ impl Provider for DockerProvider {
         lifecycle.exec_in_container(container, cmd)
     }
 
+    fn exec_interactive(
+        &self,
+        container: Option<&str>,
+        working_dir: &Path,
+        cmd: &[String],
+    ) -> Result<()> {
+        self.lifecycle_ops()
+            .exec_interactive_in_container(container, working_dir, cmd)
+    }
+
     fn exec_with_stdin(&self, container: Option<&str>, cmd: &[String], input: &[u8]) -> Result<()> {
         self.lifecycle_ops()
             .exec_in_container_with_stdin(container, cmd, input)

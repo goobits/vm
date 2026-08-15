@@ -209,6 +209,15 @@ impl Provider for TartProvider {
         self.stream_tart_command_visible(&arg_refs)
     }
 
+    fn exec_interactive(
+        &self,
+        container: Option<&str>,
+        working_dir: &Path,
+        cmd: &[String],
+    ) -> Result<()> {
+        self.open_interactive_command(container, working_dir, cmd)
+    }
+
     fn exec_with_stdin(&self, container: Option<&str>, cmd: &[String], input: &[u8]) -> Result<()> {
         let args = self.guest_exec_args(container, cmd)?;
         self.tart_expr(&args)

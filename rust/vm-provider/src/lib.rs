@@ -382,6 +382,18 @@ pub trait Provider {
     /// Execute a command inside the VM.
     fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()>;
 
+    /// Execute an interactive command from an absolute managed checkout directory.
+    fn exec_interactive(
+        &self,
+        _container: Option<&str>,
+        _working_dir: &Path,
+        _cmd: &[String],
+    ) -> Result<()> {
+        Err(VmError::Provider(
+            "This provider does not support interactive commands".into(),
+        ))
+    }
+
     /// Execute a command with bytes supplied only over standard input. This is
     /// used for short-lived credentials that must not appear in process args.
     fn exec_with_stdin(

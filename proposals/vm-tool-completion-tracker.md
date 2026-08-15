@@ -270,7 +270,7 @@ recorded below.
 - [x] Quarantine unhealthy configured repositories without failing startup.
 - [x] Report one package health state and apply only deterministic doctor fixes.
 - [x] Add one-time project/source initialization and persistent work context.
-- [ ] Launch resumable managed work and infer release identity from its directory.
+- [x] Launch resumable managed work and infer release identity from its directory.
 - [ ] Activate published managed tools in configured project environments.
 - [ ] Continuously prove the full workflow in one persistent Docker environment.
 

@@ -12,8 +12,21 @@ use super::{
 const RELEASE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
 
-pub(super) async fn handle_guest(checkout_id: &str) -> VmResult<()> {
+pub(super) async fn handle_guest(checkout_id: Option<&str>) -> VmResult<()> {
     let subject = GuestRuntime::discover()?;
+    let inferred_checkout_id;
+    let checkout_id = match checkout_id {
+        Some(checkout_id) => checkout_id,
+        None => {
+            inferred_checkout_id = infer_checkout_id(
+                &std::env::current_dir().map_err(VmError::from)?,
+                &dirs::home_dir().ok_or_else(|| {
+                    VmError::validation("Guest home directory is unavailable", None::<String>)
+                })?,
+            )?;
+            &inferred_checkout_id
+        }
+    };
     let client = subject.client()?;
     let checkout = client.checkout(checkout_id).await?;
     if !checkout.consumers.contains(&subject.consumer().to_string()) {
@@ -66,6 +79,38 @@ pub(super) async fn handle_guest(checkout_id: &str) -> VmResult<()> {
         release.source_commit
     );
     Ok(())
+}
+
+fn infer_checkout_id(current_dir: &std::path::Path, home: &std::path::Path) -> VmResult<String> {
+    let root = home.join(".local/share/vm/package-checkouts");
+    let relative = current_dir.strip_prefix(&root).map_err(|_| {
+        VmError::validation(
+            "Current directory is not inside a managed package checkout",
+            Some("Run `vm packages release` from the managed checkout source directory"),
+        )
+    })?;
+    let mut components = relative.components();
+    let checkout_id = components
+        .next()
+        .and_then(|component| component.as_os_str().to_str())
+        .ok_or_else(|| {
+            VmError::validation(
+                "Managed checkout path has no checkout identity",
+                Some("Run `vm packages release` from the managed checkout source directory"),
+            )
+        })?;
+    if components
+        .next()
+        .and_then(|component| component.as_os_str().to_str())
+        != Some("source")
+    {
+        return Err(VmError::validation(
+            "Current directory is not inside a managed checkout source directory",
+            Some("Run `vm packages release` from the managed checkout source directory"),
+        ));
+    }
+    vm_packages::validate_managed_id("checkout ID", checkout_id).map_err(VmError::from)?;
+    Ok(checkout_id.to_string())
 }
 
 async fn renew_release_lease(
@@ -176,5 +221,35 @@ async fn wait_for_publication(
             format!("Package release stopped in {state:?}"),
             Some("Inspect package infrastructure logs and rerun when repaired"),
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::infer_checkout_id;
+    use std::path::Path;
+
+    #[test]
+    fn checkout_identity_is_inferred_from_source_or_a_descendant() {
+        let home = Path::new("/home/developer");
+        assert_eq!(
+            infer_checkout_id(
+                Path::new("/home/developer/.local/share/vm/package-checkouts/checkout-123/source"),
+                home,
+            )
+            .unwrap(),
+            "checkout-123"
+        );
+        assert_eq!(
+            infer_checkout_id(
+                Path::new(
+                    "/home/developer/.local/share/vm/package-checkouts/checkout-123/source/src"
+                ),
+                home,
+            )
+            .unwrap(),
+            "checkout-123"
+        );
+        assert!(infer_checkout_id(Path::new("/workspace"), home).is_err());
     }
 }

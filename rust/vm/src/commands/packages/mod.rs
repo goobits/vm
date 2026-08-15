@@ -148,6 +148,82 @@ async fn up(
     Ok(())
 }
 
+async fn work(files: &ApplianceFiles, source: String, task: String) -> VmResult<()> {
+    let global = vm_config::GlobalConfig::load()?;
+    let config_path = global.packages.work_config.clone().ok_or_else(|| {
+        VmError::validation(
+            "Package work has not been initialized",
+            Some("Run `vm packages init <source-root>` from the target project"),
+        )
+    })?;
+    let retry = crate::commands::command_context::host_command(&[
+        "packages".into(),
+        "work".into(),
+        source.clone(),
+        task.clone(),
+    ]);
+    let session = {
+        let _operation_lock = files.acquire_operation_lock()?;
+        checkout::prepare(
+            files,
+            checkout::CheckoutIntent {
+                config_path: Some(PathBuf::from(config_path)),
+                profile: global.packages.work_profile,
+                package: source.clone(),
+                agent: "codex".into(),
+                consumer: None,
+                task: task.clone(),
+            },
+            true,
+        )
+        .await?
+    };
+    let prompt = format!(
+        "Work on the managed source '{source}'. Task: {task}\n\
+         Edit and test the source in the current directory. Commit the finished changes, then run \
+         `vm packages release` from this directory. If release requests changes, address them, \
+         commit, and rerun `vm packages release` until publication succeeds. Do not ask the user \
+         for a checkout ID, source path, environment, activation step, or rebuild."
+    );
+    let command = vec![
+        "codex".to_string(),
+        "--dangerously-bypass-approvals-and-sandbox".to_string(),
+        prompt,
+    ];
+    session
+        .subject
+        .provider
+        .exec_interactive(
+            Some(session.subject.target.as_str()),
+            &session.source,
+            &command,
+        )
+        .map_err(|error| {
+            VmError::validation(
+                format!("Codex session failed: {error}"),
+                Some(format!("Run `{retry}`")),
+            )
+        })?;
+
+    let checkout = configured_client(files)?
+        .checkout(&session.checkout.checkout_id)
+        .await?;
+    if !matches!(
+        checkout.state,
+        vm_packages::WorkflowState::Published | vm_packages::WorkflowState::Closed
+    ) {
+        return Err(VmError::validation(
+            format!(
+                "Codex exited before '{}' was published; checkout state is {:?}",
+                source, checkout.state
+            ),
+            Some(format!("Run `{retry}`")),
+        ));
+    }
+    vm_success!("Published {source}");
+    Ok(())
+}
+
 fn package_init_context(
     source_root: PathBuf,
     config_path: Option<PathBuf>,
@@ -212,7 +288,8 @@ pub(super) async fn handle(
     let _operation_lock = match &command {
         PackagesSubcommand::Backups { .. }
         | PackagesSubcommand::Backup { .. }
-        | PackagesSubcommand::Restore { .. } => None,
+        | PackagesSubcommand::Restore { .. }
+        | PackagesSubcommand::Work { .. } => None,
         PackagesSubcommand::Init { .. }
         | PackagesSubcommand::Up { .. }
         | PackagesSubcommand::Down { .. } => Some(files.acquire_lifecycle_lock()?),
@@ -237,6 +314,7 @@ pub(super) async fn handle(
             vm_success!("Package work is initialized");
             Ok(())
         }
+        PackagesSubcommand::Work { source, task } => work(&files, source, task).await,
         PackagesSubcommand::Up {
             runtime,
             port,
@@ -353,7 +431,13 @@ async fn handle_guest(
             .await
         }
         PackagesSubcommand::Show { checkout_id } => catalog::show_guest(&checkout_id).await,
-        PackagesSubcommand::Release { checkout_id } => release::handle_guest(&checkout_id).await,
+        PackagesSubcommand::Release { checkout_id } => {
+            release::handle_guest(checkout_id.as_deref()).await
+        }
+        PackagesSubcommand::Work { .. } => Err(crate::error::VmError::validation(
+            "Package work is launched from the controller host",
+            Some("Run on the host: vm packages work <source> <task>"),
+        )),
         _ => Err(crate::error::VmError::validation(
             "This package command is restricted to the controller host",
             Some("Run package administration commands on the host"),
