@@ -31,6 +31,11 @@ pub enum PackageConsumerSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum PackagesSubcommand {
+    /// Configure the source shelf and project environment used for managed work
+    Init {
+        #[arg(value_name = "SOURCE_ROOT")]
+        source_root: PathBuf,
+    },
     /// Prepare or reconcile the shared package-infrastructure appliance and configured sources
     Up {
         #[arg(long, value_enum, default_value = "auto")]

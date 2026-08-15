@@ -98,6 +98,8 @@ fn test_serialization_deserialization_cycle() {
     config.services.postgresql.enabled = true;
     config.defaults.cpus = Some(4);
     config.packages.source_roots = vec!["/srv/packages".to_string()];
+    config.packages.work_config = Some("/srv/project/vm.yaml".to_string());
+    config.packages.work_profile = Some("development".to_string());
 
     let yaml = serde_yaml_ng::to_string(&config).unwrap();
     let deserialized: GlobalConfig = serde_yaml_ng::from_str(&yaml).unwrap();
@@ -105,6 +107,14 @@ fn test_serialization_deserialization_cycle() {
     assert!(deserialized.services.postgresql.enabled);
     assert_eq!(deserialized.defaults.cpus, Some(4));
     assert_eq!(deserialized.packages.source_roots, ["/srv/packages"]);
+    assert_eq!(
+        deserialized.packages.work_config.as_deref(),
+        Some("/srv/project/vm.yaml")
+    );
+    assert_eq!(
+        deserialized.packages.work_profile.as_deref(),
+        Some("development")
+    );
 }
 
 #[test]

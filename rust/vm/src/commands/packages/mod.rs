@@ -18,7 +18,7 @@ use std::path::PathBuf;
 
 use crate::cli::PackagesSubcommand;
 use crate::commands::command_context::managed_guest_context;
-use crate::error::VmResult;
+use crate::error::{VmError, VmResult};
 use vm_core::{vm_println, vm_success};
 
 use appliance::configured_client;
@@ -118,6 +118,88 @@ async fn doctor(
     Ok(())
 }
 
+async fn up(
+    files: &ApplianceFiles,
+    runtime: crate::cli::PackageInfrastructureRuntime,
+    port: u16,
+    registry_image: Option<String>,
+    job_image: Option<String>,
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+) -> VmResult<()> {
+    let global_config = vm_config::GlobalConfig::load()?;
+    let source_roots = catalog::prepare_source_roots(&global_config.packages.source_roots)?;
+    appliance::up(files, runtime, port, registry_image, job_image).await?;
+    let outcome = catalog::reconcile_source_roots(files, source_roots).await?;
+    if outcome.is_degraded() {
+        vm_core::vm_warning!(
+            "Package infrastructure is degraded: {} quarantined, {} unresolved",
+            outcome.quarantined.len(),
+            outcome.failures.len()
+        );
+        vm_core::vm_hint!("Repair with: vm packages doctor --fix");
+        vm_println!("Package infrastructure: degraded");
+    } else {
+        vm_println!("Package infrastructure: healthy");
+    }
+    if let Ok(config) = vm_config::AppConfig::load(config_path, profile, None) {
+        let _ = tooling::refresh(&config.vm).await;
+    }
+    Ok(())
+}
+
+fn package_init_context(
+    source_root: PathBuf,
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+) -> VmResult<(PathBuf, PathBuf, Option<String>)> {
+    let config = match config_path {
+        Some(path) => path,
+        None => vm_config::config_ops::find_local_config().map_err(VmError::from)?,
+    };
+    let config = std::fs::canonicalize(&config).map_err(|error| {
+        VmError::filesystem(
+            error,
+            config.display().to_string(),
+            "resolve package work project configuration",
+        )
+    })?;
+    let resolved =
+        crate::commands::environment::resolve_environment(Some(config.clone()), profile, None)?;
+
+    std::fs::create_dir_all(&source_root).map_err(|error| {
+        VmError::filesystem(
+            error,
+            source_root.display().to_string(),
+            "create package source root",
+        )
+    })?;
+    let source_root = std::fs::canonicalize(&source_root).map_err(|error| {
+        VmError::filesystem(
+            error,
+            source_root.display().to_string(),
+            "resolve package source root",
+        )
+    })?;
+    Ok((source_root, config, resolved.profile))
+}
+
+fn remember_package_init(
+    source_root: &std::path::Path,
+    config: &std::path::Path,
+    profile: Option<String>,
+) -> VmResult<()> {
+    let mut global = vm_config::GlobalConfig::load()?;
+    let source_root = source_root.to_string_lossy().into_owned();
+    if !global.packages.source_roots.contains(&source_root) {
+        global.packages.source_roots.push(source_root);
+        global.packages.source_roots.sort();
+    }
+    global.packages.work_config = Some(config.to_string_lossy().into_owned());
+    global.packages.work_profile = profile;
+    global.save().map_err(VmError::from)
+}
+
 pub(super) async fn handle(
     command: PackagesSubcommand,
     config_path: Option<PathBuf>,
@@ -131,37 +213,46 @@ pub(super) async fn handle(
         PackagesSubcommand::Backups { .. }
         | PackagesSubcommand::Backup { .. }
         | PackagesSubcommand::Restore { .. } => None,
-        PackagesSubcommand::Up { .. } | PackagesSubcommand::Down { .. } => {
-            Some(files.acquire_lifecycle_lock()?)
-        }
+        PackagesSubcommand::Init { .. }
+        | PackagesSubcommand::Up { .. }
+        | PackagesSubcommand::Down { .. } => Some(files.acquire_lifecycle_lock()?),
         _ => Some(files.acquire_operation_lock()?),
     };
     match command {
+        PackagesSubcommand::Init { source_root } => {
+            let (source_root, config, profile) =
+                package_init_context(source_root, config_path, profile)?;
+            remember_package_init(&source_root, &config, profile.clone())?;
+            let _ = catalog::repair_github_credential(&files)?;
+            up(
+                &files,
+                crate::cli::PackageInfrastructureRuntime::Auto,
+                3080,
+                None,
+                None,
+                Some(config),
+                profile,
+            )
+            .await?;
+            vm_success!("Package work is initialized");
+            Ok(())
+        }
         PackagesSubcommand::Up {
             runtime,
             port,
             registry_image,
             job_image,
         } => {
-            let global_config = vm_config::GlobalConfig::load()?;
-            let source_roots = catalog::prepare_source_roots(&global_config.packages.source_roots)?;
-            appliance::up(&files, runtime, port, registry_image, job_image).await?;
-            let outcome = catalog::reconcile_source_roots(&files, source_roots).await?;
-            if outcome.is_degraded() {
-                vm_core::vm_warning!(
-                    "Package infrastructure is degraded: {} quarantined, {} unresolved",
-                    outcome.quarantined.len(),
-                    outcome.failures.len()
-                );
-                vm_core::vm_hint!("Repair with: vm packages doctor --fix");
-                vm_println!("Package infrastructure: degraded");
-            } else {
-                vm_println!("Package infrastructure: healthy");
-            }
-            if let Ok(config) = vm_config::AppConfig::load(config_path, profile, None) {
-                let _ = tooling::refresh(&config.vm).await;
-            }
-            Ok(())
+            up(
+                &files,
+                runtime,
+                port,
+                registry_image,
+                job_image,
+                config_path,
+                profile,
+            )
+            .await
         }
         PackagesSubcommand::Down { runtime } => appliance::down(&files, runtime),
         PackagesSubcommand::Status { runtime } => status(&files, runtime).await,
@@ -240,6 +331,10 @@ async fn handle_guest(
     profile: Option<String>,
 ) -> VmResult<()> {
     match command {
+        PackagesSubcommand::Init { .. } => Err(crate::error::VmError::validation(
+            "Package initialization runs on the controller host",
+            Some("Run on the host: vm packages init <source-root>"),
+        )),
         PackagesSubcommand::Status { .. } => catalog::status_guest().await,
         PackagesSubcommand::Checkout {
             package,

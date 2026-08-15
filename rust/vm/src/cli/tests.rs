@@ -319,6 +319,16 @@ fn package_auth_can_import_the_active_github_credential() {
 }
 
 #[test]
+fn package_init_parses_the_source_shelf() {
+    assert!(matches!(
+        Args::parse_from(["vm", "packages", "init", "/srv/packages"]).command,
+        Command::Packages {
+            command: PackagesSubcommand::Init { source_root }
+        } if source_root == std::path::Path::new("/srv/packages")
+    ));
+}
+
+#[test]
 fn package_doctor_parses_safe_fix_mode() {
     assert!(matches!(
         Args::parse_from(["vm", "packages", "doctor", "--fix"]).command,
