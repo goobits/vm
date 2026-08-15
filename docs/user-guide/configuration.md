@@ -237,9 +237,15 @@ use a Linux Tart guest or a controlled remote Docker daemon over SSH/TLS.
 
 ## Controller Package Sources
 
-Package source discovery is controller-wide rather than tied to a project or a
-username-specific path. Configure one or more absolute host roots in the global
-configuration:
+Package source discovery is controller-wide rather than tied to a username-specific
+path. Initialize the normal one-shelf workflow from the project whose environments
+should receive managed tools:
+
+```bash
+vm packages init /absolute/path/to/packages
+```
+
+Advanced installations can configure several absolute roots directly:
 
 ```bash
 vm config set packages.source_roots \
@@ -259,7 +265,8 @@ packages:
     - /another/absolute/source-root
 ```
 
-Each `vm packages up` scans these roots recursively and idempotently registers
+`init` remembers the project configuration used by `vm packages work`. Each
+`vm packages up` scans the roots recursively and idempotently registers
 detected Git package repositories. The paths are used only for controller-side
 discovery; they are not copied into `vm.yaml`, mounted into the appliance, or
 treated as publication authorization.

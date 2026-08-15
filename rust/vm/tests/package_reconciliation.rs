@@ -294,6 +294,19 @@ fn packages_up(
         .unwrap()
 }
 
+fn packages_status(directory: &TempDir, context: &str) -> Output {
+    Command::new(cargo_bin("vm"))
+        .args(["packages", "status"])
+        .env("HOME", directory.path())
+        .env("VM_TEST_MODE", "1")
+        .env("VM_TEST_COMMAND_CONTEXT", context)
+        .env_remove("VM_PACKAGES_CONSUMER")
+        .env_remove("VM_PACKAGES_WORK_GATEWAY")
+        .env_remove("VM_PACKAGES_AGENT_TOKEN")
+        .output()
+        .unwrap()
+}
+
 #[test]
 fn fresh_setup_and_existing_state_reconciliation_are_idempotent() {
     let directory = TempDir::new().unwrap();
@@ -438,6 +451,30 @@ fn guest_package_status_verifies_access_without_mutating_state() {
     let mut requests = gateway.requests.lock().unwrap().clone();
     requests.sort();
     assert_eq!(requests, ["GET /work/v1/packages", "GET /work/v1/tools"]);
+}
+
+#[test]
+fn guest_package_status_reduces_missing_access_to_one_answer() {
+    let directory = TempDir::new().unwrap();
+    let output = packages_status(&directory, "guest");
+
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Package infrastructure: action required\n"
+    );
+}
+
+#[test]
+fn host_package_status_reduces_missing_setup_to_one_answer() {
+    let directory = TempDir::new().unwrap();
+    let output = packages_status(&directory, "host");
+
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Package infrastructure: action required\n"
+    );
 }
 
 #[test]

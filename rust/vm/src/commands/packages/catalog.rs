@@ -6,8 +6,8 @@ use std::{
 
 use vm_core::{vm_println, vm_success, vm_warning};
 use vm_packages::{
-    PackageEcosystem, PackageIdentity, PackageInventory, RegisterPackage, RegisterTool, SourceKind,
-    ToolKind,
+    CheckoutRecord, PackageEcosystem, PackageIdentity, PackageInventory, RegisterPackage,
+    RegisterTool, SourceKind, ToolKind,
 };
 
 use crate::error::{VmError, VmResult};
@@ -493,10 +493,7 @@ fn yes_no(value: bool) -> &'static str {
 
 pub(super) async fn show(files: &ApplianceFiles, checkout_id: &str) -> VmResult<()> {
     let checkout = configured_client(files)?.checkout(checkout_id).await?;
-    let json = serde_json::to_string_pretty(&checkout)
-        .map_err(|error| VmError::general(error, "Failed to render checkout"))?;
-    vm_println!("{json}");
-    Ok(())
+    print_checkout(&checkout)
 }
 
 pub(super) async fn show_guest(checkout_id: &str) -> VmResult<()> {
@@ -504,19 +501,34 @@ pub(super) async fn show_guest(checkout_id: &str) -> VmResult<()> {
         .client()?
         .checkout(checkout_id)
         .await?;
-    let json = serde_json::to_string_pretty(&checkout)
+    print_checkout(&checkout)
+}
+
+fn print_checkout(checkout: &CheckoutRecord) -> VmResult<()> {
+    let json = serde_json::to_string_pretty(checkout)
         .map_err(|error| VmError::general(error, "Failed to render checkout"))?;
     vm_println!("{json}");
     Ok(())
 }
 
 pub(super) async fn status_guest() -> VmResult<()> {
-    let runtime = super::runtime::GuestRuntime::discover()?;
-    let client = runtime.client()?;
-    let (_packages, _tools) = tokio::try_join!(client.package_definitions(), client.tools())?;
-
-    let _consumer = runtime.consumer();
-    vm_println!("Package infrastructure: healthy");
+    let healthy = async {
+        let runtime = super::runtime::GuestRuntime::discover()?;
+        let client = runtime.client()?;
+        let (_packages, _tools) = tokio::try_join!(client.package_definitions(), client.tools())?;
+        let _consumer = runtime.consumer();
+        Ok::<_, VmError>(())
+    }
+    .await
+    .is_ok();
+    vm_println!(
+        "Package infrastructure: {}",
+        if healthy {
+            "healthy"
+        } else {
+            "action required"
+        }
+    );
     Ok(())
 }
 

@@ -200,6 +200,8 @@ services:
     security_opt: ["no-new-privileges:true"]
     read_only: true
     tmpfs: ["/tmp:rw,exec,nosuid,size=8g"]
+    volumes:
+      - source-mirrors:/data/sources
     networks: [packages, egress]
 
   rollout:

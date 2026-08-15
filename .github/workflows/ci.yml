@@ -77,6 +77,37 @@ jobs:
         working-directory: rust
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+  package-workflow-docker:
+    name: Package workflow Docker acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CARGO_TARGET_DIR: target
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-package-workflow-${{ hashFiles('rust/Cargo.lock') }}
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build VM CLI
+        working-directory: rust
+        run: cargo build --locked --release --package goobits-vm
+
+      - name: Prove persistent package workflow
+        env:
+          VM_ACCEPTANCE_BIN: ${{ github.workspace }}/rust/target/release/vm
+        run: scripts/internal/test-package-workflow-docker.sh
+
   audit:
     name: Security & Quality Audit
     runs-on: ubuntu-latest

@@ -40,27 +40,32 @@ Their scoped, consumer-bound package capability can submit only assigned work.
 The gateway alone joins a host-facing controller bridge; all
 registry and workflow storage remains behind the appliance's internal network.
 
-## Start the Appliance
+## Initialize Package Work
 
-Run appliance commands on the controller host. The appliance is shared and is
-not scoped to the current project directory.
+Run this once on the controller host, from the project whose environments should
+receive managed tools:
 
 ```bash
-vm config set packages.source_roots /absolute/path/to/packages --global
-vm packages up --runtime docker  # one-time Docker choice on macOS
-vm packages doctor
+vm packages init ~/projects/packages
 ```
 
-The selected runtime is stored in controller state, so later starts from any
-host directory are simply `vm packages up`. Every run safely reconciles the
-appliance and recursively registers repositories below the configured absolute
-source roots. Existing credentials and named volumes are retained. A
-Docker-only setup does not need a Tart package VM.
+`init` records the source shelf, project configuration, and selected profile;
+imports an active GitHub CLI credential when available; starts the shared
+appliance; and reconciles discovered sources. Existing credentials and named
+volumes are retained.
+
+`vm packages up` remains an advanced lifecycle command. It recursively
+registers repositories below configured source roots and quarantines an
+unhealthy child repository under that shelf's `.vm-quarantine` directory
+instead of failing unrelated sources. It exits successfully and reports
+`degraded` when quarantine or registration failures remain. `vm packages
+doctor --fix` applies only safe deterministic repairs: client credentials,
+missing exact registered origins, stale linked worktrees, and registration
+drift. It never guesses a replacement remote or deletes repository data.
 
 Configured roots are resolved and scanned before the appliance is started or
-updated. A missing or invalid root therefore fails without changing appliance
-state. An existing but empty configured shelf is a successful no-op, which
-allows first-run setup before repositories have been added.
+updated. A missing root therefore fails without changing appliance state. An
+existing empty shelf is a successful no-op.
 
 On its first run, macOS selects Tart and prepares the versioned Linux base
 automatically. Later runs reuse the stored runtime. Other platforms select
@@ -90,17 +95,19 @@ that mirror in Docker Engine automatically.
 Projects keep ordinary versioned dependencies; no local/remote branch belongs
 in application code.
 
-## Change And Release A Source
+## Daily Source Work
 
-From a writable Docker or Tart project environment, request an isolated source:
+From any host directory, give Codex the source and task:
 
 ```bash
-vm packages status  # read-only connection and scoped-credential check
-
-vm packages checkout agent-skills \
-  --agent codex \
-  --task "update the owner checklist"
+vm packages work agent-skills "update the owner checklist"
 ```
+
+`work` creates or resumes the matching checkout, creates or starts the
+initialized project's environment, opens Codex in the checkout source, and
+instructs it to edit, test, commit, and run `vm packages release`. Checkout IDs,
+guest paths, environment flags, activation, and rebuilds are not part of the
+normal human workflow.
 
 Inside a managed guest, `vm packages status` verifies the workflow gateway and
 consumer-bound agent credential using read-only requests. It creates no
@@ -116,19 +123,23 @@ non-interactive package checks and refreshes the host Git author identity when
 `host_sync.git_config` is enabled.
 
 The appliance fetches the registered canonical repository, creates a unique
-task branch, and returns a writable checkout under
-`~/.local/share/vm/package-checkouts/<checkout-id>`. Edit that returned path,
-bump the source's stable semantic version, and commit the intended changes.
+task branch, and places a writable checkout under
+`~/.local/share/vm/package-checkouts/<checkout-id>`. Codex edits there, bumps
+the source's stable semantic version, and commits the intended changes.
 Never edit an installed release under `~/.local/share/vm-tools/releases`; those
 directories are read-only immutable activation output. Reconciliation replaces
 older writable installations from the private artifact rather than trusting
 their contents.
 
-Finish from the same guest:
+Inside that checkout, the agent finishes with:
 
 ```bash
-vm packages release <checkout-id>
+vm packages release
 ```
+
+The checkout ID is inferred from the current directory. Explicit `checkout`
+and ID-based `release` commands remain available for debugging and advanced
+automation.
 
 That resumable command submits the exact Git bundle, waits for isolated review,
 integrates against the latest canonical branch, reruns checks, and lets the
@@ -136,6 +147,11 @@ credential-isolated release worker push the commit and tag and publish the
 immutable artifact. No host checkout, host approval, npmjs.org, crates.io, or
 PyPI publication participates. Package and tool-collection work use this same
 boundary.
+
+After a configured tool collection is published, `work` applies the existing
+in-place fleet activation to environments owned by the initialized project.
+Language packages are not installed directly; their existing consumer rollout
+workers remain authoritative.
 
 For a language package, the unpublished checkout is attached only to the
 assigned consumer; other consumers stay on their published versions. Every
@@ -264,9 +280,10 @@ vm tools list
 vm tools show agent-skills
 ```
 
-Use `vm packages checkout <tool>` and `vm packages release <checkout-id>` to
-change a registered collection. The same reviewer and release workers validate,
-integrate, push, archive, and receipt its exact commit. Projects select
+Use `vm packages work <tool> <task>` to change a registered collection.
+Explicit checkout and ID-based release remain advanced commands. The same
+reviewer and release workers validate, integrate, push, archive, and receipt
+the exact commit. Projects select
 versions through the one-level `tools:` map in `vm.yaml`. A collection such as
 `agent-skills` is one atomic version, even when it activates into several agent
 directories.
@@ -405,6 +422,6 @@ your infrastructure backup system to protect against physical disk loss.
 - Receipts contain identities, commits, digests, outcomes, and timestamps—not
   secrets.
 
-On the controller host, use `vm packages status` for runtime health and
-`vm packages doctor` for the gateway, Compose definition, credentials, and
-workflow service checks.
+On the controller host, `vm packages status` prints one result: `healthy`,
+`degraded`, or `action required`. Use `vm packages doctor --fix` for safe
+repairs and a precise remaining action when deterministic repair is impossible.

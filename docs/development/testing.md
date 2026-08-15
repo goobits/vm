@@ -15,6 +15,7 @@ The root `Makefile` owns the supported test and quality commands. It uses
 | Compile check | `cd rust && cargo check -j 2 --workspace --all-features` |
 | Clippy | `make clippy` |
 | Full local gate | `make quality-gates` |
+| Docker package workflow | `scripts/internal/test-package-workflow-docker.sh` |
 
 `make quality-gates` also requires `cargo-deny`, nightly Rust with
 `cargo-udeps`, and any provider dependencies used by integration tests.
@@ -49,6 +50,14 @@ cargo test -p goobits-vm --test vm_ops test_name -- --ignored --test-threads=1
 
 Do not run provider-mutating tests against a development environment that
 contains uncheckpointed work or unique writable-layer data.
+
+The Docker package-workflow acceptance test uses an isolated temporary home,
+local appliance images, an appliance-volume Git remote, and a purpose-built
+project environment. CI runs it on every main-branch push and pull request. It
+forces checkout rework before publication, verifies managed-tool activation,
+and compares the stable appliance, project, and edge container IDs before and
+after the release. Run it only on a disposable Docker host; its cleanup removes
+the exact acceptance containers and volumes it creates.
 
 The supported integration target enables the package server's
 `standalone-binary` feature so its CLI fixtures compile and run with the rest of

@@ -148,13 +148,6 @@ impl TartProvider {
         info!("Opening SSH session in directory: {}", target_path);
         let target_path_quoted = shell_session::quote_posix_argument(&target_path);
 
-        let user = self
-            .config
-            .tart
-            .as_ref()
-            .and_then(|tart| tart.ssh_user.as_deref())
-            .unwrap_or("admin");
-
         if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
             vm_println!(
                 "{}",

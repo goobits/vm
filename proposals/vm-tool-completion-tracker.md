@@ -17,9 +17,10 @@ Package development and release work runs in Docker or Linux VMs. The Mac only
 launches those runtimes and holds controller credentials; it does not build,
 test, merge, or publish package source directly.
 
-The normal release loop is a managed checkout followed by `vm packages release
-<checkout-id>` from its assigned writable guest. The same durable workflow now
-owns language packages and tool collections. Credential-isolated appliance
+The normal release loop is `vm packages work <source> <task>`; its Codex session
+runs bare `vm packages release` from the managed source directory. Explicit
+checkout and ID-based release remain advanced diagnostics. The same durable
+workflow owns language packages and tool collections. Credential-isolated appliance
 workers review, integrate, push, and publish only to the private gateway; host
 working trees and installed immutable releases are never treated as source.
 
@@ -272,7 +273,14 @@ recorded below.
 - [x] Add one-time project/source initialization and persistent work context.
 - [x] Launch resumable managed work and infer release identity from its directory.
 - [x] Activate published managed tools in configured project environments.
-- [ ] Continuously prove the full workflow in one persistent Docker environment.
+- [x] Continuously prove the full workflow in one persistent Docker environment.
+
+The dedicated CI acceptance job builds local appliance images, initializes an
+isolated project, forces a collection release through rework, verifies private
+publication and automatic activation, and compares every stable Docker
+container ID before and after. The current development container has no Docker
+binary, so its first live execution is intentionally delegated to the Docker CI
+runner rather than replaced with another fake-provider test.
 
 ## Deferred Environment Apply (Not A Release Blocker)
 
@@ -528,6 +536,10 @@ f80e144d docs(packages): record boundary audit
 8f13e180 test(packages): consolidate workflow fixtures
 8d89fe88 docs(packages): record consolidation pass
 d91728f2 feat(packages): enforce managed source releases
+576955e9 fix(packages): quarantine unhealthy sources
+59534b66 feat(packages): add one-time workflow init
+5b8062b7 feat(packages): launch managed Codex work
+a5cb71c5 feat(tools): activate managed releases automatically
 d710b9ac fix(runtime): externalize build artifacts
 828261d5 docs(packages): document managed guest releases
 f8071ae3 test(cli): preserve actionable io errors

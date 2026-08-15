@@ -46,15 +46,19 @@ async fn status(
     files: &ApplianceFiles,
     runtime: crate::cli::PackageInfrastructureRuntime,
 ) -> VmResult<()> {
-    let global = vm_config::GlobalConfig::load()?;
-    let source_state = catalog::prepare_source_roots(&global.packages.source_roots);
-    let mut health = appliance::status(files, runtime).await?;
-    if source_state.is_err()
-        || (!global.packages.source_roots.is_empty() && !files.has_git_token()?)
-    {
+    let mut health = appliance::status(files, runtime)
+        .await
+        .unwrap_or(appliance::PackageHealth::ActionRequired);
+    let global = vm_config::GlobalConfig::load().ok();
+    if global.as_ref().map_or(true, |global| {
+        catalog::prepare_source_roots(&global.packages.source_roots).is_err()
+            || (!global.packages.source_roots.is_empty() && !files.has_git_token().unwrap_or(false))
+    }) {
         health = appliance::PackageHealth::ActionRequired;
     } else if health == appliance::PackageHealth::Healthy
-        && catalog::has_quarantined_sources(&global.packages.source_roots)
+        && global
+            .as_ref()
+            .is_some_and(|global| catalog::has_quarantined_sources(&global.packages.source_roots))
     {
         health = appliance::PackageHealth::Degraded;
     }

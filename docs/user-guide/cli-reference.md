@@ -194,11 +194,13 @@ pnpm pruning is explicit and never runs during create, start, or bootstrap.
 ## Package Infrastructure
 
 ```bash
+vm packages init <source-root>
+vm packages work <package-or-collection> <task>
 vm config set packages.source_roots <absolute-path>... --global
 vm packages up [--runtime <auto|docker|tart>]
 vm packages down [--runtime <auto|docker|tart>]
 vm packages status
-vm packages doctor
+vm packages doctor [--fix]
 vm packages backup
 vm packages backups
 vm packages restore <backup-id>
@@ -210,7 +212,7 @@ vm packages auth --clear
 vm packages list
 vm packages checkout <package-or-collection> --agent <agent> --task <task>
 vm packages show <checkout-id>
-vm packages release <checkout-id>
+vm packages release [checkout-id]
 vm packages cancel <checkout-id>
 vm packages cleanup <checkout-id>
 vm packages consumer register <project> --repository <url> --dependency <package>@<version>
@@ -218,15 +220,21 @@ vm packages consumers <package>
 vm packages drift
 ```
 
+`init` and `work` are the documented human interface. The former remembers the
+project environment and source shelf; the latter launches Codex in a resumable
+managed checkout. The remaining checkout IDs, lifecycle flags, and registration
+commands are advanced or diagnostic surfaces. Inside a checkout, bare
+`vm packages release` infers its identity from the current directory.
+
 Recursive registration routes repositories marked by `vm-tool.yaml` into the
 managed tool-collection workflow. `packages.source_roots` is a
 controller-wide list; `vm packages up` reconciles those roots on fresh and
 existing appliance state without replacing credentials or named volumes. Roots
 are scanned before appliance mutation; configured empty shelves are accepted,
 while manual recursive registration still requires at least one repository.
-On the controller host, `status` reports appliance runtime health. Inside a
-managed guest, the same command performs a read-only workflow and scoped-agent
-credential check; it does not reconcile or change infrastructure.
+On the controller host, `status` reports exactly `healthy`, `degraded`, or
+`action required`. Inside a managed guest, it performs a read-only workflow and
+scoped-agent credential check; it does not reconcile or change infrastructure.
 `vm packages list` separates registered, published, installed, and consumable
 state; environment-only states are reported as not applicable.
 Package checkout and release commands are the managed agent workflow inside the
@@ -249,8 +257,8 @@ vm tools update --fleet [--provider <provider>] [--pattern <pattern>] [--backgro
 ```
 
 `status` combines controller registration/publication with guest
-installation/consumability. Collection publication uses the managed
-`vm packages checkout` / `vm packages release` workflow. `update` applies
+installation/consumability. Normal collection publication uses `vm packages
+work`; explicit checkout and ID-based release are its advanced primitives. `update` applies
 eligible changes without prompting or rebuilding the base, including the
 authenticated, digest-verified guest `vm` client used by that workflow.
 `--fleet` uses the loaded tool selection for matching managed environments,

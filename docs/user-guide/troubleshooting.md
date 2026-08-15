@@ -168,8 +168,12 @@ source binds.
 
 ```bash
 vm packages status
-vm packages doctor
+vm packages doctor --fix
 ```
+
+`status` prints one classification: `healthy`, `degraded`, or `action required`.
+`doctor --fix` repairs only deterministic state and prints one repair command
+for anything that still needs an operator.
 
 The central appliance and each worker edge have separate failure behavior. If
 the appliance is down, a warmed edge can serve cached locked internal artifacts
@@ -179,9 +183,11 @@ package clients intentionally do not bypass it because doing so could leak an
 internal name to a public registry.
 
 `vm packages up` validates configured source roots before starting or updating
-the appliance. Fix a reported missing/invalid absolute root and retry; no
-service reconciliation has occurred. An existing empty configured shelf is
-valid and will be scanned again on the next run.
+the appliance. A missing absolute root still stops before service
+reconciliation. An unhealthy child Git repository is moved intact under
+`.vm-quarantine`, healthy siblings continue, and the command reports
+`degraded`. Repair it with `vm packages doctor --fix`; an existing empty shelf
+remains valid.
 
 For an existing environment, run this on the controller host:
 
@@ -218,11 +224,10 @@ If a package/tool command was run inside a managed guest, do not try to operate
 the controller from there. The error prints the exact shell-safe host command,
 such as `Run on the host: vm packages up`; run that command in the host terminal.
 
-A built-in tool can be registered but not published on a fresh controller. That
-is intentional. From a writable managed environment, create and release an
-`agent-skills` checkout, then rerun `vm tools update`. The first update still
-reconciles the worker edge and Codex before reporting the unpublished
-collection. See
+A built-in tool can be registered but not published on a fresh controller. Run
+`vm packages work agent-skills "publish the initial skills release"`; the agent
+releases from its managed directory and successful publication activates the
+configured project environments automatically. See
 [Package Infrastructure](package-infrastructure.md#register-and-consume-tools)
 for normal update, locking, fleet, and package-state behavior.
 

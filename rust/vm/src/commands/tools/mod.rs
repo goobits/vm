@@ -183,10 +183,18 @@ async fn update_fleet(
         return Ok(());
     }
 
-    prepare_tool_catalog(&config).await?;
+    update_targets(&config, instances, mode).await
+}
+
+async fn update_targets(
+    config: &VmConfig,
+    instances: Vec<InstanceInfo>,
+    mode: InstallMode,
+) -> VmResult<()> {
+    prepare_tool_catalog(config).await?;
     let mut progress = FleetProgress::default();
     for instance in instances {
-        match update_fleet_target(&config, &instance, mode).await {
+        match update_fleet_target(config, &instance, mode).await {
             Ok(()) => progress.success(&instance.name),
             Err(error) => progress.failure(&instance.name, &error),
         }
@@ -233,15 +241,7 @@ pub(in crate::commands) async fn activate_project_tool(
         ));
     }
 
-    prepare_tool_catalog(&config).await?;
-    let mut progress = FleetProgress::default();
-    for instance in instances {
-        match update_fleet_target(&config, &instance, InstallMode::Wait).await {
-            Ok(()) => progress.success(&instance.name),
-            Err(error) => progress.failure(&instance.name, &error),
-        }
-    }
-    progress.finish()
+    update_targets(&config, instances, InstallMode::Wait).await
 }
 
 fn config_for_fleet_target(config: &VmConfig, instance: &InstanceInfo) -> VmConfig {
