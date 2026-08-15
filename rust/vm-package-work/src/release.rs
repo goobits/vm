@@ -1,8 +1,8 @@
 use chrono::Utc;
 use vm_packages::{
     validate_label, validate_registry_url, BeginReleaseRequest, CompleteReleaseRequest,
-    PublicationRecord, PublicationRequest, ReceiptKind, ReleaseRecord, ReviewDecision, SourceKind,
-    WorkflowState,
+    PublicationRecord, PublicationRequest, ReceiptKind, ReleaseRecord, ReleaseReworkRequest,
+    ReviewDecision, SourceKind, WorkflowState,
 };
 
 use crate::store::{
@@ -168,6 +168,70 @@ impl Store {
             .cloned()
     }
 
+    pub async fn request_release_rework(
+        &self,
+        submission_id: &str,
+        request: ReleaseReworkRequest,
+    ) -> WorkResult<vm_packages::SubmissionRecord> {
+        validate_release_rework(&request)?;
+        let fingerprint = operation_fingerprint("release_rework", Some(submission_id), &request)?;
+        let mut current = self.database.lock().await;
+        if let Some(existing) = current.idempotency.get(&request.idempotency_key) {
+            ensure_fingerprint(existing, &fingerprint)?;
+            return current
+                .submissions
+                .get(&existing.target_id)
+                .cloned()
+                .ok_or_else(|| WorkError::Internal("idempotency target is missing".into()));
+        }
+
+        let mut next = current.clone();
+        let submission = next
+            .submissions
+            .get(submission_id)
+            .ok_or_else(|| WorkError::NotFound(submission_id.to_string()))?;
+        if submission.state != WorkflowState::ReadyToRelease || submission.release_id.is_some() {
+            return Err(WorkError::Conflict(
+                "only an unpublished ready release can request source changes".into(),
+            ));
+        }
+        transition_records(
+            &mut next,
+            submission_id,
+            WorkflowState::NeedsChanges,
+            ReceiptKind::Release,
+            &request.actor,
+            &request.reason,
+            Some("needs_changes".into()),
+        )?;
+        let review = next
+            .submissions
+            .get_mut(submission_id)
+            .expect("submission remains present")
+            .review
+            .as_mut()
+            .ok_or_else(|| WorkError::Conflict("release review is missing".into()))?;
+        review.decision = ReviewDecision::NeedsChanges;
+        review.reason = request.reason;
+        review.required_followups = request.required_followups;
+        review.reviewer = request.actor;
+        review.timestamp = Utc::now();
+        next.idempotency.insert(
+            request.idempotency_key,
+            IdempotencyRecord {
+                fingerprint,
+                target_id: submission_id.to_string(),
+            },
+        );
+        let result = next
+            .submissions
+            .get(submission_id)
+            .cloned()
+            .expect("submission remains present");
+        self.commit(&mut current, next).await?;
+        Ok(result)
+    }
+
     pub async fn record_publication(
         &self,
         release_id: &str,
@@ -324,6 +388,25 @@ impl Store {
     }
 }
 
+fn validate_release_rework(request: &ReleaseReworkRequest) -> WorkResult<()> {
+    validate_label("release rework actor", &request.actor)?;
+    if request.reason.trim().is_empty() || request.reason.len() > 4_000 {
+        return Err(WorkError::Invalid(
+            "release rework reason must contain 1 to 4000 characters".into(),
+        ));
+    }
+    if request
+        .required_followups
+        .iter()
+        .any(|followup| followup.trim().is_empty() || followup.len() > 1_000)
+    {
+        return Err(WorkError::Invalid(
+            "release rework followups must contain 1 to 1000 characters".into(),
+        ));
+    }
+    validate_idempotency_key(&request.idempotency_key)
+}
+
 fn validate_begin(request: &BeginReleaseRequest) -> WorkResult<()> {
     validate_label("version", &request.version)?;
     validate_label("release tag", &request.tag)?;
@@ -359,8 +442,8 @@ mod tests {
     use crate::ImportedSubmission;
     use vm_packages::{
         CheckOutcome, CleanupRequest, CreateCheckout, IntegrationRecord, PackageEcosystem,
-        PublicApiDiff, RegisterPackage, ReviewRequest, TransitionRequest, ValidationRequest,
-        VersionRecommendation,
+        PublicApiDiff, RegisterPackage, ReleaseReworkRequest, ReviewRequest, TransitionRequest,
+        ValidationRequest, VersionRecommendation,
     };
 
     #[tokio::test]
@@ -485,6 +568,104 @@ mod tests {
             store.next_release().await.unwrap().submission_id,
             submission.submission_id
         );
+        let rework_request = ReleaseReworkRequest {
+            reason: "release version is smaller than the reviewed change".into(),
+            required_followups: vec!["bump the package version and resubmit".into()],
+            actor: "release-service".into(),
+            idempotency_key: "release-rework".into(),
+        };
+        let needs_changes = store
+            .request_release_rework(&submission.submission_id, rework_request.clone())
+            .await
+            .unwrap();
+        assert_eq!(needs_changes.state, WorkflowState::NeedsChanges);
+        assert_eq!(
+            needs_changes.review.unwrap().required_followups,
+            ["bump the package version and resubmit"]
+        );
+        assert_eq!(
+            store
+                .request_release_rework(&submission.submission_id, rework_request)
+                .await
+                .unwrap()
+                .state,
+            WorkflowState::NeedsChanges
+        );
+        assert!(store.next_release().await.is_none());
+
+        store
+            .record_submission(
+                &checkout.checkout_id,
+                ImportedSubmission {
+                    submitted_commit: "4444444444444444444444444444444444444444".into(),
+                    diff_digest: "c".repeat(64),
+                },
+            )
+            .await
+            .unwrap();
+        store
+            .validate_submission(
+                &submission.submission_id,
+                ValidationRequest {
+                    package: CheckOutcome::Passed,
+                    consumers: BTreeMap::from([("project-a".into(), CheckOutcome::Passed)]),
+                    actor: "controller".into(),
+                    idempotency_key: "validate-rework".into(),
+                },
+            )
+            .await
+            .unwrap();
+        store
+            .record_review(
+                &submission.submission_id,
+                ReviewRequest {
+                    decision: ReviewDecision::Approve,
+                    recommended_version: VersionRecommendation::Patch,
+                    api_diff: PublicApiDiff {
+                        changed_paths: vec![],
+                        potentially_breaking: false,
+                    },
+                    reason: "compatible rework".into(),
+                    required_followups: vec![],
+                    merge_strategy: "rebase".into(),
+                    reviewer: "reviewer".into(),
+                    idempotency_key: "review-rework".into(),
+                },
+            )
+            .await
+            .unwrap();
+        store
+            .record_integration(
+                &submission.submission_id,
+                IntegrationRecord {
+                    canonical_commit: "1111111111111111111111111111111111111111".into(),
+                    integration_commit: "5555555555555555555555555555555555555555".into(),
+                    strategy: "rebase".into(),
+                    worktree: "/data/agents/reworked-integration".into(),
+                    validation: None,
+                    timestamp: Utc::now(),
+                },
+                "controller",
+                "integrate-rework".into(),
+            )
+            .await
+            .unwrap();
+        store
+            .complete_integration(
+                &submission.submission_id,
+                ValidationRequest {
+                    package: CheckOutcome::Passed,
+                    consumers: BTreeMap::from([("project-a".into(), CheckOutcome::Passed)]),
+                    actor: "controller".into(),
+                    idempotency_key: "complete-integration-rework".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            store.next_release().await.unwrap().submission_id,
+            submission.submission_id
+        );
         let registry = "http://gateway:8080/cargo/index/";
         let release = store
             .begin_release(
@@ -492,7 +673,7 @@ mod tests {
                 BeginReleaseRequest {
                     version: "1.0.1".into(),
                     tag: "v1.0.1".into(),
-                    source_commit: "3333333333333333333333333333333333333333".into(),
+                    source_commit: "5555555555555555555555555555555555555555".into(),
                     artifact_digest: "b".repeat(64),
                     source_pushed: true,
                     registry: registry.into(),

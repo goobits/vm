@@ -66,7 +66,11 @@ async fn integrate(
             &IntegrationRequest {
                 actor: actor.into(),
                 strategy,
-                idempotency_key: format!("integrate-{}", submission.submission_id),
+                idempotency_key: format!(
+                    "integrate-{}-{}",
+                    submission.submission_id,
+                    generation_id(&submission.submitted_commit)
+                ),
             },
         )
         .await?;
@@ -131,11 +135,19 @@ async fn integrate(
                 package: CheckOutcome::Passed,
                 consumers,
                 actor: actor.into(),
-                idempotency_key: format!("integration-checks-{}", integrating.submission_id),
+                idempotency_key: format!(
+                    "integration-checks-{}-{}",
+                    integrating.submission_id,
+                    generation_id(&integrating.submitted_commit)
+                ),
             },
         )
         .await?;
     exec(subject, ["rm", "-rf", "--", root.as_str()])?;
     vm_success!("Integrated checks passed at {integration_commit}");
     Ok(ready)
+}
+
+fn generation_id(commit: &str) -> String {
+    commit.chars().take(16).collect()
 }

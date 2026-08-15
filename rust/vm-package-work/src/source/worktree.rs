@@ -75,6 +75,111 @@ impl SourceManager {
         Ok(archive)
     }
 
+    /// Restore the appliance-side import target when post-integration review
+    /// returns a compacted checkout to its assigned agent for rework.
+    pub async fn restore_checkout(
+        &self,
+        store: &Store,
+        checkout: &CheckoutRecord,
+    ) -> WorkResult<()> {
+        let definition = store.source(&checkout.package).await?;
+        if definition.kind != checkout.source_kind {
+            return Err(WorkError::Conflict(
+                "checkout source kind no longer matches the catalog".into(),
+            ));
+        }
+        let source_lock = self.lock(&format!("source:{}", definition.name)).await;
+        let _source_guard = source_lock.lock().await;
+        let checkout_lock = self
+            .lock(&format!("checkout:{}", checkout.checkout_id))
+            .await;
+        let _checkout_guard = checkout_lock.lock().await;
+        let source = self.checkout_source(checkout)?;
+        if source.is_dir() {
+            return Ok(());
+        }
+        if tokio::fs::try_exists(&source).await? {
+            return Err(WorkError::Conflict(
+                "checkout restore target is not a directory".into(),
+            ));
+        }
+
+        let base_commit = checkout
+            .base_commit
+            .as_deref()
+            .ok_or_else(|| WorkError::Conflict("checkout base commit is missing".into()))?;
+        let branch = checkout
+            .branch
+            .as_deref()
+            .ok_or_else(|| WorkError::Conflict("checkout branch is missing".into()))?;
+        let mirror = self
+            .root
+            .join("sources")
+            .join(format!("{}.git", source_key(&definition.name)));
+        self.sync_mirror(&mirror, &definition.repository).await?;
+        run(
+            self.git()
+                .arg("--git-dir")
+                .arg(&mirror)
+                .arg("cat-file")
+                .arg("-e")
+                .arg(format!("{base_commit}^{{commit}}")),
+            "verify rework base commit",
+        )
+        .await?;
+        if let Some(parent) = source.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        let temporary = source.with_extension(format!(
+            "restore-{}",
+            vm_core::secrets::generate_random_password(12)
+        ));
+        let restore = async {
+            run(
+                self.git()
+                    .arg("clone")
+                    .arg("--no-hardlinks")
+                    .arg(&mirror)
+                    .arg(&temporary),
+                "restore isolated package checkout",
+            )
+            .await?;
+            run(
+                self.git()
+                    .arg("-C")
+                    .arg(&temporary)
+                    .arg("switch")
+                    .arg("--create")
+                    .arg(branch)
+                    .arg(base_commit),
+                "restore package task branch",
+            )
+            .await?;
+            run(
+                self.git()
+                    .arg("-C")
+                    .arg(&temporary)
+                    .arg("remote")
+                    .arg("set-url")
+                    .arg("origin")
+                    .arg(&definition.repository),
+                "restore canonical package remote",
+            )
+            .await?;
+            Ok::<(), WorkError>(())
+        }
+        .await;
+        if let Err(error) = restore {
+            let _ = tokio::fs::remove_dir_all(&temporary).await;
+            return Err(error);
+        }
+        if let Err(error) = tokio::fs::rename(&temporary, &source).await {
+            let _ = tokio::fs::remove_dir_all(&temporary).await;
+            return Err(error.into());
+        }
+        Ok(())
+    }
+
     pub async fn cleanup_checkout(&self, checkout: &CheckoutRecord) -> WorkResult<()> {
         let lock = self
             .lock(&format!("checkout:{}", checkout.checkout_id))

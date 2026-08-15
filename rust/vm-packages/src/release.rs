@@ -30,6 +30,15 @@ pub struct CompleteReleaseRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReleaseReworkRequest {
+    pub actor: String,
+    pub reason: String,
+    #[serde(default)]
+    pub required_followups: Vec<String>,
+    pub idempotency_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicationRecord {
     pub registry: String,
     pub artifact_digest: String,

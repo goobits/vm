@@ -28,6 +28,32 @@ pub(super) async fn handle_guest(
     .await
 }
 
+pub(super) async fn resume_guest(
+    subject: &GuestRuntime,
+    checkout_id: &str,
+) -> VmResult<vm_packages::SubmissionRecord> {
+    let client = subject.client()?;
+    let checkout = client.checkout(checkout_id).await?;
+    if checkout.state != WorkflowState::Submitted
+        || !checkout
+            .consumers
+            .iter()
+            .any(|candidate| candidate == subject.consumer())
+    {
+        return Err(VmError::validation(
+            "Checkout has no submitted generation for this consumer",
+            Some("Inspect it with `vm packages show <checkout-id>`"),
+        ));
+    }
+    let root = checkout_root(subject, checkout_id)?;
+    let source = format!("{root}/source");
+    ensure_clean(subject, &source)?;
+    vm_progress!("Rerunning package and consumer checks for submitted changes...");
+    let consumers = run_checks(subject, &client, &checkout, &source, subject.consumer()).await?;
+    let submission = client.checkout_submission(checkout_id).await?;
+    validate(&client, submission, consumers, "package-agent").await
+}
+
 async fn submit(
     subject: &impl PackageExecutor,
     client: &PackageInfrastructureClient,
@@ -55,18 +81,7 @@ async fn submit(
     ensure_clean(subject, &source)?;
 
     vm_progress!("Running package and consumer checks...");
-    let consumers = match checkout.source_kind {
-        SourceKind::Package => {
-            let definition = client.package_definition(&checkout.package).await?;
-            run_package_check(subject, definition.ecosystem, &source)?;
-            run_consumer_check(subject, definition.ecosystem, &checkout.package, &source)?;
-            BTreeMap::from([(consumer.clone(), CheckOutcome::Passed)])
-        }
-        SourceKind::ToolCollection => {
-            run_collection_check(subject, &source)?;
-            BTreeMap::new()
-        }
-    };
+    let consumers = run_checks(subject, client, &checkout, &source, &consumer).await?;
 
     let bundle = format!("{root}/submission.bundle");
     exec(subject, ["rm", "-f", bundle.as_str()])?;
@@ -106,6 +121,39 @@ async fn submit(
     exec(subject, ["rm", "-f", bundle.as_str()])?;
 
     let submission = client.checkout_submission(checkout_id).await?;
+    validate(client, submission, consumers, actor).await
+}
+
+async fn run_checks(
+    subject: &impl PackageExecutor,
+    client: &PackageInfrastructureClient,
+    checkout: &vm_packages::CheckoutRecord,
+    source: &str,
+    consumer: &str,
+) -> VmResult<BTreeMap<String, CheckOutcome>> {
+    match checkout.source_kind {
+        SourceKind::Package => {
+            let definition = client.package_definition(&checkout.package).await?;
+            run_package_check(subject, definition.ecosystem, source)?;
+            run_consumer_check(subject, definition.ecosystem, &checkout.package, source)?;
+            Ok(BTreeMap::from([(
+                consumer.to_string(),
+                CheckOutcome::Passed,
+            )]))
+        }
+        SourceKind::ToolCollection => {
+            run_collection_check(subject, source)?;
+            Ok(BTreeMap::new())
+        }
+    }
+}
+
+async fn validate(
+    client: &PackageInfrastructureClient,
+    submission: vm_packages::SubmissionRecord,
+    consumers: BTreeMap<String, CheckOutcome>,
+    actor: &str,
+) -> VmResult<vm_packages::SubmissionRecord> {
     let validating = client
         .validate_submission(
             &submission.submission_id,
@@ -113,7 +161,11 @@ async fn submit(
                 package: CheckOutcome::Passed,
                 consumers,
                 actor: actor.into(),
-                idempotency_key: format!("validate-{}", submission.submission_id),
+                idempotency_key: format!(
+                    "validate-{}-{}",
+                    submission.submission_id,
+                    generation_id(&submission.submitted_commit)
+                ),
             },
         )
         .await?;
@@ -124,6 +176,10 @@ async fn submit(
         ));
     }
     Ok(validating)
+}
+
+fn generation_id(commit: &str) -> String {
+    commit.chars().take(16).collect()
 }
 
 fn ensure_clean(subject: &impl PackageExecutor, source: &str) -> VmResult<()> {

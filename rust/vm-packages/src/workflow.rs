@@ -48,7 +48,10 @@ impl WorkflowState {
                 | (NeedsChanges, Active | Submitted | Cancelled | Rejected)
                 | (Approved, Integrating | Failed)
                 | (Integrating, ReadyToRelease | Publishing | Failed)
-                | (ReadyToRelease, Publishing | Cancelled | Failed)
+                | (
+                    ReadyToRelease,
+                    NeedsChanges | Publishing | Cancelled | Failed
+                )
                 | (Publishing, Published | Failed)
                 | (Published | Rejected | Cancelled | Failed, Closed)
         )
@@ -194,6 +197,7 @@ mod tests {
         assert!(WorkflowState::Created.can_transition_to(WorkflowState::CheckedOut));
         assert!(WorkflowState::Reviewing.can_transition_to(WorkflowState::NeedsChanges));
         assert!(WorkflowState::NeedsChanges.can_transition_to(WorkflowState::Active));
+        assert!(WorkflowState::ReadyToRelease.can_transition_to(WorkflowState::NeedsChanges));
         assert!(WorkflowState::Published.can_transition_to(WorkflowState::Closed));
         assert!(!WorkflowState::Created.can_transition_to(WorkflowState::Published));
         assert!(!WorkflowState::Closed.can_transition_to(WorkflowState::Active));

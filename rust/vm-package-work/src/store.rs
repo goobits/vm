@@ -33,6 +33,8 @@ pub(crate) struct Database {
     #[serde(default)]
     pub(crate) checkouts: BTreeMap<String, CheckoutRecord>,
     #[serde(default)]
+    pub(crate) lease_credentials: BTreeMap<String, String>,
+    #[serde(default)]
     pub(crate) receipts: BTreeMap<String, WorkflowReceipt>,
     #[serde(default)]
     pub(crate) idempotency: BTreeMap<String, IdempotencyRecord>,
@@ -74,11 +76,19 @@ impl Store {
         tokio::fs::create_dir_all(root.join("receipts")).await?;
         tokio::fs::create_dir_all(root.join("catalog")).await?;
         let path = root.join(STATE_FILE);
-        let database = match tokio::fs::read(&path).await {
+        let mut database = match tokio::fs::read(&path).await {
             Ok(content) => serde_json::from_slice(&content)?,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Database::default(),
             Err(error) => return Err(error.into()),
         };
+        for (checkout_id, checkout) in &database.checkouts {
+            if let Some(lease) = &checkout.lease {
+                database
+                    .lease_credentials
+                    .entry(checkout_id.clone())
+                    .or_insert_with(|| lease.token_digest.clone());
+            }
+        }
         let store = Self {
             root,
             database: Mutex::new(database),

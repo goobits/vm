@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{bail, Context, Result};
-use vm_package_jobs::runtime::{command_text, run_command};
+use vm_package_jobs::runtime::{command_text, operation_key, run_command};
 use vm_packages::{
     PackageEcosystem, PackageInfrastructureClient, PublicApiDiff, RegistryEndpoints,
     ReviewDecision, ReviewRequest, SourceKind, VersionRecommendation, WorkflowState,
@@ -104,7 +104,20 @@ async fn review(client: &PackageInfrastructureClient, submission_id: &str) -> Re
         ]),
         "inspect package review diff",
     )?;
-    let api_paths = public_api_paths(checkout.source_kind, ecosystem, &changed_paths);
+    let manifest_is_public = manifest_has_public_changes(
+        checkout.source_kind,
+        ecosystem,
+        &source,
+        &submission.base_commit,
+        &submission.submitted_commit,
+        &changed_paths,
+    )?;
+    let api_paths = public_api_paths(
+        checkout.source_kind,
+        ecosystem,
+        &changed_paths,
+        manifest_is_public,
+    );
     let potentially_breaking = removed_public_surface(&diff);
     let api_diff = PublicApiDiff {
         changed_paths: api_paths.clone(),
@@ -162,7 +175,13 @@ async fn review(client: &PackageInfrastructureClient, submission_id: &str) -> Re
                 required_followups,
                 merge_strategy: "rebase".into(),
                 reviewer: "ephemeral-integration-agent".into(),
-                idempotency_key: format!("review-{}", submission.submission_id),
+                idempotency_key: operation_key(
+                    "review",
+                    &format!(
+                        "{}:{}",
+                        submission.submission_id, submission.submitted_commit
+                    ),
+                ),
             },
         )
         .await?;
@@ -209,15 +228,16 @@ fn public_api_paths(
     source_kind: SourceKind,
     ecosystem: Option<PackageEcosystem>,
     paths: &[String],
+    manifest_is_public: bool,
 ) -> Vec<String> {
     paths
         .iter()
         .filter(|path| match (source_kind, ecosystem) {
             (SourceKind::Package, Some(PackageEcosystem::Cargo)) => {
-                path.as_str() == "Cargo.toml" || path.starts_with("src/")
+                (path.as_str() == "Cargo.toml" && manifest_is_public) || path.starts_with("src/")
             }
             (SourceKind::Package, Some(PackageEcosystem::Npm)) => {
-                path.as_str() == "package.json"
+                (path.as_str() == "package.json" && manifest_is_public)
                     || path.starts_with("src/")
                     || path.ends_with(".d.ts")
             }
@@ -227,12 +247,106 @@ fn public_api_paths(
                     && !path.contains("/__pycache__/")
             }
             (SourceKind::ToolCollection, None) => {
-                path.as_str() == "package.json" || path.ends_with("/SKILL.md")
+                (path.as_str() == "package.json" && manifest_is_public)
+                    || path.as_str() == "SKILL.md"
+                    || path.ends_with("/SKILL.md")
             }
             _ => false,
         })
         .cloned()
         .collect()
+}
+
+fn manifest_has_public_changes(
+    source_kind: SourceKind,
+    ecosystem: Option<PackageEcosystem>,
+    repository: &Path,
+    base_commit: &str,
+    submitted_commit: &str,
+    paths: &[String],
+) -> Result<bool> {
+    let manifest = match (source_kind, ecosystem) {
+        (SourceKind::Package, Some(PackageEcosystem::Cargo)) => "Cargo.toml",
+        (SourceKind::Package, Some(PackageEcosystem::Npm)) | (SourceKind::ToolCollection, None) => {
+            "package.json"
+        }
+        _ => return Ok(false),
+    };
+    if !paths.iter().any(|path| path == manifest) {
+        return Ok(false);
+    }
+    let Some(base) = git_file(repository, base_commit, manifest)? else {
+        return Ok(true);
+    };
+    let Some(submitted) = git_file(repository, submitted_commit, manifest)? else {
+        return Ok(true);
+    };
+    manifest_content_has_public_changes(source_kind, ecosystem, &base, &submitted)
+}
+
+fn git_file(repository: &Path, commit: &str, path: &str) -> Result<Option<String>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repository)
+        .args(["show", &format!("{commit}:{path}")])
+        .output()
+        .with_context(|| format!("failed to inspect {path} at {commit}"))?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    Ok(Some(String::from_utf8(output.stdout)?))
+}
+
+fn manifest_content_has_public_changes(
+    source_kind: SourceKind,
+    ecosystem: Option<PackageEcosystem>,
+    base: &str,
+    submitted: &str,
+) -> Result<bool> {
+    match (source_kind, ecosystem) {
+        (SourceKind::Package, Some(PackageEcosystem::Cargo)) => {
+            let mut base: toml::Value =
+                toml::from_str(base).context("base Cargo.toml is invalid")?;
+            let mut submitted: toml::Value =
+                toml::from_str(submitted).context("submitted Cargo.toml is invalid")?;
+            remove_cargo_versions(&mut base);
+            remove_cargo_versions(&mut submitted);
+            Ok(base != submitted)
+        }
+        (SourceKind::Package, Some(PackageEcosystem::Npm)) | (SourceKind::ToolCollection, None) => {
+            let mut base: serde_json::Value =
+                serde_json::from_str(base).context("base package.json is invalid")?;
+            let mut submitted: serde_json::Value =
+                serde_json::from_str(submitted).context("submitted package.json is invalid")?;
+            remove_json_version(&mut base);
+            remove_json_version(&mut submitted);
+            Ok(base != submitted)
+        }
+        _ => Ok(false),
+    }
+}
+
+fn remove_json_version(manifest: &mut serde_json::Value) {
+    if let Some(table) = manifest.as_object_mut() {
+        table.remove("version");
+    }
+}
+
+fn remove_cargo_versions(manifest: &mut toml::Value) {
+    if let Some(package) = manifest
+        .get_mut("package")
+        .and_then(toml::Value::as_table_mut)
+    {
+        package.remove("version");
+    }
+    if let Some(package) = manifest
+        .get_mut("workspace")
+        .and_then(toml::Value::as_table_mut)
+        .and_then(|workspace| workspace.get_mut("package"))
+        .and_then(toml::Value::as_table_mut)
+    {
+        package.remove("version");
+    }
 }
 
 fn removed_public_surface(diff: &str) -> bool {
@@ -289,11 +403,64 @@ mod tests {
     fn review_classification_detects_api_security_and_generated_changes() {
         let paths = vec!["src/lib.rs".into(), "target/debug/output".into()];
         assert_eq!(
-            public_api_paths(SourceKind::Package, Some(PackageEcosystem::Cargo), &paths),
+            public_api_paths(
+                SourceKind::Package,
+                Some(PackageEcosystem::Cargo),
+                &paths,
+                true
+            ),
             ["src/lib.rs"]
         );
         assert_eq!(generated_path(&paths), Some("target/debug/output"));
         assert_eq!(sensitive_path(&["config/.env".into()]), Some("config/.env"));
         assert!(removed_public_surface("-pub fn removed() {}"));
+        assert!(public_api_paths(
+            SourceKind::ToolCollection,
+            None,
+            &["package.json".into(), "README.md".into()],
+            false
+        )
+        .is_empty());
+        assert_eq!(
+            public_api_paths(
+                SourceKind::ToolCollection,
+                None,
+                &["package.json".into()],
+                true
+            ),
+            ["package.json"]
+        );
+    }
+
+    #[test]
+    fn manifest_classification_ignores_only_release_versions() {
+        assert!(!manifest_content_has_public_changes(
+            SourceKind::ToolCollection,
+            None,
+            r#"{"name":"agent-skills","version":"1.0.0"}"#,
+            r#"{"name":"agent-skills","version":"1.0.1"}"#,
+        )
+        .unwrap());
+        assert!(manifest_content_has_public_changes(
+            SourceKind::Package,
+            Some(PackageEcosystem::Npm),
+            r#"{"name":"auth","version":"1.0.0","exports":"./index.js"}"#,
+            r#"{"name":"auth","version":"1.0.1","exports":"./src/index.js"}"#,
+        )
+        .unwrap());
+        assert!(!manifest_content_has_public_changes(
+            SourceKind::Package,
+            Some(PackageEcosystem::Cargo),
+            "[package]\nname='auth'\nversion='1.0.0'\n",
+            "[package]\nname='auth'\nversion='1.0.1'\n",
+        )
+        .unwrap());
+        assert!(manifest_content_has_public_changes(
+            SourceKind::Package,
+            Some(PackageEcosystem::Cargo),
+            "[package]\nname='auth'\nversion='1.0.0'\n",
+            "[package]\nname='auth'\nversion='1.0.1'\n[dependencies]\nserde='1'\n",
+        )
+        .unwrap());
     }
 }

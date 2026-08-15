@@ -18,7 +18,7 @@ use vm_packages::{
 use crate::runtime::{operation_key, run_command};
 
 use super::package::{
-    cleanup_release, clone_at, download_bundle, push_source, validate_version_bump,
+    cleanup_release, clone_at, download_bundle, push_source, validate_release_version,
 };
 use super::{git, git_text};
 
@@ -83,11 +83,15 @@ pub(super) async fn release_submission(
     clone_at(&bundle, &canonical, &integration.canonical_commit)?;
     let identity = collection_identity(&source)?;
     let previous = collection_identity(&canonical)?;
-    validate_version_bump(
+    validate_release_version(
+        client,
+        submission,
         &Version::parse(&previous.version)?,
         &Version::parse(&identity.version)?,
         review.recommended_version,
-    )?;
+        RELEASE_ACTOR,
+    )
+    .await?;
     if identity.source_commit != integration.integration_commit {
         bail!("tool release source does not match the validated integration");
     }

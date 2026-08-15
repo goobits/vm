@@ -229,6 +229,15 @@ async fn package_checkout_lifecycle_stays_inside_managed_agent_storage() {
     assert!(repository.join("Cargo.toml").is_file());
     assert!(data.join("sources").is_dir());
 
+    source.restore_checkout(&store, &active).await.unwrap();
+    source.restore_checkout(&store, &active).await.unwrap();
+    assert!(data
+        .join("agents")
+        .join(&active.checkout_id)
+        .join("source")
+        .is_dir());
+    assert!(source.archive(&active).await.unwrap().is_file());
+
     source.cleanup_checkout(&active).await.unwrap();
     source.cleanup_checkout(&active).await.unwrap();
     assert!(!data.join("agents").join(&active.checkout_id).exists());

@@ -63,6 +63,9 @@ pub(crate) fn transition_record(
     database
         .receipts
         .insert(transition.receipt_id.clone(), transition);
+    if request.next.revokes_lease() {
+        database.lease_credentials.remove(checkout_id);
+    }
     Ok(())
 }
 
@@ -110,6 +113,7 @@ pub(crate) fn close_record(
     database
         .receipts
         .insert(cleanup.receipt_id.clone(), cleanup);
+    database.lease_credentials.remove(checkout_id);
     Ok(())
 }
 
@@ -287,6 +291,8 @@ impl Store {
                 target_id: checkout_id.clone(),
             },
         );
+        next.lease_credentials
+            .insert(checkout_id.clone(), sha256_hex(&request.lease_token));
         next.checkouts.insert(checkout_id, record.clone());
         self.commit(&mut current, next).await?;
         Ok(CheckoutLease {
@@ -430,26 +436,58 @@ impl Store {
             .checkouts
             .get_mut(checkout_id)
             .ok_or_else(|| WorkError::NotFound(checkout_id.to_string()))?;
-        let lease = checkout
-            .lease
-            .as_mut()
-            .ok_or_else(|| WorkError::Conflict("checkout has no active lease".into()))?;
-        validate_lease(lease, &request.holder, &request.lease_token, now)?;
-        lease.expires_at = now + Duration::seconds(request.duration_seconds);
+        let reacquired = if let Some(lease) = checkout.lease.as_mut() {
+            validate_lease(lease, &request.holder, &request.lease_token, now)?;
+            lease.expires_at = now + Duration::seconds(request.duration_seconds);
+            false
+        } else {
+            if checkout.state.revokes_lease() {
+                return Err(WorkError::Conflict(
+                    "terminal checkout cannot reacquire a lease".into(),
+                ));
+            }
+            if checkout.agent != request.holder {
+                return Err(WorkError::Unauthorized(
+                    "checkout lease holder did not match".into(),
+                ));
+            }
+            let credential = next.lease_credentials.get(checkout_id).ok_or_else(|| {
+                WorkError::Conflict("checkout lease credential is unavailable".into())
+            })?;
+            if credential != &sha256_hex(&request.lease_token) {
+                return Err(WorkError::Unauthorized(
+                    "checkout lease token did not match".into(),
+                ));
+            }
+            checkout.lease = Some(LeaseRecord {
+                holder: request.holder.clone(),
+                token_digest: sha256_hex(&request.lease_token),
+                expires_at: now + Duration::seconds(request.duration_seconds),
+            });
+            true
+        };
         checkout.updated_at = now;
         let state = checkout.state;
         let result = checkout.clone();
         let receipt = receipt(
             &mut next,
             ReceiptInput {
-                kind: ReceiptKind::LeaseRenewed,
+                kind: if reacquired {
+                    ReceiptKind::LeaseAcquired
+                } else {
+                    ReceiptKind::LeaseRenewed
+                },
                 checkout_id,
                 actor: &request.holder,
                 previous: Some(state),
                 next: state,
                 commit: None,
                 validation_result: None,
-                reason: "checkout lease renewed",
+                reason: if reacquired {
+                    "expired checkout lease reacquired"
+                } else {
+                    "checkout lease renewed"
+                },
                 timestamp: now,
             },
         );
@@ -493,6 +531,7 @@ impl Store {
             .ok_or_else(|| WorkError::Conflict("checkout has no active lease".into()))?;
         validate_lease(lease, &request.holder, &request.lease_token, now)?;
         checkout.lease = None;
+        next.lease_credentials.remove(checkout_id);
         checkout.updated_at = now;
         let state = checkout.state;
         let result = checkout.clone();

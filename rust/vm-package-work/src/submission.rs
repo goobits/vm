@@ -528,6 +528,9 @@ pub(crate) fn transition_records(
     database
         .receipts
         .insert(workflow_receipt.receipt_id.clone(), workflow_receipt);
+    if next.revokes_lease() {
+        database.lease_credentials.remove(&checkout_id);
+    }
     Ok(())
 }
 

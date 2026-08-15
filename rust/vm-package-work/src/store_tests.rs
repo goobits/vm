@@ -1,5 +1,6 @@
 use super::*;
 use crate::ImportedSubmission;
+use chrono::{Duration, Utc};
 use vm_packages::{
     CleanupRequest, CreateCheckout, LeaseRequest, PackageEcosystem, RegisterPackage,
     TransitionRequest, WorkflowState,
@@ -134,6 +135,58 @@ async fn client_lease_tokens_make_checkout_creation_retryable() {
         .await
         .unwrap();
     assert!(renewed.lease.is_some());
+}
+
+#[tokio::test]
+async fn active_checkout_can_securely_reacquire_an_expired_lease() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::open(directory.path()).await.unwrap();
+    let created = store
+        .create_checkout(request("reacquire", "agent-1"))
+        .await
+        .unwrap();
+    let id = &created.checkout.checkout_id;
+    let token = created.lease_token.unwrap();
+    store
+        .database
+        .lock()
+        .await
+        .checkouts
+        .get_mut(id)
+        .unwrap()
+        .lease
+        .as_mut()
+        .unwrap()
+        .expires_at = Utc::now() - Duration::seconds(1);
+    store.expire_leases().await.unwrap();
+
+    assert!(store
+        .renew_lease(
+            id,
+            LeaseRequest {
+                holder: "agent-1".into(),
+                lease_token: "wrong-token".into(),
+                duration_seconds: 600,
+                idempotency_key: "wrong-reacquire-lease".into(),
+            },
+        )
+        .await
+        .is_err());
+
+    let reacquired = store
+        .renew_lease(
+            id,
+            LeaseRequest {
+                holder: "agent-1".into(),
+                lease_token: token,
+                duration_seconds: 600,
+                idempotency_key: "reacquire-lease".into(),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(reacquired.lease.unwrap().holder, "agent-1");
 }
 
 #[tokio::test]

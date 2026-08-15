@@ -416,9 +416,24 @@ requires a tool catalog or package-appliance connection.
 - [x] Reconcile real Node/Cargo executable paths and host Git author identity
   into existing managed guests so an agent can check and commit a managed
   checkout without relying on interactive shell functions or rebuilding it.
-- [ ] From a writable Docker worker, create and release an `agent-skills`
+- [x] Reacquire expired leases for durable nonterminal checkouts when the
+  assigned guest resumes `vm packages release`, verify the original capability,
+  and keep terminal checkouts closed while recording the new lease.
+- [x] Return permanent release-preflight failures to the assigned agent as
+  receipted rework instead of hot-looping the release worker, restore the
+  compacted import target before resubmission, and classify package or tool
+  manifest version-only changes as patch-level without hiding other manifest
+  changes.
+- [x] Scope validation, review, and integration idempotency to each submitted
+  commit and resume a durable `submitted` generation from the same guest release
+  command instead of replaying stale results.
+- [x] From a writable Docker worker, create and release an `agent-skills`
   checkout; verify review, integration, canonical push/tag, private publication,
   cleanup, and receipts complete without a host source checkout or approval.
+  Live acceptance released and activated `agent-skills` 0.8.0 from `d36ed4b`
+  in `projects-dev`; canonical main/tag, immutable catalog publication, closed
+  receipts, checkout cleanup, consumability, and unchanged container identity
+  were verified.
 - [ ] Run targeted and fleet tool reconciliation twice and verify managed guest
   client files are unchanged on the second pass while primary containers,
   volumes, and application services remain intact.

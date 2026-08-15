@@ -27,8 +27,8 @@ pub(super) async fn handle_guest(checkout_id: &str) -> VmResult<()> {
         WorkflowState::Active | WorkflowState::NeedsChanges => {
             submission::handle_guest(&subject, checkout_id).await?
         }
-        WorkflowState::Submitted
-        | WorkflowState::Validating
+        WorkflowState::Submitted => submission::resume_guest(&subject, checkout_id).await?,
+        WorkflowState::Validating
         | WorkflowState::Reviewing
         | WorkflowState::Approved
         | WorkflowState::Integrating
@@ -73,7 +73,7 @@ async fn renew_release_lease(
     client: &vm_packages::PackageInfrastructureClient,
     checkout: &vm_packages::CheckoutRecord,
 ) -> VmResult<()> {
-    if checkout.lease.is_none() {
+    if checkout.state.revokes_lease() {
         return Ok(());
     }
     let root = checkout_root(subject, &checkout.checkout_id)?;
@@ -94,11 +94,19 @@ async fn renew_release_lease(
                 holder: checkout.agent.clone(),
                 lease_token: token.into(),
                 duration_seconds: 24 * 60 * 60,
-                idempotency_key: format!("release-lease-{}", checkout.checkout_id),
+                idempotency_key: release_lease_key(checkout),
             },
         )
         .await?;
     Ok(())
+}
+
+fn release_lease_key(checkout: &vm_packages::CheckoutRecord) -> String {
+    let generation = checkout.lease.as_ref().map_or_else(
+        || checkout.updated_at.timestamp_millis(),
+        |lease| lease.expires_at.timestamp_millis(),
+    );
+    format!("release-lease-{}-{generation}", checkout.checkout_id)
 }
 
 async fn wait_for_review(
@@ -154,15 +162,19 @@ async fn wait_for_publication(
         tokio::time::sleep(POLL_INTERVAL).await;
         submission = client.submission(&submission.submission_id).await?;
     }
-    if matches!(
-        submission.state,
-        WorkflowState::Published | WorkflowState::Closed
-    ) {
-        Ok(submission)
-    } else {
-        Err(VmError::validation(
-            format!("Package release stopped in {:?}", submission.state),
+    match submission.state {
+        WorkflowState::Published | WorkflowState::Closed => Ok(submission),
+        WorkflowState::NeedsChanges => Err(VmError::validation(
+            submission
+                .review
+                .as_ref()
+                .map(|review| format!("Package release requested changes: {}", review.reason))
+                .unwrap_or_else(|| "Package release requested changes".into()),
+            Some("Edit and commit the checkout, then rerun the same release command"),
+        )),
+        state => Err(VmError::validation(
+            format!("Package release stopped in {state:?}"),
             Some("Inspect package infrastructure logs and rerun when repaired"),
-        ))
+        )),
     }
 }

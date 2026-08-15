@@ -8,9 +8,10 @@ use crate::{
     BeginReleaseRequest, CheckoutLease, CheckoutRecord, CleanupRequest, CompleteReleaseRequest,
     ConsumerRecord, ConsumerUsage, CreateCheckout, CreateRollout, IntegrationRequest, LeaseRequest,
     PackageDefinition, PackageDrift, PublicationRequest, PublishToolArtifact, RegisterConsumer,
-    RegisterPackage, RegisterTool, RegistryEndpoints, ReleaseRecord, ReviewRequest, RolloutRecord,
-    RolloutValidationRequest, SubmissionRecord, ToolArtifactRecord, ToolDefinition, ToolIndex,
-    ToolInventory, ToolPublicationReceipt, TransitionRequest, ValidationRequest, WorkflowReceipt,
+    RegisterPackage, RegisterTool, RegistryEndpoints, ReleaseRecord, ReleaseReworkRequest,
+    ReviewRequest, RolloutRecord, RolloutValidationRequest, SubmissionRecord, ToolArtifactRecord,
+    ToolDefinition, ToolIndex, ToolInventory, ToolPublicationReceipt, TransitionRequest,
+    ValidationRequest, WorkflowReceipt,
 };
 
 pub type PackageInventory = BTreeMap<String, Vec<String>>;
@@ -347,6 +348,18 @@ impl PackageInfrastructureClient {
     ) -> Result<ReleaseRecord> {
         self.post_release(&format!("v1/submissions/{submission_id}/release"), request)
             .await
+    }
+
+    pub async fn request_release_rework(
+        &self,
+        submission_id: &str,
+        request: &ReleaseReworkRequest,
+    ) -> Result<SubmissionRecord> {
+        self.post_release(
+            &format!("v1/submissions/{submission_id}/release/rework"),
+            request,
+        )
+        .await
     }
 
     pub async fn record_publication(

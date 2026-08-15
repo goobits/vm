@@ -175,6 +175,10 @@ pub(crate) fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router 
             post(jobs::begin_release),
         )
         .route(
+            "/v1/submissions/{submission_id}/release/rework",
+            post(jobs::request_release_rework),
+        )
+        .route(
             "/v1/releases/{release_id}/publications",
             post(jobs::record_publication),
         )

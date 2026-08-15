@@ -4,8 +4,8 @@ use axum::{
 };
 use vm_packages::{
     BeginReleaseRequest, CleanupRequest, CompleteReleaseRequest, PublicationRequest, ReleaseRecord,
-    ReviewRequest, RolloutRecord, RolloutState, RolloutValidationRequest, SubmissionRecord,
-    WorkflowState,
+    ReleaseReworkRequest, ReviewRequest, RolloutRecord, RolloutState, RolloutValidationRequest,
+    SubmissionRecord, WorkflowState,
 };
 
 use super::{controller::cleanup_managed_checkout, AppState};
@@ -62,6 +62,22 @@ pub(super) async fn begin_release(
     Json(request): Json<BeginReleaseRequest>,
 ) -> WorkResult<Json<ReleaseRecord>> {
     Ok(Json(state.store.begin_release(&id, request).await?))
+}
+
+pub(super) async fn request_release_rework(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<ReleaseReworkRequest>,
+) -> WorkResult<Json<SubmissionRecord>> {
+    let submission = state.store.submission(&id).await?;
+    let checkout = state.store.get_checkout(&submission.checkout_id).await?;
+    state
+        .source
+        .restore_checkout(&state.store, &checkout)
+        .await?;
+    Ok(Json(
+        state.store.request_release_rework(&id, request).await?,
+    ))
 }
 
 pub(super) async fn record_publication(

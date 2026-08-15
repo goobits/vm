@@ -35,7 +35,7 @@ pub use ecosystem::{PackageEcosystem, ParsePackageEcosystemError};
 pub use environment::{ClientEnvironment, ManagedClientSettings, RegistryEndpoints};
 pub use release::{
     BeginReleaseRequest, CompleteReleaseRequest, PublicationRecord, PublicationRequest,
-    ReleaseRecord,
+    ReleaseRecord, ReleaseReworkRequest,
 };
 pub use resolver::{
     InternalPackageCatalog, OverrideAvailability, PackageIdentity, PackageResolver,

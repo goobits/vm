@@ -10,7 +10,8 @@ use sha2::{Digest, Sha256};
 use vm_packages::{
     sha256_hex as digest_hex, BeginReleaseRequest, CleanupRequest, CompleteReleaseRequest,
     PackageEcosystem, PackageIdentity, PackageInfrastructureClient, PublicationRequest,
-    RegistryEndpoints, ReleaseRecord, SourceKind, VersionRecommendation, WorkflowState,
+    RegistryEndpoints, ReleaseRecord, ReleaseReworkRequest, SourceKind, SubmissionRecord,
+    VersionRecommendation, WorkflowState,
 };
 
 use crate::runtime::{operation_key, required_secret as secret, run_command as run};
@@ -106,11 +107,15 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
 
     let identity = package_manifest(definition.ecosystem, &source, &definition.name)?;
     let previous = package_manifest(definition.ecosystem, &canonical, &definition.name)?;
-    validate_version_bump(
+    validate_release_version(
+        &client,
+        &submission,
         &previous.version,
         &identity.version,
         review.recommended_version,
-    )?;
+        "package-release-service",
+    )
+    .await?;
     let tag = format!("v{}", identity.version);
     let artifact = build_artifact(definition.ecosystem, &source, release_root.path())?;
     ensure_clean_source(&source)?;
@@ -366,6 +371,43 @@ pub(super) fn validate_version_bump(
         bail!("release bump {actual:?} is smaller than the reviewed {recommendation:?} change");
     }
     Ok(())
+}
+
+pub(super) async fn validate_release_version(
+    client: &PackageInfrastructureClient,
+    submission: &SubmissionRecord,
+    previous: &Version,
+    next: &Version,
+    recommendation: VersionRecommendation,
+    actor: &str,
+) -> Result<()> {
+    let error = match validate_version_bump(previous, next, recommendation) {
+        Ok(()) => return Ok(()),
+        Err(error) => error,
+    };
+    let reason = error.to_string();
+    client
+        .request_release_rework(
+            &submission.submission_id,
+            &ReleaseReworkRequest {
+                actor: actor.into(),
+                reason: reason.clone(),
+                required_followups: vec![
+                    "Update the declared version, commit it, and rerun the same release command"
+                        .into(),
+                ],
+                idempotency_key: operation_key(
+                    "release-rework",
+                    &format!(
+                        "{}:{}",
+                        submission.submission_id, submission.submitted_commit
+                    ),
+                ),
+            },
+        )
+        .await
+        .context("failed to return the release to its assigned package agent")?;
+    Err(error)
 }
 
 const fn bump_rank(bump: VersionRecommendation) -> u8 {

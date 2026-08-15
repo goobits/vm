@@ -42,6 +42,12 @@ pub(super) async fn download_archive(
         .store
         .authorize_lease(&id, &query.consumer, &lease_token(&headers)?)
         .await?;
+    if checkout.state == WorkflowState::NeedsChanges {
+        state
+            .source
+            .restore_checkout(&state.store, &checkout)
+            .await?;
+    }
     download(state.source.archive(&checkout).await?, "checkout.bundle").await
 }
 
@@ -56,6 +62,12 @@ pub(super) async fn upload_submission(
         .store
         .authorize_lease(&id, &query.consumer, &lease_token(&headers)?)
         .await?;
+    if checkout.state == WorkflowState::NeedsChanges {
+        state
+            .source
+            .restore_checkout(&state.store, &checkout)
+            .await?;
+    }
     let staging = state.source.submission_staging_path(&checkout).await?;
     let result = async {
         receive_bundle(body, &staging, "submitted").await?;

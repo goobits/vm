@@ -140,8 +140,16 @@ boundary.
 For a language package, the unpublished checkout is attached only to the
 assigned consumer; other consumers stay on their published versions. Every
 mutating step is idempotent and receipted, so rerunning the same release resumes
-after a worker restart. Successful publication removes temporary checkout data
-without touching the registered repository or its persistent canonical mirror.
+after a worker restart. If a durable active checkout outlives its scoped lease,
+the same release command securely reacquires the lease from the assigned guest
+and continues. A permanent release preflight failure, such as an undersized
+semantic-version bump, returns the checkout with actionable feedback; edit and
+commit it, then rerun the same command. The appliance restores its compacted
+import target automatically before accepting the revised bundle. Validation,
+review, and integration are scoped to that submitted commit, so the same
+checkout can make multiple receipted rework passes without replaying stale
+results. Successful publication removes temporary checkout data without
+touching the registered repository or its persistent canonical mirror.
 
 Each worker gets a small read-only package edge. Docker runs it as a Compose
 sidecar; Linux Tart runs the same image in the guest's Docker Engine. Package

@@ -64,6 +64,9 @@
 - 🌐 Managed tool downloads receive read credentials over standard input, and collections merge into existing skill roots without replacing personal or system skills.
 - 🌐 Package reconciliation installs the platform-matched guest `vm` client from the authenticated appliance, verifies its digest, preserves managed-guest identity through shell launchers, and binds scoped credentials to the selected environment's project.
 - 🌐 Managed package reconciliation activates installed Node and Cargo toolchains for non-interactive release checks and refreshes host Git author identity in existing guests.
+- 🌐 Resuming a durable package release now reacquires an expired active-checkout lease instead of failing its submission upload.
+- 🌐 Permanent release preflight failures now restore compacted source and return the checkout to its assigned agent with actionable rework instead of retrying forever; package and tool manifest version bumps alone remain patch-level while other manifest changes stay public.
+- 🌐 Resubmitted package generations now receive distinct validation, review, and integration operations, and `vm packages release` resumes a durable submitted generation instead of waiting indefinitely.
 - 🌐 Tart package-appliance startup accepts Tart 2.32.1's `Name` and `State` inventory fields.
 - 🌐 Docker image pulls retry transient transport failures while permanent authentication and image errors fail immediately.
 - 🌐 Single-port ranges and explicit create-time port mappings now validate correctly.
