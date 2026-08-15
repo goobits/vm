@@ -40,14 +40,15 @@ pub(super) struct ManagedCheckout {
 #[derive(Clone, Copy)]
 enum EditableSource {
     Package(PackageEcosystem),
-    ToolCollection,
+    Tool(ToolKind),
 }
 
 impl EditableSource {
     fn kind(self) -> SourceKind {
         match self {
             Self::Package(_) => SourceKind::Package,
-            Self::ToolCollection => SourceKind::ToolCollection,
+            Self::Tool(ToolKind::Binary) => SourceKind::ToolBinary,
+            Self::Tool(ToolKind::Collection) => SourceKind::ToolCollection,
         }
     }
 }
@@ -413,13 +414,9 @@ async fn editable_source(
         return Ok(EditableSource::Package(package.ecosystem));
     }
     match tools.iter().find(|tool| tool.name == name) {
-        Some(tool) if tool.kind == ToolKind::Collection => Ok(EditableSource::ToolCollection),
-        Some(_) => Err(VmError::validation(
-            format!("Tool '{name}' is not an editable collection"),
-            None::<String>,
-        )),
+        Some(tool) => Ok(EditableSource::Tool(tool.kind)),
         None => Err(VmError::validation(
-            format!("No package or tool collection named '{name}' is registered"),
+            format!("No package or managed tool named '{name}' is registered"),
             None::<String>,
         )),
     }

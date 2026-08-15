@@ -302,24 +302,24 @@ mod tests {
     }
 
     #[test]
-    fn cached_catalog_keeps_one_atomic_record_per_selected_tool() {
+    fn cached_catalog_selects_only_the_configured_target_artifact() {
         let directory = tempfile::tempdir().unwrap();
         let files = ApplianceFiles::at(directory.path().join("packages"));
         let artifact = ToolArtifactRecord {
-            tool: "agent-skills".into(),
-            kind: ToolKind::Collection,
+            tool: "release-tool".into(),
+            kind: ToolKind::Binary,
             version: "1.0.0".into(),
-            target: "any".into(),
+            target: "linux-arm64".into(),
             artifact_digest: "a".repeat(64),
             size_bytes: 1,
-            links: BTreeMap::from([(".codex/skills".into(), "skills".into())]),
-            source_repository: "https://example.com/skills.git".into(),
+            links: BTreeMap::from([(".local/bin/release-tool".into(), "bin/release-tool".into())]),
+            source_repository: "https://example.com/release-tool.git".into(),
             source_commit: "b".repeat(40),
             tag: "v1.0.0".into(),
             artifact_path: vm_packages::tool_artifact_path(
-                "agent-skills",
+                "release-tool",
                 "1.0.0",
-                "any",
+                "linux-arm64",
                 &"a".repeat(64),
             ),
             actor: "release".into(),
@@ -332,14 +332,34 @@ mod tests {
             &ToolIndex {
                 target: "linux-arm64".into(),
                 generated_at: Utc::now(),
-                tools: BTreeMap::from([("agent-skills".into(), artifact.clone())]),
+                tools: BTreeMap::from([
+                    ("release-tool".into(), artifact.clone()),
+                    (
+                        "unrelated".into(),
+                        ToolArtifactRecord {
+                            tool: "unrelated".into(),
+                            artifact_path: vm_packages::tool_artifact_path(
+                                "unrelated",
+                                "1.0.0",
+                                "linux-arm64",
+                                &"c".repeat(64),
+                            ),
+                            artifact_digest: "c".repeat(64),
+                            links: BTreeMap::from([(
+                                ".local/bin/unrelated".into(),
+                                "bin/unrelated".into(),
+                            )]),
+                            ..artifact.clone()
+                        },
+                    ),
+                ]),
             },
         )
         .unwrap();
         let config = VmConfig {
             tools: ToolsConfig {
                 updates: ToolUpdatePolicy::Prompt,
-                entries: BTreeMap::from([("agent-skills".into(), ToolConfig::default())])
+                entries: BTreeMap::from([("release-tool".into(), ToolConfig::default())])
                     .into_iter()
                     .collect(),
             },
@@ -349,6 +369,9 @@ mod tests {
         let catalog = cached_from(&files, &config, "linux-arm64")
             .unwrap()
             .unwrap();
-        assert_eq!(catalog.artifacts["agent-skills"], artifact);
+        assert_eq!(
+            catalog.artifacts,
+            BTreeMap::from([("release-tool".into(), artifact)])
+        );
     }
 }

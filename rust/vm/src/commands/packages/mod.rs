@@ -228,7 +228,10 @@ async fn work(files: &ApplianceFiles, source: String, task: String) -> VmResult<
         ));
     }
     vm_success!("Published {source}");
-    if session.checkout.source_kind == vm_packages::SourceKind::ToolCollection {
+    if matches!(
+        session.checkout.source_kind,
+        vm_packages::SourceKind::ToolBinary | vm_packages::SourceKind::ToolCollection
+    ) {
         let mut activation_arguments = vec![
             "--config".to_string(),
             config_path.to_string_lossy().into_owned(),

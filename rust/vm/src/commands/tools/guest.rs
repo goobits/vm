@@ -948,4 +948,77 @@ mod tests {
             0
         );
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn binary_installer_links_an_executable_from_one_immutable_release() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let home = directory.path().join("home");
+        let data = directory.path().join("data");
+        let binary = directory.path().join("contents/bin/release-tool");
+        fs::create_dir_all(binary.parent().unwrap()).unwrap();
+        fs::create_dir_all(&home).unwrap();
+        fs::write(&binary, "#!/bin/sh\nprintf '%s\\n' '1.2.3'\n").unwrap();
+        let mut permissions = fs::metadata(&binary).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&binary, permissions).unwrap();
+
+        let archive = directory.path().join("release-tool.tar.gz");
+        assert!(Command::new("tar")
+            .args(["-czf"])
+            .arg(&archive)
+            .args(["-C"])
+            .arg(directory.path().join("contents"))
+            .arg(".")
+            .status()
+            .unwrap()
+            .success());
+        let digest = vm_packages::sha256_hex(fs::read(&archive).unwrap());
+        let manifest = format!(
+            "release-tool\t1.2.3\tlinux-amd64\tbinary\t{digest}\tfile://{}\n.local/bin/release-tool\tbin/release-tool",
+            archive.display()
+        );
+        let run = || {
+            Command::new("sh")
+                .args(["-c", INSTALLER, "vm-tool-installer-test", "wait"])
+                .arg(&manifest)
+                .env("HOME", &home)
+                .env("XDG_DATA_HOME", &data)
+                .env("CARGO_REGISTRIES_VM_TOKEN", "test-token")
+                .output()
+                .unwrap()
+        };
+
+        for output in [run(), run()] {
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        let installed = home.join(".local/bin/release-tool");
+        assert!(installed.is_symlink());
+        let output = Command::new(&installed).output().unwrap();
+        assert!(output.status.success());
+        assert_eq!(String::from_utf8(output.stdout).unwrap(), "1.2.3\n");
+
+        let release = data
+            .join("vm-tools/releases/release-tool")
+            .join(format!("1.2.3-{digest}"));
+        assert!(fs::canonicalize(&installed).unwrap().starts_with(&release));
+        assert_ne!(
+            fs::metadata(release.join("bin/release-tool"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o111,
+            0
+        );
+        assert_eq!(
+            fs::metadata(&release).unwrap().permissions().mode() & 0o222,
+            0
+        );
+    }
 }

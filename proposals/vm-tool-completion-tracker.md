@@ -290,7 +290,7 @@ runner rather than replaced with another fake-provider test.
   state, checkout identifiers, or mutations.
 - [x] Build and publish validated binary artifacts through the existing isolated
   release job and private artifact registry.
-- [ ] Reuse target-aware managed-tool installation and activation for explicitly
+- [x] Reuse target-aware managed-tool installation and activation for explicitly
   configured environments.
 - [ ] Prove workspace release, rework, private publication, activation, and
   Docker persistence in the real acceptance suite.
