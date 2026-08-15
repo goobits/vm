@@ -58,6 +58,9 @@ pub enum PackagesSubcommand {
     Doctor {
         #[arg(long, value_enum, default_value = "auto")]
         runtime: PackageInfrastructureRuntime,
+        /// Apply safe, deterministic package-infrastructure repairs
+        #[arg(long)]
+        fix: bool,
     },
     /// List appliance-local infrastructure backups
     Backups {

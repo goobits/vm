@@ -14,6 +14,23 @@ use super::{docker, files::ApplianceFiles, process, tart};
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(60);
 const HEALTH_INTERVAL: Duration = Duration::from_millis(500);
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(super) enum PackageHealth {
+    Healthy,
+    Degraded,
+    ActionRequired,
+}
+
+impl PackageHealth {
+    pub(super) const fn label(self) -> &'static str {
+        match self {
+            Self::Healthy => "healthy",
+            Self::Degraded => "degraded",
+            Self::ActionRequired => "action required",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(super) enum MaintenanceTask<'a> {
     List,
@@ -199,10 +216,9 @@ pub(super) fn down(
 pub(super) async fn status(
     files: &ApplianceFiles,
     requested: PackageInfrastructureRuntime,
-) -> VmResult<()> {
+) -> VmResult<PackageHealth> {
     let Some(state) = files.read_state()? else {
-        vm_println!("Package infrastructure: not configured");
-        return Ok(());
+        return Ok(PackageHealth::ActionRequired);
     };
     let runtime = resolve_runtime(requested, Some(state.runtime));
     let runtime_status = match runtime {
@@ -219,16 +235,11 @@ pub(super) async fn status(
     };
     let healthy = runtime_status == "running" && gateway_is_healthy(&gateway_url).await;
 
-    vm_println!("Package infrastructure");
-    vm_println!("  Runtime: {}", runtime.as_str());
-    vm_println!("  State: {runtime_status}");
-    vm_println!("  Gateway: {gateway_url}");
-    vm_println!(
-        "  Health: {}",
-        if healthy { "healthy" } else { "unavailable" }
-    );
-    vm_println!("  Storage: persistent named volumes");
-    Ok(())
+    Ok(if healthy && files.runtime_credentials_ready()? {
+        PackageHealth::Healthy
+    } else {
+        PackageHealth::ActionRequired
+    })
 }
 
 pub(super) async fn doctor(

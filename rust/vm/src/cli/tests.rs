@@ -319,6 +319,16 @@ fn package_auth_can_import_the_active_github_credential() {
 }
 
 #[test]
+fn package_doctor_parses_safe_fix_mode() {
+    assert!(matches!(
+        Args::parse_from(["vm", "packages", "doctor", "--fix"]).command,
+        Command::Packages {
+            command: PackagesSubcommand::Doctor { fix: true, .. }
+        }
+    ));
+}
+
+#[test]
 fn package_checkout_parses_isolated_work_request() {
     assert!(matches!(
         Args::parse_from([

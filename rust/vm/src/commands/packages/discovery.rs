@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use url::Url;
 use vm_config::detector::{git::detect_repository, ProjectFacts};
+use vm_packages::SourceKind;
 use vm_packages::{PackageEcosystem, RegisterPackage, RegisterTool, ToolKind};
 use walkdir::{DirEntry, WalkDir};
 
@@ -16,7 +17,14 @@ const TOOL_MANIFEST: &str = "vm-tool.yaml";
 pub(super) struct Discovery {
     pub(super) packages: Vec<RegisterPackage>,
     pub(super) tools: Vec<RegisterTool>,
-    pub(super) failures: Vec<String>,
+    pub(super) failures: Vec<DiscoveryFailure>,
+}
+
+#[derive(Debug)]
+pub(super) struct DiscoveryFailure {
+    pub(super) source_root: PathBuf,
+    pub(super) repository: PathBuf,
+    pub(super) message: String,
 }
 
 #[derive(Default)]
@@ -42,24 +50,68 @@ pub(super) fn discover(
 pub(super) fn discover_configured(targets: &[String]) -> VmResult<Discovery> {
     let repositories = configured_repository_paths(targets)?;
     let mut discovery = Discovery::default();
-    for root in repositories {
-        let result = match is_tool_repository(&root) {
-            Ok(true) => discover_tool(&root, None).map(|tool| discovery.tools.push(tool)),
-            Ok(false) => {
-                discover_one(&root, None, None).map(|package| discovery.packages.push(package))
-            }
+    for (source_root, repository) in repositories {
+        let result = match is_tool_repository(&repository) {
+            Ok(true) => discover_tool(&repository, None).map(|tool| discovery.tools.push(tool)),
+            Ok(false) => discover_one(&repository, None, None)
+                .map(|package| discovery.packages.push(package)),
             Err(error) => Err(error),
         };
         if let Err(error) = result {
-            discovery
-                .failures
-                .push(format!("{}: {error}", root.display()));
+            discovery.failures.push(DiscoveryFailure {
+                source_root,
+                repository: repository.clone(),
+                message: format!("{}: {error}", repository.display()),
+            });
         }
     }
     Ok(discovery)
 }
 
-fn configured_repository_paths(targets: &[String]) -> VmResult<BTreeSet<PathBuf>> {
+pub(super) fn quarantined_repositories(source_root: &Path) -> VmResult<Vec<PathBuf>> {
+    let quarantine = source_root.join(".vm-quarantine");
+    if !quarantine.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut repositories = Vec::new();
+    for entry in WalkDir::new(&quarantine)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(should_visit)
+    {
+        let entry = entry.map_err(|error| {
+            VmError::validation(
+                format!("Failed to scan {}: {error}", quarantine.display()),
+                Some("Run `vm packages doctor --fix`"),
+            )
+        })?;
+        if entry.file_type().is_dir() && entry.path().join(".git").exists() {
+            repositories.push(entry.into_path());
+        }
+    }
+    Ok(repositories)
+}
+
+pub(super) fn source_identity(root: &Path) -> VmResult<(String, SourceKind)> {
+    if is_tool_repository(root)? {
+        let name = root
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.trim().is_empty())
+            .ok_or_else(|| {
+                VmError::validation(
+                    format!("Tool repository {} has no usable name", root.display()),
+                    Some("Rename the repository directory, then rerun `vm packages doctor --fix`"),
+                )
+            })?;
+        return Ok((name.to_string(), SourceKind::ToolCollection));
+    }
+    let facts = ProjectFacts::detect(root);
+    let ecosystem = resolve_ecosystem(root, &facts, None)?;
+    Ok((package_name(root, ecosystem)?, SourceKind::Package))
+}
+
+fn configured_repository_paths(targets: &[String]) -> VmResult<BTreeSet<(PathBuf, PathBuf)>> {
     let mut repositories = BTreeSet::new();
     for target in targets {
         let root = fs::canonicalize(target).map_err(|error| {
@@ -83,7 +135,7 @@ fn configured_repository_paths(targets: &[String]) -> VmResult<BTreeSet<PathBuf>
                 )
             })?;
             if entry.file_type().is_dir() && entry.path().join(".git").exists() {
-                repositories.insert(entry.into_path());
+                repositories.insert((root.clone(), entry.into_path()));
             }
         }
     }
@@ -201,7 +253,15 @@ fn should_visit(entry: &DirEntry) -> bool {
     let name = entry.file_name().to_string_lossy();
     if matches!(
         name.as_ref(),
-        ".git" | "node_modules" | "target" | ".venv" | "venv" | ".tox" | "dist" | "build"
+        ".git"
+            | ".vm-quarantine"
+            | "node_modules"
+            | "target"
+            | ".venv"
+            | "venv"
+            | ".tox"
+            | "dist"
+            | "build"
     ) {
         return false;
     }
@@ -598,7 +658,7 @@ mod tests {
 
         assert_eq!(configured.packages.len(), 1);
         assert_eq!(configured.failures.len(), 1);
-        assert!(configured.failures[0].contains("broken"));
+        assert!(configured.failures[0].message.contains("broken"));
     }
 
     #[test]

@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use crate::cli::PackagesSubcommand;
 use crate::commands::command_context::managed_guest_context;
 use crate::error::VmResult;
-use vm_core::vm_success;
+use vm_core::{vm_println, vm_success};
 
 use appliance::configured_client;
 use files::ApplianceFiles;
@@ -40,6 +40,82 @@ pub(in crate::commands) fn diagnose_client_access(fix: bool) -> VmResult<Option<
     Ok(Some(appliance::state_client_access_is_current(
         &files, &state,
     )?))
+}
+
+async fn status(
+    files: &ApplianceFiles,
+    runtime: crate::cli::PackageInfrastructureRuntime,
+) -> VmResult<()> {
+    let global = vm_config::GlobalConfig::load()?;
+    let source_state = catalog::prepare_source_roots(&global.packages.source_roots);
+    let mut health = appliance::status(files, runtime).await?;
+    if source_state.is_err()
+        || (!global.packages.source_roots.is_empty() && !files.has_git_token()?)
+    {
+        health = appliance::PackageHealth::ActionRequired;
+    } else if health == appliance::PackageHealth::Healthy
+        && catalog::has_quarantined_sources(&global.packages.source_roots)
+    {
+        health = appliance::PackageHealth::Degraded;
+    }
+    vm_println!("Package infrastructure: {}", health.label());
+    Ok(())
+}
+
+async fn doctor(
+    files: &ApplianceFiles,
+    runtime: crate::cli::PackageInfrastructureRuntime,
+    fix: bool,
+) -> VmResult<()> {
+    let global = vm_config::GlobalConfig::load()?;
+    if fix {
+        if let Some(state) = files.read_state()? {
+            appliance::repair_client_access(files, state)?;
+        }
+        let _ = catalog::repair_github_credential(files)?;
+    }
+    appliance::doctor(files, runtime).await?;
+
+    let mut unresolved = Vec::new();
+    if fix && files.read_state()?.is_some() {
+        let repaired =
+            catalog::repair_quarantined_sources(files, &global.packages.source_roots).await?;
+        unresolved.extend(repaired.failures);
+        let plan = catalog::prepare_source_roots(&global.packages.source_roots)?;
+        let reconciled = catalog::reconcile_source_roots(files, plan).await?;
+        unresolved.extend(reconciled.failures);
+    } else {
+        let plan = catalog::prepare_source_roots(&global.packages.source_roots)?;
+        unresolved.extend(
+            plan.discovery
+                .failures
+                .iter()
+                .map(|failure| failure.message.clone()),
+        );
+    }
+
+    for failure in &unresolved {
+        vm_core::vm_warning!("{failure}");
+    }
+    let health = if files.read_state()?.is_none()
+        || (!global.packages.source_roots.is_empty() && !files.has_git_token()?)
+    {
+        appliance::PackageHealth::ActionRequired
+    } else if !unresolved.is_empty()
+        || catalog::has_quarantined_sources(&global.packages.source_roots)
+    {
+        appliance::PackageHealth::Degraded
+    } else {
+        appliance::PackageHealth::Healthy
+    };
+    vm_println!("Package infrastructure: {}", health.label());
+    if health == appliance::PackageHealth::ActionRequired {
+        return Err(crate::error::VmError::validation(
+            "Package infrastructure requires an operator action",
+            Some("Run `vm packages up`"),
+        ));
+    }
+    Ok(())
 }
 
 pub(super) async fn handle(
@@ -70,15 +146,17 @@ pub(super) async fn handle(
             let global_config = vm_config::GlobalConfig::load()?;
             let source_roots = catalog::prepare_source_roots(&global_config.packages.source_roots)?;
             appliance::up(&files, runtime, port, registry_image, job_image).await?;
-            let failures = catalog::reconcile_source_roots(&files, source_roots).await?;
-            if !failures.is_empty() {
-                return Err(crate::error::VmError::validation(
-                    format!(
-                        "{} configured source(s) could not be registered",
-                        failures.len()
-                    ),
-                    Some("Fix the reported repositories and rerun `vm packages up`"),
-                ));
+            let outcome = catalog::reconcile_source_roots(&files, source_roots).await?;
+            if outcome.is_degraded() {
+                vm_core::vm_warning!(
+                    "Package infrastructure is degraded: {} quarantined, {} unresolved",
+                    outcome.quarantined.len(),
+                    outcome.failures.len()
+                );
+                vm_core::vm_hint!("Repair with: vm packages doctor --fix");
+                vm_println!("Package infrastructure: degraded");
+            } else {
+                vm_println!("Package infrastructure: healthy");
             }
             if let Ok(config) = vm_config::AppConfig::load(config_path, profile, None) {
                 let _ = tooling::refresh(&config.vm).await;
@@ -86,8 +164,8 @@ pub(super) async fn handle(
             Ok(())
         }
         PackagesSubcommand::Down { runtime } => appliance::down(&files, runtime),
-        PackagesSubcommand::Status { runtime } => appliance::status(&files, runtime).await,
-        PackagesSubcommand::Doctor { runtime } => appliance::doctor(&files, runtime).await,
+        PackagesSubcommand::Status { runtime } => status(&files, runtime).await,
+        PackagesSubcommand::Doctor { runtime, fix } => doctor(&files, runtime, fix).await,
         PackagesSubcommand::Backups { runtime } => appliance::list_backups(&files, runtime),
         PackagesSubcommand::Backup { runtime } => appliance::backup(&files, runtime),
         PackagesSubcommand::Restore { backup_id, runtime } => {

@@ -43,6 +43,13 @@ fn guest_allowed_command(command: &Command) -> bool {
 }
 
 pub(super) fn managed_guest_context() -> bool {
+    if std::env::var("VM_TEST_MODE").is_ok() {
+        match std::env::var("VM_TEST_COMMAND_CONTEXT").ok().as_deref() {
+            Some("host") => return false,
+            Some("guest") => return true,
+            _ => {}
+        }
+    }
     is_managed_guest(
         std::env::var("VM_MANAGED_GUEST").ok().as_deref(),
         std::env::var("VM_IMAGE_IDENTITY").ok().as_deref(),

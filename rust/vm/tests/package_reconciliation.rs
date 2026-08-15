@@ -192,6 +192,16 @@ fn fixture_package(source_root: &Path) {
     fs::write(package.join("package.json"), r#"{"name":"@shared/auth"}"#).unwrap();
 }
 
+fn fixture_broken_package(source_root: &Path) -> PathBuf {
+    let package = source_root.join("broken-package");
+    fs::create_dir_all(&package).unwrap();
+    let repository = Repository::init(&package).unwrap();
+    repository
+        .remote("origin", "git@example.com:shared/broken-package.git")
+        .unwrap();
+    package
+}
+
 fn fake_docker(directory: &Path) -> (PathBuf, PathBuf) {
     let executable = directory.join("docker");
     let log = directory.join("docker.log");
@@ -276,6 +286,7 @@ fn packages_up(
         .env("VM_FAKE_DOCKER_LOG", docker_log)
         .env("VM_FAKE_TART_LOG", fake_bin.join("tart.log"))
         .env("VM_TEST_MODE", "1")
+        .env("VM_TEST_COMMAND_CONTEXT", "host")
         .env("CI", "1")
         .env_remove("VM_MANAGED_GUEST")
         .env_remove("VM_IMAGE_IDENTITY")
@@ -370,6 +381,34 @@ fn configured_empty_shelf_is_a_successful_noop() {
 }
 
 #[test]
+fn unhealthy_repository_is_quarantined_without_failing_up() {
+    let directory = TempDir::new().unwrap();
+    let gateway = FakeGateway::start();
+    let fake_bin = directory.path().join("bin");
+    fs::create_dir_all(&fake_bin).unwrap();
+    let (_, docker_log) = fake_docker(&fake_bin);
+    let source_root = directory.path().join("package-sources");
+    fixture_package(&source_root);
+    let broken = fixture_broken_package(&source_root);
+    configure_source_roots(&directory, &[&source_root]);
+    let config = project_config(&directory);
+
+    let output = packages_up(&directory, &config, &fake_bin, &docker_log, gateway.port);
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Package infrastructure: degraded"));
+    assert!(!broken.exists());
+    assert!(source_root
+        .join(".vm-quarantine/broken-package/.git")
+        .exists());
+    assert_eq!(gateway.package_registrations(), 1);
+}
+
+#[test]
 fn guest_package_status_verifies_access_without_mutating_state() {
     let directory = TempDir::new().unwrap();
     let gateway = FakeGateway::start();
@@ -386,6 +425,7 @@ fn guest_package_status_verifies_access_without_mutating_state() {
         )
         .env("VM_PACKAGES_AGENT_TOKEN", "agent-token")
         .env("VM_TEST_MODE", "1")
+        .env("VM_TEST_COMMAND_CONTEXT", "guest")
         .env("CI", "1")
         .output()
         .unwrap();
@@ -393,13 +433,7 @@ fn guest_package_status_verifies_access_without_mutating_state() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(output.status.success(), "{stderr}");
-    assert!(stdout.contains("Context: managed guest"), "{stdout}");
-    assert!(stdout.contains("Consumer: package-test"), "{stdout}");
-    assert!(stdout.contains("Workflow: connected"), "{stdout}");
-    assert!(stdout.contains("Agent access: authorized"), "{stdout}");
-    assert!(stdout.contains("Registered packages: 1"), "{stdout}");
-    assert!(stdout.contains("Registered tools: 1"), "{stdout}");
-    assert!(stdout.contains("Check: read-only"), "{stdout}");
+    assert_eq!(stdout, "Package infrastructure: healthy\n");
 
     let mut requests = gateway.requests.lock().unwrap().clone();
     requests.sort();
