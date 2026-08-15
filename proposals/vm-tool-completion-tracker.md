@@ -540,6 +540,8 @@ d91728f2 feat(packages): enforce managed source releases
 59534b66 feat(packages): add one-time workflow init
 5b8062b7 feat(packages): launch managed Codex work
 a5cb71c5 feat(tools): activate managed releases automatically
+59394109 test(packages): prove managed work end to end
+05d30514 fix(ci): make package acceptance executable
 d710b9ac fix(runtime): externalize build artifacts
 828261d5 docs(packages): document managed guest releases
 f8071ae3 test(cli): preserve actionable io errors
