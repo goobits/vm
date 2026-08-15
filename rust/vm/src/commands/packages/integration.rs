@@ -119,8 +119,12 @@ async fn integrate(
         SourceKind::Package => {
             let definition = client.package_definition(&submission.package).await?;
             run_package_check(subject, definition.ecosystem, &source)?;
-            run_consumer_check(subject, definition.ecosystem, &submission.package, &source)?;
-            BTreeMap::from([(consumer, CheckOutcome::Passed)])
+            if checkout.workspace_release {
+                BTreeMap::new()
+            } else {
+                run_consumer_check(subject, definition.ecosystem, &submission.package, &source)?;
+                BTreeMap::from([(consumer, CheckOutcome::Passed)])
+            }
         }
         SourceKind::ToolBinary => {
             run_binary_check(subject, &source)?;

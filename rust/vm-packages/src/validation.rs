@@ -65,6 +65,35 @@ pub fn validate_repository_url(value: &str) -> Result<(), PackageValidationError
     Ok(())
 }
 
+/// Normalize a Git remote that must be reachable by package infrastructure.
+/// SCP-style SSH remotes are accepted, while host-local file remotes are not.
+pub fn normalize_remote_repository_url(value: &str) -> Result<String, PackageValidationError> {
+    let candidate = if let Some((authority, path)) =
+        value.split_once(':').filter(|(authority, path)| {
+            !authority.is_empty()
+                && !path.is_empty()
+                && !authority.contains('/')
+                && (authority.contains('@') || authority.contains('.') || *authority == "localhost")
+        }) {
+        format!("ssh://{authority}/{}", path.trim_start_matches('/'))
+    } else if url::Url::parse(value).is_ok() {
+        value.to_string()
+    } else {
+        return Err(PackageValidationError::new(
+            "Git origin must be an absolute HTTPS or SSH repository URL",
+        ));
+    };
+    let parsed = url::Url::parse(&candidate)
+        .map_err(|_| PackageValidationError::new("Git origin is not a valid repository URL"))?;
+    if parsed.scheme() == "file" {
+        return Err(PackageValidationError::new(
+            "host-local Git origins are not reachable by package infrastructure",
+        ));
+    }
+    validate_repository_url(&candidate)?;
+    Ok(candidate)
+}
+
 pub fn validate_registry_url(value: &str) -> Result<(), PackageValidationError> {
     let value = value.strip_prefix("sparse+").unwrap_or(value);
     let registry = url::Url::parse(value)
@@ -86,7 +115,8 @@ pub fn validate_registry_url(value: &str) -> Result<(), PackageValidationError> 
 #[cfg(test)]
 mod tests {
     use super::{
-        validate_label, validate_managed_id, validate_registry_url, validate_repository_url,
+        normalize_remote_repository_url, validate_label, validate_managed_id,
+        validate_registry_url, validate_repository_url,
     };
 
     #[test]
@@ -97,6 +127,11 @@ mod tests {
         assert!(validate_repository_url("https://token@example.com/auth.git").is_err());
         assert!(validate_registry_url("sparse+https://packages.example.com/cargo/").is_ok());
         assert!(validate_registry_url("file:///tmp/packages").is_err());
+        assert_eq!(
+            normalize_remote_repository_url("git@example.com:team/auth.git").unwrap(),
+            "ssh://git@example.com/team/auth.git"
+        );
+        assert!(normalize_remote_repository_url("file:///tmp/auth.git").is_err());
     }
 
     #[test]

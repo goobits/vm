@@ -7,14 +7,9 @@ use crate::{io::atomic_write, ImportedSubmission, Store, WorkError, WorkResult};
 
 impl SourceManager {
     pub async fn submission_staging_path(&self, checkout: &CheckoutRecord) -> WorkResult<PathBuf> {
-        let source = self.checkout_source(checkout)?;
-        if !source.is_dir() {
-            return Err(WorkError::Conflict("checkout source is not ready".into()));
-        }
-        let uploads = source
-            .parent()
-            .expect("managed source has a parent")
-            .join("uploads");
+        let root = self.agent_root(&checkout.checkout_id)?;
+        tokio::fs::create_dir_all(&root).await?;
+        let uploads = root.join("uploads");
         tokio::fs::create_dir_all(&uploads).await?;
         Ok(uploads.join(format!(
             "{}.bundle",
@@ -28,6 +23,11 @@ impl SourceManager {
         checkout: &CheckoutRecord,
         bundle: &Path,
     ) -> WorkResult<vm_packages::SubmissionRecord> {
+        if checkout.workspace_release {
+            return self
+                .import_workspace_submission(store, checkout, bundle)
+                .await;
+        }
         let lock = self
             .lock(&format!("checkout:{}", checkout.checkout_id))
             .await;
@@ -37,10 +37,6 @@ impl SourceManager {
             .branch
             .as_deref()
             .ok_or_else(|| WorkError::Conflict("checkout branch is missing".into()))?;
-        let base_commit = checkout
-            .base_commit
-            .as_deref()
-            .ok_or_else(|| WorkError::Conflict("checkout base commit is missing".into()))?;
         run(
             self.git()
                 .arg("-C")
@@ -51,33 +47,13 @@ impl SourceManager {
             "verify submitted Git bundle",
         )
         .await?;
-        let heads = git_output(
-            self.git()
-                .arg("bundle")
-                .arg("list-heads")
-                .arg(bundle)
-                .arg(format!("refs/heads/{branch}")),
-            "read submitted Git bundle head",
+        let submitted_commit = bundle_head(
+            self,
+            bundle,
+            &format!("refs/heads/{branch}"),
+            "bundle does not contain the checkout branch",
         )
         .await?;
-        let submitted_commit = heads
-            .split_whitespace()
-            .next()
-            .filter(|commit| {
-                matches!(commit.len(), 40 | 64)
-                    && commit
-                        .chars()
-                        .all(|character| character.is_ascii_hexdigit())
-            })
-            .ok_or_else(|| {
-                WorkError::Invalid("bundle does not contain the checkout branch".into())
-            })?
-            .to_string();
-        if submitted_commit == base_commit {
-            return Err(WorkError::Invalid(
-                "submission contains no commits beyond its base".into(),
-            ));
-        }
         let submission_ref = format!(
             "refs/submissions/{}",
             submitted_commit.chars().take(16).collect::<String>()
@@ -92,12 +68,186 @@ impl SourceManager {
             "import submitted package commits",
         )
         .await?;
-        if run(
+        self.finalize_submission(store, checkout, bundle, &source, submitted_commit)
+            .await
+    }
+
+    async fn import_workspace_submission(
+        &self,
+        store: &Store,
+        checkout: &CheckoutRecord,
+        bundle: &Path,
+    ) -> WorkResult<vm_packages::SubmissionRecord> {
+        if !matches!(
+            checkout.state,
+            vm_packages::WorkflowState::Created
+                | vm_packages::WorkflowState::Active
+                | vm_packages::WorkflowState::NeedsChanges
+        ) {
+            return Err(WorkError::Conflict(
+                "workspace source can only bootstrap or replace an active submission".into(),
+            ));
+        }
+        let lock = self
+            .lock(&format!("checkout:{}", checkout.checkout_id))
+            .await;
+        let _guard = lock.lock().await;
+        let submitted_commit = bundle_head(
+            self,
+            bundle,
+            "HEAD",
+            "workspace bundle does not contain HEAD",
+        )
+        .await?;
+        let root = self.agent_root(&checkout.checkout_id)?;
+        let source = root.join("source");
+        let temporary = root.join(format!(
+            "source-upload-{}",
+            vm_core::secrets::generate_random_password(12)
+        ));
+        let prepare = async {
+            run(
+                self.git()
+                    .arg("clone")
+                    .arg("--no-hardlinks")
+                    .arg(bundle)
+                    .arg(&temporary),
+                "clone submitted workspace source",
+            )
+            .await?;
+            let cloned_commit = git_output(
+                self.git()
+                    .arg("-C")
+                    .arg(&temporary)
+                    .args(["rev-parse", "HEAD"]),
+                "resolve submitted workspace commit",
+            )
+            .await?;
+            if cloned_commit != submitted_commit {
+                return Err(WorkError::Invalid(
+                    "workspace bundle HEAD changed while importing".into(),
+                ));
+            }
+            let base_commit = match checkout.base_commit.as_deref() {
+                Some(base_commit) => base_commit.to_string(),
+                None => git_output(
+                    self.git()
+                        .arg("-C")
+                        .arg(&temporary)
+                        .args(["rev-parse", "HEAD^"]),
+                    "resolve workspace release base commit",
+                )
+                .await
+                .map_err(|_| {
+                    WorkError::Invalid("workspace release commit must have a parent commit".into())
+                })?,
+            };
+            run(
+                self.git()
+                    .arg("-C")
+                    .arg(&temporary)
+                    .args(["merge-base", "--is-ancestor"])
+                    .arg(&base_commit)
+                    .arg(&submitted_commit),
+                "verify workspace submission ancestry",
+            )
+            .await?;
+            let branch = checkout
+                .branch
+                .clone()
+                .unwrap_or_else(|| format!("workspace/{}", checkout.checkout_id));
+            run(
+                self.git()
+                    .arg("-C")
+                    .arg(&temporary)
+                    .args(["switch", "--force-create"])
+                    .arg(&branch)
+                    .arg(&submitted_commit),
+                "create internal workspace submission branch",
+            )
+            .await?;
+            Ok::<_, WorkError>((base_commit, branch))
+        }
+        .await;
+        let (base_commit, branch) = match prepare {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                let _ = tokio::fs::remove_dir_all(&temporary).await;
+                return Err(error);
+            }
+        };
+        if tokio::fs::try_exists(&source).await? {
+            tokio::fs::remove_dir_all(&source).await?;
+        }
+        tokio::fs::rename(&temporary, &source).await?;
+
+        let active = if checkout.state == vm_packages::WorkflowState::Created {
+            let definition = store.source(&checkout.package).await?;
+            store
+                .record_source(
+                    &checkout.checkout_id,
+                    definition.default_branch,
+                    base_commit.clone(),
+                    branch,
+                    source.to_string_lossy().into_owned(),
+                )
+                .await?;
+            store
+                .transition(
+                    &checkout.checkout_id,
+                    vm_packages::TransitionRequest {
+                        next: vm_packages::WorkflowState::Active,
+                        actor: checkout.agent.clone(),
+                        reason: "canonical workspace source retained internally".into(),
+                        commit: Some(base_commit.clone()),
+                        validation_result: Some("workspace_source_ready".into()),
+                        idempotency_key: format!("workspace-active-{}", checkout.checkout_id),
+                    },
+                )
+                .await?
+        } else {
+            checkout.clone()
+        };
+        let submission_ref = format!(
+            "refs/submissions/{}",
+            submitted_commit.chars().take(16).collect::<String>()
+        );
+        run(
             self.git()
                 .arg("-C")
                 .arg(&source)
-                .arg("merge-base")
-                .arg("--is-ancestor")
+                .arg("update-ref")
+                .arg(&submission_ref)
+                .arg(&submitted_commit),
+            "retain submitted workspace commit",
+        )
+        .await?;
+        self.finalize_submission(store, &active, bundle, &source, submitted_commit)
+            .await
+    }
+
+    async fn finalize_submission(
+        &self,
+        store: &Store,
+        checkout: &CheckoutRecord,
+        bundle: &Path,
+        source: &Path,
+        submitted_commit: String,
+    ) -> WorkResult<vm_packages::SubmissionRecord> {
+        let base_commit = checkout
+            .base_commit
+            .as_deref()
+            .ok_or_else(|| WorkError::Conflict("checkout base commit is missing".into()))?;
+        if submitted_commit == base_commit {
+            return Err(WorkError::Invalid(
+                "submission contains no commits beyond its base".into(),
+            ));
+        }
+        if run(
+            self.git()
+                .arg("-C")
+                .arg(source)
+                .args(["merge-base", "--is-ancestor"])
                 .arg(base_commit)
                 .arg(&submitted_commit),
             "verify submitted commit ancestry",
@@ -109,23 +259,22 @@ impl SourceManager {
                 "submitted history does not descend from the recorded base commit".into(),
             ));
         }
+        let range = format!("{base_commit}..{submitted_commit}");
         run(
             self.git()
                 .arg("-C")
-                .arg(&source)
-                .arg("diff")
-                .arg("--check")
-                .arg(format!("{base_commit}..{submitted_commit}")),
+                .arg(source)
+                .args(["diff", "--check"])
+                .arg(&range),
             "validate submitted diff",
         )
         .await?;
         let diff = run(
             self.git()
                 .arg("-C")
-                .arg(&source)
-                .arg("diff")
-                .arg("--binary")
-                .arg(format!("{base_commit}..{submitted_commit}")),
+                .arg(source)
+                .args(["diff", "--binary"])
+                .arg(range),
             "capture submitted diff",
         )
         .await?
@@ -153,4 +302,33 @@ impl SourceManager {
             )
             .await
     }
+}
+
+async fn bundle_head(
+    source: &SourceManager,
+    bundle: &Path,
+    reference: &str,
+    missing: &str,
+) -> WorkResult<String> {
+    let heads = git_output(
+        source
+            .git()
+            .arg("bundle")
+            .arg("list-heads")
+            .arg(bundle)
+            .arg(reference),
+        "read workspace bundle head",
+    )
+    .await?;
+    heads
+        .split_whitespace()
+        .next()
+        .filter(|commit| {
+            matches!(commit.len(), 40 | 64)
+                && commit
+                    .chars()
+                    .all(|character| character.is_ascii_hexdigit())
+        })
+        .map(str::to_string)
+        .ok_or_else(|| WorkError::Invalid(missing.into()))
 }

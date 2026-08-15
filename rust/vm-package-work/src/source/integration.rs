@@ -12,12 +12,18 @@ impl SourceManager {
         submission: &SubmissionRecord,
         request: IntegrationRequest,
     ) -> WorkResult<SubmissionRecord> {
+        let checkout = store.get_checkout(&submission.checkout_id).await?;
+        let strategy = if checkout.workspace_release {
+            "workspace".to_string()
+        } else {
+            request.strategy.clone()
+        };
         if submission.state == WorkflowState::Integrating {
             let integration = submission
                 .integration
                 .as_ref()
                 .ok_or_else(|| WorkError::Conflict("integration record is missing".into()))?;
-            if integration.strategy != request.strategy {
+            if integration.strategy != strategy {
                 return Err(WorkError::Conflict(
                     "integration retry changed the merge strategy".into(),
                 ));
@@ -35,7 +41,6 @@ impl SourceManager {
             ));
         }
         let definition = store.source(&submission.package).await?;
-        let checkout = store.get_checkout(&submission.checkout_id).await?;
         if definition.kind != checkout.source_kind {
             return Err(WorkError::Conflict(
                 "checkout source kind no longer matches the catalog".into(),
@@ -43,21 +48,6 @@ impl SourceManager {
         }
         let lock = self.lock(&format!("source:{}", definition.name)).await;
         let _guard = lock.lock().await;
-        let mirror = self
-            .root
-            .join("sources")
-            .join(format!("{}.git", source_key(&definition.name)));
-        self.sync_mirror(&mirror, &definition.repository).await?;
-        let canonical_ref = format!("refs/heads/{}", definition.default_branch);
-        let canonical_commit = git_output(
-            self.git()
-                .arg("--git-dir")
-                .arg(&mirror)
-                .arg("rev-parse")
-                .arg(&canonical_ref),
-            "resolve current canonical package commit",
-        )
-        .await?;
         let integration_root = self
             .agent_root(&submission.checkout_id)?
             .join("integrations")
@@ -70,33 +60,6 @@ impl SourceManager {
         if tokio::fs::try_exists(&source).await? {
             tokio::fs::remove_dir_all(&source).await?;
         }
-        run(
-            self.git()
-                .arg("clone")
-                .arg("--no-hardlinks")
-                .arg(&mirror)
-                .arg(&source),
-            "create isolated integration checkout",
-        )
-        .await?;
-        run(
-            self.git().arg("-C").arg(&source).args([
-                "config",
-                "user.name",
-                "VM Package Controller",
-            ]),
-            "configure integration Git identity",
-        )
-        .await?;
-        run(
-            self.git().arg("-C").arg(&source).args([
-                "config",
-                "user.email",
-                "packages@vm.internal",
-            ]),
-            "configure integration Git identity",
-        )
-        .await?;
         let submitted_source = self.checkout_source(&checkout)?;
         let submitted_ref = format!(
             "refs/submissions/{}",
@@ -106,64 +69,133 @@ impl SourceManager {
                 .take(16)
                 .collect::<String>()
         );
-        run(
-            self.git()
-                .arg("-C")
-                .arg(&source)
-                .arg("fetch")
-                .arg(&submitted_source)
-                .arg(format!("{submitted_ref}:{submitted_ref}")),
-            "load approved submission into integration checkout",
-        )
-        .await?;
         let branch = format!("integration/{}", submission.submission_id);
-        match request.strategy.as_str() {
-            "rebase" => {
-                run(
-                    self.git()
-                        .arg("-C")
-                        .arg(&source)
-                        .arg("switch")
-                        .arg("--create")
-                        .arg(&branch)
-                        .arg(&submitted_ref),
-                    "create rebased integration branch",
-                )
-                .await?;
-                run(
-                    self.git()
-                        .arg("-C")
-                        .arg(&source)
-                        .arg("rebase")
-                        .arg(&canonical_commit),
-                    "rebase submission onto current canonical source",
-                )
-                .await?;
+        let canonical_commit = if checkout.workspace_release {
+            let canonical_commit = checkout.base_commit.clone().ok_or_else(|| {
+                WorkError::Conflict("workspace checkout base commit is missing".into())
+            })?;
+            run(
+                self.git()
+                    .arg("clone")
+                    .arg("--no-hardlinks")
+                    .arg(&submitted_source)
+                    .arg(&source),
+                "clone validated workspace integration source",
+            )
+            .await?;
+            run(
+                self.git()
+                    .arg("-C")
+                    .arg(&source)
+                    .args(["switch", "--force-create"])
+                    .arg(&branch)
+                    .arg(&submission.submitted_commit),
+                "select validated workspace release commit",
+            )
+            .await?;
+            canonical_commit
+        } else {
+            let mirror = self
+                .root
+                .join("sources")
+                .join(format!("{}.git", source_key(&definition.name)));
+            self.sync_mirror(&mirror, &definition.repository).await?;
+            let canonical_ref = format!("refs/heads/{}", definition.default_branch);
+            let canonical_commit = git_output(
+                self.git()
+                    .arg("--git-dir")
+                    .arg(&mirror)
+                    .arg("rev-parse")
+                    .arg(&canonical_ref),
+                "resolve current canonical package commit",
+            )
+            .await?;
+            run(
+                self.git()
+                    .arg("clone")
+                    .arg("--no-hardlinks")
+                    .arg(&mirror)
+                    .arg(&source),
+                "create isolated integration checkout",
+            )
+            .await?;
+            run(
+                self.git().arg("-C").arg(&source).args([
+                    "config",
+                    "user.name",
+                    "VM Package Controller",
+                ]),
+                "configure integration Git identity",
+            )
+            .await?;
+            run(
+                self.git().arg("-C").arg(&source).args([
+                    "config",
+                    "user.email",
+                    "packages@vm.internal",
+                ]),
+                "configure integration Git identity",
+            )
+            .await?;
+            run(
+                self.git()
+                    .arg("-C")
+                    .arg(&source)
+                    .arg("fetch")
+                    .arg(&submitted_source)
+                    .arg(format!("{submitted_ref}:{submitted_ref}")),
+                "load approved submission into integration checkout",
+            )
+            .await?;
+            match request.strategy.as_str() {
+                "rebase" => {
+                    run(
+                        self.git()
+                            .arg("-C")
+                            .arg(&source)
+                            .arg("switch")
+                            .arg("--create")
+                            .arg(&branch)
+                            .arg(&submitted_ref),
+                        "create rebased integration branch",
+                    )
+                    .await?;
+                    run(
+                        self.git()
+                            .arg("-C")
+                            .arg(&source)
+                            .arg("rebase")
+                            .arg(&canonical_commit),
+                        "rebase submission onto current canonical source",
+                    )
+                    .await?;
+                }
+                "merge" => {
+                    run(
+                        self.git()
+                            .arg("-C")
+                            .arg(&source)
+                            .arg("switch")
+                            .arg("--create")
+                            .arg(&branch)
+                            .arg(&canonical_commit),
+                        "create merged integration branch",
+                    )
+                    .await?;
+                    run(
+                        self.git()
+                            .arg("-C")
+                            .arg(&source)
+                            .args(["merge", "--no-ff", "--no-edit"])
+                            .arg(&submitted_ref),
+                        "merge submission into current canonical source",
+                    )
+                    .await?;
+                }
+                _ => unreachable!("strategy was validated"),
             }
-            "merge" => {
-                run(
-                    self.git()
-                        .arg("-C")
-                        .arg(&source)
-                        .arg("switch")
-                        .arg("--create")
-                        .arg(&branch)
-                        .arg(&canonical_commit),
-                    "create merged integration branch",
-                )
-                .await?;
-                run(
-                    self.git()
-                        .arg("-C")
-                        .arg(&source)
-                        .args(["merge", "--no-ff", "--no-edit"])
-                        .arg(&submitted_ref),
-                    "merge submission into current canonical source",
-                )
-                .await?;
-            }
-            _ => unreachable!("strategy was validated"),
-        }
+            canonical_commit
+        };
         let integration_commit = git_output(
             self.git()
                 .arg("-C")
@@ -202,7 +234,7 @@ impl SourceManager {
                 IntegrationRecord {
                     canonical_commit,
                     integration_commit,
-                    strategy: request.strategy,
+                    strategy,
                     worktree: source.to_string_lossy().into_owned(),
                     validation: None,
                     timestamp: chrono::Utc::now(),

@@ -6,7 +6,7 @@ use crate::error::{VmError, VmResult};
 use super::{
     checkout, integration,
     runtime::{checkout_root, exec_output, GuestRuntime},
-    submission,
+    submission, workspace,
 };
 
 const RELEASE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
@@ -14,19 +14,25 @@ const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
 
 pub(super) async fn handle_guest(checkout_id: Option<&str>) -> VmResult<()> {
     let subject = GuestRuntime::discover()?;
-    let inferred_checkout_id;
-    let checkout_id = match checkout_id {
-        Some(checkout_id) => checkout_id,
-        None => {
-            inferred_checkout_id = infer_checkout_id(
-                &std::env::current_dir().map_err(VmError::from)?,
-                &dirs::home_dir().ok_or_else(|| {
-                    VmError::validation("Guest home directory is unavailable", None::<String>)
-                })?,
-            )?;
-            &inferred_checkout_id
-        }
+    let mut workspace = None;
+    let resolved_checkout_id = match checkout_id {
+        Some(checkout_id) => checkout_id.to_string(),
+        None => match infer_checkout_id(
+            &std::env::current_dir().map_err(VmError::from)?,
+            &dirs::home_dir().ok_or_else(|| {
+                VmError::validation("Guest home directory is unavailable", None::<String>)
+            })?,
+        )? {
+            Some(checkout_id) => checkout_id,
+            None => {
+                let prepared = workspace::prepare(&subject).await?;
+                let checkout_id = prepared.checkout_id.clone();
+                workspace = Some(prepared);
+                checkout_id
+            }
+        },
     };
+    let checkout_id = resolved_checkout_id.as_str();
     let client = subject.client()?;
     let checkout = client.checkout(checkout_id).await?;
     if !checkout.consumers.contains(&subject.consumer().to_string()) {
@@ -37,10 +43,27 @@ pub(super) async fn handle_guest(checkout_id: Option<&str>) -> VmResult<()> {
     }
     renew_release_lease(&subject, &client, &checkout).await?;
     let mut current = match checkout.state {
-        WorkflowState::Active | WorkflowState::NeedsChanges => {
-            submission::handle_guest(&subject, checkout_id).await?
+        WorkflowState::Created if checkout.workspace_release => {
+            let workspace = workspace.as_ref().ok_or_else(|| {
+                VmError::validation(
+                    "Workspace checkout must be released from its canonical source directory",
+                    Some("Run `vm packages release` from the canonical workspace"),
+                )
+            })?;
+            submission::handle_workspace(&subject, &checkout, &workspace.source).await?
         }
-        WorkflowState::Submitted => submission::resume_guest(&subject, checkout_id).await?,
+        WorkflowState::Active | WorkflowState::NeedsChanges => match workspace.as_ref() {
+            Some(workspace) => {
+                submission::handle_workspace(&subject, &checkout, &workspace.source).await?
+            }
+            None => submission::handle_guest(&subject, checkout_id).await?,
+        },
+        WorkflowState::Submitted => match workspace.as_ref() {
+            Some(workspace) => {
+                submission::resume_workspace(&subject, &checkout, &workspace.source).await?
+            }
+            None => submission::resume_guest(&subject, checkout_id).await?,
+        },
         WorkflowState::Validating
         | WorkflowState::Reviewing
         | WorkflowState::Approved
@@ -56,21 +79,28 @@ pub(super) async fn handle_guest(checkout_id: Option<&str>) -> VmResult<()> {
             ))
         }
     };
-    current = wait_for_review(&client, current).await?;
+    if let Some(workspace) = workspace.as_mut() {
+        workspace.record_commit(&subject, &current.submitted_commit)?;
+    }
+    current = wait_for_review(&client, current, checkout.workspace_release).await?;
     if matches!(
         current.state,
         WorkflowState::Approved | WorkflowState::Integrating
     ) {
         current = integration::handle_guest(&subject, &current.submission_id).await?;
     }
-    let published = wait_for_publication(&client, current).await?;
+    let published = wait_for_publication(&client, current, checkout.workspace_release).await?;
     let release_id = published.release_id.as_deref().ok_or_else(|| {
         VmError::validation("Published submission has no release record", None::<String>)
     })?;
     let release = client.release(release_id).await?;
-    let checkout = client.checkout(checkout_id).await?;
-    if let Err(error) = checkout::cleanup_guest(&subject, &checkout) {
-        vm_hint!("Published successfully; local checkout cleanup was skipped: {error}");
+    if let Some(workspace) = workspace.as_mut() {
+        workspace.record_commit(&subject, &release.source_commit)?;
+    } else {
+        let checkout = client.checkout(checkout_id).await?;
+        if let Err(error) = checkout::cleanup_guest(&subject, &checkout) {
+            vm_hint!("Published successfully; local checkout cleanup was skipped: {error}");
+        }
     }
     vm_success!(
         "Released {}@{} from {}",
@@ -81,14 +111,14 @@ pub(super) async fn handle_guest(checkout_id: Option<&str>) -> VmResult<()> {
     Ok(())
 }
 
-fn infer_checkout_id(current_dir: &std::path::Path, home: &std::path::Path) -> VmResult<String> {
+fn infer_checkout_id(
+    current_dir: &std::path::Path,
+    home: &std::path::Path,
+) -> VmResult<Option<String>> {
     let root = home.join(".local/share/vm/package-checkouts");
-    let relative = current_dir.strip_prefix(&root).map_err(|_| {
-        VmError::validation(
-            "Current directory is not inside a managed package checkout",
-            Some("Run `vm packages release` from the managed checkout source directory"),
-        )
-    })?;
+    let Ok(relative) = current_dir.strip_prefix(&root) else {
+        return Ok(None);
+    };
     let mut components = relative.components();
     let checkout_id = components
         .next()
@@ -110,7 +140,7 @@ fn infer_checkout_id(current_dir: &std::path::Path, home: &std::path::Path) -> V
         ));
     }
     vm_packages::validate_managed_id("checkout ID", checkout_id).map_err(VmError::from)?;
-    Ok(checkout_id.to_string())
+    Ok(Some(checkout_id.to_string()))
 }
 
 async fn renew_release_lease(
@@ -157,6 +187,7 @@ fn release_lease_key(checkout: &vm_packages::CheckoutRecord) -> String {
 async fn wait_for_review(
     client: &vm_packages::PackageInfrastructureClient,
     mut submission: vm_packages::SubmissionRecord,
+    workspace_release: bool,
 ) -> VmResult<vm_packages::SubmissionRecord> {
     let deadline = tokio::time::Instant::now() + RELEASE_TIMEOUT;
     while matches!(
@@ -179,7 +210,11 @@ async fn wait_for_review(
                 .as_ref()
                 .map(|review| format!("Package review requested changes: {}", review.reason))
                 .unwrap_or_else(|| "Package review requested changes".into()),
-            Some("Edit and commit the checkout, then rerun the same release command"),
+            Some(if workspace_release {
+                "Edit and commit the canonical workspace, then rerun `vm packages release`"
+            } else {
+                "Edit and commit the checkout, then rerun the same release command"
+            }),
         )),
         WorkflowState::Rejected | WorkflowState::Failed => Err(VmError::validation(
             "Package review rejected or failed the release",
@@ -192,6 +227,7 @@ async fn wait_for_review(
 async fn wait_for_publication(
     client: &vm_packages::PackageInfrastructureClient,
     mut submission: vm_packages::SubmissionRecord,
+    workspace_release: bool,
 ) -> VmResult<vm_packages::SubmissionRecord> {
     let deadline = tokio::time::Instant::now() + RELEASE_TIMEOUT;
     while matches!(
@@ -215,7 +251,11 @@ async fn wait_for_publication(
                 .as_ref()
                 .map(|review| format!("Package release requested changes: {}", review.reason))
                 .unwrap_or_else(|| "Package release requested changes".into()),
-            Some("Edit and commit the checkout, then rerun the same release command"),
+            Some(if workspace_release {
+                "Edit and commit the canonical workspace, then rerun `vm packages release`"
+            } else {
+                "Edit and commit the checkout, then rerun the same release command"
+            }),
         )),
         state => Err(VmError::validation(
             format!("Package release stopped in {state:?}"),
@@ -238,7 +278,7 @@ mod tests {
                 home,
             )
             .unwrap(),
-            "checkout-123"
+            Some("checkout-123".into())
         );
         assert_eq!(
             infer_checkout_id(
@@ -248,8 +288,11 @@ mod tests {
                 home,
             )
             .unwrap(),
-            "checkout-123"
+            Some("checkout-123".into())
         );
-        assert!(infer_checkout_id(Path::new("/workspace"), home).is_err());
+        assert_eq!(
+            infer_checkout_id(Path::new("/workspace"), home).unwrap(),
+            None
+        );
     }
 }

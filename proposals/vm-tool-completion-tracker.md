@@ -286,7 +286,7 @@ runner rather than replaced with another fake-provider test.
 
 - [x] Extend the existing source, manifest, and release records for attested
   canonical workspaces, durable internal source archives, and binary tools.
-- [ ] Detect and resume canonical-workspace releases without repository-local
+- [x] Detect and resume canonical-workspace releases without repository-local
   state, checkout identifiers, or mutations.
 - [ ] Build and publish validated binary artifacts through the existing isolated
   release job and private artifact registry.

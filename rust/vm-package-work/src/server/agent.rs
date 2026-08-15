@@ -24,7 +24,9 @@ pub(super) async fn create_checkout(
     ensure_requested_consumer(&access, &request.consumers)?;
     state.store.source(&request.package).await?;
     let mut checkout = state.store.create_checkout(request).await?;
-    checkout.checkout = state.source.prepare(&state.store, &checkout).await?;
+    if !checkout.checkout.workspace_release {
+        checkout.checkout = state.source.prepare(&state.store, &checkout).await?;
+    }
     Ok((StatusCode::CREATED, Json(checkout)))
 }
 

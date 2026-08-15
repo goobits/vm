@@ -2,7 +2,6 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use url::Url;
 use vm_config::detector::{git::detect_repository, ProjectFacts};
 use vm_packages::SourceKind;
 use vm_packages::{PackageEcosystem, RegisterPackage, RegisterTool, ToolSourceManifest};
@@ -393,7 +392,7 @@ fn has_manifest(facts: &ProjectFacts, ecosystem: PackageEcosystem) -> bool {
     }
 }
 
-fn package_name(root: &Path, ecosystem: PackageEcosystem) -> VmResult<String> {
+pub(super) fn package_name(root: &Path, ecosystem: PackageEcosystem) -> VmResult<String> {
     let (manifest, name) = match ecosystem {
         PackageEcosystem::Npm => {
             let path = root.join("package.json");
@@ -462,42 +461,13 @@ fn read_manifest(path: &Path) -> VmResult<String> {
         .map_err(|error| VmError::filesystem(error, path.display().to_string(), "read manifest"))
 }
 
-fn normalize_repository_url(value: &str) -> VmResult<String> {
-    let candidate = if let Some((authority, path)) =
-        value.split_once(':').filter(|(authority, path)| {
-            !authority.is_empty()
-                && !path.is_empty()
-                && !authority.contains('/')
-                && (authority.contains('@') || authority.contains('.') || *authority == "localhost")
-        }) {
-        format!("ssh://{authority}/{}", path.trim_start_matches('/'))
-    } else if Url::parse(value).is_ok() {
-        value.to_string()
-    } else {
-        return Err(VmError::validation(
-            format!("Git origin '{value}' is not an absolute repository URL"),
-            Some("Set origin to an HTTPS or SSH repository URL"),
-        ));
-    };
-    let parsed = Url::parse(&candidate).map_err(|error| {
+pub(super) fn normalize_repository_url(value: &str) -> VmResult<String> {
+    vm_packages::normalize_remote_repository_url(value).map_err(|error| {
         VmError::validation(
             format!("Invalid Git origin '{value}': {error}"),
-            None::<String>,
-        )
-    })?;
-    if parsed.scheme() == "file" {
-        return Err(VmError::validation(
-            "A host-local Git origin cannot be reached by the package appliance",
             Some("Set origin to an HTTPS or SSH repository URL"),
-        ));
-    }
-    vm_packages::validate_repository_url(&candidate).map_err(|error| {
-        VmError::validation(
-            format!("Invalid Git origin '{value}': {error}"),
-            None::<String>,
         )
-    })?;
-    Ok(candidate)
+    })
 }
 
 #[cfg(test)]

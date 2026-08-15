@@ -13,6 +13,7 @@ mod runtime;
 mod submission;
 mod tart;
 pub(in crate::commands) mod tooling;
+mod workspace;
 
 use std::path::PathBuf;
 

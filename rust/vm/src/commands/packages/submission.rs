@@ -10,7 +10,7 @@ use crate::error::{VmError, VmResult};
 
 use super::{
     overrides::cargo_patch,
-    runtime::{checkout_root, exec, exec_in_workspace, GuestRuntime, PackageExecutor},
+    runtime::{checkout_root, exec, exec_in_workspace, exec_output, GuestRuntime, PackageExecutor},
 };
 
 pub(super) async fn handle_guest(
@@ -24,6 +24,44 @@ pub(super) async fn handle_guest(
         checkout_id,
         subject.consumer().to_string(),
         "package-agent",
+    )
+    .await
+}
+
+pub(super) async fn handle_workspace(
+    subject: &GuestRuntime,
+    checkout: &vm_packages::CheckoutRecord,
+    source: &str,
+) -> VmResult<vm_packages::SubmissionRecord> {
+    if !checkout.workspace_release
+        || !matches!(
+            checkout.state,
+            WorkflowState::Created | WorkflowState::Active | WorkflowState::NeedsChanges
+        )
+    {
+        return Err(VmError::validation(
+            "Canonical workspace release is not ready for submission",
+            Some("Rerun `vm packages release` after repairing package infrastructure"),
+        ));
+    }
+    ensure_clean(subject, source, "Canonical workspace")?;
+    let commit = exec_output(subject, ["git", "-C", source, "rev-parse", "HEAD"])?;
+    submit_workspace_commit(subject, checkout, source, commit.trim(), true).await
+}
+
+pub(super) async fn resume_workspace(
+    subject: &GuestRuntime,
+    checkout: &vm_packages::CheckoutRecord,
+    source: &str,
+) -> VmResult<vm_packages::SubmissionRecord> {
+    let client = subject.client()?;
+    let submission = client.checkout_submission(&checkout.checkout_id).await?;
+    submit_workspace_commit(
+        subject,
+        checkout,
+        source,
+        &submission.submitted_commit,
+        false,
     )
     .await
 }
@@ -47,7 +85,7 @@ pub(super) async fn resume_guest(
     }
     let root = checkout_root(subject, checkout_id)?;
     let source = format!("{root}/source");
-    ensure_clean(subject, &source)?;
+    ensure_clean(subject, &source, "Managed checkout")?;
     vm_progress!("Rerunning package and consumer checks for submitted changes...");
     let consumers = run_checks(subject, &client, &checkout, &source, subject.consumer()).await?;
     let submission = client.checkout_submission(checkout_id).await?;
@@ -78,7 +116,7 @@ async fn submit(
     }
     let root = checkout_root(subject, checkout_id)?;
     let source = format!("{root}/source");
-    ensure_clean(subject, &source)?;
+    ensure_clean(subject, &source, "Managed checkout")?;
 
     vm_progress!("Running package and consumer checks...");
     let consumers = run_checks(subject, client, &checkout, &source, &consumer).await?;
@@ -97,27 +135,7 @@ async fn submit(
             "--all",
         ],
     )?;
-    let upload_client =
-        PackageInfrastructureClient::new(RegistryEndpoints::new(gateway).map_err(VmError::from)?);
-    let upload_url = upload_client.submission_upload_url(checkout_id, &consumer);
-    exec(
-        subject,
-        [
-            "curl",
-            "--fail",
-            "--silent",
-            "--show-error",
-            "--request",
-            "POST",
-            "--header",
-            &format!("@{root}/authorization-header"),
-            "--header",
-            "Content-Type: application/x-git-bundle",
-            "--data-binary",
-            &format!("@{bundle}"),
-            &upload_url,
-        ],
-    )?;
+    upload_bundle(subject, gateway, checkout_id, &consumer, &root, &bundle)?;
     exec(subject, ["rm", "-f", bundle.as_str()])?;
 
     let submission = client.checkout_submission(checkout_id).await?;
@@ -135,11 +153,15 @@ async fn run_checks(
         SourceKind::Package => {
             let definition = client.package_definition(&checkout.package).await?;
             run_package_check(subject, definition.ecosystem, source)?;
-            run_consumer_check(subject, definition.ecosystem, &checkout.package, source)?;
-            Ok(BTreeMap::from([(
-                consumer.to_string(),
-                CheckOutcome::Passed,
-            )]))
+            if checkout.workspace_release {
+                Ok(BTreeMap::new())
+            } else {
+                run_consumer_check(subject, definition.ecosystem, &checkout.package, source)?;
+                Ok(BTreeMap::from([(
+                    consumer.to_string(),
+                    CheckOutcome::Passed,
+                )]))
+            }
         }
         SourceKind::ToolBinary => {
             run_binary_check(subject, source)?;
@@ -186,7 +208,7 @@ fn generation_id(commit: &str) -> String {
     commit.chars().take(16).collect()
 }
 
-fn ensure_clean(subject: &impl PackageExecutor, source: &str) -> VmResult<()> {
+fn ensure_clean(subject: &impl PackageExecutor, source: &str, label: &str) -> VmResult<()> {
     exec(
         subject,
         [
@@ -199,10 +221,92 @@ fn ensure_clean(subject: &impl PackageExecutor, source: &str) -> VmResult<()> {
     )
     .map_err(|error| {
         VmError::validation(
-            format!("Managed checkout has uncommitted changes: {error}"),
+            format!("{label} has uncommitted changes: {error}"),
             Some("Commit intended files and remove unintended files before submitting"),
         )
     })
+}
+
+async fn submit_workspace_commit(
+    subject: &GuestRuntime,
+    checkout: &vm_packages::CheckoutRecord,
+    source: &str,
+    commit: &str,
+    upload: bool,
+) -> VmResult<vm_packages::SubmissionRecord> {
+    let client = subject.client()?;
+    let current = exec_output(subject, ["git", "-C", source, "rev-parse", "HEAD"])?;
+    if current.trim() != commit {
+        return Err(VmError::validation(
+            "Canonical workspace HEAD changed while its release is in progress",
+            Some("Finish the active commit with `vm packages release` before releasing another commit"),
+        ));
+    }
+    let root = checkout_root(subject, &checkout.checkout_id)?;
+    let bundle = format!("{root}/submission.bundle");
+    let scratch = format!("{root}/workspace-validation");
+    exec(subject, ["rm", "-rf", "--", scratch.as_str()])?;
+    exec(subject, ["rm", "-f", "--", bundle.as_str()])?;
+    exec(
+        subject,
+        [
+            "git",
+            "-C",
+            source,
+            "bundle",
+            "create",
+            bundle.as_str(),
+            "HEAD",
+        ],
+    )?;
+    exec(subject, ["git", "clone", bundle.as_str(), scratch.as_str()])?;
+    vm_progress!("Running checks from an isolated copy of the canonical workspace...");
+    let consumers = run_checks(subject, &client, checkout, &scratch, subject.consumer()).await?;
+    if upload {
+        upload_bundle(
+            subject,
+            subject.gateway(),
+            &checkout.checkout_id,
+            subject.consumer(),
+            &root,
+            &bundle,
+        )?;
+    }
+    let submission = client.checkout_submission(&checkout.checkout_id).await?;
+    exec(subject, ["rm", "-rf", "--", scratch.as_str()])?;
+    exec(subject, ["rm", "-f", "--", bundle.as_str()])?;
+    validate(&client, submission, consumers, "workspace-agent").await
+}
+
+fn upload_bundle(
+    subject: &impl PackageExecutor,
+    gateway: &str,
+    checkout_id: &str,
+    consumer: &str,
+    root: &str,
+    bundle: &str,
+) -> VmResult<()> {
+    let upload_client =
+        PackageInfrastructureClient::new(RegistryEndpoints::new(gateway).map_err(VmError::from)?);
+    let upload_url = upload_client.submission_upload_url(checkout_id, consumer);
+    exec(
+        subject,
+        [
+            "curl",
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--request",
+            "POST",
+            "--header",
+            &format!("@{root}/authorization-header"),
+            "--header",
+            "Content-Type: application/x-git-bundle",
+            "--data-binary",
+            &format!("@{bundle}"),
+            &upload_url,
+        ],
+    )
 }
 
 pub(super) fn run_package_check(

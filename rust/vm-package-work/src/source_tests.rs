@@ -3,9 +3,10 @@ use std::process::{Command as StdCommand, Stdio};
 use super::*;
 use crate::Store;
 use vm_packages::{
-    CreateCheckout, CreateRollout, IntegrationRecord, PackageEcosystem, PublicationRecord,
-    RegisterConsumer, RegisterPackage, RegisterTool, ReleaseRecord, RolloutState, SourceKind,
-    ToolKind, WorkflowState,
+    CheckOutcome, CreateCheckout, CreateRollout, IntegrationRecord, IntegrationRequest,
+    PackageEcosystem, PublicApiDiff, PublicationRecord, RegisterConsumer, RegisterPackage,
+    RegisterTool, ReleaseRecord, ReviewDecision, ReviewRequest, RolloutState, SourceKind, ToolKind,
+    ValidationRequest, VersionRecommendation, WorkflowState,
 };
 
 fn git(repository: &Path, args: &[&str]) {
@@ -18,6 +19,17 @@ fn git(repository: &Path, args: &[&str]) {
         .status()
         .unwrap()
         .success());
+}
+
+fn git_output(repository: &Path, args: &[&str]) -> String {
+    let output = StdCommand::new("git")
+        .arg("-C")
+        .arg(repository)
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    String::from_utf8(output.stdout).unwrap().trim().to_string()
 }
 
 #[tokio::test]
@@ -73,6 +85,124 @@ async fn tool_collection_checkout_uses_the_same_managed_source_boundary() {
         .as_deref()
         .unwrap()
         .starts_with(data.join("agents").to_str().unwrap()));
+}
+
+#[tokio::test]
+async fn canonical_workspace_bootstraps_and_integrates_without_remote_access_or_mutation() {
+    let directory = tempfile::tempdir().unwrap();
+    let workspace = directory.path().join("workspace");
+    cargo_repository(
+        &workspace,
+        "[package]\nname='release-tool'\nversion='1.0.0'\n",
+        "initial",
+    );
+    std::fs::write(
+        workspace.join("Cargo.toml"),
+        "[package]\nname='release-tool'\nversion='1.0.1'\n",
+    )
+    .unwrap();
+    git(&workspace, &["add", "Cargo.toml"]);
+    git(&workspace, &["commit", "-m", "release 1.0.1"]);
+    let workspace_head = git_output(&workspace, &["rev-parse", "HEAD"]);
+    let workspace_status = git_output(&workspace, &["status", "--porcelain"]);
+
+    let data = directory.path().join("data");
+    let store = Store::open(&data).await.unwrap();
+    store
+        .register_package(RegisterPackage {
+            name: "release-tool".into(),
+            ecosystem: PackageEcosystem::Cargo,
+            repository: "https://unreachable.invalid/release-tool.git".into(),
+            default_branch: "main".into(),
+            workspace_release: true,
+        })
+        .await
+        .unwrap();
+    let checkout = store
+        .create_checkout(CreateCheckout {
+            package: "release-tool".into(),
+            agent: "workspace-agent".into(),
+            consumers: vec!["project-a".into()],
+            task: "release committed canonical workspace".into(),
+            workspace_release: true,
+            lease_token: "lease-token-012345678901234567890123456789".into(),
+            idempotency_key: "workspace-checkout".into(),
+        })
+        .await
+        .unwrap()
+        .checkout;
+    assert_eq!(checkout.state, WorkflowState::Created);
+
+    let bundle = directory.path().join("workspace.bundle");
+    git(
+        &workspace,
+        &["bundle", "create", bundle.to_str().unwrap(), "HEAD"],
+    );
+    let source = SourceManager::new(&data);
+    let submission = source
+        .import_submission(&store, &checkout, &bundle)
+        .await
+        .unwrap();
+    assert_eq!(submission.submitted_commit, workspace_head);
+    assert_eq!(submission.state, WorkflowState::Submitted);
+    store
+        .validate_submission(
+            &submission.submission_id,
+            ValidationRequest {
+                package: CheckOutcome::Passed,
+                consumers: Default::default(),
+                actor: "workspace-agent".into(),
+                idempotency_key: "validate-workspace".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let approved = store
+        .record_review(
+            &submission.submission_id,
+            ReviewRequest {
+                decision: ReviewDecision::Approve,
+                recommended_version: VersionRecommendation::Patch,
+                api_diff: PublicApiDiff {
+                    changed_paths: vec!["Cargo.toml".into()],
+                    potentially_breaking: false,
+                },
+                reason: "workspace release is valid".into(),
+                required_followups: Vec::new(),
+                merge_strategy: "rebase".into(),
+                reviewer: "reviewer".into(),
+                idempotency_key: "review-workspace".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let integrated = source
+        .prepare_integration(
+            &store,
+            &approved,
+            IntegrationRequest {
+                actor: "workspace-agent".into(),
+                strategy: "rebase".into(),
+                idempotency_key: "integrate-workspace".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let integration = integrated.integration.unwrap();
+    assert_eq!(integration.integration_commit, workspace_head);
+    assert_eq!(integration.strategy, "workspace");
+    assert!(source
+        .integration_bundle(&store.submission(&submission.submission_id).await.unwrap())
+        .unwrap()
+        .is_file());
+    assert_eq!(
+        git_output(&workspace, &["rev-parse", "HEAD"]),
+        workspace_head
+    );
+    assert_eq!(
+        git_output(&workspace, &["status", "--porcelain"]),
+        workspace_status
+    );
 }
 
 fn cargo_repository(repository: &Path, manifest: &str, message: &str) {
