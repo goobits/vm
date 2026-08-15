@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{bail, Context, Result};
+use base64::{engine::general_purpose, Engine as _};
 use semver::Version;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -16,7 +17,7 @@ use vm_packages::{
 
 use crate::runtime::{operation_key, required_secret as secret, run_command as run};
 
-use super::{git, git_text};
+use super::{file_digest, git, git_text};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackageReleaseOptions {
@@ -81,7 +82,10 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
         .as_ref()
         .context("submission has no integration review")?;
     let checkout = client.checkout(&submission.checkout_id).await?;
-    if checkout.source_kind == SourceKind::ToolCollection {
+    if matches!(
+        checkout.source_kind,
+        SourceKind::ToolBinary | SourceKind::ToolCollection
+    ) {
         return super::tool::release_submission(
             &client,
             &submission,
@@ -100,6 +104,10 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
         &release_token,
         &bundle,
     )?;
+    let source_archive_digest = checkout
+        .workspace_release
+        .then(|| file_digest(&bundle))
+        .transpose()?;
     let source = release_root.path().join("source");
     let canonical = release_root.path().join("canonical");
     clone_at(&bundle, &source, &integration.integration_commit)?;
@@ -120,14 +128,16 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
     let artifact = build_artifact(definition.ecosystem, &source, release_root.path())?;
     ensure_clean_source(&source)?;
 
-    push_source(
-        &source,
-        &definition.repository,
-        &definition.default_branch,
-        &integration.canonical_commit,
-        &integration.integration_commit,
-        &tag,
-    )?;
+    if !checkout.workspace_release {
+        push_source(
+            &source,
+            &definition.repository,
+            &definition.default_branch,
+            &integration.canonical_commit,
+            &integration.integration_commit,
+            &tag,
+        )?;
+    }
 
     let endpoints = RegistryEndpoints::new(&gateway)?;
     let destination = Destination {
@@ -144,8 +154,8 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
                         tag: tag.clone(),
                         source_commit: integration.integration_commit.clone(),
                         artifact_digest: artifact.digest.clone(),
-                        source_pushed: true,
-                        source_archive_digest: None,
+                        source_pushed: !checkout.workspace_release,
+                        source_archive_digest: source_archive_digest.clone(),
                         registry: destination.registry.clone(),
                         expected_publications: Vec::new(),
                         actor: "package-release-service".into(),
@@ -160,7 +170,15 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
                 .as_deref()
                 .context("publishing submission has no release record")?;
             let release = client.release(release_id).await?;
-            verify_retry(&release, &identity, &tag, &artifact, &destination)?;
+            verify_retry(
+                &release,
+                &identity,
+                &tag,
+                &artifact,
+                &destination,
+                !checkout.workspace_release,
+                source_archive_digest.as_deref(),
+            )?;
             release
         }
         _ => unreachable!("release state was validated"),
@@ -178,6 +196,7 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
             &artifact.path,
             &destination,
             release_root.path(),
+            checkout.workspace_release,
         )?;
         let publication_key = operation_key(
             "publish",
@@ -637,11 +656,15 @@ fn verify_retry(
     tag: &str,
     artifact: &BuiltArtifact,
     destination: &Destination,
+    source_pushed: bool,
+    source_archive_digest: Option<&str>,
 ) -> Result<()> {
     if release.version != identity.version.to_string()
         || release.tag != tag
         || release.artifact_digest != artifact.digest
         || release.registry != destination.registry
+        || release.source_pushed != source_pushed
+        || release.source_archive_digest.as_deref() != source_archive_digest
     {
         bail!("retry no longer matches the durable release record");
     }
@@ -662,8 +685,12 @@ fn publish_artifact(
     artifact: &Path,
     destination: &Destination,
     release_root: &Path,
+    workspace_release: bool,
 ) -> Result<()> {
     match ecosystem {
+        PackageEcosystem::Npm if workspace_release => {
+            publish_npm_direct(source, artifact, destination, release_root)?;
+        }
         PackageEcosystem::Npm => {
             let npmrc = release_root.join(format!(
                 "npmrc-{}",
@@ -732,6 +759,76 @@ fn publish_artifact(
     Ok(())
 }
 
+fn publish_npm_direct(
+    source: &Path,
+    artifact: &Path,
+    destination: &Destination,
+    release_root: &Path,
+) -> Result<()> {
+    let (encoded_name, payload) = npm_publish_payload(source, artifact, &destination.registry)?;
+    let payload_path = release_root.join("npm-publish.json");
+    write_secret_file(&payload_path, &serde_json::to_vec(&payload)?)?;
+    let registry = format!("{}/", destination.registry.trim_end_matches('/'));
+    run(
+        Command::new("curl")
+            .args(["--fail", "--silent", "--show-error", "--request", "PUT"])
+            .arg("--header")
+            .arg(format!("Authorization: Bearer {}", destination.token))
+            .args([
+                "--header",
+                "Content-Type: application/json",
+                "--data-binary",
+            ])
+            .arg(format!("@{}", payload_path.display()))
+            .arg(format!("{registry}{encoded_name}")),
+        "publish npm release directly to the private registry",
+    )?;
+    Ok(())
+}
+
+fn npm_publish_payload(
+    source: &Path,
+    artifact: &Path,
+    registry: &str,
+) -> Result<(String, serde_json::Value)> {
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(source.join("package.json"))?)?;
+    let name = manifest["name"]
+        .as_str()
+        .context("package.json name is missing")?
+        .to_string();
+    let version = manifest["version"]
+        .as_str()
+        .context("package.json version is missing")?
+        .to_string();
+    let filename = artifact
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| name.ends_with(".tgz") && !name.contains(['/', '\\']))
+        .context("npm artifact filename is invalid")?;
+    let encoded_name = url::form_urlencoded::byte_serialize(name.as_bytes()).collect::<String>();
+    let registry = format!("{}/", registry.trim_end_matches('/'));
+    let tarball = format!("{registry}{encoded_name}/-/{filename}");
+    manifest["dist"] = serde_json::json!({"tarball": tarball});
+    let content = fs::read(artifact)?;
+    Ok((
+        encoded_name,
+        serde_json::json!({
+            "_id": name,
+            "name": name,
+            "dist-tags": {"latest": version},
+            "versions": {version.clone(): manifest},
+            "_attachments": {
+                filename: {
+                    "content_type": "application/octet-stream",
+                    "data": general_purpose::STANDARD.encode(&content),
+                    "length": content.len()
+                }
+            }
+        }),
+    ))
+}
+
 fn write_secret_file(path: &Path, content: &[u8]) -> Result<()> {
     let mut file = OpenOptions::new().create_new(true).write(true).open(path)?;
     file.write_all(content)?;
@@ -761,5 +858,29 @@ mod tests {
             VersionRecommendation::Major
         )
         .is_err());
+    }
+
+    #[test]
+    fn workspace_npm_payload_targets_only_the_private_registry() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("package.json"),
+            r#"{"name":"@shared/auth","version":"1.2.3","scripts":{"postpublish":"exit 1"}}"#,
+        )
+        .unwrap();
+        let artifact = directory.path().join("shared-auth-1.2.3.tgz");
+        std::fs::write(&artifact, b"private artifact").unwrap();
+
+        let (encoded, payload) =
+            npm_publish_payload(directory.path(), &artifact, "http://gateway:8080/npm/").unwrap();
+
+        assert_eq!(encoded, "%40shared%2Fauth");
+        assert_eq!(payload["name"], "@shared/auth");
+        assert_eq!(payload["dist-tags"]["latest"], "1.2.3");
+        assert_eq!(
+            payload["versions"]["1.2.3"]["dist"]["tarball"],
+            "http://gateway:8080/npm/%40shared%2Fauth/-/shared-auth-1.2.3.tgz"
+        );
+        assert!(payload["_attachments"]["shared-auth-1.2.3.tgz"]["data"].is_string());
     }
 }

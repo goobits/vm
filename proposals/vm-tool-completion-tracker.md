@@ -288,7 +288,7 @@ runner rather than replaced with another fake-provider test.
   canonical workspaces, durable internal source archives, and binary tools.
 - [x] Detect and resume canonical-workspace releases without repository-local
   state, checkout identifiers, or mutations.
-- [ ] Build and publish validated binary artifacts through the existing isolated
+- [x] Build and publish validated binary artifacts through the existing isolated
   release job and private artifact registry.
 - [ ] Reuse target-aware managed-tool installation and activation for explicitly
   configured environments.

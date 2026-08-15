@@ -143,6 +143,15 @@ impl ToolBuild {
             ));
         }
         validate_links(&self.links)?;
+        if !self
+            .links
+            .keys()
+            .any(|destination| destination.starts_with(".local/bin/"))
+        {
+            return Err(PackageValidationError::new(
+                "binary tool build must define at least one .local/bin activation link",
+            ));
+        }
         if let Some(command) = &self.verify {
             validate_command("verification command", command)?;
             if !self.links.values().any(|source| source == &command[0]) {
@@ -166,6 +175,17 @@ fn validate_command(field: &str, command: &[String]) -> Result<(), PackageValida
     }) {
         return Err(PackageValidationError::new(format!(
             "{field} contains an invalid argument"
+        )));
+    }
+    let program = Path::new(&command[0])
+        .file_name()
+        .and_then(|program| program.to_str())
+        .unwrap_or(&command[0]);
+    if matches!(program, "sh" | "bash" | "dash" | "zsh" | "ksh" | "fish")
+        && command.get(1).is_some_and(|argument| argument == "-c")
+    {
+        return Err(PackageValidationError::new(format!(
+            "{field} must not use shell command text"
         )));
     }
     Ok(())
@@ -537,6 +557,10 @@ builds:
             "schema: 1\nkind: binary\nversion: 1.2.3\nbuilds:\n  - target: linux-arm64\n    command: npm run build\n    archive: dist/tool.tar.gz\n    links: {'.local/bin/tool': bin/tool}\n",
         );
         assert!(shell_command.is_err());
+
+        let mut shell_array = manifest;
+        shell_array.builds[0].command = vec!["sh".into(), "-c".into(), "npm run build".into()];
+        assert!(shell_array.validate().is_err());
     }
 
     #[test]

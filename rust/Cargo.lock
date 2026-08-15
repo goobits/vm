@@ -3754,6 +3754,7 @@ name = "vm-package-jobs"
 version = "5.0.1"
 dependencies = [
  "anyhow",
+ "base64",
  "clap",
  "flate2",
  "reqwest",
@@ -3767,6 +3768,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "toml",
+ "url",
  "vm-packages",
 ]
 

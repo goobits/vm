@@ -206,6 +206,19 @@ impl Store {
             .get(name)
             .cloned()
             .ok_or_else(|| WorkError::NotFound(format!("tool {name}")))?;
+        match definition.kind {
+            vm_packages::ToolKind::Collection if request.target != "any" => {
+                return Err(WorkError::Invalid(
+                    "tool collections must publish the target-independent 'any' artifact".into(),
+                ));
+            }
+            vm_packages::ToolKind::Binary if request.target == "any" => {
+                return Err(WorkError::Invalid(
+                    "binary tools must publish an explicit OS-architecture target".into(),
+                ));
+            }
+            _ => {}
+        }
         let key = tool_artifact_key(name, &request.version, &request.target);
         if let Some(existing) = current.tool_artifacts.get(&key).cloned() {
             if artifact_matches(&existing, &request, &definition) {
@@ -418,14 +431,18 @@ mod tests {
             .register_tool(definition("codex", ToolKind::Binary))
             .await
             .unwrap();
+        assert!(store
+            .publish_tool_artifact("codex", publication("0.9.0", "any", "binary-any"))
+            .await
+            .is_err());
         let first = store
-            .publish_tool_artifact("codex", publication("1.0.0", "any", "publish-1"))
+            .publish_tool_artifact("codex", publication("1.0.0", "linux-amd64", "publish-1"))
             .await
             .unwrap();
         assert_eq!(
             first,
             store
-                .publish_tool_artifact("codex", publication("1.0.0", "any", "publish-1"))
+                .publish_tool_artifact("codex", publication("1.0.0", "linux-amd64", "publish-1"),)
                 .await
                 .unwrap()
         );
@@ -434,10 +451,10 @@ mod tests {
             .await
             .unwrap();
         assert!(store
-            .publish_tool_artifact("codex", publication("1.0.0", "any", "different"))
+            .publish_tool_artifact("codex", publication("1.0.0", "linux-amd64", "different"),)
             .await
             .is_ok());
-        let mut conflict = publication("1.0.0", "any", "conflict");
+        let mut conflict = publication("1.0.0", "linux-amd64", "conflict");
         conflict.artifact_digest = "f".repeat(64);
         assert!(store
             .publish_tool_artifact("codex", conflict)
@@ -484,6 +501,12 @@ mod tests {
             .publish_tool_artifact("agent-skills", release)
             .await
             .unwrap();
+        let mut targeted = publication("3.0.1", "linux-amd64", "skills-targeted");
+        targeted.links = BTreeMap::from([(".codex/skills".into(), "skills".into())]);
+        assert!(store
+            .publish_tool_artifact("agent-skills", targeted)
+            .await
+            .is_err());
         assert_eq!(
             store
                 .resolve_tool("agent-skills", None, "linux-amd64")
