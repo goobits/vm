@@ -474,8 +474,33 @@ impl Store {
         checkout_id: &str,
         request: LeaseRequest,
     ) -> WorkResult<CheckoutRecord> {
+        self.update_lease(checkout_id, request, false).await
+    }
+
+    /// Replace a checkout lease after authenticating the checkout's assigned
+    /// consumer at the server boundary. Unlike ordinary renewal, this permits
+    /// a restarted guest to rotate a lost lease credential.
+    pub async fn reacquire_lease(
+        &self,
+        checkout_id: &str,
+        request: LeaseRequest,
+    ) -> WorkResult<CheckoutRecord> {
+        self.update_lease(checkout_id, request, true).await
+    }
+
+    async fn update_lease(
+        &self,
+        checkout_id: &str,
+        request: LeaseRequest,
+        trusted_reacquire: bool,
+    ) -> WorkResult<CheckoutRecord> {
         validate_lease_request(&request)?;
-        let fingerprint = operation_fingerprint("renew_lease", Some(checkout_id), &request)?;
+        let operation = if trusted_reacquire {
+            "reacquire_lease"
+        } else {
+            "renew_lease"
+        };
+        let fingerprint = operation_fingerprint(operation, Some(checkout_id), &request)?;
         let mut current = self.database.lock().await;
         if let Some(existing) = current.idempotency.get(&request.idempotency_key) {
             ensure_fingerprint(existing, &fingerprint)?;
@@ -491,7 +516,26 @@ impl Store {
             .checkouts
             .get_mut(checkout_id)
             .ok_or_else(|| WorkError::NotFound(checkout_id.to_string()))?;
-        let reacquired = if let Some(lease) = checkout.lease.as_mut() {
+        let reacquired = if trusted_reacquire {
+            if checkout.state.revokes_lease() {
+                return Err(WorkError::Conflict(
+                    "terminal checkout cannot reacquire a lease".into(),
+                ));
+            }
+            if checkout.agent != request.holder {
+                return Err(WorkError::Unauthorized(
+                    "checkout lease holder did not match".into(),
+                ));
+            }
+            checkout.lease = Some(LeaseRecord {
+                holder: request.holder.clone(),
+                token_digest: sha256_hex(&request.lease_token),
+                expires_at: now + Duration::seconds(request.duration_seconds),
+            });
+            next.lease_credentials
+                .insert(checkout_id.to_string(), sha256_hex(&request.lease_token));
+            true
+        } else if let Some(lease) = checkout.lease.as_mut() {
             validate_lease(lease, &request.holder, &request.lease_token, now)?;
             lease.expires_at = now + Duration::seconds(request.duration_seconds);
             false

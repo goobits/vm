@@ -31,7 +31,7 @@ pub enum PackageConsumerSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum PackagesSubcommand {
-    /// Configure the source shelf and project environment used for managed work
+    /// Configure the controller source shelf and package appliance
     Init {
         #[arg(value_name = "SOURCE_ROOT")]
         source_root: PathBuf,
@@ -44,13 +44,6 @@ pub enum PackagesSubcommand {
         registry_image: Option<String>,
         #[arg(long, hide = true)]
         job_image: Option<String>,
-    },
-    /// Open a managed source checkout and launch Codex with one task
-    Work {
-        #[arg(value_name = "SOURCE")]
-        source: String,
-        #[arg(value_name = "TASK")]
-        task: String,
     },
     /// Prepare or reconcile the shared package-infrastructure appliance and configured sources
     Up {
@@ -127,26 +120,18 @@ pub enum PackagesSubcommand {
     Consumers { package: String },
     /// Show package-version drift across registered consumers
     Drift,
-    /// Create an isolated package or tool-collection checkout in this project
+    /// Create or resume an isolated package or tool checkout in this managed guest
     Checkout {
         #[arg(value_name = "SOURCE")]
-        package: String,
-        #[arg(long)]
-        agent: String,
-        /// Defaults to the current project
-        #[arg(long)]
-        consumer: Option<String>,
-        #[arg(long)]
-        task: String,
+        source: String,
     },
-    /// Show one managed source checkout
+    /// Show one managed source checkout (controller diagnostic)
+    #[command(hide = true)]
     Show { checkout_id: String },
-    /// Validate, review, integrate, and privately release an active checkout
-    Release { checkout_id: Option<String> },
-    /// Cancel an eligible checkout and remove its temporary data
-    Cancel { checkout_id: String },
-    /// Remove a terminal checkout's temporary service and project data
-    Cleanup { checkout_id: String },
+    /// Release the managed checkout or canonical workspace containing this directory
+    Release,
+    /// Cancel and clean up the managed checkout containing this directory
+    Cancel,
     /// Install or clear the controller's private Git token
     Auth {
         #[arg(

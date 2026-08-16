@@ -308,6 +308,22 @@ fn packages_status(directory: &TempDir, context: &str) -> Output {
 }
 
 #[test]
+fn isolated_checkout_is_guest_only_with_one_exact_repair_command() {
+    let directory = TempDir::new().unwrap();
+    let output = Command::new(cargo_bin!("vm"))
+        .args(["packages", "checkout", "typemill"])
+        .env("HOME", directory.path())
+        .env("VM_TEST_MODE", "1")
+        .env("VM_TEST_COMMAND_CONTEXT", "host")
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr)
+        .contains("Run inside a managed VM: vm packages checkout typemill"));
+}
+
+#[test]
 fn fresh_setup_and_existing_state_reconciliation_are_idempotent() {
     let directory = TempDir::new().unwrap();
     let gateway = FakeGateway::start();

@@ -1,41 +1,17 @@
-use std::path::PathBuf;
-
-use serde::{Deserialize, Serialize};
-
 use vm_core::{vm_hint, vm_println, vm_progress, vm_success};
 use vm_packages::{
     CreateCheckout, PackageEcosystem, PackageInfrastructureClient, RegistryEndpoints, SourceKind,
     ToolKind, TransitionRequest, WorkflowState,
 };
 
-use crate::commands::command_context::{
-    load_or_create_runtime_subject, load_runtime_subject, project_name,
-};
 use crate::error::{VmError, VmResult};
 
 use super::{
-    appliance::configured_state_and_client,
-    files::ApplianceFiles,
     overrides::{cleanup_failed_attach, OverrideRecord},
-    runtime::{
-        checkout_root, copy_private, exec, gateway_for_provider, GuestRuntime, PackageExecutor,
-    },
+    runtime::{checkout_root, copy_private, exec, GuestRuntime},
 };
 
-pub(super) struct CheckoutIntent {
-    pub(super) config_path: Option<PathBuf>,
-    pub(super) profile: Option<String>,
-    pub(super) package: String,
-    pub(super) agent: String,
-    pub(super) consumer: Option<String>,
-    pub(super) task: String,
-}
-
-pub(super) struct ManagedCheckout {
-    pub(super) subject: crate::commands::command_context::RuntimeSubject,
-    pub(super) checkout: vm_packages::CheckoutRecord,
-    pub(super) source: PathBuf,
-}
+const GUEST_WORK_TASK: &str = "managed guest package work";
 
 #[derive(Clone, Copy)]
 enum EditableSource {
@@ -53,200 +29,151 @@ impl EditableSource {
     }
 }
 
-pub(super) async fn cleanup_local(
-    config_path: Option<PathBuf>,
-    profile: Option<String>,
-    checkout: &vm_packages::CheckoutRecord,
-) -> VmResult<()> {
-    let subject = load_runtime_subject(config_path, profile, None)?;
-    cleanup_runtime(&subject, checkout, project_name(&subject.config))
-}
-
 pub(super) fn cleanup_guest(
     subject: &GuestRuntime,
     checkout: &vm_packages::CheckoutRecord,
-) -> VmResult<()> {
-    cleanup_runtime(subject, checkout, subject.consumer())
-}
-
-fn cleanup_runtime(
-    subject: &impl PackageExecutor,
-    checkout: &vm_packages::CheckoutRecord,
-    current_project: &str,
 ) -> VmResult<()> {
     let root = checkout_root(subject, &checkout.checkout_id)?;
     if !checkout
         .consumers
         .iter()
-        .any(|consumer| consumer == current_project)
+        .any(|consumer| consumer == subject.consumer())
     {
         return Err(VmError::validation(
-            "Checkout is not assigned to the current project",
+            "Checkout is not assigned to this managed environment",
             None::<String>,
         ));
     }
     if checkout.source_kind == SourceKind::Package {
-        let record = OverrideRecord::load(subject, &root, checkout, current_project)?;
-        record.restore(subject)?;
+        if let Some(record) =
+            OverrideRecord::load_optional(subject, &root, checkout, subject.consumer())?
+        {
+            record.restore(subject)?;
+        }
     }
     exec(subject, ["rm", "-rf", "--", root.as_str()])
 }
 
-pub(super) async fn handle(files: &ApplianceFiles, intent: CheckoutIntent) -> VmResult<()> {
-    prepare(files, intent, false).await.map(|_| ())
-}
+pub(super) async fn handle_guest(package: String) -> VmResult<()> {
+    let subject = GuestRuntime::discover()?;
+    let consumer = subject.consumer().to_string();
+    let client = subject.client()?;
+    let editable_source = editable_source(&client, &package).await?;
+    let pinned_version = pinned_version(&client, &package, &consumer, editable_source).await?;
+    let lease_token = vm_core::secrets::generate_random_password(48);
 
-pub(super) async fn prepare(
-    files: &ApplianceFiles,
-    intent: CheckoutIntent,
-    resume: bool,
-) -> VmResult<ManagedCheckout> {
-    let subject = load_or_create_runtime_subject(intent.config_path, intent.profile, None).await?;
-    let current_project = project_name(&subject.config).to_string();
-    let consumer = intent.consumer.unwrap_or_else(|| current_project.clone());
-    if consumer != current_project {
-        return Err(VmError::validation(
-            format!("Consumer '{consumer}' is not the current project '{current_project}'"),
-            Some("Run this command from the selected consumer project"),
-        ));
-    }
-
-    let (state, client) = configured_state_and_client(files)?;
-    let source = editable_source(&client, &intent.package).await?;
-    let pinned_version = pinned_version(&client, &intent.package, &consumer, source).await?;
-    if resume {
-        let matching = client
-            .checkouts()
-            .await?
-            .into_iter()
-            .filter(|checkout| {
-                checkout.package == intent.package
-                    && checkout.agent == intent.agent
-                    && checkout.consumers.len() == 1
-                    && checkout.consumers[0] == consumer
-                    && checkout.task == intent.task
-                    && matches!(
-                        checkout.state,
-                        WorkflowState::Created
-                            | WorkflowState::CheckedOut
-                            | WorkflowState::Active
-                            | WorkflowState::Submitted
-                            | WorkflowState::Validating
-                            | WorkflowState::Reviewing
-                            | WorkflowState::NeedsChanges
-                            | WorkflowState::Approved
-                            | WorkflowState::Integrating
-                            | WorkflowState::ReadyToRelease
-                            | WorkflowState::Publishing
-                    )
-            })
-            .collect::<Vec<_>>();
-        if matching.len() > 1 {
-            return Err(VmError::validation(
-                format!("{} matching managed checkouts are active", matching.len()),
-                Some(format!(
-                    "Run `vm packages cancel {}`",
-                    matching[0].checkout_id
-                )),
-            ));
-        }
-        if let Some(checkout) = matching.into_iter().next() {
-            let root = checkout_root(&subject, &checkout.checkout_id)?;
-            let source = PathBuf::from(format!("{root}/source"));
-            let source_path = source.to_string_lossy();
-            if exec(&subject, ["test", "-d", source_path.as_ref()]).is_err() {
-                return Err(VmError::validation(
-                    format!(
-                        "Managed checkout {} is active but its source directory is missing",
-                        checkout.checkout_id
-                    ),
-                    Some(format!("Run `vm packages cancel {}`", checkout.checkout_id)),
-                ));
-            }
-            vm_success!("Resuming checkout {}", checkout.checkout_id);
-            return Ok(ManagedCheckout {
-                subject,
-                checkout,
-                source,
-            });
-        }
-    }
     vm_progress!(
         "Preparing isolated '{}' checkout in package infrastructure...",
-        intent.package
+        package
     );
     let checkout = client
         .create_checkout(&CreateCheckout {
-            package: intent.package,
-            agent: intent.agent.clone(),
+            package,
+            // The authenticated workflow service replaces these compatibility
+            // fields with its consumer-bound actor and stable purpose.
+            agent: consumer.clone(),
             consumers: vec![consumer.clone()],
-            task: intent.task,
+            task: GUEST_WORK_TASK.into(),
             workspace_release: false,
-            lease_token: vm_core::secrets::generate_random_password(48),
+            lease_token: lease_token.clone(),
             idempotency_key: uuid::Uuid::new_v4().to_string(),
         })
         .await?;
     let lease_token = checkout.lease_token.as_deref().ok_or_else(|| {
         VmError::validation(
-            "Checkout was already created but its one-time lease token is unavailable",
-            Some("Create a fresh checkout or use its existing assigned environment"),
+            "Package infrastructure did not return a checkout lease",
+            Some("Rerun `vm packages checkout` for the same source"),
         )
     })?;
-    let gateway = gateway_for_provider(&state, subject.provider.name())?;
-    if let Err(error) = attach(
+    let root = checkout_root(&subject, &checkout.checkout.checkout_id)?;
+    let source = format!("{root}/source");
+
+    if std::path::Path::new(&source).is_dir() {
+        refresh_checkout_access(&subject, &root, lease_token)?;
+        ensure_override(
+            &subject,
+            &checkout.checkout,
+            &root,
+            &source,
+            editable_source,
+            pinned_version.as_deref(),
+        )?;
+        print_source(&checkout.checkout, &source, true);
+        return Ok(());
+    }
+    if std::path::Path::new(&root).exists() {
+        cleanup_failed_attach(&subject, &root)?;
+    }
+    attach(
         &subject,
-        &gateway,
+        subject.gateway(),
         &checkout.checkout,
         lease_token,
         &consumer,
-        source,
+        editable_source,
         pinned_version.as_deref(),
+    )?;
+
+    let active = if matches!(
+        checkout.checkout.state,
+        WorkflowState::Created | WorkflowState::CheckedOut
     ) {
-        if let Ok(root) = checkout_root(&subject, &checkout.checkout.checkout_id) {
-            if let Err(cleanup_error) = cleanup_failed_attach(&subject, &root) {
-                vm_hint!("The incomplete override was retained at {root}: {cleanup_error}");
-            }
-        }
-        let _ = client
+        client
             .transition(
                 &checkout.checkout.checkout_id,
                 &TransitionRequest {
-                    next: WorkflowState::Failed,
-                    actor: "vm-controller".into(),
-                    reason: format!("consumer override failed: {error}"),
-                    commit: checkout.checkout.base_commit.clone(),
-                    validation_result: Some("failed".into()),
-                    idempotency_key: format!("attach-failed-{}", checkout.checkout.checkout_id),
+                    next: WorkflowState::Active,
+                    actor: checkout.checkout.agent.clone(),
+                    reason: format!("managed checkout attached to {consumer}"),
+                    commit: checkout.checkout.base_commit,
+                    validation_result: Some("checkout_ready".into()),
+                    idempotency_key: format!("active-{}", checkout.checkout.checkout_id),
                 },
             )
-            .await;
-        return Err(error);
+            .await?
+    } else {
+        checkout.checkout
+    };
+    print_source(&active, &source, false);
+    Ok(())
+}
+
+pub(super) async fn cancel_guest() -> VmResult<()> {
+    let subject = GuestRuntime::discover()?;
+    let checkout_id = subject.current_checkout_id()?.ok_or_else(|| {
+        VmError::validation(
+            "Current directory is not inside a managed checkout",
+            Some("Run `vm packages cancel` from the managed checkout source directory"),
+        )
+    })?;
+    let client = subject.client()?;
+    let checkout = client.checkout(&checkout_id).await?;
+    if !checkout.consumers.contains(&subject.consumer().to_string()) {
+        return Err(VmError::validation(
+            "Checkout is not assigned to this managed environment",
+            None::<String>,
+        ));
     }
-    let active = client
+    let cancelled = client
         .transition(
-            &checkout.checkout.checkout_id,
+            &checkout_id,
             &TransitionRequest {
-                next: WorkflowState::Active,
-                actor: intent.agent,
-                reason: format!("override attached to {consumer}"),
-                commit: checkout.checkout.base_commit,
-                validation_result: Some("override_ready".into()),
-                idempotency_key: format!("active-{}", checkout.checkout.checkout_id),
+                next: WorkflowState::Cancelled,
+                actor: checkout.agent.clone(),
+                reason: "managed checkout cancelled by assigned guest".into(),
+                commit: None,
+                validation_result: Some("cancelled".into()),
+                idempotency_key: format!("cancel-{checkout_id}"),
             },
         )
         .await?;
-    let root = checkout_root(&subject, &active.checkout_id)?;
-    vm_success!("Checkout {} is active", active.checkout_id);
-    vm_println!("Source: {root}/source");
-    Ok(ManagedCheckout {
-        subject,
-        checkout: active,
-        source: PathBuf::from(format!("{root}/source")),
-    })
+    cleanup_guest(&subject, &cancelled)?;
+    vm_success!("Cancelled {}", cancelled.package);
+    Ok(())
 }
 
 fn attach(
-    subject: &impl PackageExecutor,
+    subject: &GuestRuntime,
     gateway: &str,
     checkout: &vm_packages::CheckoutRecord,
     lease_token: &str,
@@ -266,13 +193,8 @@ fn attach(
     let archive_client =
         PackageInfrastructureClient::new(RegistryEndpoints::new(gateway).map_err(VmError::from)?);
     let url = archive_client.checkout_archive_url(&checkout.checkout_id, consumer);
-    let header = format!("{root}/authorization-header");
     exec(subject, ["mkdir", "-p", root.as_str()])?;
-    copy_private(
-        subject,
-        format!("Authorization: Bearer {lease_token}\n").as_bytes(),
-        &header,
-    )?;
+    refresh_checkout_access(subject, &root, lease_token)?;
     exec(
         subject,
         [
@@ -282,7 +204,7 @@ fn attach(
             "--show-error",
             "--location",
             "--header",
-            &format!("@{header}"),
+            &format!("@{root}/authorization-header"),
             &url,
             "--output",
             &archive,
@@ -303,106 +225,64 @@ fn attach(
         ],
     )?;
     exec(subject, ["rm", "-f", archive.as_str()])?;
-    if let EditableSource::Package(ecosystem) = editable_source {
-        let pinned_version = pinned_version.ok_or_else(|| {
-            VmError::validation(
-                "Package checkout is missing its pinned version",
-                None::<String>,
-            )
-        })?;
-        let record = OverrideRecord::new(
-            &checkout.checkout_id,
-            consumer,
-            &checkout.package,
-            ecosystem,
-            source,
-            pinned_version,
-        );
-        record.write(subject, &root)?;
-        if let Err(error) = record.activate(subject) {
-            let _ = record.restore(subject);
-            return Err(error);
-        }
-    }
-    Ok(())
+    ensure_override(
+        subject,
+        checkout,
+        &root,
+        &source,
+        editable_source,
+        pinned_version,
+    )
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct GuestRequestState {
-    lease_token: String,
-    idempotency_key: String,
+fn refresh_checkout_access(subject: &GuestRuntime, root: &str, lease_token: &str) -> VmResult<()> {
+    copy_private(
+        subject,
+        format!("Authorization: Bearer {lease_token}\n").as_bytes(),
+        &format!("{root}/authorization-header"),
+    )
 }
 
-pub(super) async fn handle_guest(intent: CheckoutIntent) -> VmResult<()> {
-    let subject = GuestRuntime::discover()?;
-    let consumer = intent
-        .consumer
-        .unwrap_or_else(|| subject.consumer().to_string());
-    if consumer != subject.consumer() {
-        return Err(VmError::validation(
-            "Package agent credential is bound to a different consumer",
-            None::<String>,
-        ));
+fn ensure_override(
+    subject: &GuestRuntime,
+    checkout: &vm_packages::CheckoutRecord,
+    root: &str,
+    source: &str,
+    editable_source: EditableSource,
+    pinned_version: Option<&str>,
+) -> VmResult<()> {
+    let (EditableSource::Package(ecosystem), Some(pinned_version)) =
+        (editable_source, pinned_version)
+    else {
+        return Ok(());
+    };
+    if OverrideRecord::load_optional(subject, root, checkout, subject.consumer())?.is_some() {
+        return Ok(());
     }
-    let client = subject.client()?;
-    let source = editable_source(&client, &intent.package).await?;
-    let pinned_version = pinned_version(&client, &intent.package, &consumer, source).await?;
-    let intent_key = format!(
-        "checkout-{}",
-        &vm_packages::sha256_hex(format!(
-            "{}\0{}\0{}\0{}",
-            consumer, intent.package, intent.agent, intent.task
-        ))[..32]
-    );
-    let request_path = subject.request_state_path(&intent_key)?;
-    let request = read_or_create_request(&subject, &request_path, &intent_key)?;
-    vm_progress!(
-        "Preparing isolated '{}' checkout in package infrastructure...",
-        intent.package
-    );
-    let checkout = client
-        .create_checkout(&CreateCheckout {
-            package: intent.package,
-            agent: intent.agent.clone(),
-            consumers: vec![consumer.clone()],
-            task: intent.task,
-            workspace_release: false,
-            lease_token: request.lease_token.clone(),
-            idempotency_key: request.idempotency_key,
-        })
-        .await?;
-    if let Err(error) = attach(
-        &subject,
-        subject.gateway(),
-        &checkout.checkout,
-        &request.lease_token,
-        &consumer,
+    let record = OverrideRecord::new(
+        &checkout.checkout_id,
+        subject.consumer(),
+        &checkout.package,
+        ecosystem,
         source,
-        pinned_version.as_deref(),
-    ) {
-        if let Ok(root) = checkout_root(&subject, &checkout.checkout.checkout_id) {
-            let _ = cleanup_failed_attach(&subject, &root);
-        }
+        pinned_version,
+    );
+    record.write(subject, root)?;
+    if let Err(error) = record.activate(subject) {
+        let _ = record.restore(subject);
         return Err(error);
     }
-    let active = client
-        .transition(
-            &checkout.checkout.checkout_id,
-            &TransitionRequest {
-                next: WorkflowState::Active,
-                actor: intent.agent,
-                reason: format!("override attached to {consumer}"),
-                commit: checkout.checkout.base_commit,
-                validation_result: Some("override_ready".into()),
-                idempotency_key: format!("active-{}", checkout.checkout.checkout_id),
-            },
-        )
-        .await?;
-    let _ = std::fs::remove_file(request_path);
-    let root = checkout_root(&subject, &active.checkout_id)?;
-    vm_success!("Checkout {} is active", active.checkout_id);
-    vm_println!("Source: {root}/source");
     Ok(())
+}
+
+fn print_source(checkout: &vm_packages::CheckoutRecord, source: &str, resumed: bool) {
+    if resumed {
+        vm_success!("Resumed {}", checkout.package);
+    } else {
+        vm_success!("Checkout {} is active", checkout.checkout_id);
+    }
+    vm_println!("Source: {source}");
+    vm_hint!("Continue with: cd {source}");
 }
 
 async fn editable_source(
@@ -417,7 +297,7 @@ async fn editable_source(
         Some(tool) => Ok(EditableSource::Tool(tool.kind)),
         None => Err(VmError::validation(
             format!("No package or managed tool named '{name}' is registered"),
-            None::<String>,
+            Some("Run `vm packages doctor --fix` on the controller host"),
         )),
     }
 }
@@ -431,36 +311,39 @@ async fn pinned_version(
     let EditableSource::Package(_) = source else {
         return Ok(None);
     };
-    client
-        .package_consumers(package)
-        .await?
-        .iter()
-        .find(|usage| usage.consumer == consumer)
-        .map(|usage| Some(usage.version.clone()))
-        .ok_or_else(|| {
-            VmError::validation(
-                format!("Consumer '{consumer}' has no registered '{package}' dependency"),
-                Some("Register the consumer and its pinned dependency before creating a checkout"),
-            )
-        })
+    Ok(consumer_version(
+        &client.package_consumers(package).await?,
+        consumer,
+    ))
 }
 
-fn read_or_create_request(
-    subject: &GuestRuntime,
-    path: &std::path::Path,
-    idempotency_key: &str,
-) -> VmResult<GuestRequestState> {
-    match std::fs::read(path) {
-        Ok(content) => serde_json::from_slice(&content).map_err(VmError::from),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            let request = GuestRequestState {
-                lease_token: vm_core::secrets::generate_random_password(48),
-                idempotency_key: idempotency_key.to_string(),
-            };
-            let content = serde_json::to_vec(&request).map_err(VmError::from)?;
-            subject.write_private(&content, &path.to_string_lossy())?;
-            Ok(request)
-        }
-        Err(error) => Err(VmError::from(error)),
+pub(super) fn consumer_version(
+    usages: &[vm_packages::ConsumerUsage],
+    consumer: &str,
+) -> Option<String> {
+    usages
+        .iter()
+        .find(|usage| usage.consumer == consumer)
+        .map(|usage| usage.version.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::consumer_version;
+
+    #[test]
+    fn source_only_checkout_does_not_require_a_consumer_dependency() {
+        let usages = [vm_packages::ConsumerUsage {
+            consumer: "project-a".into(),
+            version: "1.2.3".into(),
+            pending_version: None,
+            rollout_id: None,
+        }];
+
+        assert_eq!(
+            consumer_version(&usages, "project-a").as_deref(),
+            Some("1.2.3")
+        );
+        assert_eq!(consumer_version(&usages, "source-only-project"), None);
     }
 }

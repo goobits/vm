@@ -188,6 +188,28 @@ async fn active_checkout_can_securely_reacquire_an_expired_lease() {
         .unwrap();
 
     assert_eq!(reacquired.lease.unwrap().holder, "agent-1");
+
+    let rotated = store
+        .reacquire_lease(
+            id,
+            LeaseRequest {
+                holder: "agent-1".into(),
+                lease_token: "rotated-token-012345678901234567890123456789".into(),
+                duration_seconds: 600,
+                idempotency_key: "rotate-reacquired-lease".into(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(rotated.lease.unwrap().holder, "agent-1");
+    assert!(store
+        .authorize_lease(
+            id,
+            "project-a",
+            "rotated-token-012345678901234567890123456789"
+        )
+        .await
+        .is_ok());
 }
 
 #[tokio::test]

@@ -37,7 +37,8 @@ fn guest_allowed_command(command: &Command) -> bool {
             command: PackagesSubcommand::Status { .. }
                 | PackagesSubcommand::Checkout { .. }
                 | PackagesSubcommand::Show { .. }
-                | PackagesSubcommand::Release { .. }
+                | PackagesSubcommand::Release
+                | PackagesSubcommand::Cancel
         }
     )
 }
@@ -219,9 +220,10 @@ mod tests {
             },
         }));
         assert!(guest_allowed_command(&Command::Packages {
-            command: PackagesSubcommand::Release {
-                checkout_id: Some("checkout-1".into()),
-            },
+            command: PackagesSubcommand::Release,
+        }));
+        assert!(guest_allowed_command(&Command::Packages {
+            command: PackagesSubcommand::Cancel,
         }));
         assert!(!guest_allowed_command(&Command::Packages {
             command: PackagesSubcommand::Up {

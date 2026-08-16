@@ -357,28 +357,11 @@ fn package_init_parses_the_source_shelf() {
 }
 
 #[test]
-fn package_work_parses_the_brainless_interface() {
-    assert!(matches!(
-        Args::parse_from([
-            "vm",
-            "packages",
-            "work",
-            "agent-skills",
-            "update the skills"
-        ])
-        .command,
-        Command::Packages {
-            command: PackagesSubcommand::Work { source, task }
-        } if source == "agent-skills" && task == "update the skills"
-    ));
-}
-
-#[test]
 fn package_release_accepts_an_inferred_checkout() {
     assert!(matches!(
         Args::parse_from(["vm", "packages", "release"]).command,
         Command::Packages {
-            command: PackagesSubcommand::Release { checkout_id: None }
+            command: PackagesSubcommand::Release
         }
     ));
 }
@@ -396,44 +379,29 @@ fn package_doctor_parses_safe_fix_mode() {
 #[test]
 fn package_checkout_parses_isolated_work_request() {
     assert!(matches!(
-        Args::parse_from([
-            "vm",
-            "packages",
-            "checkout",
-            "auth",
-            "--agent",
-            "agent-17",
-            "--consumer",
-            "project-a",
-            "--task",
-            "fix refresh",
-        ])
-        .command,
+        Args::parse_from(["vm", "packages", "checkout", "auth"]).command,
         Command::Packages {
-            command: PackagesSubcommand::Checkout {
-                package,
-                agent,
-                consumer: Some(consumer),
-                task,
-            }
-        } if package == "auth"
-            && agent == "agent-17"
-            && consumer == "project-a"
-            && task == "fix refresh"
+            command: PackagesSubcommand::Checkout { source }
+        } if source == "auth"
     ));
+    assert!(
+        Args::try_parse_from(["vm", "packages", "checkout", "auth", "--agent", "agent-17"])
+            .is_err()
+    );
 }
 
 #[test]
-fn package_release_parses_guest_workflow() {
+fn package_cancel_parses_directory_inferred_workflow() {
     assert!(matches!(
-        Args::parse_from(["vm", "packages", "release", "checkout-auth-1"]),
+        Args::parse_from(["vm", "packages", "cancel"]),
         Args {
             command: Command::Packages {
-                command: PackagesSubcommand::Release { checkout_id }
+                command: PackagesSubcommand::Cancel
             },
             ..
-        } if checkout_id.as_deref() == Some("checkout-auth-1")
+        }
     ));
+    assert!(Args::try_parse_from(["vm", "packages", "release", "checkout-auth-1"]).is_err());
 }
 
 #[test]
@@ -446,15 +414,6 @@ fn package_recovery_commands_parse() {
             },
             ..
         } if backup_id == "backup-20260810"
-    ));
-    assert!(matches!(
-        Args::parse_from(["vm", "packages", "cleanup", "pkg-auth-1"]),
-        Args {
-            command: Command::Packages {
-                command: PackagesSubcommand::Cleanup { checkout_id }
-            },
-            ..
-        } if checkout_id == "pkg-auth-1"
     ));
 }
 

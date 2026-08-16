@@ -22,7 +22,6 @@ use crate::commands::command_context::managed_guest_context;
 use crate::error::{VmError, VmResult};
 use vm_core::{vm_println, vm_success};
 
-use appliance::configured_client;
 use files::ApplianceFiles;
 pub(super) use runtime::{apply_client_environment, reconcile_client_settings};
 
@@ -153,126 +152,7 @@ async fn up(
     Ok(())
 }
 
-async fn work(files: &ApplianceFiles, source: String, task: String) -> VmResult<()> {
-    let global = vm_config::GlobalConfig::load()?;
-    let config_path = global.packages.work_config.clone().ok_or_else(|| {
-        VmError::validation(
-            "Package work has not been initialized",
-            Some("Run `vm packages init <source-root>` from the target project"),
-        )
-    })?;
-    let retry = crate::commands::command_context::host_command(&[
-        "packages".into(),
-        "work".into(),
-        source.clone(),
-        task.clone(),
-    ]);
-    let config_path = PathBuf::from(config_path);
-    let profile = global.packages.work_profile;
-    let session = {
-        let _operation_lock = files.acquire_operation_lock()?;
-        checkout::prepare(
-            files,
-            checkout::CheckoutIntent {
-                config_path: Some(config_path.clone()),
-                profile: profile.clone(),
-                package: source.clone(),
-                agent: "codex".into(),
-                consumer: None,
-                task: task.clone(),
-            },
-            true,
-        )
-        .await?
-    };
-    let prompt = format!(
-        "Work on the managed source '{source}'. Task: {task}\n\
-         Edit and test the source in the current directory. Commit the finished changes, then run \
-         `vm packages release` from this directory. If release requests changes, address them, \
-         commit, and rerun `vm packages release` until publication succeeds. Do not ask the user \
-         for a checkout ID, source path, environment, activation step, or rebuild."
-    );
-    let command = vec![
-        "codex".to_string(),
-        "--dangerously-bypass-approvals-and-sandbox".to_string(),
-        prompt,
-    ];
-    session
-        .subject
-        .provider
-        .exec_interactive(
-            Some(session.subject.target.as_str()),
-            &session.source,
-            &command,
-        )
-        .map_err(|error| {
-            VmError::validation(
-                format!("Codex session failed: {error}"),
-                Some(format!("Run `{retry}`")),
-            )
-        })?;
-
-    let checkout = configured_client(files)?
-        .checkout(&session.checkout.checkout_id)
-        .await?;
-    if !matches!(
-        checkout.state,
-        vm_packages::WorkflowState::Published | vm_packages::WorkflowState::Closed
-    ) {
-        return Err(VmError::validation(
-            format!(
-                "Codex exited before '{}' was published; checkout state is {:?}",
-                source, checkout.state
-            ),
-            Some(format!("Run `{retry}`")),
-        ));
-    }
-    vm_success!("Published {source}");
-    if matches!(
-        session.checkout.source_kind,
-        vm_packages::SourceKind::ToolBinary | vm_packages::SourceKind::ToolCollection
-    ) {
-        let mut activation_arguments = vec![
-            "--config".to_string(),
-            config_path.to_string_lossy().into_owned(),
-        ];
-        if let Some(profile) = &profile {
-            activation_arguments.extend(["--profile".into(), profile.clone()]);
-        }
-        activation_arguments.extend(["tools".into(), "update".into(), "--fleet".into()]);
-        let activation_retry =
-            crate::commands::command_context::host_command(&activation_arguments);
-        super::tools::activate_project_tool(config_path, profile, &source)
-            .await
-            .map_err(|error| {
-                VmError::validation(
-                    format!("Published '{source}', but automatic activation failed: {error}"),
-                    Some(format!("Run `{activation_retry}`")),
-                )
-            })?;
-    }
-    Ok(())
-}
-
-fn package_init_context(
-    source_root: PathBuf,
-    config_path: Option<PathBuf>,
-    profile: Option<String>,
-) -> VmResult<(PathBuf, PathBuf, Option<String>)> {
-    let config = match config_path {
-        Some(path) => path,
-        None => vm_config::config_ops::find_local_config().map_err(VmError::from)?,
-    };
-    let config = std::fs::canonicalize(&config).map_err(|error| {
-        VmError::filesystem(
-            error,
-            config.display().to_string(),
-            "resolve package work project configuration",
-        )
-    })?;
-    let resolved =
-        crate::commands::environment::resolve_environment(Some(config.clone()), profile, None)?;
-
+fn prepare_source_root(source_root: PathBuf) -> VmResult<PathBuf> {
     std::fs::create_dir_all(&source_root).map_err(|error| {
         VmError::filesystem(
             error,
@@ -287,22 +167,16 @@ fn package_init_context(
             "resolve package source root",
         )
     })?;
-    Ok((source_root, config, resolved.profile))
+    Ok(source_root)
 }
 
-fn remember_package_init(
-    source_root: &std::path::Path,
-    config: &std::path::Path,
-    profile: Option<String>,
-) -> VmResult<()> {
+fn remember_source_root(source_root: &std::path::Path) -> VmResult<()> {
     let mut global = vm_config::GlobalConfig::load()?;
     let source_root = source_root.to_string_lossy().into_owned();
     if !global.packages.source_roots.contains(&source_root) {
         global.packages.source_roots.push(source_root);
         global.packages.source_roots.sort();
     }
-    global.packages.work_config = Some(config.to_string_lossy().into_owned());
-    global.packages.work_profile = profile;
     global.save().map_err(VmError::from)
 }
 
@@ -318,8 +192,7 @@ pub(super) async fn handle(
     let _operation_lock = match &command {
         PackagesSubcommand::Backups { .. }
         | PackagesSubcommand::Backup { .. }
-        | PackagesSubcommand::Restore { .. }
-        | PackagesSubcommand::Work { .. } => None,
+        | PackagesSubcommand::Restore { .. } => None,
         PackagesSubcommand::Init { .. }
         | PackagesSubcommand::Up { .. }
         | PackagesSubcommand::Down { .. } => Some(files.acquire_lifecycle_lock()?),
@@ -333,9 +206,8 @@ pub(super) async fn handle(
             registry_image,
             job_image,
         } => {
-            let (source_root, config, profile) =
-                package_init_context(source_root, config_path, profile)?;
-            remember_package_init(&source_root, &config, profile.clone())?;
+            let source_root = prepare_source_root(source_root)?;
+            remember_source_root(&source_root)?;
             let _ = catalog::repair_github_credential(&files)?;
             up(
                 &files,
@@ -343,14 +215,13 @@ pub(super) async fn handle(
                 port,
                 registry_image,
                 job_image,
-                Some(config),
+                config_path,
                 profile,
             )
             .await?;
-            vm_success!("Package work is initialized");
+            vm_success!("Package infrastructure is initialized");
             Ok(())
         }
-        PackagesSubcommand::Work { source, task } => work(&files, source, task).await,
         PackagesSubcommand::Up {
             runtime,
             port,
@@ -401,36 +272,21 @@ pub(super) async fn handle(
             consumer::show_consumers(&files, &package).await
         }
         PackagesSubcommand::Drift => consumer::show_drift(&files).await,
-        PackagesSubcommand::Checkout {
-            package,
-            agent,
-            consumer,
-            task,
-        } => {
-            checkout::handle(
-                &files,
-                checkout::CheckoutIntent {
-                    config_path,
-                    profile,
-                    package,
-                    agent,
-                    consumer,
-                    task,
-                },
-            )
-            .await
-        }
-        PackagesSubcommand::Show { checkout_id } => catalog::show(&files, &checkout_id).await,
-        PackagesSubcommand::Release { .. } => Err(crate::error::VmError::validation(
-            "Managed source releases run inside the assigned environment",
-            Some("Run `vm packages release <checkout-id>` inside that Docker or Tart guest"),
+        PackagesSubcommand::Checkout { source } => Err(VmError::validation(
+            "Managed source checkout runs inside a managed VM",
+            Some(format!(
+                "Run inside a managed VM: vm packages checkout {source}"
+            )),
         )),
-        PackagesSubcommand::Cancel { checkout_id } => {
-            cancel_checkout(&files, config_path, profile, &checkout_id).await
-        }
-        PackagesSubcommand::Cleanup { checkout_id } => {
-            cleanup_checkout(&files, config_path, profile, &checkout_id).await
-        }
+        PackagesSubcommand::Show { checkout_id } => catalog::show(&files, &checkout_id).await,
+        PackagesSubcommand::Release => Err(crate::error::VmError::validation(
+            "Managed source releases run inside the assigned environment",
+            Some("Run `vm packages release` from the source directory inside that managed VM"),
+        )),
+        PackagesSubcommand::Cancel => Err(crate::error::VmError::validation(
+            "Managed checkout cancellation runs inside the assigned environment",
+            Some("Run `vm packages cancel` from the managed checkout source directory"),
+        )),
         PackagesSubcommand::Auth {
             token_file,
             github,
@@ -441,8 +297,8 @@ pub(super) async fn handle(
 
 async fn handle_guest(
     command: PackagesSubcommand,
-    config_path: Option<PathBuf>,
-    profile: Option<String>,
+    _config_path: Option<PathBuf>,
+    _profile: Option<String>,
 ) -> VmResult<()> {
     match command {
         PackagesSubcommand::Init { .. } => Err(crate::error::VmError::validation(
@@ -450,77 +306,13 @@ async fn handle_guest(
             Some("Run on the host: vm packages init <source-root>"),
         )),
         PackagesSubcommand::Status { .. } => catalog::status_guest().await,
-        PackagesSubcommand::Checkout {
-            package,
-            agent,
-            consumer,
-            task,
-        } => {
-            checkout::handle_guest(checkout::CheckoutIntent {
-                config_path,
-                profile,
-                package,
-                agent,
-                consumer,
-                task,
-            })
-            .await
-        }
+        PackagesSubcommand::Checkout { source } => checkout::handle_guest(source).await,
         PackagesSubcommand::Show { checkout_id } => catalog::show_guest(&checkout_id).await,
-        PackagesSubcommand::Release { checkout_id } => {
-            release::handle_guest(checkout_id.as_deref()).await
-        }
-        PackagesSubcommand::Work { .. } => Err(crate::error::VmError::validation(
-            "Package work is launched from the controller host",
-            Some("Run on the host: vm packages work <source> <task>"),
-        )),
+        PackagesSubcommand::Release => release::handle_guest().await,
+        PackagesSubcommand::Cancel => checkout::cancel_guest().await,
         _ => Err(crate::error::VmError::validation(
             "This package command is restricted to the controller host",
             Some("Run package administration commands on the host"),
         )),
     }
-}
-
-async fn cleanup_checkout(
-    files: &ApplianceFiles,
-    config_path: Option<PathBuf>,
-    profile: Option<String>,
-    checkout_id: &str,
-) -> VmResult<()> {
-    let client = configured_client(files)?;
-    let checkout = client.checkout(checkout_id).await?;
-    checkout::cleanup_local(config_path, profile, &checkout).await?;
-    let closed = client
-        .cleanup_checkout(
-            checkout_id,
-            &vm_packages::CleanupRequest {
-                actor: "vm-controller".into(),
-                idempotency_key: format!("cleanup-{checkout_id}"),
-            },
-        )
-        .await?;
-    vm_success!("Checkout {} is {:?}", closed.checkout_id, closed.state);
-    Ok(())
-}
-
-async fn cancel_checkout(
-    files: &ApplianceFiles,
-    config_path: Option<PathBuf>,
-    profile: Option<String>,
-    checkout_id: &str,
-) -> VmResult<()> {
-    configured_client(files)?
-        .transition(
-            checkout_id,
-            &vm_packages::TransitionRequest {
-                next: vm_packages::WorkflowState::Cancelled,
-                actor: "vm-controller".into(),
-                reason: "checkout cancelled by operator".into(),
-                commit: None,
-                validation_result: Some("cancelled".into()),
-                idempotency_key: format!("cancel-{checkout_id}"),
-            },
-        )
-        .await?;
-    cleanup_checkout(files, config_path, profile, checkout_id).await
 }

@@ -10,7 +10,7 @@ use crate::error::{VmError, VmResult};
 
 use super::{
     discovery::{normalize_repository_url, package_name, tool_manifest},
-    runtime::{checkout_root, copy_private, exec_output, GuestRuntime, PackageExecutor},
+    runtime::{checkout_root, copy_private, exec_output, GuestRuntime},
 };
 
 const STATE_SCHEMA: u32 = 1;
@@ -250,20 +250,20 @@ fn validate_workspace_root(root: &Path, expected: &Path) -> VmResult<()> {
                 root.display(),
                 expected.display()
             ),
-            Some("Run `vm packages work <source> <task>` for an isolated checkout"),
+            Some("Run `vm packages checkout <source>` inside a managed VM"),
         ));
     }
     Ok(())
 }
 
 fn git_output<const N: usize>(
-    subject: &impl PackageExecutor,
+    subject: &GuestRuntime,
     source: &str,
     arguments: [&str; N],
 ) -> VmResult<String> {
     let mut command = vec!["git".to_string(), "-C".into(), source.to_string()];
     command.extend(arguments.into_iter().map(str::to_string));
-    subject.output(&command)
+    exec_output(subject, command)
 }
 
 fn ensure_clean(subject: &GuestRuntime, source: &str) -> VmResult<()> {
@@ -315,7 +315,7 @@ fn state_matches(
 
 fn save_state(subject: &GuestRuntime, path: &Path, state: &WorkspaceReleaseState) -> VmResult<()> {
     let content = serde_json::to_vec(state).map_err(VmError::from)?;
-    subject.write_private(&content, &path.to_string_lossy())
+    copy_private(subject, &content, &path.to_string_lossy())
 }
 
 #[cfg(test)]
@@ -412,6 +412,6 @@ mod tests {
         assert!(error
             .to_string()
             .contains("not the configured canonical workspace"));
-        assert!(error.hint().unwrap().contains("vm packages work"));
+        assert!(error.hint().unwrap().contains("vm packages checkout"));
     }
 }

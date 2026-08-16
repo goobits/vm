@@ -221,30 +221,6 @@ async fn update_fleet_target(
     apply_updates(provider.as_ref(), &instance.name, &config, mode)
 }
 
-pub(in crate::commands) async fn activate_project_tool(
-    config_path: PathBuf,
-    profile: Option<String>,
-    tool: &str,
-) -> VmResult<()> {
-    let config = AppConfig::load(Some(config_path), profile, None)?.vm;
-    if !config.tools.entries.contains_key(tool) {
-        return Ok(());
-    }
-    let project = super::command_context::project_name(&config);
-    let instances = super::vm_ops::targets::get_all_instances()?
-        .into_iter()
-        .filter(|instance| super::vm_ops::target::project_instance_matches(instance, project))
-        .collect::<Vec<_>>();
-    if instances.is_empty() {
-        return Err(VmError::validation(
-            format!("No managed environments are configured for project '{project}'"),
-            Some("Run `vm up`, then retry managed tool activation"),
-        ));
-    }
-
-    update_targets(&config, instances, InstallMode::Wait).await
-}
-
 fn config_for_fleet_target(config: &VmConfig, instance: &InstanceInfo) -> VmConfig {
     let mut config = config.clone();
     config.provider = Some(instance.provider.clone());

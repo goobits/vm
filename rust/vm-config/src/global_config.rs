@@ -58,19 +58,11 @@ pub struct PackageInfrastructureSettings {
     /// Absolute host directories scanned recursively by `vm packages up`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub source_roots: Vec<String>,
-
-    /// Project configuration used by the path-free managed work command.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub work_config: Option<String>,
-
-    /// Project profile selected during package initialization.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub work_profile: Option<String>,
 }
 
 impl PackageInfrastructureSettings {
     pub fn is_default(&self) -> bool {
-        self.source_roots.is_empty() && self.work_config.is_none() && self.work_profile.is_none()
+        self.source_roots.is_empty()
     }
 }
 

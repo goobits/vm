@@ -186,6 +186,10 @@ impl SourceManager {
         if let Some(parent) = source.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
+        let checkout_root = source
+            .parent()
+            .expect("managed checkout source has a parent")
+            .to_path_buf();
         let temporary = source.with_extension(format!(
             "restore-{}",
             vm_core::secrets::generate_random_password(12)
@@ -211,6 +215,45 @@ impl SourceManager {
                 "restore package task branch",
             )
             .await?;
+            let submission = match store.checkout_submission(&checkout.checkout_id).await {
+                Ok(submission) => Some(submission),
+                Err(WorkError::NotFound(_)) => None,
+                Err(error) => return Err(error),
+            };
+            if let Some(submission) = submission {
+                let key = submission
+                    .submitted_commit
+                    .chars()
+                    .take(16)
+                    .collect::<String>();
+                let bundle = checkout_root
+                    .join("submissions")
+                    .join(format!("{key}.bundle"));
+                if !tokio::fs::try_exists(&bundle).await? {
+                    return Err(WorkError::Conflict(
+                        "durable checkout submission bundle is missing".into(),
+                    ));
+                }
+                run(
+                    self.git()
+                        .arg("-C")
+                        .arg(&temporary)
+                        .arg("fetch")
+                        .arg(&bundle)
+                        .arg(&submission.submitted_commit),
+                    "restore submitted checkout commit",
+                )
+                .await?;
+                run(
+                    self.git()
+                        .arg("-C")
+                        .arg(&temporary)
+                        .args(["reset", "--hard"])
+                        .arg(&submission.submitted_commit),
+                    "reset restored checkout to submitted commit",
+                )
+                .await?;
+            }
             run(
                 self.git()
                     .arg("-C")

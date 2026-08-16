@@ -9,7 +9,7 @@ use vm_packages::{
 use crate::error::{VmError, VmResult};
 
 use super::{
-    runtime::{checkout_root, exec, GuestRuntime, PackageExecutor},
+    runtime::{checkout_root, exec, GuestRuntime},
     submission::{run_binary_check, run_collection_check, run_consumer_check, run_package_check},
 };
 
@@ -30,7 +30,7 @@ pub(super) async fn handle_guest(
 }
 
 async fn integrate(
-    subject: &impl PackageExecutor,
+    subject: &GuestRuntime,
     client: &PackageInfrastructureClient,
     gateway: &str,
     submission_id: &str,

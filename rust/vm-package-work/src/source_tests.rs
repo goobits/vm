@@ -491,6 +491,11 @@ async fn package_checkout_lifecycle_stays_inside_managed_agent_storage() {
         .join(&active.checkout_id)
         .join("source")
         .is_dir());
+    let restored_source = data.join("agents").join(&active.checkout_id).join("source");
+    assert_eq!(
+        git_output(&restored_source, &["rev-parse", "HEAD"]),
+        submission.submitted_commit
+    );
     assert!(source.archive(&active).await.unwrap().is_file());
 
     source.cleanup_checkout(&active).await.unwrap();

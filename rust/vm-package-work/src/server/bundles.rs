@@ -42,7 +42,7 @@ pub(super) async fn download_archive(
         .store
         .authorize_lease(&id, &query.consumer, &lease_token(&headers)?)
         .await?;
-    if checkout.state == WorkflowState::NeedsChanges && !checkout.workspace_release {
+    if !checkout.workspace_release {
         state
             .source
             .restore_checkout(&state.store, &checkout)

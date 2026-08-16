@@ -10,7 +10,7 @@ use crate::error::{VmError, VmResult};
 
 use super::{
     overrides::cargo_patch,
-    runtime::{checkout_root, exec, exec_in_workspace, exec_output, GuestRuntime, PackageExecutor},
+    runtime::{checkout_root, exec, exec_in_workspace, exec_output, GuestRuntime},
 };
 
 pub(super) async fn handle_guest(
@@ -93,7 +93,7 @@ pub(super) async fn resume_guest(
 }
 
 async fn submit(
-    subject: &impl PackageExecutor,
+    subject: &GuestRuntime,
     client: &PackageInfrastructureClient,
     gateway: &str,
     checkout_id: &str,
@@ -143,7 +143,7 @@ async fn submit(
 }
 
 async fn run_checks(
-    subject: &impl PackageExecutor,
+    subject: &GuestRuntime,
     client: &PackageInfrastructureClient,
     checkout: &vm_packages::CheckoutRecord,
     source: &str,
@@ -153,7 +153,16 @@ async fn run_checks(
         SourceKind::Package => {
             let definition = client.package_definition(&checkout.package).await?;
             run_package_check(subject, definition.ecosystem, source)?;
-            if checkout.workspace_release {
+            let consumes_package = if checkout.workspace_release {
+                false
+            } else {
+                super::checkout::consumer_version(
+                    &client.package_consumers(&checkout.package).await?,
+                    consumer,
+                )
+                .is_some()
+            };
+            if !consumes_package {
                 Ok(BTreeMap::new())
             } else {
                 run_consumer_check(subject, definition.ecosystem, &checkout.package, source)?;
@@ -208,7 +217,7 @@ fn generation_id(commit: &str) -> String {
     commit.chars().take(16).collect()
 }
 
-fn ensure_clean(subject: &impl PackageExecutor, source: &str, label: &str) -> VmResult<()> {
+fn ensure_clean(subject: &GuestRuntime, source: &str, label: &str) -> VmResult<()> {
     exec(
         subject,
         [
@@ -279,7 +288,7 @@ async fn submit_workspace_commit(
 }
 
 fn upload_bundle(
-    subject: &impl PackageExecutor,
+    subject: &GuestRuntime,
     gateway: &str,
     checkout_id: &str,
     consumer: &str,
@@ -310,7 +319,7 @@ fn upload_bundle(
 }
 
 pub(super) fn run_package_check(
-    subject: &impl PackageExecutor,
+    subject: &GuestRuntime,
     ecosystem: PackageEcosystem,
     source: &str,
 ) -> VmResult<()> {
@@ -329,11 +338,11 @@ pub(super) fn run_package_check(
     }
 }
 
-pub(super) fn run_collection_check(subject: &impl PackageExecutor, source: &str) -> VmResult<()> {
+pub(super) fn run_collection_check(subject: &GuestRuntime, source: &str) -> VmResult<()> {
     exec(subject, ["npm", "--prefix", source, "test", "--if-present"])
 }
 
-pub(super) fn run_binary_check(subject: &impl PackageExecutor, source: &str) -> VmResult<()> {
+pub(super) fn run_binary_check(subject: &GuestRuntime, source: &str) -> VmResult<()> {
     let content =
         super::runtime::exec_output(subject, ["git", "-C", source, "show", "HEAD:vm-tool.yaml"])?;
     let manifest: vm_packages::ToolSourceManifest =
@@ -350,7 +359,7 @@ pub(super) fn run_binary_check(subject: &impl PackageExecutor, source: &str) -> 
 }
 
 pub(super) fn run_consumer_check(
-    subject: &impl PackageExecutor,
+    subject: &GuestRuntime,
     ecosystem: PackageEcosystem,
     package: &str,
     source: &str,
