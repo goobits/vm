@@ -135,6 +135,11 @@ impl ToolBuild {
                 "binary tool builds require an OS and architecture target",
             ));
         }
+        if !matches!(self.target.as_str(), "linux-amd64" | "linux-arm64") {
+            return Err(PackageValidationError::new(
+                "binary tool build target is not supported by the Linux release infrastructure",
+            ));
+        }
         validate_command("build command", &self.command)?;
         validate_relative_path("build archive", &self.archive)?;
         if !self.archive.ends_with(".tar.gz") {
@@ -181,9 +186,17 @@ fn validate_command(field: &str, command: &[String]) -> Result<(), PackageValida
         .file_name()
         .and_then(|program| program.to_str())
         .unwrap_or(&command[0]);
-    if matches!(program, "sh" | "bash" | "dash" | "zsh" | "ksh" | "fish")
-        && command.get(1).is_some_and(|argument| argument == "-c")
-    {
+    let shell_command_text = command
+        .iter()
+        .skip(1)
+        .take_while(|argument| *argument != "--")
+        .any(|argument| {
+            argument == "--command"
+                || argument.strip_prefix('-').is_some_and(|flags| {
+                    !flags.starts_with('-') && flags.chars().any(|flag| flag == 'c')
+                })
+        });
+    if matches!(program, "sh" | "bash" | "dash" | "zsh" | "ksh" | "fish") && shell_command_text {
         return Err(PackageValidationError::new(format!(
             "{field} must not use shell command text"
         )));
@@ -559,7 +572,13 @@ builds:
         assert!(shell_command.is_err());
 
         let mut shell_array = manifest;
-        shell_array.builds[0].command = vec!["sh".into(), "-c".into(), "npm run build".into()];
+        for flags in ["-c", "-ec", "--command"] {
+            shell_array.builds[0].command = vec!["sh".into(), flags.into(), "npm run build".into()];
+            assert!(shell_array.validate().is_err());
+        }
+
+        shell_array.builds[0].command = vec!["npm".into(), "run".into(), "build".into()];
+        shell_array.builds[0].target = "darwin-arm64".into();
         assert!(shell_array.validate().is_err());
     }
 

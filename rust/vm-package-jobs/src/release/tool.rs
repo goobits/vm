@@ -328,7 +328,12 @@ fn build_binary_artifacts(
         .builds
         .iter()
         .map(|build| {
-            build_binary(context.source, context.release_root, build)?;
+            run_isolated(
+                &build.command,
+                context.source,
+                context.release_root,
+                &format!("build binary tool target {}", build.target),
+            )?;
             let archive = confined_build_archive(context.source, &build.archive)?;
             verify_binary_archive(&archive, build)?;
             verify_binary_command(&archive, context.release_root, build)?;
@@ -394,17 +399,6 @@ fn binary_identity(source: &Path) -> Result<ToolSourceManifest> {
     Ok(manifest)
 }
 
-fn build_binary(source: &Path, release_root: &Path, build: &ToolBuild) -> Result<()> {
-    validate_build_target(&build.target)?;
-    run_isolated(
-        &build.command,
-        source,
-        release_root,
-        &format!("build binary tool target {}", build.target),
-    )?;
-    Ok(())
-}
-
 fn run_isolated(
     arguments: &[String],
     directory: &Path,
@@ -433,14 +427,6 @@ fn run_isolated(
     }
     run_command(&mut command, operation)?;
     Ok(())
-}
-
-fn validate_build_target(target: &str) -> Result<()> {
-    if matches!(target, "linux-amd64" | "linux-arm64") {
-        Ok(())
-    } else {
-        bail!("binary target {target} is not buildable by the Linux release infrastructure")
-    }
 }
 
 fn native_target() -> Option<&'static str> {
@@ -960,7 +946,6 @@ mod tests {
         assert_eq!(artifacts[0].request.version, "1.2.3");
         assert!(artifacts[0].request.size_bytes > 0);
         assert_eq!(artifacts[0].request.artifact_digest.len(), 64);
-        assert!(validate_build_target("macos-arm64").is_err());
     }
 
     #[test]

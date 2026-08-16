@@ -56,6 +56,7 @@ pub struct ClientEnvironment {
     read_token: String,
     oci_mirror: String,
     agent_access: Option<AgentAccess>,
+    canonical_workspace: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,6 +86,7 @@ impl ClientEnvironment {
             endpoints,
             read_token,
             agent_access: None,
+            canonical_workspace: None,
         })
     }
 
@@ -111,6 +113,16 @@ impl ClientEnvironment {
             token,
             consumer,
         });
+        Ok(self)
+    }
+
+    pub fn with_canonical_workspace(mut self, workspace: impl Into<String>) -> Result<Self> {
+        let workspace = workspace.into();
+        if !std::path::Path::new(&workspace).is_absolute() || workspace.contains(['\0', '\n', '\r'])
+        {
+            bail!("canonical package workspace must be one absolute path");
+        }
+        self.canonical_workspace = Some(workspace);
         Ok(self)
     }
 
@@ -147,6 +159,9 @@ impl ClientEnvironment {
                 ("VM_PACKAGES_AGENT_TOKEN".into(), access.token.clone()),
                 ("VM_PACKAGES_CONSUMER".into(), access.consumer.clone()),
             ]);
+        }
+        if let Some(workspace) = &self.canonical_workspace {
+            variables.push(("VM_PACKAGES_CANONICAL_WORKSPACE".into(), workspace.clone()));
         }
         variables
     }
@@ -241,12 +256,18 @@ mod tests {
         let agent = environment
             .with_agent_access("https://packages.internal", "agent-token", "project-a")
             .unwrap()
+            .with_canonical_workspace("/workspace")
+            .unwrap()
             .variables();
-        assert_eq!(agent.len(), 12);
+        assert_eq!(agent.len(), 13);
         assert!(agent.contains(&("VM_PACKAGES_CONSUMER".into(), "project-a".into())));
         assert!(agent.contains(&(
             "VM_PACKAGES_CLIENT_URL".into(),
             "https://packages.internal/vm-client".into()
+        )));
+        assert!(agent.contains(&(
+            "VM_PACKAGES_CANONICAL_WORKSPACE".into(),
+            "/workspace".into()
         )));
         assert_eq!(variables[3].1, "read secret");
         assert_eq!(variables[7].1, "https://packages.internal");
@@ -256,6 +277,22 @@ mod tests {
     fn rejects_non_http_gateways() {
         assert!(RegistryEndpoints::new("file:///tmp/packages").is_err());
         assert!(RegistryEndpoints::new("relative/path").is_err());
+    }
+
+    #[test]
+    fn canonical_workspace_must_be_one_absolute_guest_path() {
+        let environment = ClientEnvironment::new(
+            RegistryEndpoints::new("https://packages.internal").unwrap(),
+            "read-token",
+        )
+        .unwrap();
+        assert!(environment
+            .clone()
+            .with_canonical_workspace("/workspace")
+            .is_ok());
+        assert!(environment
+            .with_canonical_workspace("../workspace")
+            .is_err());
     }
 
     #[test]

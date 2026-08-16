@@ -154,6 +154,7 @@ pub(super) struct GuestRuntime {
     gateway: String,
     agent_token: String,
     workspace: String,
+    canonical_workspace: Option<PathBuf>,
     home: PathBuf,
 }
 
@@ -164,6 +165,10 @@ impl GuestRuntime {
         let gateway = required_guest_variable("VM_PACKAGES_WORK_GATEWAY")?;
         RegistryEndpoints::new(&gateway).map_err(VmError::from)?;
         let agent_token = required_guest_variable("VM_PACKAGES_AGENT_TOKEN")?;
+        let canonical_workspace = std::env::var("VM_PACKAGES_CANONICAL_WORKSPACE")
+            .ok()
+            .filter(|workspace| !workspace.trim().is_empty())
+            .map(PathBuf::from);
         let workspace = std::env::current_dir()
             .map_err(VmError::from)?
             .to_string_lossy()
@@ -176,6 +181,7 @@ impl GuestRuntime {
             gateway,
             agent_token,
             workspace,
+            canonical_workspace,
             home,
         })
     }
@@ -186,6 +192,15 @@ impl GuestRuntime {
 
     pub(super) fn gateway(&self) -> &str {
         &self.gateway
+    }
+
+    pub(super) fn canonical_workspace(&self) -> VmResult<&Path> {
+        self.canonical_workspace.as_deref().ok_or_else(|| {
+            VmError::validation(
+                "Managed guest package access has no canonical workspace binding",
+                Some("Run `vm tools update` on the controller host, then open a new guest shell"),
+            )
+        })
     }
 
     pub(super) fn request_state_path(&self, key: &str) -> VmResult<PathBuf> {
@@ -360,6 +375,7 @@ fn configured_client_environment(
         &files.agent_signing_key()?,
         consumer,
         provider,
+        workspace_path(config),
     )?;
     Ok(Some((client, edge)))
 }
@@ -374,6 +390,7 @@ fn client_environment(
     agent_signing_key: &str,
     consumer: &str,
     provider: &str,
+    canonical_workspace: &str,
 ) -> VmResult<(ClientEnvironment, PackageEdgeConfig)> {
     if state.registry_image.trim().is_empty() {
         return Err(VmError::validation(
@@ -408,6 +425,7 @@ fn client_environment(
     )
     .and_then(|client| client.with_oci_mirror(internal_gateway))
     .and_then(|client| client.with_agent_access(&edge.internal_gateway, agent_token, consumer))
+    .and_then(|client| client.with_canonical_workspace(canonical_workspace))
     .map_err(VmError::from)?;
     Ok((client, edge))
 }
@@ -676,6 +694,7 @@ mod tests {
             signing_key,
             "project-a",
             "docker",
+            "/workspace",
         )
         .unwrap();
         let (tart, tart_edge) = client_environment(
@@ -684,6 +703,7 @@ mod tests {
             signing_key,
             "project-a",
             "tart",
+            "/workspace",
         )
         .unwrap();
         let docker_variables = docker

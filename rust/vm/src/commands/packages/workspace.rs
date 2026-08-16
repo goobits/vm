@@ -70,17 +70,12 @@ pub(super) async fn prepare(subject: &GuestRuntime) -> VmResult<WorkspaceRelease
         ))[..32]
     );
     let state_path = subject.request_state_path(&key)?;
-    let mut state =
-        load_state(&state_path)?.unwrap_or_else(|| new_state(&registered.name, &repository, &head));
-    validate_state(&state, &registered, &repository)?;
+    let mut state = load_state(&state_path)?
+        .filter(|state| state_matches(state, &registered, &repository))
+        .unwrap_or_else(|| new_state(&registered.name, &repository, &head));
 
     let existing = match state.checkout_id.as_deref() {
-        Some(checkout_id) => Some(client.checkout(checkout_id).await.map_err(|error| {
-            VmError::validation(
-                format!("Workspace release state references an unavailable checkout: {error}"),
-                Some("Run `vm packages doctor --fix`"),
-            )
-        })?),
+        Some(checkout_id) => client.checkout(checkout_id).await.ok(),
         None => None,
     };
     let checkout = match existing {
@@ -232,11 +227,33 @@ fn validate_checkout(
 
 fn git_root(subject: &GuestRuntime) -> VmResult<String> {
     let root = exec_output(subject, ["git", "rev-parse", "--show-toplevel"])?;
-    std::fs::canonicalize(root.trim())
-        .map(|root| root.to_string_lossy().into_owned())
-        .map_err(|error| {
-            VmError::filesystem(error, root.trim(), "resolve canonical workspace Git root")
-        })
+    let root = std::fs::canonicalize(root.trim()).map_err(|error| {
+        VmError::filesystem(error, root.trim(), "resolve canonical workspace Git root")
+    })?;
+    let canonical_workspace = subject.canonical_workspace()?;
+    let expected = std::fs::canonicalize(canonical_workspace).map_err(|error| {
+        VmError::filesystem(
+            error,
+            canonical_workspace.display().to_string(),
+            "resolve configured project workspace",
+        )
+    })?;
+    validate_workspace_root(&root, &expected)?;
+    Ok(root.to_string_lossy().into_owned())
+}
+
+fn validate_workspace_root(root: &Path, expected: &Path) -> VmResult<()> {
+    if root != expected {
+        return Err(VmError::validation(
+            format!(
+                "Repository {} is not the configured canonical workspace {}",
+                root.display(),
+                expected.display()
+            ),
+            Some("Run `vm packages work <source> <task>` for an isolated checkout"),
+        ));
+    }
+    Ok(())
 }
 
 fn git_output<const N: usize>(
@@ -279,33 +296,21 @@ fn new_state(source: &str, repository: &str, head: &str) -> WorkspaceReleaseStat
 
 fn load_state(path: &Path) -> VmResult<Option<WorkspaceReleaseState>> {
     match std::fs::read(path) {
-        Ok(content) => serde_json::from_slice(&content).map(Some).map_err(|error| {
-            VmError::validation(
-                format!("Workspace release state is invalid: {error}"),
-                Some("Run `vm packages doctor --fix`"),
-            )
-        }),
+        Ok(content) => Ok(serde_json::from_slice(&content).ok()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(VmError::from(error)),
     }
 }
 
-fn validate_state(
+fn state_matches(
     state: &WorkspaceReleaseState,
     registered: &RegisteredSource,
     repository: &str,
-) -> VmResult<()> {
-    if state.schema != STATE_SCHEMA
-        || state.source != registered.name
-        || state.repository != repository
-        || !(32..=256).contains(&state.lease_token.len())
-    {
-        return Err(VmError::validation(
-            "Workspace release state does not match the canonical repository",
-            Some("Run `vm packages doctor --fix`"),
-        ));
-    }
-    Ok(())
+) -> bool {
+    state.schema == STATE_SCHEMA
+        && state.source == registered.name
+        && state.repository == repository
+        && (32..=256).contains(&state.lease_token.len())
 }
 
 fn save_state(subject: &GuestRuntime, path: &Path, state: &WorkspaceReleaseState) -> VmResult<()> {
@@ -396,5 +401,17 @@ mod tests {
         .unwrap();
         assert_eq!(source.name, "release-tool");
         assert_eq!(source.kind, SourceKind::ToolBinary);
+    }
+
+    #[test]
+    fn canonical_release_rejects_a_second_clone_of_the_registered_source() {
+        let configured = Path::new("/workspace");
+        assert!(validate_workspace_root(configured, configured).is_ok());
+
+        let error = validate_workspace_root(Path::new("/tmp/clone"), configured).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("not the configured canonical workspace"));
+        assert!(error.hint().unwrap().contains("vm packages work"));
     }
 }
