@@ -44,7 +44,7 @@ jobs:
       - name: Run integration tests
         continue-on-error: ${{ matrix.os != 'ubuntu-latest' }}
         working-directory: rust
-        run: cargo test --workspace --test '*' --features integration -- --test-threads=2
+        run: cargo test --workspace --test '*' --features integration,standalone-binary -- --test-threads=2
 
   clippy:
     name: Run clippy
