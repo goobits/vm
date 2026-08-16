@@ -108,6 +108,11 @@ jobs:
           VM_ACCEPTANCE_BIN: ${{ github.workspace }}/rust/target/release/vm
         run: scripts/internal/test-package-workflow-docker.sh
 
+      - name: Prove persistent managed-guest remote commands
+        env:
+          VM_ACCEPTANCE_BIN: ${{ github.workspace }}/rust/target/release/vm
+        run: scripts/internal/test-remote-command-docker.sh
+
   audit:
     name: Security & Quality Audit
     runs-on: ubuntu-latest

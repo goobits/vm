@@ -20,8 +20,8 @@ VM adapter. Unknown namespaces continue to fail as unknown VM commands.
 
 ## Guest Contract
 
-A root-owned, versioned registration file maps a command namespace to one
-service endpoint and its capability. The guest sends one request:
+A root-owned, versioned guest registration file maps a command namespace to
+one service endpoint and its capability. The guest sends one request:
 
 ```text
 POST <endpoint>/v1/commands/<namespace>
@@ -37,14 +37,21 @@ It does not read Git configuration or receive GitHub/GitLab credentials. The
 bridge rejects redirects, oversized responses, invalid namespaces, and
 unsupported protocol versions, and never logs capability values.
 
+The controller registry is stored outside repositories at
+`~/.vm/remote-commands.json` and scopes commands by exact environment name:
+
+```json
+{"schema":1,"environments":{"project-dev":{"schema":1,"commands":{"issue":{"endpoint":"http://issue-service:8080","capability":"scoped-token","repair_command":"vm start project-dev"}}}}}
+```
+
 ## Delivery
 
-- [ ] Add the external-subcommand grammar and generic HTTP dispatcher.
-- [ ] Validate registrations, endpoints, arguments, response JSON, and limits.
-- [ ] Install registered namespaces during explicit managed-guest reconciliation.
-- [ ] Keep host and guest context selection explicit in tests.
-- [ ] Cover success, mutation idempotency, service failures, and isolation.
-- [ ] Prove the Docker workflow without Git or provider credentials.
+- [x] Add strict unknown-command fallback and the generic HTTP dispatcher.
+- [x] Validate registrations, endpoints, arguments, response JSON, and limits.
+- [x] Install registered namespaces during explicit managed-guest reconciliation.
+- [x] Keep host and guest context selection explicit in tests.
+- [x] Cover success, mutation idempotency, service failures, and isolation.
+- [x] Prove the Docker workflow without Git or provider credentials.
 
 ## Compatibility
 
