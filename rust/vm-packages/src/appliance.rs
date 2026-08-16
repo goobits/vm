@@ -171,7 +171,7 @@ mod tests {
         assert!(COMPOSE_YAML.contains("work_build_token"));
         assert!(COMPOSE_YAML.contains("work_rollout_token"));
         assert!(COMPOSE_YAML.contains("work_agent_signing_key"));
-        assert!(COMPOSE_YAML.contains("agent-temporary-data:/data/agents:ro"));
+        assert!(definition["services"]["reviewer"].get("volumes").is_none());
         assert!(COMPOSE_YAML.contains("exec pkg-release"));
         assert!(COMPOSE_YAML.contains("exec pkg-build"));
         assert!(COMPOSE_YAML.contains("exec pkg-review"));

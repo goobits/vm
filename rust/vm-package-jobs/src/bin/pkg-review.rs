@@ -1,8 +1,8 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 use anyhow::{bail, Context, Result};
-use vm_package_jobs::runtime::{command_text, operation_key, run_command};
+use vm_package_jobs::runtime::{command_text, download_bundle, operation_key, run_command};
 use vm_packages::{
     PackageEcosystem, PackageInfrastructureClient, PublicApiDiff, RegistryEndpoints,
     ReviewDecision, ReviewRequest, SourceKind, VersionRecommendation, WorkflowState,
@@ -14,11 +14,11 @@ async fn main() -> Result<()> {
         std::env::var("PKG_REVIEW_GATEWAY").unwrap_or_else(|_| "http://gateway:8080".into());
     let token = std::env::var("PKG_REVIEW_TOKEN").context("PKG_REVIEW_TOKEN is required")?;
     let client = PackageInfrastructureClient::new(RegistryEndpoints::new(gateway)?)
-        .with_reviewer_token(token);
+        .with_reviewer_token(&token);
     loop {
         match client.next_review().await {
             Ok(Some(submission)) => {
-                if let Err(error) = review(&client, &submission.submission_id).await {
+                if let Err(error) = review(&client, &token, &submission.submission_id).await {
                     eprintln!("review {} failed: {error:#}", submission.submission_id);
                 }
             }
@@ -29,7 +29,11 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn review(client: &PackageInfrastructureClient, submission_id: &str) -> Result<()> {
+async fn review(
+    client: &PackageInfrastructureClient,
+    token: &str,
+    submission_id: &str,
+) -> Result<()> {
     let submission = client.submission(submission_id).await?;
     if submission.state != WorkflowState::Reviewing
         || !submission
@@ -49,26 +53,16 @@ async fn review(client: &PackageInfrastructureClient, submission_id: &str) -> Re
         ),
         SourceKind::ToolBinary | SourceKind::ToolCollection => None,
     };
-    let managed_source = PathBuf::from(
-        checkout
-            .worktree
-            .as_deref()
-            .context("checkout source is missing")?,
-    );
-    let expected = PathBuf::from("/data/agents")
-        .join(&submission.checkout_id)
-        .join("source");
-    if managed_source != expected {
-        bail!("checkout source is outside reviewer storage");
-    }
-
     let review_root = tempfile::tempdir()?;
+    let bundle = review_root.path().join("submission.bundle");
+    download_bundle(
+        &client.review_bundle_url(&submission.submission_id),
+        token,
+        &bundle,
+    )?;
     let source = review_root.path().join("source");
     run_command(
-        Command::new("git")
-            .arg("clone")
-            .arg(&managed_source)
-            .arg(&source),
+        Command::new("git").arg("clone").arg(&bundle).arg(&source),
         "clone package review source",
     )?;
     run_command(

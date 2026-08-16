@@ -28,6 +28,7 @@ impl SourceManager {
                 .import_workspace_submission(store, checkout, bundle)
                 .await;
         }
+        self.restore_checkout(store, checkout).await?;
         let lock = self
             .lock(&format!("checkout:{}", checkout.checkout_id))
             .await;
@@ -311,6 +312,9 @@ impl SourceManager {
         } else {
             tokio::fs::remove_file(bundle).await?;
         }
+        if !checkout.workspace_release {
+            tokio::fs::remove_dir_all(source).await?;
+        }
         store
             .record_submission(
                 &checkout.checkout_id,
@@ -320,6 +324,21 @@ impl SourceManager {
                 },
             )
             .await
+    }
+
+    pub fn submission_bundle(
+        &self,
+        submission: &vm_packages::SubmissionRecord,
+    ) -> WorkResult<PathBuf> {
+        let key = submission
+            .submitted_commit
+            .chars()
+            .take(16)
+            .collect::<String>();
+        Ok(self
+            .agent_root(&submission.checkout_id)?
+            .join("submissions")
+            .join(format!("{key}.bundle")))
     }
 }
 

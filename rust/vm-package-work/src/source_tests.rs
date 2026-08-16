@@ -370,6 +370,11 @@ async fn package_checkout_lifecycle_stays_inside_managed_agent_storage() {
         .unwrap()
         .starts_with(data.join("agents").to_str().unwrap()));
     let bundle = source.archive(&prepared).await.unwrap();
+    assert!(!data
+        .join("agents")
+        .join(&prepared.checkout_id)
+        .join("source")
+        .exists());
     let consumer = directory.path().join("consumer");
     assert!(StdCommand::new("git")
         .args(["clone"])
@@ -432,6 +437,12 @@ async fn package_checkout_lifecycle_stays_inside_managed_agent_storage() {
         .unwrap();
     assert_eq!(submission.state, WorkflowState::Submitted);
     assert_ne!(submission.base_commit, submission.submitted_commit);
+    assert!(!data
+        .join("agents")
+        .join(&active.checkout_id)
+        .join("source")
+        .exists());
+    assert!(source.submission_bundle(&submission).unwrap().is_file());
 
     let integration_root = data
         .join("agents")

@@ -128,6 +128,7 @@ impl SourceManager {
             "bundle isolated package checkout",
         )
         .await?;
+        tokio::fs::remove_dir_all(&source).await?;
         Ok(archive)
     }
 

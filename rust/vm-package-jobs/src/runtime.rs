@@ -1,4 +1,6 @@
 use std::fs;
+use std::io::Write;
+use std::path::Path;
 use std::process::{Command, Output};
 
 use anyhow::{bail, Context, Result};
@@ -35,6 +37,27 @@ pub fn run_command(command: &mut Command, operation: &str) -> Result<Output> {
 
 pub fn command_text(command: &mut Command, operation: &str) -> Result<String> {
     Ok(String::from_utf8(run_command(command, operation)?.stdout)?)
+}
+
+pub fn authorization_header(token: &str) -> Result<tempfile::NamedTempFile> {
+    let mut header = tempfile::NamedTempFile::new()?;
+    writeln!(header, "Authorization: Bearer {token}")?;
+    Ok(header)
+}
+
+pub fn download_bundle(url: &str, token: &str, destination: &Path) -> Result<()> {
+    let header = authorization_header(token)?;
+    run_command(
+        Command::new("curl")
+            .args(["--fail", "--silent", "--show-error", "--location"])
+            .arg("--header")
+            .arg(format!("@{}", header.path().display()))
+            .arg("--output")
+            .arg(destination)
+            .arg(url),
+        "download immutable source bundle",
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]

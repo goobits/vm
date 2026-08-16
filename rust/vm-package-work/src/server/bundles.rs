@@ -62,12 +62,6 @@ pub(super) async fn upload_submission(
         .store
         .authorize_lease(&id, &query.consumer, &lease_token(&headers)?)
         .await?;
-    if checkout.state == WorkflowState::NeedsChanges && !checkout.workspace_release {
-        state
-            .source
-            .restore_checkout(&state.store, &checkout)
-            .await?;
-    }
     let staging = state.source.submission_staging_path(&checkout).await?;
     let result = async {
         receive_bundle(body, &staging, "submitted").await?;
@@ -81,6 +75,23 @@ pub(super) async fn upload_submission(
         let _ = tokio::fs::remove_file(&staging).await;
     }
     Ok((StatusCode::CREATED, Json(result?)))
+}
+
+pub(super) async fn download_review_bundle(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> WorkResult<Response> {
+    let submission = state.store.submission(&id).await?;
+    if submission.state != WorkflowState::Reviewing {
+        return Err(WorkError::Conflict(
+            "submission is not ready for review".into(),
+        ));
+    }
+    download(
+        state.source.submission_bundle(&submission)?,
+        "submission.bundle",
+    )
+    .await
 }
 
 pub(super) async fn download_rollout(
@@ -173,6 +184,7 @@ async fn download(path: std::path::PathBuf, filename: &'static str) -> WorkResul
                     "checkout.bundle" => "attachment; filename=checkout.bundle",
                     "rollout.bundle" => "attachment; filename=rollout.bundle",
                     "integration.bundle" => "attachment; filename=integration.bundle",
+                    "submission.bundle" => "attachment; filename=submission.bundle",
                     _ => "attachment; filename=release.bundle",
                 },
             ),

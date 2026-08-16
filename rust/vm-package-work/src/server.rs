@@ -171,6 +171,10 @@ pub(crate) fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router 
     let reviews = Router::new()
         .route("/v1/jobs/review/next", get(jobs::next_review))
         .route(
+            "/v1/submissions/{submission_id}/review-bundle",
+            get(bundles::download_review_bundle),
+        )
+        .route(
             "/v1/submissions/{submission_id}/review",
             post(jobs::record_review),
         )

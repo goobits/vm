@@ -40,6 +40,9 @@ impl SourceManager {
                 "integration strategy must be rebase or merge".into(),
             ));
         }
+        if !checkout.workspace_release {
+            self.restore_checkout(store, &checkout).await?;
+        }
         let definition = store.source(&submission.package).await?;
         if definition.kind != checkout.source_kind {
             return Err(WorkError::Conflict(

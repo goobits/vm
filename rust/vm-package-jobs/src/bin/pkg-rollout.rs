@@ -1,10 +1,10 @@
-use std::fs;
 use std::path::Path;
 use std::process::Command;
 
 use anyhow::{bail, Context, Result};
 use vm_package_jobs::runtime::{
-    command_text as text, operation_key, required_secret as secret, run_command as run,
+    authorization_header, command_text as text, download_bundle, operation_key,
+    required_secret as secret, run_command as run,
 };
 use vm_packages::{
     PackageEcosystem, PackageInfrastructureClient, RegistryEndpoints, RolloutState,
@@ -57,22 +57,10 @@ async fn run_rollout(
         .context("rollout branch is missing")?;
     let root = tempfile::tempdir()?;
     let bundle = root.path().join("rollout.bundle");
-    let header = root.path().join("authorization-header");
-    fs::write(&header, format!("Authorization: Bearer {token}\n"))?;
-    run(
-        Command::new("curl")
-            .args([
-                "--fail",
-                "--silent",
-                "--show-error",
-                "--location",
-                "--header",
-            ])
-            .arg(format!("@{}", header.display()))
-            .arg("--output")
-            .arg(&bundle)
-            .arg(client.rollout_bundle_url(&rollout.rollout_id)),
-        "download consumer rollout source",
+    download_bundle(
+        &client.rollout_bundle_url(&rollout.rollout_id),
+        token,
+        &bundle,
     )?;
     let source = root.path().join("source");
     run(
@@ -136,6 +124,7 @@ async fn run_rollout(
             .arg("--all"),
         "bundle tested consumer rollout",
     )?;
+    let header = authorization_header(token)?;
     run(
         Command::new("curl")
             .args([
@@ -146,7 +135,7 @@ async fn run_rollout(
                 "POST",
                 "--header",
             ])
-            .arg(format!("@{}", header.display()))
+            .arg(format!("@{}", header.path().display()))
             .args([
                 "--header",
                 "Content-Type: application/x-git-bundle",

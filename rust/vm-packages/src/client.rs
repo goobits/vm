@@ -502,6 +502,10 @@ impl PackageInfrastructureClient {
         self.work_url(&format!("v1/submissions/{submission_id}/release-bundle"))
     }
 
+    pub fn review_bundle_url(&self, submission_id: &str) -> String {
+        self.work_url(&format!("v1/submissions/{submission_id}/review-bundle"))
+    }
+
     pub fn build_bundle_url(&self, submission_id: &str) -> String {
         self.work_url(&format!("v1/submissions/{submission_id}/build-bundle"))
     }
@@ -677,6 +681,10 @@ mod tests {
         assert_eq!(
             client.checkout_archive_url("checkout-1", "project/a"),
             "https://packages.internal/work/v1/checkouts/checkout-1/archive?consumer=project%2Fa"
+        );
+        assert_eq!(
+            client.review_bundle_url("submission-1"),
+            "https://packages.internal/work/v1/submissions/submission-1/review-bundle"
         );
     }
 }

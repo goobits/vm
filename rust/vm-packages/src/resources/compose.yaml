@@ -178,8 +178,6 @@ services:
     security_opt: ["no-new-privileges:true"]
     read_only: true
     tmpfs: ["/tmp:rw,exec,nosuid,size=4g"]
-    volumes:
-      - agent-temporary-data:/data/agents:ro
     networks: [packages]
 
   releaser:

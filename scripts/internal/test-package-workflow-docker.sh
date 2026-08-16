@@ -20,13 +20,12 @@ project_root=$source_shelf/release-tool
 consumer_root=$acceptance_root/consumer
 fixture_root=$acceptance_root/agent-skills
 fake_bin=$acceptance_root/bin
-work_log=$acceptance_root/work.log
+checkout_log=$acceptance_root/checkout.log
 workspace_log=$acceptance_root/workspace.log
 before_ids=$acceptance_root/before.ids
 after_ids=$acceptance_root/after.ids
 before_volumes=$acceptance_root/before.volumes
 after_volumes=$acceptance_root/after.volumes
-work_pid=
 server_image=
 jobs_image=
 
@@ -39,10 +38,6 @@ run_vm() {
 
 cleanup() {
   set +e
-  if test -n "$work_pid" && kill -0 "$work_pid" 2>/dev/null; then
-    kill "$work_pid" 2>/dev/null
-    wait "$work_pid" 2>/dev/null
-  fi
   run_vm --config "$project_root/vm.yaml" remove "$environment_name" --force >/dev/null 2>&1
   run_vm --config "$consumer_root/vm.yaml" remove "$consumer_environment" --force >/dev/null 2>&1
   docker rm --force "$environment_name" "$edge_name" \
@@ -118,7 +113,7 @@ cat > "$project_root/Dockerfile.acceptance" <<'DOCKERFILE'
 FROM ubuntu:24.04
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ansible-core ca-certificates curl git python3 sudo bash tar gzip && \
+      ansible-core ca-certificates curl git nodejs npm python3 sudo bash tar gzip && \
     rm -rf /var/lib/apt/lists/* && \
     groupadd --gid 11000 acceptance && \
     useradd --create-home --uid 11000 --gid 11000 --shell /bin/bash acceptance && \
@@ -127,46 +122,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     install -d -o acceptance -g acceptance /workspace && \
     sudo -Hu acceptance git config --global user.name 'VM Acceptance' && \
     sudo -Hu acceptance git config --global user.email 'vm-acceptance@example.invalid'
-COPY codex /usr/local/lib/vm-ai-tools/codex-package/bin/codex
-RUN printf '%s\n' '{}' > /usr/local/lib/vm-ai-tools/codex-package/codex-package.json && \
-    printf '%s\n' '#!/bin/sh' 'exit 0' > /usr/local/lib/vm-ai-tools/codex-package/bin/codex-code-mode-host && \
-    chmod 0755 /usr/local/lib/vm-ai-tools/codex-package/bin/* && \
-    ln -s /usr/local/lib/vm-ai-tools/codex-package/bin/codex /usr/local/bin/codex && \
-    ln -s /usr/local/lib/vm-ai-tools/codex-package/bin/codex-code-mode-host /usr/local/bin/codex-code-mode-host
 USER acceptance
 WORKDIR /workspace
 CMD ["tail", "-f", "/dev/null"]
 DOCKERFILE
-
-cat > "$project_root/codex" <<'CODEX'
-#!/bin/sh
-set -eu
-if test "${1:-}" = --version; then
-  printf '%s\n' 'codex-acceptance 1.0.0'
-  exit 0
-fi
-state="$HOME/.local/state/vm"
-mkdir -p "$state"
-hostname > "$state/package-acceptance-container"
-touch "$state/package-acceptance-ready"
-sleep 5
-
-mkdir -p skills/acceptance
-printf '%s\n' '# Acceptance skill' > skills/acceptance/SKILL.md
-git add skills/acceptance/SKILL.md
-git commit -m 'feat: add acceptance skill'
-
-if vm packages release; then
-  echo 'Initial release unexpectedly succeeded without a version bump' >&2
-  exit 41
-fi
-touch "$state/package-acceptance-rework"
-python3 -c 'import json; p="package.json"; d=json.load(open(p)); d["version"]="1.0.1"; open(p,"w").write(json.dumps(d, indent=2)+"\n")'
-git add package.json
-git commit -m 'fix: apply requested version bump'
-vm packages release
-CODEX
-chmod 0755 "$project_root/codex"
 
 cat > "$project_root/vm.yaml" <<YAML
 version: '2.0'
@@ -190,12 +149,10 @@ bootstrap:
   dependencies: false
 tools:
   updates: auto
-  agent-skills: {}
   release-tool: {}
 YAML
 
 cp "$project_root/Dockerfile.acceptance" "$consumer_root/Dockerfile.acceptance"
-cp "$project_root/codex" "$consumer_root/codex"
 cat > "$consumer_root/vm.yaml" <<YAML
 version: '2.0'
 provider: docker
@@ -218,6 +175,7 @@ bootstrap:
   dependencies: false
 tools:
   updates: auto
+  agent-skills: {}
   release-tool: {}
 YAML
 
@@ -308,6 +266,7 @@ git -C "$fixture_root" commit -m 'feat: initial collection'
 )
 test "$(run_vm packages status)" = 'Package infrastructure: healthy'
 
+run_vm --config "$project_root/vm.yaml" create
 run_vm --config "$consumer_root/vm.yaml" create
 
 docker run --rm --user 0:0 \
@@ -317,28 +276,6 @@ docker run --rm --user 0:0 \
   'git clone --bare /fixture /data/sources/acceptance-agent-skills.git && chown -R 10001:10001 /data/sources/acceptance-agent-skills.git'
 run_vm tools register agent-skills --kind collection \
   --repository file:///data/sources/acceptance-agent-skills.git
-
-(
-  cd "$project_root"
-  run_vm packages work agent-skills 'prove edit rework publish activation'
-) >"$work_log" 2>&1 &
-work_pid=$!
-
-ready=false
-for _ in $(seq 1 300); do
-  if docker exec "$environment_name" \
-    test -f /home/acceptance/.local/state/vm/package-acceptance-ready 2>/dev/null; then
-    ready=true
-    break
-  fi
-  sleep 2
-done
-test "$ready" = true || {
-  cat "$work_log" >&2
-  echo "Managed Codex session did not start" >&2
-  echo "Repair: rerun this acceptance script on a healthy Docker host" >&2
-  exit 3
-}
 
 stable_containers=(
   "$compose_project-gateway-1"
@@ -356,22 +293,125 @@ stable_containers=(
 )
 capture_runtime_state "$before_ids" "$before_volumes"
 
+workflow_containers=(
+  "$compose_project-gateway-1"
+  "$compose_project-work-1"
+  "$compose_project-reviewer-1"
+  "$compose_project-builder-1"
+  "$compose_project-releaser-1"
+  "$compose_project-rollout-1"
+)
+
+docker exec --user acceptance "$environment_name" \
+  vm packages checkout agent-skills >"$checkout_log" 2>&1
+checkout_source=$(sed -n 's/^Source: //p' "$checkout_log")
+test "$(printf '%s\n' "$checkout_source" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
+case "$checkout_source" in
+  /home/acceptance/.local/share/vm/package-checkouts/*/source) ;;
+  *)
+    cat "$checkout_log" >&2
+    echo "Managed checkout escaped guest storage: $checkout_source" >&2
+    echo "Repair: rerun this acceptance script with a guest-owned checkout build" >&2
+    exit 3
+    ;;
+esac
+checkout_id=$(basename "$(dirname "$checkout_source")")
+docker exec --user acceptance "$environment_name" test -d "$checkout_source/.git"
+
+assert_guest_only_checkout() {
+  local container
+  for container in "${workflow_containers[@]}"; do
+    docker exec "$container" sh -ec \
+      'test ! -e "$1" && test ! -e "$2"' sh \
+      "$checkout_source" "/data/agents/$checkout_id/source"
+  done
+}
+assert_guest_only_checkout
+
+docker exec --user acceptance "$environment_name" sh -ec '
+  source=$1
+  mkdir -p "$source/skills/acceptance"
+  printf "%s\n" "# Guest-owned acceptance skill" > "$source/skills/acceptance/SKILL.md"
+  cd "$source"
+  test -f skills/acceptance/SKILL.md
+  git add skills/acceptance/SKILL.md
+  git commit -m "feat: add guest-owned acceptance skill"
+' sh "$checkout_source"
+checkout_commit=$(docker exec --user acceptance "$environment_name" \
+  git -C "$checkout_source" rev-parse HEAD)
+
+docker restart "$environment_name" >/dev/null
+docker exec --user acceptance "$environment_name" \
+  vm packages checkout agent-skills >"$checkout_log.resume" 2>&1
+resumed_source=$(sed -n 's/^Source: //p' "$checkout_log.resume")
+test "$resumed_source" = "$checkout_source"
+test "$(docker exec --user acceptance "$environment_name" \
+  git -C "$checkout_source" rev-parse HEAD)" = "$checkout_commit"
+test -z "$(docker exec --user acceptance "$environment_name" \
+  git -C "$checkout_source" status --porcelain --untracked-files=all)"
+assert_guest_only_checkout
+
 set +e
-wait "$work_pid"
-work_status=$?
-work_pid=
+docker exec --user acceptance "$environment_name" sh -ec \
+  'cd "$1" && vm packages release' sh "$checkout_source" \
+  >"$workspace_log" 2>&1
+release_status=$?
 set -e
-if test "$work_status" -ne 0; then
-  cat "$work_log" >&2
-  echo "Managed package work failed" >&2
-  echo "Repair: rerun this acceptance script and inspect the package worker logs" >&2
-  exit "$work_status"
+test "$release_status" -ne 0 || {
+  cat "$workspace_log" >&2
+  echo "Guest release unexpectedly skipped the version rework" >&2
+  echo "Repair: rerun this acceptance script with package review enabled" >&2
+  exit 4
+}
+grep -Eq 'Package (review|release) requested changes' "$workspace_log"
+assert_guest_only_checkout
+
+docker exec --user acceptance "$environment_name" sh -ec '
+  source=$1
+  sed -i '\''s/"version": "1.0.0"/"version": "1.0.1"/'\'' "$source/package.json"
+  cd "$source"
+  test "$(sed -n '\''s/.*"version": "\([^"]*\)".*/\1/p'\'' package.json)" = 1.0.1
+  git add package.json
+  git commit -m "fix: apply requested collection version bump"
+  vm packages release
+' sh "$checkout_source" >>"$workspace_log" 2>&1
+docker exec --user acceptance "$environment_name" test ! -e "$checkout_source"
+assert_guest_only_checkout
+
+for container in "${workflow_containers[@]}"; do
+  if docker top "$container" -eo args | grep -E '[c]odex|[c]laude|[a]ntigravity' >/dev/null; then
+    echo "Package appliance launched an AI agent in $container" >&2
+    echo "Repair: remove agent launchers from package infrastructure" >&2
+    exit 5
+  fi
+done
+docker exec --user acceptance "$environment_name" sh -ec '
+  if env | grep -Eq "^(PKG_WORK_CONTROLLER|PKG_WORK_GIT|PKG_BUILD|PKG_RELEASE|PKG_SERVER_PUBLISH|GIT_ASKPASS|GITHUB_TOKEN|GH_TOKEN|NPM_TOKEN)[^=]*="; then
+    exit 1
+  fi
+  for secret in \
+    /run/secrets/git_token \
+    /run/secrets/controller_token \
+    /run/secrets/build_token \
+    /run/build-secrets/build-token \
+    /run/secrets/release_token \
+    /run/secrets/publish_token; do
+    test ! -e "$secret"
+  done
+'
+if docker inspect --format '{{range .Mounts}}{{println .Name}}{{end}}' "$environment_name" | \
+  grep -F "${compose_project}_" >/dev/null; then
+  echo "Producer guest received writable package-appliance storage" >&2
+  echo "Repair: remove appliance volume mounts from managed guests" >&2
+  exit 6
 fi
 
-docker exec "$environment_name" \
-  test -f /home/acceptance/.local/state/vm/package-acceptance-rework
-docker exec "$environment_name" \
+run_vm --config "$consumer_root/vm.yaml" tools update "$consumer_environment"
+docker exec --user acceptance "$consumer_environment" \
   test -L /home/acceptance/.codex/skills/acceptance
+docker exec --user acceptance "$consumer_environment" \
+  grep -F 'Guest-owned acceptance skill' \
+  /home/acceptance/.codex/skills/acceptance/SKILL.md >/dev/null
 run_vm tools show agent-skills | grep -F '1.0.1' >/dev/null
 docker run --rm --user 10001:10001 \
   --volume "${compose_project}_source-mirrors:/data/sources:ro" \

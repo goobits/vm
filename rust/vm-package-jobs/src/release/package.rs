@@ -15,7 +15,9 @@ use vm_packages::{
     VersionRecommendation, WorkflowState,
 };
 
-use crate::runtime::{operation_key, required_secret as secret, run_command as run};
+use crate::runtime::{
+    download_bundle, operation_key, required_secret as secret, run_command as run,
+};
 
 use super::{file_digest, git, git_text};
 
@@ -246,20 +248,6 @@ pub(super) async fn cleanup_release(
             },
         )
         .await?;
-    Ok(())
-}
-
-pub(super) fn download_bundle(url: &str, token: &str, destination: &Path) -> Result<()> {
-    run(
-        Command::new("curl")
-            .args(["--fail", "--silent", "--show-error", "--location"])
-            .arg("--header")
-            .arg(format!("Authorization: Bearer {token}"))
-            .arg("--output")
-            .arg(destination)
-            .arg(url),
-        "download validated integration bundle",
-    )?;
     Ok(())
 }
 

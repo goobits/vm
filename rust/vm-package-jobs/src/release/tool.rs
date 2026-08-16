@@ -18,11 +18,9 @@ use vm_packages::{
     ToolSourceManifest, WorkflowState,
 };
 
-use crate::runtime::{operation_key, run_command};
+use crate::runtime::{download_bundle, operation_key, run_command};
 
-use super::package::{
-    cleanup_release, clone_at, download_bundle, push_source, validate_release_version,
-};
+use super::package::{cleanup_release, clone_at, push_source, validate_release_version};
 use super::{file_digest, git, git_text};
 
 const TOOL_TARGET: &str = "any";

@@ -92,14 +92,6 @@ pub(super) async fn request_release_rework(
     Path(id): Path<String>,
     Json(request): Json<ReleaseReworkRequest>,
 ) -> WorkResult<Json<SubmissionRecord>> {
-    let submission = state.store.submission(&id).await?;
-    let checkout = state.store.get_checkout(&submission.checkout_id).await?;
-    if !checkout.workspace_release {
-        state
-            .source
-            .restore_checkout(&state.store, &checkout)
-            .await?;
-    }
     Ok(Json(
         state.store.request_release_rework(&id, request).await?,
     ))
