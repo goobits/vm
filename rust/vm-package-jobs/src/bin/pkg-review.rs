@@ -83,13 +83,11 @@ async fn review(client: &PackageInfrastructureClient, submission_id: &str) -> Re
 
     let diff_base = if checkout.initial_release {
         command_text(
-            Command::new("git").arg("-C").arg(&source).args([
-                "hash-object",
-                "-t",
-                "tree",
-                "-w",
-                "--stdin",
-            ]),
+            Command::new("git")
+                .arg("-C")
+                .arg(&source)
+                .stdin(std::process::Stdio::null())
+                .args(["hash-object", "-t", "tree", "-w", "--stdin"]),
             "create empty initial-release tree",
         )?
         .trim()

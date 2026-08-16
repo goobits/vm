@@ -267,13 +267,11 @@ impl SourceManager {
         }
         let diff_base = if checkout.initial_release {
             git_output(
-                self.git().arg("-C").arg(source).args([
-                    "hash-object",
-                    "-t",
-                    "tree",
-                    "-w",
-                    "--stdin",
-                ]),
+                self.git()
+                    .arg("-C")
+                    .arg(source)
+                    .stdin(std::process::Stdio::null())
+                    .args(["hash-object", "-t", "tree", "-w", "--stdin"]),
                 "create empty initial-release tree",
             )
             .await?
