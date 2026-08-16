@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 use uuid::Uuid;
 
 // External crates
-use clap::Parser;
+use clap::{error::ErrorKind, Parser};
 use tracing::info_span;
 use tracing::Instrument;
 
@@ -29,6 +29,11 @@ mod utils;
 use cli::Args;
 use commands::execute_command;
 
+enum Invocation {
+    BuiltIn(Box<Args>),
+    Remote(Vec<std::ffi::OsString>),
+}
+
 /// Request ID for this execution - used for tracing logs across the entire request
 static REQUEST_ID: OnceLock<String> = OnceLock::new();
 
@@ -37,13 +42,27 @@ fn get_request_id() -> &'static str {
 }
 
 /// Executes the given command and handles top-level errors.
-async fn run_command(args: Args) {
-    if let Err(error) = execute_command(args).await {
+async fn run_command(invocation: Invocation) {
+    let result = match invocation {
+        Invocation::BuiltIn(args) => execute_command(*args).await,
+        Invocation::Remote(arguments) => commands::remote_command::handle(arguments).await,
+    };
+    if let Err(error) = result {
         vm_error!("Error: {}", error);
         if let Some(hint) = error.hint() {
             vm_hint!("{}", hint);
         }
         std::process::exit(1);
+    }
+}
+
+fn parse_invocation() -> Invocation {
+    match Args::try_parse() {
+        Ok(args) => Invocation::BuiltIn(Box::new(args)),
+        Err(error) if error.kind() == ErrorKind::InvalidSubcommand => {
+            Invocation::Remote(std::env::args_os().skip(1).collect())
+        }
+        Err(error) => error.exit(),
     }
 }
 
@@ -55,15 +74,15 @@ async fn main() {
         std::env::set_var("NO_COLOR", "1");
     }
 
-    let args = Args::parse();
+    let invocation = parse_invocation();
     // The guard must be kept in scope for the lifetime of the application
     // to ensure that all buffered logs are flushed to the file.
     let _guard = init_subscriber();
 
     if std::env::var("VM_TEST_MODE").is_err() {
         let span = info_span!("request", request_id = %get_request_id());
-        run_command(args).instrument(span).await;
+        run_command(invocation).instrument(span).await;
     } else {
-        run_command(args).await;
+        run_command(invocation).await;
     }
 }

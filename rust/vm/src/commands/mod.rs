@@ -23,6 +23,7 @@ mod maintenance;
 mod packages;
 pub mod plugin;
 pub mod plugin_new;
+pub(crate) mod remote_command;
 mod run;
 pub mod secrets;
 mod state;
