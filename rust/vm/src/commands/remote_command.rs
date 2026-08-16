@@ -1,6 +1,5 @@
 //! Capability-scoped dispatch for commands registered by a managed guest.
 
-use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -14,27 +13,16 @@ use url::Url;
 use vm_core::{vm_print, vm_progress};
 
 use super::command_context::managed_guest_context;
+use super::managed_guest::{
+    GuestRemoteCommands as Registry, RemoteCommandRegistration as Registration,
+    GUEST_REMOTE_COMMANDS_PATH, REMOTE_COMMAND_SCHEMA,
+};
 use crate::error::{VmError, VmResult};
 
-const CONFIG_PATH: &str = "/etc/vm/remote-commands.json";
-const PROTOCOL_SCHEMA: u8 = 1;
 const MAX_CONFIG_BYTES: u64 = 64 * 1024;
 const MAX_ARGUMENTS: usize = 128;
 const MAX_ARGUMENT_BYTES: usize = 64 * 1024;
 const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
-
-#[derive(Deserialize)]
-struct Registry {
-    schema: u8,
-    commands: BTreeMap<String, Registration>,
-}
-
-#[derive(Deserialize)]
-struct Registration {
-    endpoint: String,
-    capability: String,
-    repair_command: String,
-}
 
 #[derive(Serialize)]
 struct RemoteRequest<'a> {
@@ -69,7 +57,7 @@ pub(crate) async fn handle(raw_arguments: Vec<OsString>) -> VmResult<()> {
     validate_arguments(&arguments[1..], &registration.repair_command)?;
     let url = command_url(namespace, registration)?;
     let request = RemoteRequest {
-        schema: PROTOCOL_SCHEMA,
+        schema: REMOTE_COMMAND_SCHEMA,
         arguments: &arguments[1..],
         idempotency_key: uuid::Uuid::new_v4().to_string(),
     };
@@ -128,7 +116,7 @@ fn registry_path() -> PathBuf {
             return path.into();
         }
     }
-    PathBuf::from(CONFIG_PATH)
+    PathBuf::from(GUEST_REMOTE_COMMANDS_PATH)
 }
 
 fn load_registry(path: &Path) -> VmResult<Registry> {
@@ -152,7 +140,12 @@ fn load_registry(path: &Path) -> VmResult<Registry> {
     })?;
     let registry: Registry = serde_json::from_slice(&content)
         .map_err(|error| invalid_registry(format!("invalid JSON: {error}")))?;
-    if registry.schema != PROTOCOL_SCHEMA {
+    validate_registry(&registry)?;
+    Ok(registry)
+}
+
+pub(crate) fn validate_registry(registry: &Registry) -> VmResult<()> {
+    if registry.schema != REMOTE_COMMAND_SCHEMA {
         return Err(invalid_registry(format!(
             "unsupported schema {}",
             registry.schema
@@ -161,7 +154,7 @@ fn load_registry(path: &Path) -> VmResult<Registry> {
     for (namespace, registration) in &registry.commands {
         validate_registration(namespace, registration)?;
     }
-    Ok(registry)
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -301,7 +294,7 @@ fn render_response(
     response: RemoteResponse,
     registration: &Registration,
 ) -> VmResult<()> {
-    if response.schema != PROTOCOL_SCHEMA || response.exit_code > 125 {
+    if response.schema != REMOTE_COMMAND_SCHEMA || response.exit_code > 125 {
         return Err(remote_error(
             namespace,
             "service returned an unsupported response",

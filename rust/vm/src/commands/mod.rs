@@ -20,6 +20,7 @@ pub mod db;
 pub mod doctor;
 mod environment;
 mod maintenance;
+mod managed_guest;
 mod packages;
 pub mod plugin;
 pub mod plugin_new;

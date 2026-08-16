@@ -54,7 +54,7 @@ pub async fn handle_ssh(
     );
     vm_progress!("Connecting to '{vm_name}'...");
     ensure_running_for_shell(provider.as_ref(), container, &config, &global_config).await?;
-    reconcile_package_access(
+    reconcile_managed_guest(
         provider.as_ref(),
         container,
         vm_name,
@@ -94,7 +94,7 @@ pub async fn handle_exec(
             .and_then(|project| project.name.as_deref())
             .unwrap_or("vm-project")
     });
-    reconcile_package_access(
+    reconcile_managed_guest(
         provider.as_ref(),
         container,
         vm_name,
@@ -104,23 +104,23 @@ pub async fn handle_exec(
     provider.exec(container, &command).map_err(VmError::from)
 }
 
-fn reconcile_package_access(
+fn reconcile_managed_guest(
     provider: &dyn Provider,
     container: Option<&str>,
     environment: &str,
     config: &VmConfig,
     global_config: &GlobalConfig,
 ) -> VmResult<()> {
-    if config.package_edge.is_none() {
-        return Ok(());
+    if config.package_edge.is_some() {
+        provider
+            .reconcile_runtime(
+                container,
+                &ProviderContext::default().with_config(global_config.clone()),
+            )
+            .map_err(VmError::from)?;
+        crate::commands::packages::reconcile_client_settings(provider, environment, config)?;
     }
-    provider
-        .reconcile_runtime(
-            container,
-            &ProviderContext::default().with_config(global_config.clone()),
-        )
-        .map_err(VmError::from)?;
-    crate::commands::packages::reconcile_client_settings(provider, environment, config)
+    crate::commands::managed_guest::reconcile_remote_commands(provider, environment)
 }
 
 /// View environment logs.

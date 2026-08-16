@@ -216,7 +216,7 @@ async fn update_fleet_target(
         .map_err(VmError::from)?;
     vm_ops::wait_until_commands_ready(provider.as_ref(), Some(&instance.name), &instance.name)
         .await?;
-    packages::reconcile_client_settings(provider.as_ref(), &instance.name, &config)?;
+    reconcile_guest_settings(provider.as_ref(), &instance.name, &config)?;
     base::reconcile_codex(provider.as_ref(), &instance.name, &config)?;
     apply_updates(provider.as_ref(), &instance.name, &config, mode)
 }
@@ -260,12 +260,17 @@ fn reconcile_environment(subject: &RuntimeSubject) -> VmResult<()> {
         .provider
         .reconcile_runtime(Some(&subject.target), &context)
         .map_err(VmError::from)?;
-    packages::reconcile_client_settings(
-        subject.provider.as_ref(),
-        &subject.target,
-        &subject.config,
-    )?;
+    reconcile_guest_settings(subject.provider.as_ref(), &subject.target, &subject.config)?;
     base::reconcile_codex(subject.provider.as_ref(), &subject.target, &subject.config)
+}
+
+fn reconcile_guest_settings(
+    provider: &dyn Provider,
+    environment: &str,
+    config: &VmConfig,
+) -> VmResult<()> {
+    packages::reconcile_client_settings(provider, environment, config)?;
+    super::managed_guest::reconcile_remote_commands(provider, environment)
 }
 
 async fn ensure_builtin_releases(config: &VmConfig) -> VmResult<()> {

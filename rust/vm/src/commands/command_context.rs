@@ -55,7 +55,8 @@ pub(super) fn managed_guest_context() -> bool {
         std::env::var("VM_IMAGE_IDENTITY").ok().as_deref(),
         std::path::Path::new("/.dockerenv").exists(),
         std::path::Path::new("/etc/vm/managed-guest").exists()
-            || std::path::Path::new("/etc/vm/package-edge.env").exists(),
+            || std::path::Path::new("/etc/vm/package-edge.env").exists()
+            || std::path::Path::new(super::managed_guest::GUEST_REMOTE_COMMANDS_PATH).exists(),
     )
 }
 
