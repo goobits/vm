@@ -255,6 +255,7 @@ async fn guest_checkout_identity_is_derived_from_its_capability() {
         "consumers": ["project-b"],
         "task": "spoofed task",
         "workspace_release": true,
+        "source_only": true,
         "lease_token": "lease-token-012345678901234567890123456789",
         "idempotency_key": "workspace-create-1"
     });
@@ -268,6 +269,7 @@ async fn guest_checkout_identity_is_derived_from_its_capability() {
     assert_eq!(created.checkout.agent, "project-a");
     assert_eq!(created.checkout.consumers, ["project-a"]);
     assert_eq!(created.checkout.task, "managed guest package work");
+    assert!(!created.checkout.source_only);
 
     let mut retry = request;
     retry["agent"] = serde_json::json!("another-spoof");
@@ -301,10 +303,54 @@ async fn guest_checkout_identity_is_derived_from_its_capability() {
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
     let cancelled: vm_packages::CheckoutRecord = response.json();
-    assert_eq!(cancelled.state, vm_packages::WorkflowState::Closed);
+    assert_eq!(cancelled.state, vm_packages::WorkflowState::Cancelled);
     assert!(cancelled.transitions.iter().any(|transition| {
         transition.next == vm_packages::WorkflowState::Cancelled && transition.actor == "project-a"
     }));
+
+    let other_agent = vm_packages::issue_agent_capability(
+        "agent-signing-key-012345678901234567890123456789",
+        "project-b",
+    )
+    .unwrap();
+    let cleanup_path = format!("/v1/checkouts/{}/cleanup", cancelled.checkout_id);
+    assert_eq!(
+        server
+            .post(&cleanup_path)
+            .add_header(header::AUTHORIZATION, format!("Bearer {other_agent}"))
+            .json(&serde_json::json!({
+                "actor": "project-b",
+                "idempotency_key": "workspace-cleanup-wrong-agent"
+            }))
+            .await
+            .status_code(),
+        StatusCode::UNAUTHORIZED
+    );
+    let response = server
+        .post(&cleanup_path)
+        .add_header(header::AUTHORIZATION, format!("Bearer {agent}"))
+        .json(&serde_json::json!({
+            "actor": "spoofed-agent",
+            "idempotency_key": "workspace-cleanup-1"
+        }))
+        .await;
+    assert_eq!(response.status_code(), StatusCode::OK);
+    let closed: vm_packages::CheckoutRecord = response.json();
+    assert_eq!(closed.state, vm_packages::WorkflowState::Closed);
+    assert_eq!(closed.transitions.last().unwrap().actor, "project-a");
+    let response = server
+        .post(&cleanup_path)
+        .add_header(header::AUTHORIZATION, format!("Bearer {agent}"))
+        .json(&serde_json::json!({
+            "actor": "project-a",
+            "idempotency_key": "workspace-cleanup-1"
+        }))
+        .await;
+    assert_eq!(response.status_code(), StatusCode::OK);
+    assert_eq!(
+        response.json::<vm_packages::CheckoutRecord>().state,
+        vm_packages::WorkflowState::Closed
+    );
 
     retry["lease_token"] = serde_json::json!("terminal-retry-012345678901234567890123456789");
     retry["idempotency_key"] = serde_json::json!("workspace-create-3");

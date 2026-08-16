@@ -67,6 +67,7 @@ async fn tool_collection_checkout_uses_the_same_managed_source_boundary() {
             consumers: vec!["project-a".into()],
             task: "update owner checklist".into(),
             workspace_release: false,
+            source_only: false,
             lease_token: "lease-token-012345678901234567890123456789".into(),
             idempotency_key: "tool-checkout-1".into(),
         })
@@ -125,6 +126,7 @@ async fn canonical_workspace_bootstraps_and_integrates_without_remote_access_or_
             consumers: vec!["project-a".into()],
             task: "release committed canonical workspace".into(),
             workspace_release: true,
+            source_only: false,
             lease_token: "lease-token-012345678901234567890123456789".into(),
             idempotency_key: "workspace-checkout".into(),
         })
@@ -285,6 +287,7 @@ async fn later_workspace_release_uses_the_last_published_commit_across_all_new_c
             consumers: Vec::new(),
             task: "release all committed workspace changes".into(),
             workspace_release: true,
+            source_only: false,
             lease_token: "lease-token-012345678901234567890123456789".into(),
             idempotency_key: "workspace-checkout-published-baseline".into(),
         })
@@ -355,6 +358,7 @@ async fn package_checkout_lifecycle_stays_inside_managed_agent_storage() {
             consumers: vec!["project-a".into()],
             task: "change auth".into(),
             workspace_release: false,
+            source_only: false,
             lease_token: "lease-token-012345678901234567890123456789".into(),
             idempotency_key: "checkout-1".into(),
         })

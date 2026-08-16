@@ -274,6 +274,7 @@ impl Store {
             consumers: normalized_consumers(request.consumers),
             task: request.task,
             workspace_release: request.workspace_release,
+            source_only: request.source_only,
             initial_release: false,
             state: WorkflowState::Created,
             base_branch: None,

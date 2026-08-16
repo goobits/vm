@@ -549,7 +549,11 @@ fn validate_consumer_results(
 ) -> WorkResult<()> {
     let matches_source = match checkout.source_kind {
         vm_packages::SourceKind::Package if !checkout.workspace_release => {
-            consumers.keys().eq(checkout.consumers.iter())
+            if checkout.source_only {
+                consumers.is_empty()
+            } else {
+                consumers.keys().eq(checkout.consumers.iter())
+            }
         }
         vm_packages::SourceKind::Package
         | vm_packages::SourceKind::ToolBinary
@@ -607,6 +611,7 @@ mod tests {
                 consumers: vec!["project-a".into()],
                 task: "change skills".into(),
                 workspace_release: false,
+                source_only: false,
                 lease_token: "lease-token-012345678901234567890123456789".into(),
                 idempotency_key: "create-collection".into(),
             })
@@ -677,6 +682,132 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn source_only_package_uses_no_consumer_result_through_integration() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).await.unwrap();
+        let created = store
+            .create_checkout(CreateCheckout {
+                package: "auth".into(),
+                agent: "agent-1".into(),
+                consumers: vec!["project-a".into()],
+                task: "maintain a package not consumed by this project".into(),
+                workspace_release: false,
+                source_only: true,
+                lease_token: "lease-token-012345678901234567890123456789".into(),
+                idempotency_key: "create-source-only".into(),
+            })
+            .await
+            .unwrap();
+        store
+            .record_source(
+                &created.checkout.checkout_id,
+                "main".into(),
+                "abc123".into(),
+                "agents/source-only".into(),
+                "/data/agents/source-only".into(),
+            )
+            .await
+            .unwrap();
+        store
+            .transition(
+                &created.checkout.checkout_id,
+                vm_packages::TransitionRequest {
+                    next: WorkflowState::Active,
+                    actor: "agent-1".into(),
+                    reason: "attached".into(),
+                    commit: Some("abc123".into()),
+                    validation_result: None,
+                    idempotency_key: "activate-source-only".into(),
+                },
+            )
+            .await
+            .unwrap();
+        let submission = store
+            .record_submission(
+                &created.checkout.checkout_id,
+                ImportedSubmission {
+                    submitted_commit: "def456789012345".into(),
+                    diff_digest: "source-only-digest".into(),
+                },
+            )
+            .await
+            .unwrap();
+
+        let invalid = store
+            .validate_submission(
+                &submission.submission_id,
+                ValidationRequest {
+                    package: CheckOutcome::Passed,
+                    consumers: BTreeMap::from([("project-a".into(), CheckOutcome::Passed)]),
+                    actor: "agent-1".into(),
+                    idempotency_key: "validate-source-only-invalid".into(),
+                },
+            )
+            .await;
+        assert!(invalid.is_err());
+        store
+            .validate_submission(
+                &submission.submission_id,
+                ValidationRequest {
+                    package: CheckOutcome::Passed,
+                    consumers: BTreeMap::new(),
+                    actor: "agent-1".into(),
+                    idempotency_key: "validate-source-only".into(),
+                },
+            )
+            .await
+            .unwrap();
+        store
+            .record_review(
+                &submission.submission_id,
+                ReviewRequest {
+                    decision: ReviewDecision::Approve,
+                    recommended_version: vm_packages::VersionRecommendation::Patch,
+                    api_diff: vm_packages::PublicApiDiff {
+                        changed_paths: vec![],
+                        potentially_breaking: false,
+                    },
+                    reason: "source-only package checks passed".into(),
+                    required_followups: vec![],
+                    merge_strategy: "rebase".into(),
+                    reviewer: "reviewer".into(),
+                    idempotency_key: "review-source-only".into(),
+                },
+            )
+            .await
+            .unwrap();
+        store
+            .record_integration(
+                &submission.submission_id,
+                IntegrationRecord {
+                    canonical_commit: "a".repeat(40),
+                    integration_commit: "b".repeat(40),
+                    strategy: "rebase".into(),
+                    worktree: "/data/agents/source-only/integration".into(),
+                    validation: None,
+                    timestamp: Utc::now(),
+                },
+                "agent-1",
+                "integrate-source-only".into(),
+            )
+            .await
+            .unwrap();
+        let ready = store
+            .complete_integration(
+                &submission.submission_id,
+                ValidationRequest {
+                    package: CheckOutcome::Passed,
+                    consumers: BTreeMap::new(),
+                    actor: "agent-1".into(),
+                    idempotency_key: "complete-source-only".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(ready.state, WorkflowState::ReadyToRelease);
+    }
+
+    #[tokio::test]
     async fn submission_validation_and_review_are_durable_and_ordered() {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::open(directory.path()).await.unwrap();
@@ -687,6 +818,7 @@ mod tests {
                 consumers: vec!["project-a".into()],
                 task: "change auth".into(),
                 workspace_release: false,
+                source_only: false,
                 lease_token: "lease-token-012345678901234567890123456789".into(),
                 idempotency_key: "create".into(),
             })

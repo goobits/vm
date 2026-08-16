@@ -81,6 +81,10 @@ pub struct CreateCheckout {
     /// than the managed editable checkout.
     #[serde(default)]
     pub workspace_release: bool,
+    /// The assigned consumer does not currently depend on this language package.
+    /// Scoped guest requests have this value derived by the workflow service.
+    #[serde(default)]
+    pub source_only: bool,
     /// Client-generated capability used for checkout archive and submission access.
     pub lease_token: String,
     pub idempotency_key: String,
@@ -136,6 +140,10 @@ pub struct CheckoutRecord {
     pub task: String,
     #[serde(default)]
     pub workspace_release: bool,
+    /// Consumer validation and development overrides are not required for this
+    /// language-package checkout.
+    #[serde(default)]
+    pub source_only: bool,
     /// The package has no earlier internally published source baseline, so
     /// review and release validation must treat the submitted tree as new.
     #[serde(default)]

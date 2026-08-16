@@ -21,11 +21,22 @@ pub(super) async fn create_checkout(
     Extension(access): Extension<AgentAccess>,
     Json(mut request): Json<CreateCheckout>,
 ) -> WorkResult<(StatusCode, Json<CheckoutLease>)> {
-    state.store.source(&request.package).await?;
+    let source = state.store.source(&request.package).await?;
     if let Some(consumer) = &access.0 {
         request.agent = consumer.clone();
         request.consumers = vec![consumer.clone()];
         request.task = "managed guest package work".into();
+        request.source_only =
+            if source.kind == vm_packages::SourceKind::Package && !request.workspace_release {
+                source_only_checkout(
+                    source.kind,
+                    request.workspace_release,
+                    consumer,
+                    &state.store.package_consumers(&request.package).await?,
+                )
+            } else {
+                false
+            };
         let matching = state
             .store
             .list_checkouts()
@@ -125,20 +136,20 @@ pub(super) async fn transition(
             "package agents cannot perform this workflow transition".into(),
         ));
     }
-    let next = request.next;
-    let transitioned = state.store.transition(&id, request).await?;
-    if access.0.is_some() && next == WorkflowState::Cancelled {
-        return super::controller::cleanup_managed_checkout(
-            &state,
-            transitioned,
-            CleanupRequest {
-                actor: "package-agent".into(),
-                idempotency_key: format!("agent-cleanup-{id}"),
-            },
-        )
-        .await;
+    Ok(Json(state.store.transition(&id, request).await?))
+}
+
+pub(super) async fn cleanup_checkout(
+    State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
+    Path(id): Path<String>,
+    Json(mut request): Json<CleanupRequest>,
+) -> WorkResult<Json<vm_packages::CheckoutRecord>> {
+    ensure_checkout_access(&state.store, &access, &id).await?;
+    if let Some(consumer) = &access.0 {
+        request.actor = consumer.clone();
     }
-    Ok(Json(transitioned))
+    super::controller::cleanup_checkout(State(state), Path(id), Json(request)).await
 }
 
 pub(super) async fn validate_submission(
@@ -201,4 +212,50 @@ async fn submission_actor(state: &AppState, submission_id: &str) -> WorkResult<S
         .get_checkout(&submission.checkout_id)
         .await?
         .agent)
+}
+
+fn source_only_checkout(
+    kind: vm_packages::SourceKind,
+    workspace_release: bool,
+    consumer: &str,
+    consumers: &[vm_packages::ConsumerUsage],
+) -> bool {
+    kind == vm_packages::SourceKind::Package
+        && !workspace_release
+        && !consumers.iter().any(|usage| usage.consumer == consumer)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::source_only_checkout;
+    use vm_packages::{ConsumerUsage, SourceKind};
+
+    #[test]
+    fn source_only_status_is_derived_from_registered_consumer_usage() {
+        let consumers = [ConsumerUsage {
+            consumer: "project-a".into(),
+            version: "1.2.3".into(),
+            pending_version: None,
+            rollout_id: None,
+        }];
+
+        assert!(!source_only_checkout(
+            SourceKind::Package,
+            false,
+            "project-a",
+            &consumers
+        ));
+        assert!(source_only_checkout(
+            SourceKind::Package,
+            false,
+            "source-maintainer",
+            &consumers
+        ));
+        assert!(!source_only_checkout(
+            SourceKind::ToolCollection,
+            false,
+            "source-maintainer",
+            &consumers
+        ));
+    }
 }

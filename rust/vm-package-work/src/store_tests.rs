@@ -13,6 +13,7 @@ fn request(key: &str, agent: &str) -> CreateCheckout {
         consumers: vec!["project-b".into(), "project-a".into(), "project-a".into()],
         task: "fix token refresh".into(),
         workspace_release: false,
+        source_only: false,
         lease_token: format!("lease-token-{agent}-012345678901234567890123456789"),
         idempotency_key: key.into(),
     }

@@ -26,6 +26,7 @@
 - 📦 Binary tools use a durable, no-egress build stage whose unprivileged source commands cannot access release, publish, Git, or queue credentials.
 - 📦 Docker binary builders place their queue credential beneath a root-only mount boundary instead of relying on Compose secret modes that Docker Desktop does not enforce consistently.
 - 📦 `vm packages checkout <source>` creates or resumes a guest-owned checkout from the managed guest's signed consumer identity.
+- 📦 Source-only package checkouts skip inapplicable consumer validation, while cancellation restores guest dependency state before closing its retryable durable checkout.
 
 ### 🔧 Changed
 

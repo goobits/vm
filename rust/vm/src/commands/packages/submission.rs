@@ -153,16 +153,7 @@ async fn run_checks(
         SourceKind::Package => {
             let definition = client.package_definition(&checkout.package).await?;
             run_package_check(subject, definition.ecosystem, source)?;
-            let consumes_package = if checkout.workspace_release {
-                false
-            } else {
-                super::checkout::consumer_version(
-                    &client.package_consumers(&checkout.package).await?,
-                    consumer,
-                )
-                .is_some()
-            };
-            if !consumes_package {
+            if checkout.workspace_release || checkout.source_only {
                 Ok(BTreeMap::new())
             } else {
                 run_consumer_check(subject, definition.ecosystem, &checkout.package, source)?;

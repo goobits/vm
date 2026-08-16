@@ -26,6 +26,26 @@ Credential-isolated appliance workers review, integrate, push, and publish only
 to the private gateway; host working trees and installed immutable releases are
 never treated as source.
 
+## Remaining Acceptance
+
+Implementation is complete. These are the only remaining release checks:
+
+- [ ] Extend and rerun the sole Docker package-workflow acceptance test for a
+  source-only language-package release and a cancelled checkout, proving local
+  dependency restoration precedes durable closure and no container or volume
+  is recreated.
+- [ ] Host-accept steady-state package startup, concurrent shell
+  reconciliation, targeted and fleet tool updates, read-only workspace restart,
+  and first-shell `codex-code-mode-host` availability.
+- [ ] From a second Docker worker, verify resumable guest-owned npm, Cargo, and
+  Python release/rollout, private immutable artifacts, per-worker overrides,
+  public fallback, persistent caches, and fail-closed internal misses during an
+  appliance outage.
+- [ ] Host-accept two consecutive macOS Tart connections and targeted VirtioFS
+  remount repair without replacing guest or host source state.
+- [ ] Run the complete build, lint, unit, integration, Docker, and Tart matrix
+  after the host checks above pass.
+
 ## Non-Negotiable Boundaries
 
 - Never stage or rewrite the user's `vm.yaml` as part of implementation commits.
@@ -66,6 +86,8 @@ never treated as source.
   overrides without publishing mutable bytes under an existing version.
 - [x] Refuse silent fallback when an assigned worktree is missing.
 - [x] Restore published dependency configuration before removing checkout data.
+- [x] Restore dependency configuration before closing a cancelled checkout, so
+  local cleanup failures remain retryable from the assigned guest.
 - [x] Validate managed paths centrally and constrain cleanup to task-owned data.
 - [x] Remove agent and integration worktrees after successful integration or
   publication while retaining durable receipts and required immutable data.
@@ -275,7 +297,7 @@ recorded below.
 - [x] Add one-time project/source initialization and persistent work context.
 - [x] Launch resumable managed work and infer release identity from its directory.
 - [x] Activate published managed tools in configured project environments.
-- [x] Continuously prove the full workflow in one persistent Docker environment.
+- [x] Keep one persistent Docker acceptance owner for the complete workflow.
 
 The dedicated CI acceptance job uses a unique Compose project and host port,
 builds local appliance images, initializes an isolated project, forces a
@@ -290,7 +312,7 @@ test.
 
 ## Guest-Owned Package Work
 
-This is the next package-infrastructure release slice. It supersedes the
+This implemented package-infrastructure release slice supersedes the
 host-launched `vm packages work` UX without replacing the durable checkout,
 review, build, publication, or rollout engines already implemented.
 
@@ -381,23 +403,6 @@ not make model choice part of idempotency or authorization.
 - [x] Replace every obsolete package-work error hint with the exact
   guest command or canonical-workspace release instruction.
 
-Likely implementation owners:
-
-- `rust/vm/src/cli/subcommands.rs` and `rust/vm/src/cli/tests.rs`: public CLI.
-- `rust/vm/src/commands/command_context.rs`: host/guest routing.
-- `rust/vm/src/commands/packages/mod.rs`: remove the host launcher and simplify
-  dispatch.
-- `rust/vm/src/commands/packages/checkout.rs`: guest-only checkout, resume, and
-  optional consumer override.
-- `rust/vm/src/commands/packages/runtime.rs`: guest path and capability
-  execution; delete unused controller adapters.
-- `rust/vm/src/commands/packages/release.rs`, `submission.rs`, and
-  `workspace.rs`: directory inference and corrected repair hints.
-- `rust/vm-config/src/global_config.rs` and `global_config_tests.rs`: retire the
-  saved work target.
-- `rust/vm-package-work`: adjust checkout matching or API compatibility only
-  where the current durable service cannot express guest-owned resume.
-
 ### Cruft cleanup rules
 
 - [x] Delete code, tests, fixtures, schema fields, help text, and documentation
@@ -423,9 +428,13 @@ Likely implementation owners:
   rejects host execution with one exact hint to run it inside a managed VM.
 - [x] Capability tests prove the consumer and actor come from authenticated
   guest state and cannot be overridden from command-line input.
-- [x] Checkout tests prove source-only package work succeeds without a consumer
-  dependency, while an actual dependency still receives and later restores its
+- [x] Checkout and release tests prove source-only package work reaches
+  integration and release readiness without a fabricated consumer result,
+  while an actual dependency still receives, validates, and later restores its
   development override.
+- [x] Cancellation tests prove the consumer-bound agent cannot spoof cleanup,
+  durable state remains cancelled until guest cleanup succeeds, and explicit
+  closure is authenticated and idempotent.
 - [x] Resume tests cover repeat checkout, guest restart, expired lease, missing
   local source, dirty local source, ambiguous durable state, and terminal prior
   checkouts.
@@ -438,10 +447,10 @@ Likely implementation owners:
 - [x] Static verification passes the repository gate below, including scoped
   warnings-as-errors Clippy and duplicate detection when `jscpd` is available.
 
-### Live Docker acceptance
+### Live Docker acceptance contract
 
-Revise `scripts/internal/test-package-workflow-docker.sh`; do not add a second
-acceptance script. The test must:
+`scripts/internal/test-package-workflow-docker.sh` is the sole acceptance
+owner; do not add a second script. It must:
 
 1. Start one isolated package appliance and two existing project containers.
 2. Invoke `vm packages checkout <source>` through the guest client inside the
@@ -510,14 +519,6 @@ The implementation must remain an adapter over checkout, submission, review,
 integration, publication, and activation services. It must not introduce a
 second release engine or tool installer, and fixtures must remain generic rather
 than encode a particular downstream tool.
-
-## Deferred Environment Apply (Not A Release Blocker)
-
-- [ ] Design a transactional `vm apply <environment>` operation for reconciling
-  `vm.yaml`. Mutable settings should update in place; immutable Docker changes
-  such as mounts should stage and verify a replacement while retaining the old
-  container for rollback and explicitly accounting for container-local data.
-  It must not publish package or tool source or become another `sync` path.
 
 ## Static Verification
 
@@ -597,7 +598,8 @@ hook, then revealed that standard AI CLIs had been incorrectly coupled to the
 private package appliance. Vibe bases again own Antigravity, Claude Code, and
 Codex; only `agent-skills` remains selected through `vm tools`. Tart appliance
 startup now accepts the inventory format returned by Tart 2.32.1. Full package
-appliance acceptance remains below.
+appliance acceptance remains tracked in
+[Remaining Acceptance](#remaining-acceptance).
 
 Docker appliance startup now succeeds with the source-installed CLI, remains
 healthy on a no-flags restart from outside the project, and retains its named
@@ -606,7 +608,8 @@ preserved PostgreSQL service, `yocodex` resolves Codex 0.147.0 outside synced
 state, and `agent-skills` 0.6.1 activates 26 skills across all five supported
 agent locations without replacing Codex system skills. The flat source shelf
 registered 13 npm packages while routing `agent-skills` to `vm tools`. These
-are the only remaining tasks:
+provide the earlier live baseline summarized below. The current outstanding
+checks are listed only in [Remaining Acceptance](#remaining-acceptance).
 
 Live host acceptance on 2026-08-12 installed the current source CLI, persisted
 the host package shelf only in controller-global `packages.source_roots`, and
@@ -660,159 +663,13 @@ surfaces are removed. This is implemented but awaiting host acceptance.
 With no managed tools selected, base-owned Codex reconciliation no longer
 requires a tool catalog or package-appliance connection.
 
-- [x] Start and restart the central package appliance in Docker from outside a
-  project directory.
-- [x] Populate `goobits/agent-skills` from the clean local submodule history,
-  publish 0.6.1, and activate the collection in the running Docker worker.
-- [ ] Host-accept repeated source-installed `vm packages up` without recreating
-  registry/work containers when their effective image content is unchanged
-  (implemented but awaiting host acceptance).
-- [ ] Open several concurrent `vm ssh` sessions to one existing worker and
-  verify only one catalog/Codex/tool reconciliation does work, then reconnect
-  within 60 seconds and verify no duplicate job starts (implemented but awaiting
-  host acceptance).
-- [ ] Run `vm tools update --fleet --provider docker` twice and verify all
-  matching workers reconcile in place, the second pass is a no-op, and no
-  primary container ID or service volume changes (implemented but awaiting host
-  acceptance).
-- [x] Deliver the platform-matched guest `vm` client from the authenticated
-  package appliance, preserve managed-guest identity through shell launchers,
-  and bind credentials to the selected environment's owning project. Live
-  Docker acceptance removed the client from `projects-dev`, restored it with
-  targeted reconciliation, verified guest package access, and confirmed both
-  the second client update and the primary container ID were unchanged.
-- [x] Reconcile real Node/Cargo executable paths and host Git author identity
-  into existing managed guests so an agent can check and commit a managed
-  checkout without relying on interactive shell functions or rebuilding it.
-- [x] Reacquire expired leases for durable nonterminal checkouts when the
-  assigned guest resumes `vm packages release`, verify the original capability,
-  and keep terminal checkouts closed while recording the new lease.
-- [x] Return permanent release-preflight failures to the assigned agent as
-  receipted rework instead of hot-looping the release worker, restore the
-  compacted import target before resubmission, and classify package or tool
-  manifest version-only changes as patch-level without hiding other manifest
-  changes.
-- [x] Scope validation, review, and integration idempotency to each submitted
-  commit and resume a durable `submitted` generation from the same guest release
-  command instead of replaying stale results.
-- [x] From a writable Docker worker, create and release an `agent-skills`
-  checkout; verify review, integration, canonical push/tag, private publication,
-  cleanup, and receipts complete without a host source checkout or approval.
-  Live acceptance released and activated `agent-skills` 0.8.0 from `d36ed4b`
-  in `projects-dev`; canonical main/tag, immutable catalog publication, closed
-  receipts, checkout cleanup, consumability, and unchanged container identity
-  were verified.
-- [ ] Run targeted and fleet tool reconciliation twice and verify managed guest
-  client files are unchanged on the second pass while primary containers,
-  volumes, and application services remain intact.
-- [ ] Create and restart a Docker worker with
-  `project.workspace_access: read_only`; verify nested mountpoints are prepared,
-  the second start is a no-op, and project source, container identity, and
-  service volumes remain unchanged (implemented but awaiting host acceptance).
-- [ ] Rebuild `@vibe-box`, create a fresh Docker worker, and launch `yocodex`
-  immediately; verify the code-mode host is already executable without waiting
-  for background reconciliation (implemented but awaiting host acceptance).
-- [ ] Start a separate Docker worker on the same managed network.
-- [ ] From that worker, create and release a package checkout using only the
-  scoped guest commands; restart each persistent worker mid-flow and verify the
-  same workflow resumes without duplicate branches, tags, or artifacts.
-- [ ] Verify one npm, Cargo, and Python release reaches only the private gateway
-  and automatically produces tested upgrade branches for every drifted
-  registered consumer without a host command.
-- [ ] Prove npm, Cargo, and Python public proxying, immutable internal artifacts,
-  per-worker override isolation, persistent-cache restart recovery, and clear
-  uncached-internal failure.
-- [ ] Stop the central appliance and verify warmed workers retain cached locked
-  internal artifacts, known external fallback, and fail-closed internal misses.
-- [ ] Verify two consecutive `vm ssh` sessions to one macOS Tart guest; only the
-  first legacy bootstrap may request a password.
-- [ ] Remove a test VirtioFS guest mount and verify `vm ssh` remounts it without
-  deleting or replacing host source.
-- [ ] Run the repository's complete build, lint, test, Docker, and Tart matrix
-  only after the recreated host is stable.
-
-## Recovery Checkpoint
-
-Implementation commits, in order:
-
-```text
-7b122684 docs(proposals): consolidate vm tool task tracking
-3ebeedd1 feat(packages): add resilient worker edge
-e3e162ba feat(packages): make checkout overrides durable
-9f4a4e51 fix(tart): preserve storage and base state
-4fdc79bf fix(tart): honor workspace rust version
-64c9d473 fix(tart): harden shell recovery
-07394eb9 fix(runtime): bound provisioning resources
-e06f9554 fix(security): harden managed resources
-de09ccf5 docs(vm): finalize implementation handoff
-6fcb243a fix(shell): initialize zsh prompt hooks
-32a4f491 fix(shell): keep managed tool shortcuts available
-6b94ed93 feat(runtime): complete Vibe and package bootstrap
-7832d01c feat(packages): reconcile controller setup
-7b9da82e feat(tools): reconcile runtime infrastructure
-593dc952 test(packages): cover reconciliation workflows
-cca4de6d fix(tools): harden guest reconciliation
-63f39737 test(packages): enable standalone integration fixtures
-5bc1491e fix(tools): make Codex repair transactional
-5aa887c8 fix(packages): list published npm metadata
-d56a207b fix(packages): preflight configured source shelves
-67c953d9 fix(tools): reconcile stale guest state
-1fedfbf9 fix(packages): version edge runtime policy
-eadfb08b docs(cli): clarify collection publication
-7a7129cd fix(tools): preserve partial Codex backups
-77027272 docs(packages): record final transaction fix
-207e06c0 fix(runtime): preserve complete Codex package
-c16747bc fix(tools): report project collection overrides
-b5ad97f0 feat(runtime): reconcile codex without blocking shells
-fcc24a56 fix(packages): stabilize local appliance images
-9fc3b84b fix(shell): coalesce background reconciliation
-11ad87d3 refactor(cli): fold fleet into shared targeting flags
-ad4c7a74 feat(tools): reconcile managed environments with fleet flag
-6795cd9a docs(cli): replace fleet command with targeting flag
-e1254dcf chore(rust): keep cross-platform checks warning-free
-30ba7620 fix(tools): isolate fleet reconciliation scope
-8b7fa9d1 fix(tools): decouple empty tool reconciliation
-498322e8 fix(packages): make release workflows resumable
-25507579 feat(packages): allow scoped guest package work
-0f39138b feat(packages): run durable infrastructure workers
-a6d06a41 feat(packages): automate private consumer releases
-bb6de4d4 refactor(packages): expose one guest release workflow
-9c5f24f2 chore(packages): satisfy workspace lint
-b6371868 refactor(packages): make rollout reconciliation explicit
-5135dffc refactor(packages): narrow workflow service API
-f80e144d docs(packages): record boundary audit
-91e37c3f refactor(packages): centralize package identity
-82d6f5ed refactor(packages): consolidate release Git commands
-8f13e180 test(packages): consolidate workflow fixtures
-8d89fe88 docs(packages): record consolidation pass
-d91728f2 feat(packages): enforce managed source releases
-576955e9 fix(packages): quarantine unhealthy sources
-59534b66 feat(packages): add one-time workflow init
-5b8062b7 feat(packages): launch managed Codex work
-a5cb71c5 feat(tools): activate managed releases automatically
-59394109 test(packages): prove managed work end to end
-05d30514 fix(ci): make package acceptance executable
-d710b9ac fix(runtime): externalize build artifacts
-828261d5 docs(packages): document managed guest releases
-f8071ae3 test(cli): preserve actionable io errors
-03ae44d0 fix(build): reuse one machine target cache
-87f4ca69 fix(packages): migrate scoped guest credentials
-aa258c70 fix(shell): install scoped package access
-87f2d244 fix(packages): harden guest reconciliation
-3b59431f refactor(config): unify validation pipeline
-ae3f32c8 refactor(config): split model by domain
-2517e717 refactor(packages): split work server boundaries
-26389c14 refactor(packages): align store domain modules
-2029448f refactor(tart): split provider orchestration
-12329e7f refactor: remove duplicate and retired paths
-e02bd5b1 fix(build): keep generated artifacts outside workspace
-6b67fa3f refactor(packages): finish workflow state ownership
-30d0d1e5 refactor(packages): split source control lifecycles
-75b0c45b refactor(config): separate validation domains
-e9c2fc0f feat(packages): move work ownership into guests
-f430cdc9 test(packages): prove guest-owned release flow
-c68ccf1c fix(cli): isolate command context fallback
-```
+Completed live evidence includes appliance restart outside a project,
+`agent-skills` 0.6.1 bootstrap, authenticated guest-client repair, Node/Cargo
+and Git identity reconciliation, lease recovery, deterministic rework,
+generation-scoped validation, and the guest-owned `agent-skills` 0.8.0 release
+and activation in `projects-dev`. That release preserved the project container
+identity and closed its durable checkout. Outstanding host, Docker, and Tart
+checks are tracked once in [Remaining Acceptance](#remaining-acceptance).
 
 ## Related Documentation
 

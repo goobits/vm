@@ -574,6 +574,7 @@ mod tests {
                 consumers: vec!["project-a".into()],
                 task: "release auth".into(),
                 workspace_release: false,
+                source_only: false,
                 lease_token: "lease-token-012345678901234567890123456789".into(),
                 idempotency_key: "create-release".into(),
             })

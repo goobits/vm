@@ -227,6 +227,12 @@ transaction without mutating the repository. Its first release reviews the full
 tree; later releases use the last internally published source commit as the
 baseline.
 
+For language packages, checkout records whether the current project consumes
+the source. Source-only work runs package validation without a project override
+or fabricated consumer result. Cancellation restores any real consumer
+override before authenticated durable cleanup; a restoration failure leaves the
+cancelled checkout available for retry.
+
 Recursive registration routes repositories marked by `vm-tool.yaml` into the
 managed binary-tool or collection workflow. `packages.source_roots` is a
 controller-wide list; `vm packages up` reconciles those roots on fresh and

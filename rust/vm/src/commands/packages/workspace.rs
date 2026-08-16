@@ -127,6 +127,7 @@ async fn create_checkout(
             consumers: vec![subject.consumer().to_string()],
             task: "release committed canonical workspace".into(),
             workspace_release: true,
+            source_only: false,
             lease_token: state.lease_token.clone(),
             idempotency_key: state.idempotency_key.clone(),
         })

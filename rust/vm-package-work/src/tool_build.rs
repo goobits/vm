@@ -222,6 +222,7 @@ mod tests {
                 consumers: Vec::new(),
                 task: "release typemill".into(),
                 workspace_release: true,
+                source_only: false,
                 lease_token: "lease-token-012345678901234567890123456789".into(),
                 idempotency_key: "create-binary-build".into(),
             })

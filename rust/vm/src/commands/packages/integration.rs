@@ -119,7 +119,7 @@ async fn integrate(
         SourceKind::Package => {
             let definition = client.package_definition(&submission.package).await?;
             run_package_check(subject, definition.ecosystem, &source)?;
-            if checkout.workspace_release {
+            if checkout.workspace_release || checkout.source_only {
                 BTreeMap::new()
             } else {
                 run_consumer_check(subject, definition.ecosystem, &submission.package, &source)?;

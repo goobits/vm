@@ -1,7 +1,7 @@
 use vm_core::{vm_hint, vm_println, vm_progress, vm_success};
 use vm_packages::{
-    CreateCheckout, PackageEcosystem, PackageInfrastructureClient, RegistryEndpoints, SourceKind,
-    ToolKind, TransitionRequest, WorkflowState,
+    CleanupRequest, CreateCheckout, PackageEcosystem, PackageInfrastructureClient,
+    RegistryEndpoints, SourceKind, ToolKind, TransitionRequest, WorkflowState,
 };
 
 use crate::error::{VmError, VmResult};
@@ -75,10 +75,17 @@ pub(super) async fn handle_guest(package: String) -> VmResult<()> {
             consumers: vec![consumer.clone()],
             task: GUEST_WORK_TASK.into(),
             workspace_release: false,
+            // The workflow service derives this from the signed consumer identity.
+            source_only: false,
             lease_token: lease_token.clone(),
             idempotency_key: uuid::Uuid::new_v4().to_string(),
         })
         .await?;
+    let pinned_version = if checkout.checkout.source_only {
+        None
+    } else {
+        pinned_version
+    };
     let lease_token = checkout.lease_token.as_deref().ok_or_else(|| {
         VmError::validation(
             "Package infrastructure did not return a checkout lease",
@@ -154,21 +161,41 @@ pub(super) async fn cancel_guest() -> VmResult<()> {
             None::<String>,
         ));
     }
-    let cancelled = client
-        .transition(
-            &checkout_id,
-            &TransitionRequest {
-                next: WorkflowState::Cancelled,
-                actor: checkout.agent.clone(),
-                reason: "managed checkout cancelled by assigned guest".into(),
-                commit: None,
-                validation_result: Some("cancelled".into()),
-                idempotency_key: format!("cancel-{checkout_id}"),
-            },
-        )
-        .await?;
+    let cancelled = if matches!(
+        checkout.state,
+        WorkflowState::Cancelled | WorkflowState::Closed
+    ) {
+        checkout
+    } else {
+        client
+            .transition(
+                &checkout_id,
+                &TransitionRequest {
+                    next: WorkflowState::Cancelled,
+                    actor: checkout.agent.clone(),
+                    reason: "managed checkout cancelled by assigned guest".into(),
+                    commit: None,
+                    validation_result: Some("cancelled".into()),
+                    idempotency_key: format!("cancel-{checkout_id}"),
+                },
+            )
+            .await?
+    };
     cleanup_guest(&subject, &cancelled)?;
-    vm_success!("Cancelled {}", cancelled.package);
+    let closed = if cancelled.state == WorkflowState::Closed {
+        cancelled
+    } else {
+        client
+            .cleanup_checkout(
+                &checkout_id,
+                &CleanupRequest {
+                    actor: cancelled.agent.clone(),
+                    idempotency_key: format!("guest-cleanup-{checkout_id}"),
+                },
+            )
+            .await?
+    };
+    vm_success!("Cancelled {}", closed.package);
     Ok(())
 }
 

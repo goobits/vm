@@ -145,6 +145,17 @@ The checkout ID is inferred from the current directory. `vm packages cancel`
 uses the same inference. Controller-side ID lookup remains a hidden diagnostic,
 not part of normal work.
 
+For a language package the workflow records whether the requesting project
+actually consumes it. Source-only maintenance runs package checks without
+inventing a consumer result or changing the project's dependency setup. When a
+project does consume the package, its checkout keeps the development override
+and consumer checks for the life of that checkout.
+
+Cancellation first restores any development override and removes the guest
+copy, then closes the durable checkout. If local restoration fails, the
+checkout remains cancelled rather than closed; correct the reported local
+problem and rerun `vm packages cancel` from the checkout source.
+
 That resumable command submits the exact Git bundle, waits for isolated review,
 integrates against the latest canonical source, reruns checks, and lets
 credential-isolated jobs publish the immutable artifact. Binary build commands

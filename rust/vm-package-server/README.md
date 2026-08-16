@@ -23,6 +23,10 @@ cd <the-printed-Source-path>
 vm packages release
 ```
 
+The workflow derives source-only package validation from the guest's registered
+consumer identity. `vm packages cancel`, run from the same source path, restores
+any checkout-scoped dependency override before closing durable state.
+
 The release worker publishes only to the private VM gateway. See the canonical
 [Package Infrastructure guide](../../docs/user-guide/package-infrastructure.md)
 for setup, release, consumer-update, security, and recovery behavior.

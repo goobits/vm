@@ -52,6 +52,10 @@ never make one published name/version return different bytes.
 Package infrastructure never launches an agent. The guest CLI derives checkout
 ownership from its signed consumer capability, while review and release workers
 consume authenticated immutable bundles rather than a shared editable checkout.
+The workflow service also derives source-only package status from registered
+consumer usage, so submission and integration enforce the same validation
+scope. Guest cancellation is two-phase: restore local dependency state first,
+then use the consumer-bound capability to close durable checkout state.
 
 ## CLI Output
 

@@ -132,10 +132,6 @@ pub(crate) fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router 
         .route("/v1/packages", post(controller::register_package))
         .route("/v1/consumers", post(controller::register_consumer))
         .route("/v1/rollouts", post(controller::create_rollout))
-        .route(
-            "/v1/checkouts/{checkout_id}/cleanup",
-            post(controller::cleanup_checkout),
-        )
         .merge(crate::tools::controller_routes())
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
@@ -154,6 +150,10 @@ pub(crate) fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router 
         .route(
             "/v1/checkouts/{checkout_id}/transition",
             post(agent::transition),
+        )
+        .route(
+            "/v1/checkouts/{checkout_id}/cleanup",
+            post(agent::cleanup_checkout),
         )
         .route(
             "/v1/submissions/{submission_id}/validate",

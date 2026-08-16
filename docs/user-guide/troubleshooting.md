@@ -232,6 +232,11 @@ activates the result only for projects that configure it. See
 [Package Infrastructure](package-infrastructure.md#register-and-consume-tools)
 for normal update, locking, fleet, and package-state behavior.
 
+If `vm packages cancel` reports that dependency restoration failed, do not
+delete the checkout directory manually. Fix the reported local package-manager
+or permission problem and rerun the same command from the checkout source. The
+durable checkout remains cancelled until local restoration succeeds.
+
 ## Secrets
 
 ```bash
