@@ -80,7 +80,7 @@ jobs:
   package-workflow-docker:
     name: Package workflow Docker acceptance
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       CARGO_TARGET_DIR: target
     steps:
@@ -103,7 +103,7 @@ jobs:
         working-directory: rust
         run: cargo build --locked --release --package goobits-vm
 
-      - name: Prove persistent package workflow
+      - name: Prove persistent checkout and workspace release workflows
         env:
           VM_ACCEPTANCE_BIN: ${{ github.workspace }}/rust/target/release/vm
         run: scripts/internal/test-package-workflow-docker.sh

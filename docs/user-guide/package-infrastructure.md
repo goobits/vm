@@ -1,8 +1,8 @@
 # Package Infrastructure
 
 VM manages one private package appliance for npm, Cargo, Python, and immutable
-guest tools/collections. Package and collection changes use the same managed
-checkout, review, integration, and release workflow inside writable guests.
+guest tools. Packages, binary tools, and collections use the same review,
+integration, and release services inside writable guests.
 
 ## Architecture
 
@@ -145,7 +145,7 @@ That resumable command submits the exact Git bundle, waits for isolated review,
 integrates against the latest canonical branch, reruns checks, and lets the
 credential-isolated release worker push the commit and tag and publish the
 immutable artifact. No host checkout, host approval, npmjs.org, crates.io, or
-PyPI publication participates. Package and tool-collection work use this same
+PyPI publication participates. Package and managed-tool work use this same
 boundary.
 
 After a configured tool collection is published, `work` applies the existing
@@ -166,6 +166,30 @@ review, and integration are scoped to that submitted commit, so the same
 checkout can make multiple receipted rework passes without replaying stale
 results. Successful publication removes temporary checkout data without
 touching the registered repository or its persistent canonical mirror.
+
+## Release From A Canonical Workspace
+
+Use `work` when an agent needs an isolated shared-source checkout. When an
+agent already owns a registered repository mounted as its ordinary workspace,
+release the committed workspace directly:
+
+```bash
+cd /workspace
+vm packages release
+```
+
+The repository must be below a configured package source root and must match
+the registered origin and package or tool identity. The command requires a
+clean, committed worktree, creates the durable checkout and submission
+internally, and resumes the same transaction when repeated. Its lease and
+resume state live under the guest's private VM state, not in the repository.
+VM never cleans, resets, tags, or otherwise edits the workspace.
+
+Canonical-workspace releases retain an immutable source bundle and digest in
+the appliance. They do not push the source commit or tag, invoke GitHub
+publication, or publish to a public language registry. Review, rework,
+integration, private publication, and managed-tool activation continue through
+the existing services.
 
 Each worker gets a small read-only package edge. Docker runs it as a Compose
 sidecar; Linux Tart runs the same image in the guest's Docker Engine. Package
@@ -244,10 +268,10 @@ Keep that source shelf flat and make each child an independent Git repository:
 
 The shelf itself should not be a Git repository. A repository with a valid
 root `vm-tool.yaml` (`kind: binary` or `kind: collection`) is registered as a
-tool source and skipped by language-package registration. This lets tool collections
-such as `agent-skills` live beside npm, Cargo, and Python sources without being
-misclassified by their metadata files. Registered tool collections enter the
-same managed checkout workflow as language packages.
+tool source and skipped by language-package registration. This lets managed
+tools live beside npm, Cargo, and Python sources without being misclassified by
+their metadata files. Both tool kinds can use the managed checkout or
+canonical-workspace release path.
 
 Path registration detects `package.json`, `Cargo.toml`, or `pyproject.toml`,
 then reads each repository's `origin` and default branch. Every supplied path
@@ -259,10 +283,11 @@ The appliance clones the registered Git origins into its private `source-mirrors
 Docker volume when package work requires them.
 
 The host path is intentionally not stored in project configuration or mounted
-into the appliance. Configured shelves may start empty; the next `vm packages
-up` discovers repositories after they are added. Manual `vm packages register
-<path> --recursive` remains strict and reports an error when it finds no Git
-repositories. Registration is idempotent.
+into the appliance. It is retained controller-side as the discovery and
+canonical-workspace attestation boundary. Configured shelves may start empty;
+the next `vm packages up` discovers repositories after they are added. Manual
+`vm packages register <path> --recursive` remains strict and reports an error
+when it finds no Git repositories. Registration is idempotent.
 
 Supported ecosystems are `npm`, `cargo`, and `python`. A package has one
 canonical repository and immutable published versions.
@@ -280,13 +305,37 @@ vm tools list
 vm tools show agent-skills
 ```
 
-Use `vm packages work <tool> <task>` to change a registered collection.
+Use `vm packages work <tool> <task>` for isolated tool work. From a registered
+canonical workspace, use bare `vm packages release`.
 Explicit checkout and ID-based release remain advanced commands. The same
-reviewer and release workers validate, integrate, push, archive, and receipt
-the exact commit. Projects select
+reviewer and release workers validate, integrate, archive, and receipt the
+exact commit. Managed checkouts push their integrated source; canonical
+workspace releases retain the immutable source internally. Projects select
 versions through the one-level `tools:` map in `vm.yaml`. A collection such as
 `agent-skills` is one atomic version, even when it activates into several agent
 directories.
+
+Binary tools use a versioned, argument-safe manifest. The release worker builds
+each declared target from the submitted source bundle, validates the archive
+and executable links, and publishes an immutable target-specific artifact:
+
+```yaml
+schema: 1
+kind: binary
+version: 1.0.0
+builds:
+  - target: linux-arm64
+    command: ["npm", "run", "build:linux-arm64"]
+    archive: dist/tool-linux-arm64.tar.gz
+    links:
+      .local/bin/tool: bin/tool
+    verify: ["bin/tool", "--version"]
+```
+
+Build commands are argument arrays, paths must remain inside the isolated build
+directory, and linked binaries must be nonempty executables. The Linux release
+job currently accepts `linux-amd64` and `linux-arm64`; it does not claim macOS
+artifacts it cannot verify.
 
 The Vibe base owns Antigravity, Claude Code, and Codex executables. They do not
 require this appliance; `agent-skills` remains an intentionally managed tool.
@@ -296,11 +345,12 @@ activate inside an already-running
 environment and do not require a base rebuild. Read credentials travel to the
 guest over standard input rather than command arguments. Collection activation
 merges individual skills into an existing agent skill directory, preserving
-unmanaged personal and system skills. Managed source releases currently support
-registered collections; binary publishers remain tool-specific. A published
-collection becomes eligible in each configured guest under its update policy.
-Normal shell reconciliation adopts it without approval; an already-running
-agent session is not hot-reloaded.
+unmanaged personal and system skills. Published binary tools and collections
+become eligible only in projects that configure them. Reconciliation selects
+the guest OS/architecture artifact, verifies its digest before extraction,
+installs one immutable release, and atomically updates its configured links.
+Normal shell reconciliation adopts an automatic update without approval; an
+already-running agent session is not hot-reloaded.
 
 ```bash
 vm tools refresh

@@ -195,7 +195,7 @@ pnpm pruning is explicit and never runs during create, start, or bootstrap.
 
 ```bash
 vm packages init <source-root>
-vm packages work <package-or-collection> <task>
+vm packages work <package-or-tool> <task>
 vm config set packages.source_roots <absolute-path>... --global
 vm packages up [--runtime <auto|docker|tart>]
 vm packages down [--runtime <auto|docker|tart>]
@@ -210,7 +210,7 @@ vm packages auth --github
 vm packages auth --token-file <path>
 vm packages auth --clear
 vm packages list
-vm packages checkout <package-or-collection> --agent <agent> --task <task>
+vm packages checkout <package-or-tool> --agent <agent> --task <task>
 vm packages show <checkout-id>
 vm packages release [checkout-id]
 vm packages cancel <checkout-id>
@@ -224,10 +224,12 @@ vm packages drift
 project environment and source shelf; the latter launches Codex in a resumable
 managed checkout. The remaining checkout IDs, lifecycle flags, and registration
 commands are advanced or diagnostic surfaces. Inside a checkout, bare
-`vm packages release` infers its identity from the current directory.
+`vm packages release` infers its identity from either a managed checkout or a
+registered canonical package workspace. The workspace form creates and resumes
+its private transaction without a checkout ID and never mutates the repository.
 
 Recursive registration routes repositories marked by `vm-tool.yaml` into the
-managed tool-collection workflow. `packages.source_roots` is a
+managed binary-tool or collection workflow. `packages.source_roots` is a
 controller-wide list; `vm packages up` reconciles those roots on fresh and
 existing appliance state without replacing credentials or named volumes. Roots
 are scanned before appliance mutation; configured empty shelves are accepted,

@@ -277,10 +277,12 @@ recorded below.
 
 The dedicated CI acceptance job builds local appliance images, initializes an
 isolated project, forces a collection release through rework, verifies private
-publication and automatic activation, and compares every stable Docker
-container ID before and after. The current development container has no Docker
-binary, so its first live execution is intentionally delegated to the Docker CI
-runner rather than replaced with another fake-provider test.
+publication and automatic activation, then releases a two-target binary from
+the canonical workspace into a second existing project. It compares every
+stable Docker container ID and attached named volume before and after. The
+current development container has no Docker binary, so live execution remains
+on the Docker CI runner rather than being replaced with another fake-provider
+test.
 
 ## Canonical Workspace and Binary Tool Releases
 
@@ -292,7 +294,7 @@ runner rather than replaced with another fake-provider test.
   release job and private artifact registry.
 - [x] Reuse target-aware managed-tool installation and activation for explicitly
   configured environments.
-- [ ] Prove workspace release, rework, private publication, activation, and
+- [x] Prove workspace release, rework, private publication, activation, and
   Docker persistence in the real acceptance suite.
 
 The implementation must remain an adapter over checkout, submission, review,
