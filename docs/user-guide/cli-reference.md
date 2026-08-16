@@ -195,7 +195,6 @@ pnpm pruning is explicit and never runs during create, start, or bootstrap.
 
 ```bash
 vm packages init <source-root> [--port <port>]
-vm packages work <package-or-tool> <task>
 vm config set packages.source_roots <absolute-path>... --global
 vm packages up [--runtime <auto|docker|tart>]
 vm packages down [--runtime <auto|docker|tart>]
@@ -210,25 +209,23 @@ vm packages auth --github
 vm packages auth --token-file <path>
 vm packages auth --clear
 vm packages list
-vm packages checkout <package-or-tool> --agent <agent> --task <task>
-vm packages show <checkout-id>
-vm packages release [checkout-id]
-vm packages cancel <checkout-id>
-vm packages cleanup <checkout-id>
+vm packages checkout <package-or-tool>
+vm packages release
+vm packages cancel
 vm packages consumer register <project> --repository <url> --dependency <package>@<version>
 vm packages consumers <package>
 vm packages drift
 ```
 
-`init` and `work` are the documented human interface. The former remembers the
-project environment and source shelf; the latter launches Codex in a resumable
-managed checkout. The remaining checkout IDs, lifecycle flags, and registration
-commands are advanced or diagnostic surfaces. Inside a checkout, bare
-`vm packages release` infers its identity from either a managed checkout or a
-registered canonical package workspace. The workspace form creates and resumes
-its private transaction without a checkout ID and never mutates the repository.
-Its first release reviews the full tree; later releases use the last internally
-published source commit as the baseline.
+`init` configures the controller source shelf and appliance. Inside an existing
+managed guest, `checkout` creates or resumes a guest-owned source using the
+guest's authenticated identity and prints its absolute path; it does not launch
+an agent. Bare `release` infers either that managed checkout or a registered
+canonical package workspace from the current directory. Bare `cancel` infers a
+managed checkout. The workspace release creates and resumes its private
+transaction without mutating the repository. Its first release reviews the full
+tree; later releases use the last internally published source commit as the
+baseline.
 
 Recursive registration routes repositories marked by `vm-tool.yaml` into the
 managed binary-tool or collection workflow. `packages.source_roots` is a
@@ -261,10 +258,11 @@ vm tools update --fleet [--provider <provider>] [--pattern <pattern>] [--backgro
 ```
 
 `status` combines controller registration/publication with guest
-installation/consumability. Normal collection publication uses `vm packages
-work`; explicit checkout and ID-based release are its advanced primitives. `update` applies
-eligible changes without prompting or rebuilding the base, including the
-authenticated, digest-verified guest `vm` client used by that workflow.
+installation/consumability. Normal collection publication starts with `vm
+packages checkout <tool>` inside a managed guest and finishes with bare `vm
+packages release` from its printed source path. `update` applies eligible
+changes without prompting or rebuilding the base, including the authenticated,
+digest-verified guest `vm` client used by that workflow.
 `--fleet` uses the loaded tool selection for matching managed environments,
 starts stopped targets in place, repairs shared package routing, and summarizes
 failures; it does not copy the invoking project's application services to

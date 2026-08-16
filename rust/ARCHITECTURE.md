@@ -161,11 +161,11 @@ records, appliance resources
 **Key Exports**: Package server implementation, HTTP handlers, registry operations
 
 #### vm-package-work
-**Role**: Deterministic workflow state and isolated Git-source controller.
+**Role**: Deterministic workflow state and immutable Git-bundle controller.
 
 **Responsibilities**:
 - Checkout leases and state transitions
-- Isolated package and consumer worktrees
+- Durable source bundles and transient internal processing trees
 - Submission, integration, release, rollout, and recovery receipts
 
 **Key Exports**: `run`, `WorkCredentials`, workflow error contract. The router,
@@ -175,7 +175,7 @@ store, source manager, and persistence records remain service-internal.
 **Role**: Credential-scoped package workflow workers.
 
 **Responsibilities**:
-- Persistent isolated integration review
+- Persistent bundle-isolated integration review
 - Persistent private release publication
 - Persistent isolated consumer upgrades
 - Ephemeral tool publication

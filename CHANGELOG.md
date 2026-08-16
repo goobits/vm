@@ -13,7 +13,7 @@
 - 🚀 `vibe-tart` defaults to a Linux guest with Docker Engine while retaining an explicit macOS/Colima fallback.
 - 🚀 Environment creation builds a missing standard Tart vibe base automatically at the configured storage location.
 - 📦 Redacted `vm config render` output previews the exact generated provider configuration.
-- 📦 Assigned project agents can complete resumable private package releases without a host workflow handoff.
+- 📦 Agents already running in managed guests own resumable private package checkouts and releases without a host launcher or workflow handoff.
 
 ### ✨ Added
 
@@ -25,6 +25,7 @@
 - 📦 Private package publication automatically prepares tested review branches for every drifted registered consumer.
 - 📦 Binary tools use a durable, no-egress build stage whose unprivileged source commands cannot access release, publish, Git, or queue credentials.
 - 📦 Docker binary builders place their queue credential beneath a root-only mount boundary instead of relying on Compose secret modes that Docker Desktop does not enforce consistently.
+- 📦 `vm packages checkout <source>` creates or resumes a guest-owned checkout from the managed guest's signed consumer identity.
 
 ### 🔧 Changed
 
@@ -36,7 +37,7 @@
 - 🪟 CLI output and actionable error hints now follow one consistent stdout and stderr contract.
 - 🚀 Linux-first `vibe-tart` routing uses the versioned Tart base and Docker Engine directly; macOS/Colima remains an explicit fallback.
 - 🚀 macOS Tart environments use the Sequoia base and run Docker through Colima with QEMU software emulation instead of unsupported nested virtualization.
-- 📦 ⚠️ `vm packages release <checkout-id>` replaces the host `submit`, `integrate`, `publish`, and `rollout` workflow commands.
+- 📦 ⚠️ Bare `vm packages release` infers a managed checkout or registered canonical workspace from the current directory; the retired host `packages work` launcher and public checkout-ID lifecycle commands are removed.
 
 ### 🐛 Fixed
 
@@ -68,6 +69,8 @@
 - 🌐 Managed package reconciliation activates installed Node and Cargo toolchains for non-interactive release checks and refreshes host Git author identity in existing guests.
 - 🌐 Resuming a durable package release now reacquires an expired active-checkout lease instead of failing its submission upload.
 - 🌐 Permanent release preflight failures now restore compacted source and return the checkout to its assigned agent with actionable rework instead of retrying forever; package and tool manifest version bumps alone remain patch-level while other manifest changes stay public.
+- 🌐 Review workers download immutable submission bundles instead of mounting workflow checkout storage, and transient appliance import trees are compacted after bundling.
+- 🌐 Invalid nested built-in commands remain with their owning CLI parser instead of falling through to remote-command namespace resolution.
 - 🌐 Resubmitted package generations now receive distinct validation, review, and integration operations, and `vm packages release` resumes a durable submitted generation instead of waiting indefinitely.
 - 🌐 Canonical workspace releases review the full tree initially and every commit since the last internal publication thereafter, while deterministic binary-build failures return actionable rework instead of hot-looping.
 - 🌐 Tart package-appliance startup accepts Tart 2.32.1's `Name` and `State` inventory fields.

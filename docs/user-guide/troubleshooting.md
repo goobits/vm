@@ -224,10 +224,11 @@ If a package/tool command was run inside a managed guest, do not try to operate
 the controller from there. The error prints the exact shell-safe host command,
 such as `Run on the host: vm packages up`; run that command in the host terminal.
 
-A built-in tool can be registered but not published on a fresh controller. Run
-`vm packages work agent-skills "publish the initial skills release"`; the agent
-releases from its managed directory and successful publication activates the
-configured project environments automatically. See
+A built-in tool can be registered but not published on a fresh controller. From
+an existing managed guest, run `vm packages checkout agent-skills`, continue in
+the printed source path, commit the intended versioned change, and run bare `vm
+packages release`. Normal reconciliation or `vm tools update <environment>`
+activates the result only for projects that configure it. See
 [Package Infrastructure](package-infrastructure.md#register-and-consume-tools)
 for normal update, locking, fleet, and package-state behavior.
 

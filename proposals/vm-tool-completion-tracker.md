@@ -1,6 +1,6 @@
 ---
-Status: Managed package, collection, and binary build release implemented; focused live Docker acceptance passed
-Date: 2026-08-15
+Status: Guest-owned package work implemented; live Docker rerun pending
+Date: 2026-08-16
 Depends: docs/user-guide/package-infrastructure.md, docs/development/architecture.md
 ---
 
@@ -17,12 +17,14 @@ Package development and release work runs in Docker or Linux VMs. The Mac only
 launches those runtimes and holds controller credentials; it does not build,
 test, merge, or publish package source directly.
 
-The normal release loop is `vm packages work <source> <task>`; its Codex session
-runs bare `vm packages release` from the managed source directory. Explicit
-checkout and ID-based release remain advanced diagnostics. The same durable
-workflow owns language packages and tool collections. Credential-isolated appliance
-workers review, integrate, push, and publish only to the private gateway; host
-working trees and installed immutable releases are never treated as source.
+The former host-oriented package-work launcher has been replaced by the
+guest-owned workflow specified below. An agent already running
+inside a managed VM requests its own checkout and runs bare `vm packages
+release` from that source directory. Infrastructure never launches the agent.
+The same durable workflow owns language packages and tool collections.
+Credential-isolated appliance workers review, integrate, push, and publish only
+to the private gateway; host working trees and installed immutable releases are
+never treated as source.
 
 ## Non-Negotiable Boundaries
 
@@ -286,6 +288,202 @@ current development container has no Docker binary, so live execution remains
 on the Docker CI runner rather than being replaced with another fake-provider
 test.
 
+## Guest-Owned Package Work
+
+This is the next package-infrastructure release slice. It supersedes the
+host-launched `vm packages work` UX without replacing the durable checkout,
+review, build, publication, or rollout engines already implemented.
+
+### Product decision
+
+The VM in which an agent is already running owns the editable checkout. The
+package appliance is infrastructure only: it authenticates the request, serves
+an immutable source bundle, records workflow state, reviews, integrates, builds,
+publishes privately, and coordinates rollout. It must never start Codex, Claude,
+Antigravity, or any other agent.
+
+Normal agent flow inside a managed Docker or Linux Tart guest:
+
+```bash
+vm packages checkout typemill
+# Continue work in the Source path printed by the command.
+# Edit, test, bump the version when required, and commit.
+vm packages release
+```
+
+When the guest workspace is already the registered canonical package source,
+checkout is unnecessary:
+
+```bash
+# Edit, test, bump the version when required, and commit.
+vm packages release
+```
+
+Consumers continue using native package-manager commands such as `npm install`
+or `npm update`. Managed tools continue using the existing activation path. No
+public npm, Cargo, PyPI, GitHub Release, or other external publication is added.
+
+### Command contract
+
+- [x] Make `vm packages checkout <source>` the only normal isolated-work entry
+  point and allow it only from a managed guest.
+- [x] Remove required `--agent`, `--consumer`, and `--task` arguments. Infer the
+  consumer and actor from the guest's signed, consumer-bound capability. The
+  agent's conversational task is not part of checkout identity.
+- [x] Print one unambiguous `Source: <absolute-guest-path>` result plus a short
+  `cd` hint. The CLI cannot change its parent process's directory; agents must
+  use the printed path as the working directory for subsequent commands.
+- [x] Keep checkout source beneath
+  `$HOME/.local/share/vm/package-checkouts/<checkout-id>/source`, never beneath
+  an infrastructure container's filesystem and never in `/workspace` unless
+  `/workspace` is itself the registered canonical source.
+- [x] Make checkout idempotent by current consumer and source. Resume the one
+  nonterminal checkout, return its existing source path, and reject ambiguous
+  duplicates instead of creating another checkout.
+- [x] If durable workflow state exists but the guest copy is missing, reacquire
+  a scoped lease and restore the checkout into the same managed path. Never
+  silently replace a locally modified checkout.
+- [x] Allow a scoped guest to check out any registered internal source it is
+  authorized to read. Do not require the current project to already declare the
+  package as a dependency.
+- [x] Apply npm, Cargo, or Python development overrides only when the current
+  project actually consumes that package. A source-only checkout must remain a
+  valid workflow.
+- [x] Keep bare `vm packages release` directory-inferred for both managed
+  checkouts and attested canonical workspaces. Remove the checkout ID from the
+  normal release syntax.
+- [x] Make `vm packages cancel` infer the current managed checkout. Successful
+  publication cleans up automatically. Retain ID-based show/cancel/cleanup only
+  as hidden or clearly labeled controller diagnostics if operators still need
+  them for repair.
+
+The durable API may retain existing `agent` and `task` fields for receipt and
+wire compatibility, but the guest CLI must not ask users to supply them. Populate
+them from the authenticated actor and a stable internal guest-work purpose. Do
+not make model choice part of idempotency or authorization.
+
+### Remove the host agent launcher
+
+- [x] Delete the public host agent-launch command.
+- [x] Delete the package command's Codex executable, prompt construction, and
+  interactive provider-launch path. Do not replace it with another agent
+  launcher or an appliance daemon.
+- [x] Stop persisting the retired package-work target keys.
+  `vm packages init <source-root>` should configure the controller source shelf
+  and appliance only; it must not select a project in which to launch work.
+- [x] Tolerate old global configuration once and omit the retired keys on the
+  next managed save. Do not retain permanent compatibility behavior that can
+  still launch host-selected work.
+- [x] Remove host-side checkout preparation, provider copy/exec adapters, and
+  runtime-subject abstractions only after reference checks prove they have no
+  remaining package callers. Preserve shared provider interaction used by
+  unrelated VM commands.
+- [x] Replace every obsolete package-work error hint with the exact
+  guest command or canonical-workspace release instruction.
+
+Likely implementation owners:
+
+- `rust/vm/src/cli/subcommands.rs` and `rust/vm/src/cli/tests.rs`: public CLI.
+- `rust/vm/src/commands/command_context.rs`: host/guest routing.
+- `rust/vm/src/commands/packages/mod.rs`: remove the host launcher and simplify
+  dispatch.
+- `rust/vm/src/commands/packages/checkout.rs`: guest-only checkout, resume, and
+  optional consumer override.
+- `rust/vm/src/commands/packages/runtime.rs`: guest path and capability
+  execution; delete unused controller adapters.
+- `rust/vm/src/commands/packages/release.rs`, `submission.rs`, and
+  `workspace.rs`: directory inference and corrected repair hints.
+- `rust/vm-config/src/global_config.rs` and `global_config_tests.rs`: retire the
+  saved work target.
+- `rust/vm-package-work`: adjust checkout matching or API compatibility only
+  where the current durable service cannot express guest-owned resume.
+
+### Cruft cleanup rules
+
+- [x] Delete code, tests, fixtures, schema fields, help text, and documentation
+  whose only owner was the host agent launcher.
+- [x] Consolidate duplicate host and guest checkout implementations around the
+  guest path; do not leave two implementations behind feature flags or aliases.
+- [x] Remove public `cleanup` mechanics that duplicate automatic successful
+  cleanup or inferred `cancel`, while retaining the internal cleanup operation
+  required for retries and administrator repair.
+- [x] Keep `PackageExecutor` or similar abstractions only where at least two
+  live runtime implementations remain after the host path is removed.
+- [x] Update the package guide, CLI reference, configuration guide,
+  troubleshooting guide, package-server README, changelog, and this tracker in
+  the same change. No document may describe infrastructure as the agent owner.
+- [x] Run reference checks for the retired launcher/config keys, required
+  checkout agent/task flags, and ID-based normal release examples; every
+  remaining result must be an intentional migration note or administrator-only
+  diagnostic.
+
+### Deterministic verification
+
+- [x] CLI parsing accepts `vm packages checkout typemill` without flags and
+  rejects host execution with one exact hint to run it inside a managed VM.
+- [x] Capability tests prove the consumer and actor come from authenticated
+  guest state and cannot be overridden from command-line input.
+- [x] Checkout tests prove source-only package work succeeds without a consumer
+  dependency, while an actual dependency still receives and later restores its
+  development override.
+- [x] Resume tests cover repeat checkout, guest restart, expired lease, missing
+  local source, dirty local source, ambiguous durable state, and terminal prior
+  checkouts.
+- [x] Release tests prove bare release inference, rework, idempotent retry,
+  automatic cleanup, immutable private publication, and unchanged canonical
+  workspace state.
+- [x] Security tests prove checkout paths cannot escape managed guest storage
+  and that guests never receive controller Git credentials, builder tokens,
+  publish credentials, or writable registry storage.
+- [x] Static verification passes the repository gate below, including scoped
+  warnings-as-errors Clippy and duplicate detection when `jscpd` is available.
+
+### Live Docker acceptance
+
+Revise `scripts/internal/test-package-workflow-docker.sh`; do not add a second
+acceptance script. The test must:
+
+1. Start one isolated package appliance and two existing project containers.
+2. Invoke `vm packages checkout <source>` through the guest client inside the
+   producer container, with no host `work` command and no agent flags.
+3. Assert the checkout exists under the producer guest's managed home and does
+   not exist in gateway, workflow, reviewer, builder, releaser, or rollout
+   container filesystems.
+4. Restart the producer and prove repeat checkout resumes the same durable
+   checkout and source path without losing committed work.
+5. Make, test, version, and commit a fixture change inside the guest checkout;
+   run bare `vm packages release` there and exercise one deterministic rework
+   cycle.
+6. Prove no appliance process launches an AI agent and no guest process receives
+   controller, build, or publish credentials.
+7. Install or activate the immutable result in the second existing container
+   and execute the released version.
+8. Repeat checkout/release/update operations and prove they are no-ops where
+   appropriate.
+9. Compare primary container IDs and persistent volume identities before and
+   after. No project environment or appliance data volume may be recreated to
+   perform package work.
+10. Clean only the acceptance test's unique containers, sidecars, networks,
+    volumes, images, and temporary paths.
+
+The existing acceptance script now drives this guest-owned flow directly,
+removes its fake agent launcher, downloads review input as immutable bundles,
+and checks restart/resume, rework, activation, credentials, container IDs, and
+volume identity. The current development container has no Docker binary, so the
+revised live suite still requires its Docker runner rerun.
+
+### Completion criteria
+
+This slice is complete only when an agent already running in a managed VM can
+check out an arbitrary authorized registered source, survive a VM restart, edit
+and commit it, run bare release, and make the immutable private result available
+to another existing VM without any host-launched agent, checkout ID, model flag,
+environment rebuild, public publication, or infrastructure credential exposure.
+
+Do not expand this slice into a new package daemon, release engine, agent
+orchestrator, registry protocol, public publishing workflow, or transactional
+`vm.yaml` apply operation.
+
 ## Canonical Workspace and Binary Tool Releases
 
 - [x] Extend the existing source, manifest, and release records for attested
@@ -336,6 +534,13 @@ git diff --check
 ```
 
 No Docker image, Tart base, guest, or release binary is built by this gate.
+
+The 2026-08-16 container gate passed formatting, workspace checking, unit and
+integration tests, warnings-as-errors Clippy, and `git diff --check`. The
+duplicate script was invoked but `jscpd` is not installed in this container, so
+that conditional check remains assigned to the equipped CI runner. One
+parallel provider assertion failed once, then passed focused, with its feature
+set, and on the full unit rerun without a code change.
 
 Focused live Docker acceptance on 2026-08-15 used a unique appliance, producer,
 consumer, port, networks, and volumes. It proved deterministic build failure
@@ -604,6 +809,9 @@ e02bd5b1 fix(build): keep generated artifacts outside workspace
 6b67fa3f refactor(packages): finish workflow state ownership
 30d0d1e5 refactor(packages): split source control lifecycles
 75b0c45b refactor(config): separate validation domains
+e9c2fc0f feat(packages): move work ownership into guests
+f430cdc9 test(packages): prove guest-owned release flow
+c68ccf1c fix(cli): isolate command context fallback
 ```
 
 ## Related Documentation
@@ -618,11 +826,11 @@ e02bd5b1 fix(build): keep generated artifacts outside workspace
 
 - Workers use one predictable local package service and keep useful read-only
   cache when the central appliance is briefly unavailable.
-- Package experiments are isolated to one worker and clean up their own task
-  worktrees without touching source repositories or Git history.
-- An assigned agent can release through the private appliance without a host
-  handoff; other registered projects receive tested upgrade branches
-  automatically.
+- Package experiments are isolated to the requesting guest and clean up their
+  own checkout without touching canonical source repositories or Git history.
+- An agent already running in a managed guest can release through the private
+  appliance without a host launcher; configured tools activate in place and
+  language consumers receive tested upgrade branches.
 - Tart discovery, base acquisition, shell recovery, and mounts follow bounded,
   storage-aware paths.
 - Cleanup, secrets, database services, snapshots, and self-updates are narrower

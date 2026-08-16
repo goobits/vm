@@ -30,7 +30,9 @@ vm/
 - `rust/vm-package-server/` owns native npm, Cargo, and Python protocol adapters
   plus the worker-local read-only cache/proxy edge.
 - `rust/vm-package-work/` owns durable checkout, lease, submission, integration,
-  rollout, and receipt state.
+  rollout, bundle, and receipt state. Editable isolated source belongs to the
+  authenticated managed guest; workflow services retain immutable bundles and
+  only create transient internal processing trees.
 - `rust/vm-package-jobs/` owns persistent review, credential-separated binary
   build, release, and rollout workers plus isolated tool publication inside
   infrastructure containers.
@@ -46,6 +48,10 @@ package protocols, delegates all source selection to the shared resolver, and
 holds only read credentials and persistent read-through cache. Development
 overrides use explicit checkout-scoped package-manager configuration; they
 never make one published name/version return different bytes.
+
+Package infrastructure never launches an agent. The guest CLI derives checkout
+ownership from its signed consumer capability, while review and release workers
+consume authenticated immutable bundles rather than a shared editable checkout.
 
 ## CLI Output
 

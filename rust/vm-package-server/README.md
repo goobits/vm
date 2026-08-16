@@ -17,9 +17,10 @@ Agents change registered packages and tool collections through an isolated
 guest checkout:
 
 ```bash
-vm packages checkout <source> --agent <agent> --task "<task>"
-# Edit the returned checkout, bump its version, and commit.
-vm packages release <checkout-id>
+vm packages checkout <source>
+cd <the-printed-Source-path>
+# Edit, test, bump the version when required, and commit.
+vm packages release
 ```
 
 The release worker publishes only to the private VM gateway. See the canonical

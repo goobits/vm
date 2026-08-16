@@ -1,8 +1,9 @@
 # Package Infrastructure
 
 VM manages one private package appliance for npm, Cargo, Python, and immutable
-guest tools. Packages, binary tools, and collections use the same review,
-integration, and release services inside writable guests.
+guest tools. Packages, binary tools, and collections use the same durable
+review, integration, and release services. Editable isolated checkouts live
+only in the managed guest that requested them.
 
 ## Architecture
 
@@ -42,17 +43,16 @@ registry and workflow storage remains behind the appliance's internal network.
 
 ## Initialize Package Work
 
-Run this once on the controller host, from the project whose environments should
-receive managed tools:
+Run this once on the controller host:
 
 ```bash
 vm packages init ~/projects/packages
 ```
 
-`init` records the source shelf, project configuration, and selected profile;
-imports an active GitHub CLI credential when available; starts the shared
-appliance; and reconciles discovered sources. Existing credentials and named
-volumes are retained.
+`init` records the controller source shelf, imports an active GitHub CLI
+credential when available, starts the shared appliance, and reconciles
+discovered sources. It does not select a project or an agent. Existing
+credentials and named volumes are retained.
 
 `vm packages up` remains an advanced lifecycle command. It recursively
 registers repositories below configured source roots and quarantines an
@@ -97,17 +97,19 @@ in application code.
 
 ## Daily Source Work
 
-From any host directory, give Codex the source and task:
+From the managed guest where the agent is already running, create or resume the
+source checkout:
 
 ```bash
-vm packages work agent-skills "update the owner checklist"
+vm packages checkout agent-skills
+# Continue in the absolute Source path printed by the command.
 ```
 
-`work` creates or resumes the matching checkout, creates or starts the
-initialized project's environment, opens Codex in the checkout source, and
-instructs it to edit, test, commit, and run `vm packages release`. Checkout IDs,
-guest paths, environment flags, activation, and rebuilds are not part of the
-normal human workflow.
+The command derives its actor and consumer from the guest's signed capability,
+prints one `Source: <absolute-path>` result, and never launches Codex, Claude,
+Antigravity, or another agent. Run it again to resume the same active source.
+If durable state survives but the guest copy does not, VM restores the checkout
+at the same managed path without replacing local modifications.
 
 Inside a managed guest, `vm packages status` verifies the workflow gateway and
 consumer-bound agent credential using read-only requests. It creates no
@@ -122,10 +124,12 @@ The same reconciliation activates installed Node and Cargo toolchains for
 non-interactive package checks and refreshes the host Git author identity when
 `host_sync.git_config` is enabled.
 
-The appliance fetches the registered canonical repository, creates a unique
-task branch, and places a writable checkout under
-`~/.local/share/vm/package-checkouts/<checkout-id>`. Codex edits there, bumps
-the source's stable semantic version, and commits the intended changes.
+The appliance serves an immutable source bundle. The guest creates the writable
+checkout under
+`~/.local/share/vm/package-checkouts/<checkout-id>/source`. The agent edits
+there, bumps the source's stable semantic version when required, tests, and
+commits the intended changes. The reviewer consumes a durable bundle rather
+than a shared checkout-volume mount.
 Never edit an installed release under `~/.local/share/vm-tools/releases`; those
 directories are read-only immutable activation output. Reconciliation replaces
 older writable installations from the private artifact rather than trusting
@@ -137,9 +141,9 @@ Inside that checkout, the agent finishes with:
 vm packages release
 ```
 
-The checkout ID is inferred from the current directory. Explicit `checkout`
-and ID-based `release` commands remain available for debugging and advanced
-automation.
+The checkout ID is inferred from the current directory. `vm packages cancel`
+uses the same inference. Controller-side ID lookup remains a hidden diagnostic,
+not part of normal work.
 
 That resumable command submits the exact Git bundle, waits for isolated review,
 integrates against the latest canonical source, reruns checks, and lets
@@ -149,10 +153,10 @@ credential; the release worker consumes only its durable digest-addressed
 archives. No host checkout, host approval, npmjs.org, crates.io, or PyPI
 publication participates.
 
-After a configured tool collection is published, `work` applies the existing
-in-place fleet activation to environments owned by the initialized project.
-Language packages are not installed directly; their existing consumer rollout
-workers remain authoritative.
+After a configured tool is published, normal managed-tool reconciliation or an
+explicit `vm tools update <environment>` activates it in each project that
+selects it. Language packages are not installed directly; their existing
+consumer rollout workers remain authoritative.
 
 For a language package, the unpublished checkout is attached only to the
 assigned consumer; other consumers stay on their published versions. Every
@@ -170,9 +174,9 @@ touching the registered repository or its persistent canonical mirror.
 
 ## Release From A Canonical Workspace
 
-Use `work` when an agent needs an isolated shared-source checkout. When an
-agent already owns a registered repository mounted as its ordinary workspace,
-release the committed workspace directly:
+Use `vm packages checkout <source>` when an agent needs an isolated shared-source
+checkout. When an agent already owns a registered repository mounted as its
+ordinary workspace, release the committed workspace directly:
 
 ```bash
 cd /workspace
@@ -312,9 +316,8 @@ vm tools list
 vm tools show agent-skills
 ```
 
-Use `vm packages work <tool> <task>` for isolated tool work. From a registered
-canonical workspace, use bare `vm packages release`.
-Explicit checkout and ID-based release remain advanced commands. The same
+Use `vm packages checkout <tool>` inside a managed guest for isolated tool work.
+From a registered canonical workspace, use bare `vm packages release`. The same
 review, build, and release workflow validates, integrates, archives, and
 receipts the exact commit. Managed checkouts push their integrated source;
 canonical workspace releases retain the immutable source internally. Projects select

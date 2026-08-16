@@ -265,13 +265,14 @@ packages:
     - /another/absolute/source-root
 ```
 
-`init` remembers the project configuration used by `vm packages work`. Each
-`vm packages up` scans the roots recursively and idempotently registers
-detected Git package and tool repositories. The paths stay controller-side and
-are not copied into `vm.yaml` or mounted into the appliance. Registration from
-one of these roots attests that a clean canonical workspace may use bare
-`vm packages release`; the appliance retains its submitted source bundle
-rather than accessing the host path.
+`init` remembers only the controller source root and appliance configuration; it
+does not select an environment or persist an agent launch target. Each `vm
+packages up` scans the roots recursively and idempotently registers detected Git
+package and tool repositories. The paths stay controller-side and are not copied
+into `vm.yaml` or mounted into the appliance. Registration from one of these
+roots attests that a clean canonical workspace may use bare `vm packages
+release`; the appliance retains its submitted source bundle rather than
+accessing the host path.
 
 ## Managed Tools And AI State
 
