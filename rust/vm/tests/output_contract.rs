@@ -10,6 +10,7 @@ fn run(temp_dir: &TempDir, args: &[&str]) -> Output {
         .env("HOME", temp_dir.path())
         .env("VM_TOOL_DIR", temp_dir.path().join(".vm"))
         .env("VM_TEST_MODE", "1")
+        .env("VM_TEST_COMMAND_CONTEXT", "host")
         .env("CI", "1")
         .output()
         .unwrap()
@@ -42,6 +43,7 @@ fn managed_guest_guard_precedes_dry_run_and_prints_the_exact_host_command() {
         .env("HOME", temp_dir.path())
         .env("VM_MANAGED_GUEST", "1")
         .env("VM_TEST_MODE", "1")
+        .env("VM_TEST_COMMAND_CONTEXT", "guest")
         .env("CI", "1")
         .output()
         .unwrap();
@@ -173,6 +175,7 @@ fn config_show_tolerates_a_closed_stdout_pipe() {
         .env("HOME", temp_dir.path())
         .env("VM_TOOL_DIR", temp_dir.path().join(".vm"))
         .env("VM_TEST_MODE", "1")
+        .env("VM_TEST_COMMAND_CONTEXT", "host")
         .env("CI", "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

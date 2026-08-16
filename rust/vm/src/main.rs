@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 use uuid::Uuid;
 
 // External crates
-use clap::{error::ErrorKind, Parser};
+use clap::{error::ErrorKind, CommandFactory, Parser};
 use tracing::info_span;
 use tracing::Instrument;
 
@@ -57,13 +57,38 @@ async fn run_command(invocation: Invocation) {
 }
 
 fn parse_invocation() -> Invocation {
-    match Args::try_parse() {
+    let arguments = std::env::args_os().collect::<Vec<_>>();
+    match Args::try_parse_from(&arguments) {
         Ok(args) => Invocation::BuiltIn(Box::new(args)),
-        Err(error) if error.kind() == ErrorKind::InvalidSubcommand => {
-            Invocation::Remote(std::env::args_os().skip(1).collect())
+        Err(error)
+            if error.kind() == ErrorKind::InvalidSubcommand
+                && top_level_namespace(&arguments).is_some_and(|namespace| {
+                    !Args::command().get_subcommands().any(|command| {
+                        command.get_name() == namespace
+                            || command.get_all_aliases().any(|alias| alias == namespace)
+                    })
+                }) =>
+        {
+            Invocation::Remote(arguments.into_iter().skip(1).collect())
         }
         Err(error) => error.exit(),
     }
+}
+
+fn top_level_namespace(arguments: &[std::ffi::OsString]) -> Option<&str> {
+    let mut index = 1;
+    while let Some(argument) = arguments.get(index).and_then(|value| value.to_str()) {
+        match argument {
+            "--config" | "--profile" => index += 2,
+            "--dry-run" => index += 1,
+            value if value.starts_with("--config=") || value.starts_with("--profile=") => {
+                index += 1;
+            }
+            value if value.starts_with('-') => return None,
+            value => return Some(value),
+        }
+    }
+    None
 }
 
 #[tokio::main]

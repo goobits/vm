@@ -44,6 +44,7 @@ impl CliTestFixture {
             .env("HOME", self.test_dir.parent().unwrap()) // Mock HOME for global config
             .env("VM_TOOL_DIR", &self.test_dir) // Point preset system to test directory
             .env("VM_TEST_MODE", "1") // Disable request span in test mode
+            .env("VM_TEST_COMMAND_CONTEXT", "host")
             .output()?;
         Ok(output)
     }
