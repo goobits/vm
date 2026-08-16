@@ -326,17 +326,23 @@ pub(super) async fn handle(
         _ => Some(files.acquire_operation_lock()?),
     };
     match command {
-        PackagesSubcommand::Init { source_root } => {
+        PackagesSubcommand::Init {
+            source_root,
+            runtime,
+            port,
+            registry_image,
+            job_image,
+        } => {
             let (source_root, config, profile) =
                 package_init_context(source_root, config_path, profile)?;
             remember_package_init(&source_root, &config, profile.clone())?;
             let _ = catalog::repair_github_credential(&files)?;
             up(
                 &files,
-                crate::cli::PackageInfrastructureRuntime::Auto,
-                3080,
-                None,
-                None,
+                runtime,
+                port,
+                registry_image,
+                job_image,
                 Some(config),
                 profile,
             )

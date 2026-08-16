@@ -87,6 +87,19 @@ pub(super) async fn get_submission(
     Ok(Json(record))
 }
 
+pub(super) async fn get_tool_build(
+    State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
+    Path(id): Path<String>,
+) -> WorkResult<Json<vm_packages::ToolBuildRecord>> {
+    let submission = state.store.submission(&id).await?;
+    ensure_checkout_is_visible(
+        &access,
+        &state.store.get_checkout(&submission.checkout_id).await?,
+    )?;
+    Ok(Json(state.store.tool_build(&id).await?))
+}
+
 pub(super) async fn get_checkout_submission(
     State(state): State<AppState>,
     Extension(access): Extension<AgentAccess>,

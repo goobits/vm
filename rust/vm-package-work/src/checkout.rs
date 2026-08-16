@@ -274,6 +274,7 @@ impl Store {
             consumers: normalized_consumers(request.consumers),
             task: request.task,
             workspace_release: request.workspace_release,
+            initial_release: false,
             state: WorkflowState::Created,
             base_branch: None,
             base_commit: None,
@@ -322,6 +323,46 @@ impl Store {
         branch: String,
         worktree: String,
     ) -> WorkResult<CheckoutRecord> {
+        self.record_source_with_baseline(
+            checkout_id,
+            base_branch,
+            base_commit,
+            branch,
+            worktree,
+            false,
+        )
+        .await
+    }
+
+    pub async fn record_workspace_source(
+        &self,
+        checkout_id: &str,
+        base_branch: String,
+        base_commit: String,
+        branch: String,
+        worktree: String,
+        initial_release: bool,
+    ) -> WorkResult<CheckoutRecord> {
+        self.record_source_with_baseline(
+            checkout_id,
+            base_branch,
+            base_commit,
+            branch,
+            worktree,
+            initial_release,
+        )
+        .await
+    }
+
+    async fn record_source_with_baseline(
+        &self,
+        checkout_id: &str,
+        base_branch: String,
+        base_commit: String,
+        branch: String,
+        worktree: String,
+        initial_release: bool,
+    ) -> WorkResult<CheckoutRecord> {
         let mut current = self.database.lock().await;
         let mut next = current.clone();
         let now = Utc::now();
@@ -336,6 +377,7 @@ impl Store {
         }
         checkout.base_branch = Some(base_branch);
         checkout.base_commit = Some(base_commit.clone());
+        checkout.initial_release = initial_release;
         checkout.branch = Some(branch);
         checkout.worktree = Some(worktree);
         checkout.state = WorkflowState::CheckedOut;

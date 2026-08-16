@@ -81,33 +81,40 @@ async fn review(client: &PackageInfrastructureClient, submission_id: &str) -> Re
         "check out package review commit",
     )?;
 
+    let diff_base = if checkout.initial_release {
+        command_text(
+            Command::new("git").arg("-C").arg(&source).args([
+                "hash-object",
+                "-t",
+                "tree",
+                "-w",
+                "--stdin",
+            ]),
+            "create empty initial-release tree",
+        )?
+        .trim()
+        .to_string()
+    } else {
+        submission.base_commit.clone()
+    };
+    let range = format!("{diff_base}..{}", submission.submitted_commit);
     let changed_paths = git_lines(
         &source,
-        &[
-            "diff",
-            "--name-only",
-            &format!(
-                "{}..{}",
-                submission.base_commit, submission.submitted_commit
-            ),
-        ],
+        &["diff", "--name-only", &range],
         "list changed package paths",
     )?;
     let diff = command_text(
-        Command::new("git").arg("-C").arg(&source).args([
-            "diff",
-            "--unified=0",
-            &format!(
-                "{}..{}",
-                submission.base_commit, submission.submitted_commit
-            ),
-        ]),
+        Command::new("git")
+            .arg("-C")
+            .arg(&source)
+            .args(["diff", "--unified=0", &range]),
         "inspect package review diff",
     )?;
     let manifest_is_public = manifest_has_public_changes(
         checkout.source_kind,
         ecosystem,
         &source,
+        checkout.initial_release,
         &submission.base_commit,
         &submission.submitted_commit,
         &changed_paths,
@@ -268,6 +275,7 @@ fn manifest_has_public_changes(
     source_kind: SourceKind,
     ecosystem: Option<PackageEcosystem>,
     repository: &Path,
+    initial_release: bool,
     base_commit: &str,
     submitted_commit: &str,
     paths: &[String],
@@ -282,6 +290,9 @@ fn manifest_has_public_changes(
     };
     if !paths.iter().any(|path| path == manifest) {
         return Ok(false);
+    }
+    if initial_release {
+        return Ok(true);
     }
     let Some(base) = git_file(repository, base_commit, manifest)? else {
         return Ok(true);

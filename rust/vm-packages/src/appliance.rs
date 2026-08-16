@@ -6,7 +6,7 @@ pub const TART_INSTANCE_NAME: &str = "vm-packages-infra";
 pub const COMPOSE_YAML: &str = include_str!("resources/compose.yaml");
 pub const GATEWAY_CONFIG: &str = include_str!("resources/Caddyfile");
 /// Bump when running appliance services must be rebuilt or recreated.
-pub const APPLIANCE_DEFINITION_REVISION: u32 = 1;
+pub const APPLIANCE_DEFINITION_REVISION: u32 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -163,15 +163,17 @@ mod tests {
         assert!(COMPOSE_YAML.contains("infrastructure-backups:/backups"));
         assert!(COMPOSE_YAML.contains("registry-tool-artifacts:/volumes/tools"));
         assert!(COMPOSE_YAML.contains("volume-init:"));
-        assert!(COMPOSE_YAML.contains("cap_add: [\"CHOWN\"]"));
+        assert!(COMPOSE_YAML.contains("cap_add: [\"CHOWN\", \"FOWNER\"]"));
         assert!(COMPOSE_YAML.contains("condition: service_completed_successfully"));
         assert!(COMPOSE_YAML.contains("work_controller_token"));
         assert!(COMPOSE_YAML.contains("publish_token:\n    file: ./publish-token"));
         assert!(COMPOSE_YAML.contains("work_release_token"));
+        assert!(COMPOSE_YAML.contains("work_build_token"));
         assert!(COMPOSE_YAML.contains("work_rollout_token"));
         assert!(COMPOSE_YAML.contains("work_agent_signing_key"));
         assert!(COMPOSE_YAML.contains("agent-temporary-data:/data/agents:ro"));
         assert!(COMPOSE_YAML.contains("exec pkg-release"));
+        assert!(COMPOSE_YAML.contains("exec pkg-build"));
         assert!(COMPOSE_YAML.contains("exec pkg-review"));
         assert!(COMPOSE_YAML.contains("exec pkg-rollout"));
         assert!(COMPOSE_YAML.contains("profiles: [maintenance]"));
@@ -180,6 +182,25 @@ mod tests {
         assert!(!COMPOSE_YAML.contains("/var/run/docker.sock"));
         assert!(!COMPOSE_YAML.contains("/workspace"));
         assert!(!COMPOSE_YAML.contains("${HOME}"));
+
+        let builder = &definition["services"]["builder"];
+        assert_eq!(builder["user"], "0:0");
+        assert_eq!(builder["networks"].as_sequence().unwrap().len(), 1);
+        assert_eq!(builder["networks"][0], "packages");
+        assert_eq!(builder["volumes"][0], "binary-build-artifacts:/builds");
+        assert!(builder.get("secrets").is_none());
+        assert!(builder.get("source-mirrors").is_none());
+        let builder_text = serde_yaml_ng::to_string(builder).unwrap();
+        assert!(builder_text.contains("/run/build-secrets/build-token"));
+        assert!(!builder_text.contains("/run/secrets"));
+        assert!(!builder_text.contains("publish_token"));
+        assert!(!builder_text.contains("release_token"));
+        assert!(!builder_text.contains("git_token"));
+        assert!(definition["services"]["releaser"]["volumes"]
+            .as_sequence()
+            .unwrap()
+            .iter()
+            .any(|volume| volume == "binary-build-artifacts:/builds:ro"));
     }
 
     #[test]

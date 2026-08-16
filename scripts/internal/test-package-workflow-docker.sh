@@ -4,10 +4,13 @@ set -euo pipefail
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
 vm_binary=${VM_ACCEPTANCE_BIN:-$repository_root/rust/target/release/vm}
-project_name=package-producer-acceptance
+run_id=$$
+compose_project=vm-packages-acceptance-$run_id
+docker_config=${DOCKER_CONFIG:-$HOME/.docker}
+project_name=package-producer-acceptance-$run_id
 environment_name=$project_name-dev
 edge_name=$project_name-package-edge
-consumer_name=package-consumer-acceptance
+consumer_name=package-consumer-acceptance-$run_id
 consumer_environment=$consumer_name-dev
 consumer_edge=$consumer_name-package-edge
 acceptance_root=$(mktemp -d "${TMPDIR:-/tmp}/vm-package-acceptance.XXXXXX")
@@ -24,9 +27,14 @@ after_ids=$acceptance_root/after.ids
 before_volumes=$acceptance_root/before.volumes
 after_volumes=$acceptance_root/after.volumes
 work_pid=
+server_image=
+jobs_image=
 
 run_vm() {
-  env HOME="$acceptance_home" PATH="$fake_bin:$(dirname "$vm_binary"):$PATH" "$vm_binary" "$@"
+  env HOME="$acceptance_home" \
+    DOCKER_CONFIG="$docker_config" \
+    VM_PACKAGES_COMPOSE_PROJECT="$compose_project" \
+    PATH="$fake_bin:$(dirname "$vm_binary"):$PATH" "$vm_binary" "$@"
 }
 
 cleanup() {
@@ -35,21 +43,27 @@ cleanup() {
     kill "$work_pid" 2>/dev/null
     wait "$work_pid" 2>/dev/null
   fi
-  run_vm --config "$project_root/vm.yaml" destroy --force --all >/dev/null 2>&1
-  run_vm --config "$consumer_root/vm.yaml" destroy --force --all >/dev/null 2>&1
+  run_vm --config "$project_root/vm.yaml" remove "$environment_name" --force >/dev/null 2>&1
+  run_vm --config "$consumer_root/vm.yaml" remove "$consumer_environment" --force >/dev/null 2>&1
   docker rm --force "$environment_name" "$edge_name" \
     "$consumer_environment" "$consumer_edge" >/dev/null 2>&1
   package_compose=$acceptance_home/.vm/infrastructure/packages/compose.yaml
   package_environment=$acceptance_home/.vm/infrastructure/packages/environment.env
   if test -f "$package_compose" && test -f "$package_environment"; then
-    docker compose --project-name vm-packages --file "$package_compose" \
+    docker compose --project-name "$compose_project" --file "$package_compose" \
       --env-file "$package_environment" down --volumes --remove-orphans >/dev/null 2>&1
+  fi
+  docker network rm "$compose_project" "$compose_project-controller" \
+    "$compose_project-egress" >/dev/null 2>&1
+  if test -n "$server_image" && test -n "$jobs_image"; then
+    docker image rm --force "$server_image" "$jobs_image" >/dev/null 2>&1
   fi
   case "$acceptance_root" in
     */vm-package-acceptance.*) rm -rf -- "$acceptance_root" ;;
   esac
 }
 trap cleanup EXIT
+trap 'exit 130' HUP INT TERM
 
 capture_runtime_state() {
   local ids=$1
@@ -83,8 +97,8 @@ mkdir -p "$acceptance_home" "$project_root" "$consumer_root" \
   "$fixture_root/skills/initial" "$fake_bin"
 
 version=$("$vm_binary" --version | awk '{print $2}')
-server_image=ghcr.io/goobits/vm-package-server:$version
-jobs_image=ghcr.io/goobits/vm-package-jobs:$version
+server_image=vm-package-server-acceptance:$version-$run_id
+jobs_image=vm-package-jobs-acceptance:$version-$run_id
 docker build --provenance=false --tag "$server_image" \
   --file "$repository_root/rust/vm-package-server/docker/server/Dockerfile" "$repository_root"
 docker build --provenance=false --tag "$jobs_image" \
@@ -102,8 +116,9 @@ chmod 0755 "$fake_bin/gh"
 
 cat > "$project_root/Dockerfile.acceptance" <<'DOCKERFILE'
 FROM ubuntu:24.04
+ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl git python3 sudo bash tar gzip && \
+      ansible-core ca-certificates curl git python3 sudo bash tar gzip && \
     rm -rf /var/lib/apt/lists/* && \
     groupadd --gid 11000 acceptance && \
     useradd --create-home --uid 11000 --gid 11000 --shell /bin/bash acceptance && \
@@ -153,11 +168,11 @@ vm packages release
 CODEX
 chmod 0755 "$project_root/codex"
 
-cat > "$project_root/vm.yaml" <<'YAML'
+cat > "$project_root/vm.yaml" <<YAML
 version: '2.0'
 provider: docker
 project:
-  name: package-producer-acceptance
+  name: $project_name
   workspace_path: /workspace
 vm:
   user: acceptance
@@ -181,11 +196,11 @@ YAML
 
 cp "$project_root/Dockerfile.acceptance" "$consumer_root/Dockerfile.acceptance"
 cp "$project_root/codex" "$consumer_root/codex"
-cat > "$consumer_root/vm.yaml" <<'YAML'
+cat > "$consumer_root/vm.yaml" <<YAML
 version: '2.0'
 provider: docker
 project:
-  name: package-consumer-acceptance
+  name: $consumer_name
   workspace_path: /workspace
 vm:
   user: acceptance
@@ -229,6 +244,21 @@ import { spawnSync } from 'node:child_process';
 
 const target = process.argv[2];
 if (!['linux-amd64', 'linux-arm64'].includes(target)) process.exit(2);
+for (const key of Object.keys(process.env)) {
+  if (key.includes('TOKEN') || key.includes('SECRET')) process.exit(8);
+}
+for (const secret of [
+  '/run/secrets/build_token',
+  '/run/build-secrets/build-token',
+  '/run/secrets/release_token',
+  '/run/secrets/publish_token',
+  '/run/secrets/git_token',
+]) {
+  try {
+    readFileSync(secret);
+    process.exit(9);
+  } catch {}
+}
 const manifest = readFileSync('vm-tool.yaml', 'utf8');
 const version = manifest.match(/^version: ([^\s]+)$/m)?.[1];
 if (!version) process.exit(3);
@@ -269,14 +299,19 @@ git -C "$fixture_root" commit -m 'feat: initial collection'
 
 (
   cd "$project_root"
-  run_vm packages init "$source_shelf"
+  gateway_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')
+  run_vm packages init "$source_shelf" \
+    --runtime docker \
+    --port "$gateway_port" \
+    --registry-image "$server_image" \
+    --job-image "$jobs_image"
 )
 test "$(run_vm packages status)" = 'Package infrastructure: healthy'
 
-run_vm --config "$consumer_root/vm.yaml" up
+run_vm --config "$consumer_root/vm.yaml" create
 
 docker run --rm --user 0:0 \
-  --volume vm-packages_source-mirrors:/data/sources \
+  --volume "${compose_project}_source-mirrors:/data/sources" \
   --volume "$fixture_root:/fixture:ro" \
   --entrypoint /bin/sh "$server_image" -ec \
   'git clone --bare /fixture /data/sources/acceptance-agent-skills.git && chown -R 10001:10001 /data/sources/acceptance-agent-skills.git'
@@ -306,13 +341,14 @@ test "$ready" = true || {
 }
 
 stable_containers=(
-  vm-packages-gateway-1
-  vm-packages-oci-cache-1
-  vm-packages-registry-1
-  vm-packages-work-1
-  vm-packages-reviewer-1
-  vm-packages-releaser-1
-  vm-packages-rollout-1
+  "$compose_project-gateway-1"
+  "$compose_project-oci-cache-1"
+  "$compose_project-registry-1"
+  "$compose_project-work-1"
+  "$compose_project-reviewer-1"
+  "$compose_project-builder-1"
+  "$compose_project-releaser-1"
+  "$compose_project-rollout-1"
   "$environment_name"
   "$edge_name"
   "$consumer_environment"
@@ -338,7 +374,7 @@ docker exec "$environment_name" \
   test -L /home/acceptance/.codex/skills/acceptance
 run_vm tools show agent-skills | grep -F '1.0.1' >/dev/null
 docker run --rm --user 10001:10001 \
-  --volume vm-packages_source-mirrors:/data/sources:ro \
+  --volume "${compose_project}_source-mirrors:/data/sources:ro" \
   --entrypoint git "$server_image" \
   --git-dir=/data/sources/acceptance-agent-skills.git show main:package.json | \
   grep -F '"version": "1.0.1"' >/dev/null
@@ -346,12 +382,17 @@ docker run --rm --user 10001:10001 \
 if ! docker exec --user acceptance "$environment_name" sh -ec '
   cd /workspace
   test -z "$(git status --porcelain --untracked-files=all)"
+  initial=$(git rev-parse HEAD)
+  vm packages release
+  test "$(git rev-parse HEAD)" = "$initial"
+  test -z "$(git status --porcelain --untracked-files=all)"
+  test -z "$(git tag --list)"
   printf "%s\n" "workspace release change" >> README.md
   git add README.md
   git commit -m "feat: update binary behavior"
   unchanged=$(git rev-parse HEAD)
   if vm packages release; then
-    echo "Initial workspace release unexpectedly succeeded without a version bump" >&2
+    echo "Later workspace release unexpectedly succeeded without a version bump" >&2
     exit 42
   fi
   test "$(git rev-parse HEAD)" = "$unchanged"

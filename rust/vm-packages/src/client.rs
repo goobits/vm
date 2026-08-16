@@ -6,12 +6,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     BeginReleaseRequest, CheckoutLease, CheckoutRecord, CleanupRequest, CompleteReleaseRequest,
-    ConsumerRecord, ConsumerUsage, CreateCheckout, CreateRollout, IntegrationRequest, LeaseRequest,
-    PackageDefinition, PackageDrift, PublicationRequest, PublishToolArtifact, RegisterConsumer,
-    RegisterPackage, RegisterTool, RegistryEndpoints, ReleaseRecord, ReleaseReworkRequest,
-    ReviewRequest, RolloutRecord, RolloutValidationRequest, SubmissionRecord, ToolArtifactRecord,
-    ToolDefinition, ToolIndex, ToolInventory, ToolPublicationReceipt, TransitionRequest,
-    ValidationRequest, WorkflowReceipt,
+    CompleteToolBuildRequest, ConsumerRecord, ConsumerUsage, CreateCheckout, CreateRollout,
+    IntegrationRequest, LeaseRequest, PackageDefinition, PackageDrift, PublicationRequest,
+    PublishToolArtifact, RegisterConsumer, RegisterPackage, RegisterTool, RegistryEndpoints,
+    ReleaseRecord, ReleaseReworkRequest, ReviewRequest, RolloutRecord, RolloutValidationRequest,
+    SubmissionRecord, ToolArtifactRecord, ToolBuildRecord, ToolDefinition, ToolIndex,
+    ToolInventory, ToolPublicationReceipt, TransitionRequest, ValidationRequest, WorkflowReceipt,
 };
 
 pub type PackageInventory = BTreeMap<String, Vec<String>>;
@@ -36,6 +36,7 @@ pub struct PackageInfrastructureClient {
     agent_token: Option<String>,
     controller_token: Option<String>,
     reviewer_token: Option<String>,
+    build_token: Option<String>,
     release_token: Option<String>,
     rollout_token: Option<String>,
 }
@@ -53,6 +54,7 @@ impl PackageInfrastructureClient {
             agent_token: None,
             controller_token: None,
             reviewer_token: None,
+            build_token: None,
             release_token: None,
             rollout_token: None,
         }
@@ -80,6 +82,11 @@ impl PackageInfrastructureClient {
 
     pub fn with_release_token(mut self, token: impl Into<String>) -> Self {
         self.release_token = Some(token.into());
+        self
+    }
+
+    pub fn with_build_token(mut self, token: impl Into<String>) -> Self {
+        self.build_token = Some(token.into());
         self
     }
 
@@ -341,6 +348,32 @@ impl PackageInfrastructureClient {
         .await
     }
 
+    pub async fn next_tool_build(&self) -> Result<Option<SubmissionRecord>> {
+        self.get_authenticated("v1/jobs/build/next", self.build_token.as_deref(), "build")
+            .await
+    }
+
+    pub async fn tool_build(&self, submission_id: &str) -> Result<ToolBuildRecord> {
+        self.get_work(&format!("v1/submissions/{submission_id}/build"))
+            .await
+    }
+
+    pub async fn complete_tool_build(
+        &self,
+        submission_id: &str,
+        request: &CompleteToolBuildRequest,
+    ) -> Result<ToolBuildRecord> {
+        self.post_authenticated(
+            &format!("v1/submissions/{submission_id}/build"),
+            request,
+            self.build_token
+                .as_deref()
+                .or(self.controller_token.as_deref()),
+            "build",
+        )
+        .await
+    }
+
     pub async fn begin_release(
         &self,
         submission_id: &str,
@@ -469,6 +502,10 @@ impl PackageInfrastructureClient {
         self.work_url(&format!("v1/submissions/{submission_id}/release-bundle"))
     }
 
+    pub fn build_bundle_url(&self, submission_id: &str) -> String {
+        self.work_url(&format!("v1/submissions/{submission_id}/build-bundle"))
+    }
+
     pub fn rollout_bundle_url(&self, rollout_id: &str) -> String {
         self.work_url(&format!("v1/rollouts/{rollout_id}/bundle"))
     }
@@ -502,6 +539,7 @@ impl PackageInfrastructureClient {
             .or(self.agent_token.as_ref())
             .or(self.controller_token.as_ref())
             .or(self.reviewer_token.as_ref())
+            .or(self.build_token.as_ref())
             .or(self.release_token.as_ref())
             .or(self.rollout_token.as_ref())
             .context("package workflow read credential is unavailable")?;

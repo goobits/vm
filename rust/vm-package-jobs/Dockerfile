@@ -12,6 +12,7 @@ RUN --mount=type=cache,id=vm-packages-cargo-registry,target=/usr/local/cargo/reg
     cargo build --locked --release --package vm-package-jobs --bins \
       --package vm-package-work --bin pkg-git-askpass && \
     install -m 0755 "$CARGO_TARGET_DIR/release/pkg-review" /usr/local/bin/pkg-review && \
+    install -m 0755 "$CARGO_TARGET_DIR/release/pkg-build" /usr/local/bin/pkg-build && \
     install -m 0755 "$CARGO_TARGET_DIR/release/pkg-release" /usr/local/bin/pkg-release && \
     install -m 0755 "$CARGO_TARGET_DIR/release/pkg-rollout" /usr/local/bin/pkg-rollout && \
     install -m 0755 "$CARGO_TARGET_DIR/release/pkg-git-askpass" /usr/local/bin/pkg-git-askpass
@@ -28,9 +29,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     npm install --global pnpm@10.34.5 yarn@1.22.22 && \
     npm cache clean --force && \
     groupadd --gid 10001 package-job && \
-    useradd --uid 10001 --gid package-job --create-home package-job
+    useradd --uid 10001 --gid package-job --create-home package-job && \
+    groupadd --gid 10002 package-build && \
+    useradd --uid 10002 --gid package-build --no-create-home package-build && \
+    install -d -o root -g root -m 0700 /run/build-secrets
 
 COPY --from=builder /usr/local/bin/pkg-review /usr/local/bin/pkg-review
+COPY --from=builder /usr/local/bin/pkg-build /usr/local/bin/pkg-build
 COPY --from=builder /usr/local/bin/pkg-release /usr/local/bin/pkg-release
 COPY --from=builder /usr/local/bin/pkg-rollout /usr/local/bin/pkg-rollout
 COPY --from=builder /usr/local/bin/pkg-git-askpass /usr/local/bin/pkg-git-askpass

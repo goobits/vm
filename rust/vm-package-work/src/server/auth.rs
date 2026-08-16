@@ -61,6 +61,19 @@ pub(super) async fn release(
     Ok(next.run(request).await)
 }
 
+pub(super) async fn build(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> WorkResult<Response> {
+    authorize(
+        &request,
+        &[&state.access.build_token, &state.access.controller_token],
+        "build",
+    )?;
+    Ok(next.run(request).await)
+}
+
 pub(super) async fn rollout(
     State(state): State<AppState>,
     request: Request,

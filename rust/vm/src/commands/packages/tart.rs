@@ -199,7 +199,9 @@ pub(super) fn maintenance(files: &ApplianceFiles, task: MaintenanceTask<'_>) -> 
 
     if task.requires_pause() {
         process::run(
-            &mut tart.compose_command("stop gateway oci-cache registry work"),
+            &mut tart.compose_command(
+                "stop gateway oci-cache registry work reviewer builder releaser rollout",
+            ),
             "pause the Tart package appliance",
         )?;
     }
@@ -216,7 +218,7 @@ pub(super) fn maintenance(files: &ApplianceFiles, task: MaintenanceTask<'_>) -> 
     );
     let restart = if task.requires_pause() && services_were_running {
         process::run(
-            &mut tart.compose_command("up --detach gateway"),
+            &mut tart.compose_command("up --detach"),
             "resume the Tart package appliance",
         )
     } else if !vm_was_running {
@@ -342,6 +344,7 @@ fn sync_controller_files(tart: &PackageTart, files: &ApplianceFiles) -> VmResult
         (files.publish_token_path(), "publish-token"),
         (files.controller_token_path(), "controller-token"),
         (files.reviewer_token_path(), "reviewer-token"),
+        (files.build_token_path(), "build-token"),
         (files.release_token_path(), "release-token"),
         (files.rollout_token_path(), "rollout-token"),
         (files.agent_signing_key_path(), "agent-signing-key"),

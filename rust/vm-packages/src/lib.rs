@@ -5,6 +5,7 @@
 //! package-infrastructure services.
 
 mod appliance;
+mod build;
 mod catalog;
 mod client;
 mod consumer;
@@ -23,6 +24,7 @@ pub use appliance::{
     ApplianceConfig, ApplianceState, InfrastructureRuntime, APPLIANCE_DEFINITION_REVISION,
     COMPOSE_PROJECT, COMPOSE_YAML, GATEWAY_CONFIG, TART_INSTANCE_NAME,
 };
+pub use build::{CompleteToolBuildRequest, ToolBuildArtifact, ToolBuildRecord};
 pub use catalog::{PackageDefinition, RegisterPackage};
 pub use client::{InfrastructureStatus, PackageInfrastructureClient, PackageInventory};
 pub use consumer::{

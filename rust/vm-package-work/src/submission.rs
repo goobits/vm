@@ -87,6 +87,7 @@ impl Store {
             record.integration = None;
             record.release_id = None;
             record.updated_at = now;
+            next.tool_builds.remove(&submission_id);
         } else {
             let record = SubmissionRecord {
                 submission_id: submission_id.clone(),

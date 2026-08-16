@@ -145,6 +145,21 @@ async fn canonical_workspace_bootstraps_and_integrates_without_remote_access_or_
         .unwrap();
     assert_eq!(submission.submitted_commit, workspace_head);
     assert_eq!(submission.state, WorkflowState::Submitted);
+    let active_checkout = store.get_checkout(&checkout.checkout_id).await.unwrap();
+    assert!(active_checkout.initial_release);
+    assert_eq!(
+        active_checkout.base_commit.as_deref(),
+        Some(workspace_head.as_str())
+    );
+    let initial_diff = std::fs::read_to_string(
+        data.join("agents")
+            .join(&checkout.checkout_id)
+            .join("submissions")
+            .join(format!("{}.diff", &workspace_head[..16])),
+    )
+    .unwrap();
+    assert!(initial_diff.contains("Cargo.toml"));
+    assert!(initial_diff.contains("name='release-tool'"));
     store
         .validate_submission(
             &submission.submission_id,
@@ -203,6 +218,102 @@ async fn canonical_workspace_bootstraps_and_integrates_without_remote_access_or_
         git_output(&workspace, &["status", "--porcelain"]),
         workspace_status
     );
+}
+
+#[tokio::test]
+async fn later_workspace_release_uses_the_last_published_commit_across_all_new_commits() {
+    let directory = tempfile::tempdir().unwrap();
+    let workspace = directory.path().join("workspace");
+    cargo_repository(
+        &workspace,
+        "[package]\nname='release-tool'\nversion='1.0.0'\n",
+        "published baseline",
+    );
+    let published_commit = git_output(&workspace, &["rev-parse", "HEAD"]);
+    std::fs::create_dir(workspace.join("src")).unwrap();
+    std::fs::write(workspace.join("src/lib.rs"), "pub fn added() {}\n").unwrap();
+    git(&workspace, &["add", "src/lib.rs"]);
+    git(&workspace, &["commit", "-m", "add public API"]);
+    std::fs::write(
+        workspace.join("Cargo.toml"),
+        "[package]\nname='release-tool'\nversion='1.1.0'\n",
+    )
+    .unwrap();
+    git(&workspace, &["add", "Cargo.toml"]);
+    git(&workspace, &["commit", "-m", "prepare release"]);
+    let submitted_commit = git_output(&workspace, &["rev-parse", "HEAD"]);
+
+    let data = directory.path().join("data");
+    let store = Store::open(&data).await.unwrap();
+    store
+        .register_package(RegisterPackage {
+            name: "release-tool".into(),
+            ecosystem: PackageEcosystem::Cargo,
+            repository: "https://unreachable.invalid/release-tool.git".into(),
+            default_branch: "main".into(),
+            workspace_release: true,
+        })
+        .await
+        .unwrap();
+    let now = chrono::Utc::now();
+    store.database.lock().await.releases.insert(
+        "rel-published-baseline".into(),
+        ReleaseRecord {
+            release_id: "rel-published-baseline".into(),
+            submission_id: "sub-published-baseline".into(),
+            checkout_id: "checkout-published-baseline".into(),
+            package: "release-tool".into(),
+            version: "1.0.0".into(),
+            source_repository: "https://unreachable.invalid/release-tool.git".into(),
+            source_commit: published_commit.clone(),
+            tag: "v1.0.0".into(),
+            artifact_digest: "a".repeat(64),
+            source_pushed: false,
+            source_archive_digest: Some("b".repeat(64)),
+            registry: "http://gateway:8080/cargo/".into(),
+            expected_publications: Vec::new(),
+            publications: Vec::new(),
+            state: WorkflowState::Published,
+            created_at: now,
+            updated_at: now,
+        },
+    );
+    let checkout = store
+        .create_checkout(CreateCheckout {
+            package: "release-tool".into(),
+            agent: "workspace-agent".into(),
+            consumers: Vec::new(),
+            task: "release all committed workspace changes".into(),
+            workspace_release: true,
+            lease_token: "lease-token-012345678901234567890123456789".into(),
+            idempotency_key: "workspace-checkout-published-baseline".into(),
+        })
+        .await
+        .unwrap()
+        .checkout;
+    let bundle = directory.path().join("workspace-published.bundle");
+    git(
+        &workspace,
+        &["bundle", "create", bundle.to_str().unwrap(), "HEAD"],
+    );
+    let submission = SourceManager::new(&data)
+        .import_submission(&store, &checkout, &bundle)
+        .await
+        .unwrap();
+    let active_checkout = store.get_checkout(&checkout.checkout_id).await.unwrap();
+
+    assert!(!active_checkout.initial_release);
+    assert_eq!(submission.base_commit, published_commit);
+    assert_eq!(submission.submitted_commit, submitted_commit);
+    let diff = std::fs::read_to_string(
+        data.join("agents")
+            .join(&checkout.checkout_id)
+            .join("submissions")
+            .join(format!("{}.diff", &submitted_commit[..16])),
+    )
+    .unwrap();
+    assert!(diff.contains("src/lib.rs"));
+    assert!(diff.contains("version='1.1.0'"));
 }
 
 fn cargo_repository(repository: &Path, manifest: &str, message: &str) {

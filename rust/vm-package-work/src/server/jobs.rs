@@ -3,9 +3,9 @@ use axum::{
     Json,
 };
 use vm_packages::{
-    BeginReleaseRequest, CleanupRequest, CompleteReleaseRequest, PublicationRequest, ReleaseRecord,
-    ReleaseReworkRequest, ReviewRequest, RolloutRecord, RolloutState, RolloutValidationRequest,
-    SubmissionRecord, WorkflowState,
+    BeginReleaseRequest, CleanupRequest, CompleteReleaseRequest, CompleteToolBuildRequest,
+    PublicationRequest, ReleaseRecord, ReleaseReworkRequest, ReviewRequest, RolloutRecord,
+    RolloutState, RolloutValidationRequest, SubmissionRecord, ToolBuildRecord, WorkflowState,
 };
 
 use super::{controller::cleanup_managed_checkout, AppState};
@@ -17,6 +17,20 @@ pub(super) async fn next_review(State(state): State<AppState>) -> Json<Option<Su
 
 pub(super) async fn next_release(State(state): State<AppState>) -> Json<Option<SubmissionRecord>> {
     Json(state.store.next_release().await)
+}
+
+pub(super) async fn next_tool_build(
+    State(state): State<AppState>,
+) -> Json<Option<SubmissionRecord>> {
+    Json(state.store.next_tool_build().await)
+}
+
+pub(super) async fn complete_tool_build(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<CompleteToolBuildRequest>,
+) -> WorkResult<Json<ToolBuildRecord>> {
+    Ok(Json(state.store.complete_tool_build(&id, request).await?))
 }
 
 pub(super) async fn reconcile_rollout_queue(

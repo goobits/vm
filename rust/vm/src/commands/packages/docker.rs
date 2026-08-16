@@ -80,7 +80,17 @@ pub(super) fn maintenance(files: &ApplianceFiles, task: MaintenanceTask<'_>) -> 
     let was_running = task.requires_pause() && status(files)? == "running";
     if task.requires_pause() {
         process::run(
-            compose(files).args(["stop", "gateway", "oci-cache", "registry", "work"]),
+            compose(files).args([
+                "stop",
+                "gateway",
+                "oci-cache",
+                "registry",
+                "work",
+                "reviewer",
+                "builder",
+                "releaser",
+                "rollout",
+            ]),
             "pause the Docker package appliance",
         )?;
     }
@@ -92,7 +102,7 @@ pub(super) fn maintenance(files: &ApplianceFiles, task: MaintenanceTask<'_>) -> 
     );
     let restart = if was_running {
         process::run(
-            compose(files).args(["up", "--detach", "gateway"]),
+            compose(files).args(["up", "--detach"]),
             "resume the Docker package appliance",
         )
     } else {
@@ -115,10 +125,12 @@ fn maintenance_command(files: &ApplianceFiles, task: MaintenanceTask<'_>) -> Com
 }
 
 fn compose(files: &ApplianceFiles) -> Command {
+    let project = std::env::var("VM_PACKAGES_COMPOSE_PROJECT")
+        .unwrap_or_else(|_| COMPOSE_PROJECT.to_string());
     let mut command = Command::new("docker");
     command
         .current_dir(files.root())
-        .args(["compose", "--project-name", COMPOSE_PROJECT, "--file"])
+        .args(["compose", "--project-name", &project, "--file"])
         .arg(files.compose_path())
         .args(["--env-file"])
         .arg(files.environment_path());

@@ -323,8 +323,36 @@ fn package_init_parses_the_source_shelf() {
     assert!(matches!(
         Args::parse_from(["vm", "packages", "init", "/srv/packages"]).command,
         Command::Packages {
-            command: PackagesSubcommand::Init { source_root }
+            command: PackagesSubcommand::Init { source_root, port, .. }
+        } if source_root == std::path::Path::new("/srv/packages") && port == 3080
+    ));
+    assert!(matches!(
+        Args::parse_from([
+            "vm",
+            "packages",
+            "init",
+            "/srv/packages",
+            "--runtime",
+            "docker",
+            "--port",
+            "39081",
+            "--registry-image",
+            "registry:test",
+            "--job-image",
+            "jobs:test",
+        ])
+        .command,
+        Command::Packages {
+            command: PackagesSubcommand::Init {
+                source_root,
+                runtime: PackageInfrastructureRuntime::Docker,
+                port: 39081,
+                registry_image: Some(registry_image),
+                job_image: Some(job_image),
+            }
         } if source_root == std::path::Path::new("/srv/packages")
+            && registry_image == "registry:test"
+            && job_image == "jobs:test"
     ));
 }
 

@@ -19,7 +19,7 @@ Dedicated Linux Tart VM (or Docker appliance)
     + registry        npm + Cargo + PyPI + tool artifacts + cache/proxy
     + OCI cache       Docker Hub pull-through cache
     + work service    workflow state, Git mirrors, receipts
-    + workers         review, release, consumer upgrades
+    + workers         review, credential-free builds, release, consumer upgrades
     + named volumes   artifacts, caches, state, receipts, worktrees
         |
         +-----------------------+
@@ -142,11 +142,12 @@ and ID-based `release` commands remain available for debugging and advanced
 automation.
 
 That resumable command submits the exact Git bundle, waits for isolated review,
-integrates against the latest canonical branch, reruns checks, and lets the
-credential-isolated release worker push the commit and tag and publish the
-immutable artifact. No host checkout, host approval, npmjs.org, crates.io, or
-PyPI publication participates. Package and managed-tool work use this same
-boundary.
+integrates against the latest canonical source, reruns checks, and lets
+credential-isolated jobs publish the immutable artifact. Binary build commands
+run first in a separate no-egress builder that has no Git, release, or publish
+credential; the release worker consumes only its durable digest-addressed
+archives. No host checkout, host approval, npmjs.org, crates.io, or PyPI
+publication participates.
 
 After a configured tool collection is published, `work` applies the existing
 in-place fleet activation to environments owned by the initialized project.
@@ -190,6 +191,12 @@ the appliance. They do not push the source commit or tag, invoke GitHub
 publication, or publish to a public language registry. Review, rework,
 integration, private publication, and managed-tool activation continue through
 the existing services.
+
+The first internal release reviews the complete committed tree and accepts its
+declared stable version. Every later release compares the complete change set
+since the last successfully published internal source commit, even when several
+local commits were made. It never guesses a baseline from `HEAD^` or a remote
+branch.
 
 Each worker gets a small read-only package edge. Docker runs it as a Compose
 sidecar; Linux Tart runs the same image in the guest's Docker Engine. Package
@@ -308,16 +315,18 @@ vm tools show agent-skills
 Use `vm packages work <tool> <task>` for isolated tool work. From a registered
 canonical workspace, use bare `vm packages release`.
 Explicit checkout and ID-based release remain advanced commands. The same
-reviewer and release workers validate, integrate, archive, and receipt the
-exact commit. Managed checkouts push their integrated source; canonical
-workspace releases retain the immutable source internally. Projects select
+review, build, and release workflow validates, integrates, archives, and
+receipts the exact commit. Managed checkouts push their integrated source;
+canonical workspace releases retain the immutable source internally. Projects select
 versions through the one-level `tools:` map in `vm.yaml`. A collection such as
 `agent-skills` is one atomic version, even when it activates into several agent
 directories.
 
-Binary tools use a versioned, argument-safe manifest. The release worker builds
-each declared target from the submitted source bundle, validates the archive
-and executable links, and publishes an immutable target-specific artifact:
+Binary tools use a versioned, argument-safe manifest. A credential-separated
+builder builds each declared target from the submitted source bundle, validates
+the archive and executable links, and stages immutable content-addressed bytes.
+The release worker cannot run the repository build command; it revalidates and
+publishes those exact staged bytes:
 
 ```yaml
 schema: 1
@@ -333,9 +342,11 @@ builds:
 ```
 
 Build commands are argument arrays, paths must remain inside the isolated build
-directory, and linked binaries must be nonempty executables. The Linux release
-job currently accepts `linux-amd64` and `linux-arm64`; it does not claim macOS
-artifacts it cannot verify.
+directory, and linked binaries must be nonempty executables. The Linux builder
+currently accepts `linux-amd64` and `linux-arm64`; it does not claim macOS
+artifacts it cannot verify. A deterministic command, archive, or verification
+failure returns the same workspace release to `NeedsChanges`; infrastructure
+failures remain retryable.
 
 The Vibe base owns Antigravity, Claude Code, and Codex executables. They do not
 require this appliance; `agent-skills` remains an intentionally managed tool.
@@ -459,7 +470,7 @@ your infrastructure backup system to protect against physical disk loss.
 ## Security Boundaries
 
 - The gateway is private by default and all workflow routes are authenticated.
-- Read, controller, reviewer, rollout, release, and publish credentials are
+- Read, controller, reviewer, build, rollout, release, and publish credentials are
   separate.
 - Guest workflow reads are filtered to the capability's assigned consumer;
   shared package and tool catalogs remain readable.
@@ -467,6 +478,11 @@ your infrastructure backup system to protect against physical disk loss.
 - Project environments consume registry protocols and never mount registry
   volumes.
 - Worktrees are isolated by checkout or rollout ID.
+- Repository binary commands run as an unprivileged user in a no-egress builder.
+  The narrow queue credential is mounted beneath a root-only directory because
+  Docker Desktop does not consistently enforce Compose secret modes; repository
+  commands cannot traverse that boundary or read any release, publish, or Git
+  credential.
 - Only credential-isolated appliance jobs can read canonical sources or publish
   private artifacts; project agents can only advance assigned checkouts.
 - Receipts contain identities, commits, digests, outcomes, and timestamps—not

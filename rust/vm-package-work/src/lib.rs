@@ -9,6 +9,7 @@ mod server;
 mod source;
 mod store;
 mod submission;
+mod tool_build;
 mod tools;
 
 pub use error::{WorkError, WorkResult};

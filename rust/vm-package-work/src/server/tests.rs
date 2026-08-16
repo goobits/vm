@@ -24,6 +24,7 @@ async fn health_is_public_and_workflow_access_is_scoped() {
             "read",
             "controller",
             "reviewer",
+            "build",
             "release",
             "rollout",
             "agent-signing-key-012345678901234567890123456789",
@@ -73,6 +74,30 @@ async fn health_is_public_and_workflow_access_is_scoped() {
         server
             .get("/v1/jobs/review/next")
             .add_header(header::AUTHORIZATION, "Bearer release")
+            .await
+            .status_code(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        server
+            .get("/v1/jobs/build/next")
+            .add_header(header::AUTHORIZATION, "Bearer build")
+            .await
+            .status_code(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        server
+            .get("/v1/jobs/build/next")
+            .add_header(header::AUTHORIZATION, "Bearer release")
+            .await
+            .status_code(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        server
+            .get("/v1/jobs/release/next")
+            .add_header(header::AUTHORIZATION, "Bearer build")
             .await
             .status_code(),
         StatusCode::UNAUTHORIZED

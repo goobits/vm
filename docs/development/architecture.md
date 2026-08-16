@@ -31,8 +31,9 @@ vm/
   plus the worker-local read-only cache/proxy edge.
 - `rust/vm-package-work/` owns durable checkout, lease, submission, integration,
   rollout, and receipt state.
-- `rust/vm-package-jobs/` owns persistent review, release, and rollout workers
-  plus isolated tool publication inside infrastructure containers.
+- `rust/vm-package-jobs/` owns persistent review, credential-separated binary
+  build, release, and rollout workers plus isolated tool publication inside
+  infrastructure containers.
 - `configs/` owns embedded configuration; `examples/` must not be treated as
   runtime defaults.
 

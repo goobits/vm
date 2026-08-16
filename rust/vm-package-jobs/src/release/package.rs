@@ -111,19 +111,21 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
     let source = release_root.path().join("source");
     let canonical = release_root.path().join("canonical");
     clone_at(&bundle, &source, &integration.integration_commit)?;
-    clone_at(&bundle, &canonical, &integration.canonical_commit)?;
 
     let identity = package_manifest(definition.ecosystem, &source, &definition.name)?;
-    let previous = package_manifest(definition.ecosystem, &canonical, &definition.name)?;
-    validate_release_version(
-        &client,
-        &submission,
-        &previous.version,
-        &identity.version,
-        review.recommended_version,
-        "package-release-service",
-    )
-    .await?;
+    if !checkout.initial_release {
+        clone_at(&bundle, &canonical, &integration.canonical_commit)?;
+        let previous = package_manifest(definition.ecosystem, &canonical, &definition.name)?;
+        validate_release_version(
+            &client,
+            &submission,
+            &previous.version,
+            &identity.version,
+            review.recommended_version,
+            "package-release-service",
+        )
+        .await?;
+    }
     let tag = format!("v{}", identity.version);
     let artifact = build_artifact(definition.ecosystem, &source, release_root.path())?;
     ensure_clean_source(&source)?;

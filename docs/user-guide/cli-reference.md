@@ -194,7 +194,7 @@ pnpm pruning is explicit and never runs during create, start, or bootstrap.
 ## Package Infrastructure
 
 ```bash
-vm packages init <source-root>
+vm packages init <source-root> [--port <port>]
 vm packages work <package-or-tool> <task>
 vm config set packages.source_roots <absolute-path>... --global
 vm packages up [--runtime <auto|docker|tart>]
@@ -227,6 +227,8 @@ commands are advanced or diagnostic surfaces. Inside a checkout, bare
 `vm packages release` infers its identity from either a managed checkout or a
 registered canonical package workspace. The workspace form creates and resumes
 its private transaction without a checkout ID and never mutates the repository.
+Its first release reviews the full tree; later releases use the last internally
+published source commit as the baseline.
 
 Recursive registration routes repositories marked by `vm-tool.yaml` into the
 managed binary-tool or collection workflow. `packages.source_roots` is a

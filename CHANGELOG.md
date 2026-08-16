@@ -23,6 +23,8 @@
 - 🚀 Explicit pnpm-store pruning is available through `vm doctor --prune-pnpm-store`.
 - 📦 `vm config render [--instance <name>]` previews redacted generated configuration without contacting the provider.
 - 📦 Private package publication automatically prepares tested review branches for every drifted registered consumer.
+- 📦 Binary tools use a durable, no-egress build stage whose unprivileged source commands cannot access release, publish, Git, or queue credentials.
+- 📦 Docker binary builders place their queue credential beneath a root-only mount boundary instead of relying on Compose secret modes that Docker Desktop does not enforce consistently.
 
 ### 🔧 Changed
 
@@ -67,6 +69,7 @@
 - 🌐 Resuming a durable package release now reacquires an expired active-checkout lease instead of failing its submission upload.
 - 🌐 Permanent release preflight failures now restore compacted source and return the checkout to its assigned agent with actionable rework instead of retrying forever; package and tool manifest version bumps alone remain patch-level while other manifest changes stay public.
 - 🌐 Resubmitted package generations now receive distinct validation, review, and integration operations, and `vm packages release` resumes a durable submitted generation instead of waiting indefinitely.
+- 🌐 Canonical workspace releases review the full tree initially and every commit since the last internal publication thereafter, while deterministic binary-build failures return actionable rework instead of hot-looping.
 - 🌐 Tart package-appliance startup accepts Tart 2.32.1's `Name` and `State` inventory fields.
 - 🌐 Docker image pulls retry transient transport failures while permanent authentication and image errors fail immediately.
 - 🌐 Single-port ranges and explicit create-time port mappings now validate correctly.

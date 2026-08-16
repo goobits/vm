@@ -81,6 +81,36 @@ impl Store {
                 .map(|definition| definition.repository.clone()),
         }
         .ok_or_else(|| WorkError::Internal("release source definition is missing".into()))?;
+        if checkout.source_kind == SourceKind::ToolBinary {
+            let build = next
+                .tool_builds
+                .get(submission_id)
+                .filter(|build| build.succeeded())
+                .ok_or_else(|| {
+                    WorkError::Conflict("binary release requires a successful durable build".into())
+                })?;
+            let build_digest = if build.artifacts.len() == 1 {
+                build.artifacts[0].artifact_digest.clone()
+            } else {
+                vm_packages::sha256_hex(
+                    build
+                        .artifacts
+                        .iter()
+                        .map(|artifact| {
+                            format!("{}\0{}\n", artifact.target, artifact.artifact_digest)
+                        })
+                        .collect::<String>(),
+                )
+            };
+            if build.source_commit != request.source_commit
+                || build.version != request.version
+                || build_digest != request.artifact_digest
+            {
+                return Err(WorkError::Conflict(
+                    "binary release request does not match its durable build".into(),
+                ));
+            }
+        }
         let release_id = format!("rel-{submission_id}");
         if next.releases.contains_key(&release_id) {
             return Err(WorkError::Conflict(
@@ -161,10 +191,22 @@ impl Store {
             .collect()
     }
 
-    pub async fn next_release(&self) -> Option<vm_packages::SubmissionRecord> {
+    pub async fn latest_published_source_commit(&self, package: &str) -> Option<String> {
         self.database
             .lock()
             .await
+            .releases
+            .values()
+            .filter(|release| {
+                release.package == package && release.state == WorkflowState::Published
+            })
+            .max_by_key(|release| release.created_at)
+            .map(|release| release.source_commit.clone())
+    }
+
+    pub async fn next_release(&self) -> Option<vm_packages::SubmissionRecord> {
+        let database = self.database.lock().await;
+        database
             .submissions
             .values()
             .filter(|submission| {
@@ -172,6 +214,23 @@ impl Store {
                     submission.state,
                     WorkflowState::ReadyToRelease | WorkflowState::Publishing
                 )
+            })
+            .filter(|submission| {
+                let Some(checkout) = database.checkouts.get(&submission.checkout_id) else {
+                    return false;
+                };
+                if checkout.source_kind != SourceKind::ToolBinary {
+                    return true;
+                }
+                database
+                    .tool_builds
+                    .get(&submission.submission_id)
+                    .is_some_and(|build| {
+                        build.succeeded()
+                            && submission.integration.as_ref().is_some_and(|integration| {
+                                build.source_commit == integration.integration_commit
+                            })
+                    })
             })
             .min_by_key(|submission| submission.updated_at)
             .cloned()

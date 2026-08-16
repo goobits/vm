@@ -11,6 +11,7 @@ const READ_TOKEN_FILE: &str = "read-token";
 const PUBLISH_TOKEN_FILE: &str = "publish-token";
 const CONTROLLER_TOKEN_FILE: &str = "controller-token";
 const REVIEWER_TOKEN_FILE: &str = "reviewer-token";
+const BUILD_TOKEN_FILE: &str = "build-token";
 const RELEASE_TOKEN_FILE: &str = "release-token";
 const ROLLOUT_TOKEN_FILE: &str = "rollout-token";
 const AGENT_SIGNING_KEY_FILE: &str = "agent-signing-key";
@@ -78,6 +79,10 @@ impl ApplianceFiles {
         self.root.join(RELEASE_TOKEN_FILE)
     }
 
+    pub(super) fn build_token_path(&self) -> PathBuf {
+        self.root.join(BUILD_TOKEN_FILE)
+    }
+
     pub(super) fn rollout_token_path(&self) -> PathBuf {
         self.root.join(ROLLOUT_TOKEN_FILE)
     }
@@ -104,6 +109,7 @@ impl ApplianceFiles {
             self.publish_token_path(),
             self.controller_token_path(),
             self.reviewer_token_path(),
+            self.build_token_path(),
             self.release_token_path(),
             self.rollout_token_path(),
             self.agent_signing_key_path(),
@@ -277,6 +283,7 @@ impl ApplianceFiles {
             self.publish_token_path(),
             self.controller_token_path(),
             self.reviewer_token_path(),
+            self.build_token_path(),
             self.release_token_path(),
             self.rollout_token_path(),
             self.agent_signing_key_path(),
@@ -382,6 +389,7 @@ mod tests {
         assert!(files.publish_token_path().is_file());
         assert!(files.controller_token_path().is_file());
         assert!(files.reviewer_token_path().is_file());
+        assert!(files.build_token_path().is_file());
         assert!(files.release_token_path().is_file());
         assert!(files.rollout_token_path().is_file());
         assert!(files.agent_signing_key_path().is_file());

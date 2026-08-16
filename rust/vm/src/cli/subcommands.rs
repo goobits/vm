@@ -35,6 +35,15 @@ pub enum PackagesSubcommand {
     Init {
         #[arg(value_name = "SOURCE_ROOT")]
         source_root: PathBuf,
+        #[arg(long, value_enum, default_value = "auto", hide = true)]
+        runtime: PackageInfrastructureRuntime,
+        /// Override the host gateway port (useful for isolated acceptance environments)
+        #[arg(long, default_value = "3080")]
+        port: u16,
+        #[arg(long, hide = true)]
+        registry_image: Option<String>,
+        #[arg(long, hide = true)]
+        job_image: Option<String>,
     },
     /// Open a managed source checkout and launch Codex with one task
     Work {

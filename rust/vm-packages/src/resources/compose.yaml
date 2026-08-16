@@ -53,10 +53,14 @@ services:
     command:
       - |
         for target in /volumes/*; do
-          chown 10001:10001 "$${target}"
+          chmod 0755 "$${target}"
+          case "$${target}" in
+            /volumes/builds) chown 0:0 "$${target}" ;;
+            *) chown 10001:10001 "$${target}" ;;
+          esac
         done
     cap_drop: ["ALL"]
-    cap_add: ["CHOWN"]
+    cap_add: ["CHOWN", "FOWNER"]
     security_opt: ["no-new-privileges:true"]
     read_only: true
     network_mode: none
@@ -74,6 +78,7 @@ services:
       - rollout-temporary-data:/volumes/rollouts
       - source-mirrors:/volumes/sources
       - package-catalog:/volumes/catalog
+      - binary-build-artifacts:/volumes/builds
 
   registry:
     image: "${VM_PACKAGES_REGISTRY_IMAGE:?required}"
@@ -126,11 +131,12 @@ services:
         export PKG_WORK_READ_TOKEN="$$(cat /run/secrets/work_read_token)"
         export PKG_WORK_CONTROLLER_TOKEN="$$(cat /run/secrets/work_controller_token)"
         export PKG_WORK_REVIEWER_TOKEN="$$(cat /run/secrets/work_reviewer_token)"
+        export PKG_WORK_BUILD_TOKEN="$$(cat /run/secrets/work_build_token)"
         export PKG_WORK_RELEASE_TOKEN="$$(cat /run/secrets/work_release_token)"
         export PKG_WORK_ROLLOUT_TOKEN="$$(cat /run/secrets/work_rollout_token)"
         export PKG_WORK_AGENT_SIGNING_KEY="$$(cat /run/secrets/work_agent_signing_key)"
         exec pkg-work start --host 0.0.0.0 --port 3091 --data /data
-    secrets: [work_read_token, work_controller_token, work_reviewer_token, work_release_token, work_rollout_token, work_agent_signing_key, git_token]
+    secrets: [work_read_token, work_controller_token, work_reviewer_token, work_build_token, work_release_token, work_rollout_token, work_agent_signing_key, git_token]
     expose: ["3091"]
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:3091/health"]
@@ -184,6 +190,7 @@ services:
       PKG_RELEASE_TOKEN_FILE: /run/secrets/release_token
       PKG_RELEASE_PUBLISH_TOKEN_FILE: /run/secrets/publish_token
       PKG_RELEASE_GIT_TOKEN_FILE: /run/secrets/git_token
+      PKG_RELEASE_BUILD_ROOT: /builds
       PKG_CLIENT_GATEWAY: http://gateway:8080
       PKG_CLIENT_READ_TOKEN_FILE: /run/secrets/releaser_read_token
       CARGO_HOME: /tmp/cargo-home
@@ -202,7 +209,41 @@ services:
     tmpfs: ["/tmp:rw,exec,nosuid,size=8g"]
     volumes:
       - source-mirrors:/data/sources
+      - binary-build-artifacts:/builds:ro
     networks: [packages, egress]
+
+  builder:
+    image: "${VM_PACKAGES_JOB_IMAGE:?required}"
+    user: "0:0"
+    restart: unless-stopped
+    environment:
+      PKG_BUILD_GATEWAY: http://gateway:8080
+      PKG_BUILD_TOKEN_FILE: /run/build-secrets/build-token
+      PKG_BUILD_STAGING_ROOT: /builds
+      PKG_BUILD_UID: "10002"
+      PKG_BUILD_GID: "10002"
+      CARGO_HOME: /tmp/cargo-home
+      CARGO_TARGET_DIR: /tmp/cargo-target
+      npm_config_cache: /tmp/npm-cache
+      PIP_CACHE_DIR: /tmp/pip-cache
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        exec pkg-build
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN", "DAC_READ_SEARCH", "SETGID", "SETUID"]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp:rw,exec,nosuid,size=8g"]
+    volumes:
+      - binary-build-artifacts:/builds
+      # Docker Desktop ignores Compose secret modes. The image creates this
+      # parent as root-owned 0700 so repository commands cannot traverse it.
+      - type: bind
+        source: ./build-token
+        target: /run/build-secrets/build-token
+        read_only: true
+    networks: [packages]
 
   rollout:
     image: "${VM_PACKAGES_JOB_IMAGE:?required}"
@@ -239,7 +280,7 @@ services:
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
-        datasets="gateway_data gateway_config oci npm cargo pypi tools cache metadata state receipts logs agents rollouts sources catalog"
+        datasets="gateway_data gateway_config oci npm cargo pypi tools cache metadata state receipts logs agents rollouts sources catalog builds"
         valid_id() {
           test -n "$${BACKUP_ID}" &&
           test "$${#BACKUP_ID}" -le 160 &&
@@ -314,15 +355,16 @@ services:
       - rollout-temporary-data:/volumes/rollouts
       - source-mirrors:/volumes/sources
       - package-catalog:/volumes/catalog
+      - binary-build-artifacts:/volumes/builds
 
 networks:
   packages:
-    name: vm-packages
+    name: "${VM_PACKAGES_COMPOSE_PROJECT:-vm-packages}"
     internal: true
   controller:
-    name: vm-packages-controller
+    name: "${VM_PACKAGES_COMPOSE_PROJECT:-vm-packages}-controller"
   egress:
-    name: vm-packages-egress
+    name: "${VM_PACKAGES_COMPOSE_PROJECT:-vm-packages}-egress"
 
 secrets:
   registry_read_token:
@@ -337,6 +379,8 @@ secrets:
     file: ./controller-token
   work_reviewer_token:
     file: ./reviewer-token
+  work_build_token:
+    file: ./build-token
   work_release_token:
     file: ./release-token
   work_rollout_token:
@@ -374,4 +418,5 @@ volumes:
   rollout-temporary-data:
   source-mirrors:
   package-catalog:
+  binary-build-artifacts:
   infrastructure-backups:

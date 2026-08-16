@@ -136,6 +136,10 @@ pub struct CheckoutRecord {
     pub task: String,
     #[serde(default)]
     pub workspace_release: bool,
+    /// The package has no earlier internally published source baseline, so
+    /// review and release validation must treat the submitted tree as new.
+    #[serde(default)]
+    pub initial_release: bool,
     pub state: WorkflowState,
     pub base_branch: Option<String>,
     pub base_commit: Option<String>,
@@ -172,6 +176,7 @@ pub enum ReceiptKind {
     Validation,
     Review,
     Integration,
+    Build,
     Release,
     Publication,
     LeaseAcquired,

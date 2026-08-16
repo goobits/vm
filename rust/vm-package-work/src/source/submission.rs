@@ -128,30 +128,34 @@ impl SourceManager {
                     "workspace bundle HEAD changed while importing".into(),
                 ));
             }
-            let base_commit = match checkout.base_commit.as_deref() {
-                Some(base_commit) => base_commit.to_string(),
-                None => git_output(
+            let (base_commit, initial_release) = match checkout.base_commit.as_deref() {
+                Some(base_commit) => (base_commit.to_string(), checkout.initial_release),
+                None => match store
+                    .latest_published_source_commit(&checkout.package)
+                    .await
+                {
+                    Some(base_commit) => (base_commit, false),
+                    None => (submitted_commit.clone(), true),
+                },
+            };
+            if !initial_release {
+                run(
                     self.git()
                         .arg("-C")
                         .arg(&temporary)
-                        .args(["rev-parse", "HEAD^"]),
-                    "resolve workspace release base commit",
+                        .args(["merge-base", "--is-ancestor"])
+                        .arg(&base_commit)
+                        .arg(&submitted_commit),
+                    "verify workspace submission ancestry",
                 )
                 .await
                 .map_err(|_| {
-                    WorkError::Invalid("workspace release commit must have a parent commit".into())
-                })?,
-            };
-            run(
-                self.git()
-                    .arg("-C")
-                    .arg(&temporary)
-                    .args(["merge-base", "--is-ancestor"])
-                    .arg(&base_commit)
-                    .arg(&submitted_commit),
-                "verify workspace submission ancestry",
-            )
-            .await?;
+                    WorkError::Conflict(
+                        "workspace history does not contain the last internally published source commit"
+                            .into(),
+                    )
+                })?;
+            }
             let branch = checkout
                 .branch
                 .clone()
@@ -166,10 +170,10 @@ impl SourceManager {
                 "create internal workspace submission branch",
             )
             .await?;
-            Ok::<_, WorkError>((base_commit, branch))
+            Ok::<_, WorkError>((base_commit, branch, initial_release))
         }
         .await;
-        let (base_commit, branch) = match prepare {
+        let (base_commit, branch, initial_release) = match prepare {
             Ok(prepared) => prepared,
             Err(error) => {
                 let _ = tokio::fs::remove_dir_all(&temporary).await;
@@ -184,12 +188,13 @@ impl SourceManager {
         let active = if checkout.state == vm_packages::WorkflowState::Created {
             let definition = store.source(&checkout.package).await?;
             store
-                .record_source(
+                .record_workspace_source(
                     &checkout.checkout_id,
                     definition.default_branch,
                     base_commit.clone(),
                     branch,
                     source.to_string_lossy().into_owned(),
+                    initial_release,
                 )
                 .await?;
             store
@@ -238,28 +243,44 @@ impl SourceManager {
             .base_commit
             .as_deref()
             .ok_or_else(|| WorkError::Conflict("checkout base commit is missing".into()))?;
-        if submitted_commit == base_commit {
+        if !checkout.initial_release && submitted_commit == base_commit {
             return Err(WorkError::Invalid(
                 "submission contains no commits beyond its base".into(),
             ));
         }
-        if run(
-            self.git()
-                .arg("-C")
-                .arg(source)
-                .args(["merge-base", "--is-ancestor"])
-                .arg(base_commit)
-                .arg(&submitted_commit),
-            "verify submitted commit ancestry",
-        )
-        .await
-        .is_err()
+        if !checkout.initial_release
+            && run(
+                self.git()
+                    .arg("-C")
+                    .arg(source)
+                    .args(["merge-base", "--is-ancestor"])
+                    .arg(base_commit)
+                    .arg(&submitted_commit),
+                "verify submitted commit ancestry",
+            )
+            .await
+            .is_err()
         {
             return Err(WorkError::Conflict(
                 "submitted history does not descend from the recorded base commit".into(),
             ));
         }
-        let range = format!("{base_commit}..{submitted_commit}");
+        let diff_base = if checkout.initial_release {
+            git_output(
+                self.git().arg("-C").arg(source).args([
+                    "hash-object",
+                    "-t",
+                    "tree",
+                    "-w",
+                    "--stdin",
+                ]),
+                "create empty initial-release tree",
+            )
+            .await?
+        } else {
+            base_commit.to_string()
+        };
+        let range = format!("{diff_base}..{submitted_commit}");
         run(
             self.git()
                 .arg("-C")

@@ -21,6 +21,7 @@ pub struct WorkCredentials {
     read_token: String,
     controller_token: String,
     reviewer_token: String,
+    build_token: String,
     release_token: String,
     rollout_token: String,
     agent_signing_key: String,
@@ -31,6 +32,7 @@ impl WorkCredentials {
         read: impl Into<String>,
         controller: impl Into<String>,
         reviewer: impl Into<String>,
+        build: impl Into<String>,
         release: impl Into<String>,
         rollout: impl Into<String>,
         agent_key: impl Into<String>,
@@ -39,17 +41,19 @@ impl WorkCredentials {
             read_token: read.into(),
             controller_token: controller.into(),
             reviewer_token: reviewer.into(),
+            build_token: build.into(),
             release_token: release.into(),
             rollout_token: rollout.into(),
             agent_signing_key: agent_key.into(),
         }
     }
 
-    fn tokens(&self) -> [&str; 5] {
+    fn tokens(&self) -> [&str; 6] {
         [
             &self.read_token,
             &self.controller_token,
             &self.reviewer_token,
+            &self.build_token,
             &self.release_token,
             &self.rollout_token,
         ]
@@ -59,7 +63,8 @@ impl WorkCredentials {
         let tokens = self.tokens();
         if tokens.iter().any(|token| token.trim().is_empty()) {
             return Err(WorkError::Invalid(
-                "read, controller, reviewer, release, and rollout tokens are required".into(),
+                "read, controller, reviewer, build, release, and rollout tokens are required"
+                    .into(),
             ));
         }
         if tokens
@@ -68,7 +73,8 @@ impl WorkCredentials {
             .any(|(index, token)| tokens[..index].contains(token))
         {
             return Err(WorkError::Invalid(
-                "read, controller, reviewer, release, and rollout tokens must be distinct".into(),
+                "read, controller, reviewer, build, release, and rollout tokens must be distinct"
+                    .into(),
             ));
         }
         if self.agent_signing_key.len() < 32 {
@@ -102,6 +108,10 @@ pub(crate) fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router 
         .route("/v1/receipts/{receipt_id}", get(read::get_receipt))
         .route("/v1/submissions", get(read::list_submissions))
         .route("/v1/submissions/{submission_id}", get(read::get_submission))
+        .route(
+            "/v1/submissions/{submission_id}/build",
+            get(read::get_tool_build),
+        )
         .route("/v1/releases", get(read::list_releases))
         .route("/v1/releases/{release_id}", get(read::get_release))
         .route("/v1/consumers", get(read::list_consumers))
@@ -196,6 +206,17 @@ pub(crate) fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router 
         )
         .merge(crate::tools::release_routes())
         .route_layer(middleware::from_fn_with_state(state.clone(), auth::release));
+    let builds = Router::new()
+        .route("/v1/jobs/build/next", get(jobs::next_tool_build))
+        .route(
+            "/v1/submissions/{submission_id}/build",
+            post(jobs::complete_tool_build),
+        )
+        .route(
+            "/v1/submissions/{submission_id}/build-bundle",
+            get(bundles::download_release_bundle),
+        )
+        .route_layer(middleware::from_fn_with_state(state.clone(), auth::build));
     let rollouts = Router::new()
         .route(
             "/v1/jobs/rollout/reconcile",
@@ -232,6 +253,7 @@ pub(crate) fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router 
         .merge(writes)
         .merge(agents)
         .merge(reviews)
+        .merge(builds)
         .merge(releases)
         .merge(rollouts)
         .with_state(state)

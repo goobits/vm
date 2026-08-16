@@ -1,6 +1,6 @@
 ---
-Status: Managed package and collection release implemented; live host acceptance pending
-Date: 2026-08-13
+Status: Managed package, collection, and binary build release implemented; focused live Docker acceptance passed
+Date: 2026-08-15
 Depends: docs/user-guide/package-infrastructure.md, docs/development/architecture.md
 ---
 
@@ -275,11 +275,13 @@ recorded below.
 - [x] Activate published managed tools in configured project environments.
 - [x] Continuously prove the full workflow in one persistent Docker environment.
 
-The dedicated CI acceptance job builds local appliance images, initializes an
-isolated project, forces a collection release through rework, verifies private
+The dedicated CI acceptance job uses a unique Compose project and host port,
+builds local appliance images, initializes an isolated project, forces a
+collection release through rework, verifies private
 publication and automatic activation, then releases a two-target binary from
 the canonical workspace into a second existing project. It compares every
-stable Docker container ID and attached named volume before and after. The
+stable Docker container ID and attached named volume before and after, and its
+binary command proves that worker secrets are unreadable. The
 current development container has no Docker binary, so live execution remains
 on the Docker CI runner rather than being replaced with another fake-provider
 test.
@@ -290,8 +292,17 @@ test.
   canonical workspaces, durable internal source archives, and binary tools.
 - [x] Detect and resume canonical-workspace releases without repository-local
   state, checkout identifiers, or mutations.
-- [x] Build and publish validated binary artifacts through the existing isolated
-  release job and private artifact registry.
+- [x] Build binary artifacts in a dedicated no-egress worker under an
+  unprivileged UID, with a narrow build credential inaccessible to repository
+  commands; let the credentialed releaser publish only durable staged bytes.
+- [x] Mount the Docker builder token beneath a root-owned `0700` directory
+  instead of relying on unsupported Compose secret modes; live Docker checks
+  prove the post-`setuid` repository process cannot read either credential path.
+- [x] Review the complete tree for a first internal workspace release, then use
+  the last internally published source commit across every later local commit.
+- [x] Return deterministic binary build failures to receipted rework, retain
+  infrastructure failures for retry, and reuse the same staged bytes after a
+  publisher restart.
 - [x] Reuse target-aware managed-tool installation and activation for explicitly
   configured environments.
 - [x] Prove workspace release, rework, private publication, activation, and
@@ -325,6 +336,20 @@ git diff --check
 ```
 
 No Docker image, Tart base, guest, or release binary is built by this gate.
+
+Focused live Docker acceptance on 2026-08-15 used a unique appliance, producer,
+consumer, port, networks, and volumes. It proved deterministic build failure
+returns to rework, a corrected canonical workspace publishes two immutable
+binary targets without source mutation, the build command cannot read either
+credential path, and a second running environment installs and executes the
+private Linux ARM64 artifact as version 1.0.0. The isolated environments,
+sidecars, volumes, networks, images, and temporary files were then removed.
+
+The same change passed the serial all-feature workspace check, the full unit
+suite, 59 focused package tests, package CLI parsing, package reconciliation,
+workflow integration, formatting, Compose and shell syntax, and scoped
+warnings-as-errors Clippy. The unrelated `temp_workflow_tests` target still
+invokes the removed `vm temp` command and remains outside this release tracker.
 
 Latest result on 2026-08-13: formatting, the serial all-feature workspace check,
 all-target workspace Clippy with warnings denied, 500 workspace library tests,
