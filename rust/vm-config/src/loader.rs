@@ -190,8 +190,14 @@ impl ConfigLoader {
             crate::yaml::CoreOperations::parse_yaml_with_diagnostics(&preprocessed, &source_desc)
                 .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-        // Store the source path for debugging purposes.
-        config.source_path = Some(path.to_path_buf());
+        // Store an absolute source path so downstream consumers can safely
+        // derive the project directory even when `vm.yaml` was discovered in
+        // the current directory as a relative path.
+        config.source_path = Some(if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            std::env::current_dir()?.join(path)
+        });
 
         Ok(config)
     }
@@ -360,6 +366,25 @@ vm:
             }),
             Some("@vibe-base".to_string())
         );
+    }
+
+    #[test]
+    #[serial]
+    fn config_discovered_at_project_root_records_an_absolute_source_path() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            temp_dir.path().join("vm.yaml"),
+            "version: '2.0'\nprovider: docker\n",
+        )
+        .unwrap();
+
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+        let expected_source = std::env::current_dir().unwrap().join("vm.yaml");
+        let result = ConfigLoader::new().load();
+        std::env::set_current_dir(original_dir).unwrap();
+
+        assert_eq!(result.unwrap().source_path, Some(expected_source));
     }
 
     #[test]
