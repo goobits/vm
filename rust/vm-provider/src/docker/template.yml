@@ -1,11 +1,11 @@
 # This is a Tera template for docker-compose.yml
 # It will be rendered by the vm-provider crate.
 
-name: {{ project_name }}
+name: {{ project_name | json_encode }}
 
 services:
-  {{ project_name }}-dev:
-    container_name: {{ project_name }}-dev
+  {{ dev_container_name | json_encode }}:
+    container_name: {{ dev_container_name | json_encode }}
     working_dir: {{ workspace_path }}
     build:
       context: {{ build_context_dir }}
@@ -21,13 +21,13 @@ services:
       # BuildKit layer caching for faster rebuilds (70-85% reduction)
       cache_from:
         - {{ image_tag }}
-        - {{ project_name }}:buildcache
+        - {{ build_cache_image | json_encode }}
     image: {{ image_tag }}
     labels:
       com.vm.managed: "true"
       com.vm.role: "environment"
-      com.vm.project: "{{ base_project_name }}"
-      com.vm.instance: "{{ project_name }}"
+      com.vm.project: {{ base_project_name | json_encode }}
+      com.vm.instance: {{ project_name | json_encode }}
       {% if config_path_label %}
       com.vm.config-path: {{ config_path_label }}
       {% endif %}
@@ -274,18 +274,18 @@ services:
       {% for network in config.networking.networks -%}
       {{ network }}:
         aliases:
-          - {{ project_name }}-dev
+          - {{ dev_container_name | json_encode }}
       {% endfor -%}
     {%- endif %}
 
   {% if package_edge %}
   package-edge:
     image: "{{ package_edge.image }}"
-    container_name: {{ project_name }}-package-edge
+    container_name: {{ package_edge_container_name | json_encode }}
     labels:
       com.vm.managed: "true"
-      com.vm.project: "{{ base_project_name }}"
-      com.vm.instance: "{{ project_name }}"
+      com.vm.project: {{ base_project_name | json_encode }}
+      com.vm.instance: {{ project_name | json_encode }}
       com.vm.package-edge.revision: "{{ package_edge.revision }}"
     environment:
       PKG_SERVER_INTERNAL_GATEWAY: "{{ package_edge.internal_gateway }}"
@@ -316,11 +316,11 @@ services:
   {% if config.services.postgresql.enabled | default(value=false) %}
   postgres:
     image: postgres:15-alpine
-    container_name: {{ project_name }}-postgres
+    container_name: {{ postgres_container_name | json_encode }}
     labels:
       com.vm.managed: "true"
-      com.vm.project: "{{ base_project_name }}"
-      com.vm.instance: "{{ project_name }}"
+      com.vm.project: {{ base_project_name | json_encode }}
+      com.vm.instance: {{ project_name | json_encode }}
     environment:
       - POSTGRES_DB={{ config.services.postgresql.database | default(value=project_name ~ "_dev") }}
       - POSTGRES_USER={{ config.services.postgresql.user | default(value="postgres") }}
@@ -339,7 +339,7 @@ services:
       {% for network in config.networking.networks -%}
       {{ network }}:
         aliases:
-          - {{ project_name }}-postgres
+          - {{ postgres_container_name | json_encode }}
           - postgres
       {% endfor -%}
     {%- endif %}
@@ -348,11 +348,11 @@ services:
 volumes:
   {% if package_edge %}
   package_edge_cache:
-    name: {{ project_name }}_package_edge_cache
+    name: {{ package_edge_cache_name | json_encode }}
     labels:
       com.vm.managed: "true"
-      com.vm.project: "{{ base_project_name }}"
-      com.vm.instance: "{{ project_name }}"
+      com.vm.project: {{ base_project_name | json_encode }}
+      com.vm.instance: {{ project_name | json_encode }}
       com.vm.retention: "keep"
   {% endif %}
   {% for volume in named_volumes %}
@@ -360,8 +360,8 @@ volumes:
     name: {{ volume.name }}
     labels:
       com.vm.managed: "true"
-      com.vm.project: "{{ base_project_name }}"
-      com.vm.instance: "{{ project_name }}"
+      com.vm.project: {{ base_project_name | json_encode }}
+      com.vm.instance: {{ project_name | json_encode }}
       com.vm.retention: "{{ volume.retention }}"
   {% endfor %}
 

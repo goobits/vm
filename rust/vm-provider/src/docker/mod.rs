@@ -174,12 +174,7 @@ impl DockerProvider {
             )));
         }
 
-        let project_dir = config
-            .source_path
-            .as_deref()
-            .and_then(Path::parent)
-            .map(Path::to_path_buf)
-            .unwrap_or(std::env::current_dir()?);
+        let project_dir = config.project_dir()?;
 
         let generated_dir = artifacts::project_artifacts_dir(&config, &project_dir)?;
 
@@ -477,7 +472,7 @@ impl Provider for DockerProvider {
 
     fn instance_config_path(&self, instance: &str) -> Result<Option<PathBuf>> {
         let output = Command::new(&self.executable)
-            .args(["inspect", instance])
+            .args(["inspect", "--type", "container", instance])
             .output()?;
         if !output.status.success() {
             return Ok(None);
@@ -485,24 +480,14 @@ impl Provider for DockerProvider {
         let containers: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout)?;
         containers
             .first()
-            .map(instance_config_path_from_inspect)
-            .transpose()
-            .map(Option::flatten)
+            .map_or(Ok(None), instance_config_path_from_inspect)
     }
 
     fn reusable_host_ports(&self, environment: &str) -> Result<Vec<u16>> {
-        let compose = compose::ComposeOperations::new(
-            &self.config,
-            &self.generated_dir,
-            &self._project_dir,
-            &self.executable,
-        );
-        let instance = compose.instance_name_from_container(environment);
         let mut ports = Vec::new();
-        for service in compose.get_expected_service_containers(instance.as_deref()) {
-            if !DockerOps::container_exists(Some(&self.executable), &service).unwrap_or(false) {
-                continue;
-            }
+        for service in
+            DockerOps::list_managed_service_containers(Some(&self.executable), environment)?
+        {
             let output = Command::new(&self.executable)
                 .args([
                     "inspect",

@@ -85,15 +85,7 @@ fn handle_render_command(
         return Err(VmError::validation(report.to_string(), None::<String>));
     }
 
-    let project_dir = match config
-        .source_path
-        .as_deref()
-        .and_then(std::path::Path::parent)
-    {
-        Some(project_dir) => project_dir.to_path_buf(),
-        None => std::env::current_dir()
-            .map_err(|error| VmError::filesystem(error, ".", "resolve project directory"))?,
-    };
+    let project_dir = config.project_dir()?;
     let context = vm_provider::ProviderContext::default().with_config(app_config.global);
     let rendered =
         vm_provider::docker::render_compose_preview(&config, &project_dir, instance, &context)?;

@@ -1,6 +1,4 @@
 use std::collections::HashSet;
-use std::path::PathBuf;
-
 use vm_core::error::{Result, VmError};
 
 use crate::config::{
@@ -105,20 +103,7 @@ pub(super) fn validate_mounts(config: &VmConfig) -> Result<()> {
         .unwrap_or("/workspace");
     let mut targets = HashSet::from([workspace.to_string()]);
     let mut sources = HashSet::new();
-    let project_dir = config
-        .source_path
-        .as_deref()
-        .and_then(|path| {
-            if path.is_dir() {
-                Some(path)
-            } else {
-                path.parent()
-            }
-        })
-        .map(PathBuf::from)
-        .unwrap_or(std::env::current_dir().map_err(|error| {
-            VmError::Internal(format!("Failed to determine current directory: {error}"))
-        })?);
+    let project_dir = config.project_dir()?;
 
     for mount in &config.mounts {
         validate_mount_target(&mount.target)?;

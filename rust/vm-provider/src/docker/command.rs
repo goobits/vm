@@ -156,6 +156,30 @@ impl DockerOps {
         cmd.arg("--format").arg(format).execute_with_output()
     }
 
+    /// List VM-managed service containers owned by one environment.
+    pub fn list_managed_service_containers(
+        executable: Option<&str>,
+        environment: &str,
+    ) -> Result<Vec<String>> {
+        let instance = environment.strip_suffix("-dev").unwrap_or(environment);
+        let output = DockerCommand::new(executable)
+            .subcommand("ps")
+            .arg("-a")
+            .arg("--filter")
+            .arg("label=com.vm.managed=true")
+            .arg("--filter")
+            .arg(format!("label=com.vm.instance={instance}"))
+            .arg("--format")
+            .arg("{{.Names}}")
+            .execute_with_output()?;
+        Ok(output
+            .lines()
+            .map(str::trim)
+            .filter(|name| !name.is_empty() && *name != environment)
+            .map(str::to_string)
+            .collect())
+    }
+
     /// Check if a container exists by name.
     pub fn container_exists(executable: Option<&str>, container_name: &str) -> Result<bool> {
         let output = Self::list_containers(executable, true, "{{.Names}}")?;
@@ -335,5 +359,36 @@ mod tests {
 
         assert!(cmd.subcommand.is_some());
         assert_eq!(cmd.args.len(), 3);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn managed_services_are_discovered_by_instance_label() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::TempDir::new().unwrap();
+        let runtime = temp.path().join("docker");
+        let log = temp.path().join("args");
+        fs::write(
+            &runtime,
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$*\" > '{}'\nprintf 'demo-dev\\ndemo-postgres\\ndemo-package-edge\\n'\n",
+                log.display()
+            ),
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&runtime).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&runtime, permissions).unwrap();
+
+        let services =
+            DockerOps::list_managed_service_containers(Some(runtime.to_str().unwrap()), "demo-dev")
+                .unwrap();
+
+        assert_eq!(services, ["demo-postgres", "demo-package-edge"]);
+        let args = fs::read_to_string(log).unwrap();
+        assert!(args.contains("label=com.vm.managed=true"));
+        assert!(args.contains("label=com.vm.instance=demo"));
     }
 }

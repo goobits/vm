@@ -1,4 +1,3 @@
-use std::fs;
 use std::path::{Path, PathBuf};
 
 // External crates
@@ -54,7 +53,17 @@ impl<'a> ComposeOperations<'a> {
         &self,
         base_project_name: &str,
         instance: &str,
-    ) -> (VmConfig, String) {
+    ) -> Result<(VmConfig, String)> {
+        if instance.is_empty()
+            || !instance.chars().all(|character| {
+                character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+            })
+            || matches!(instance, "." | "..")
+        {
+            return Err(VmError::Validation(format!(
+                "Invalid Docker instance name '{instance}'"
+            )));
+        }
         let mut custom_config = self.config.clone();
 
         // Determine instance project name
@@ -70,7 +79,7 @@ impl<'a> ComposeOperations<'a> {
         project.name = Some(instance_project_name.clone());
 
         let final_name = format!("{}-{}", base_project_name, instance);
-        (custom_config, final_name)
+        Ok((custom_config, final_name))
     }
 
     /// Internal method that handles rendering with optional instance name
@@ -107,7 +116,7 @@ impl<'a> ComposeOperations<'a> {
 
         // Handle instance name modification if provided
         let (mut final_config, final_project_name) = match instance_name {
-            Some(instance) => self.create_instance_config(base_project_name, instance),
+            Some(instance) => self.create_instance_config(base_project_name, instance)?,
             None => (self.config.clone(), base_project_name.to_string()),
         };
         let port_binding = final_config
@@ -155,6 +164,23 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("config", &final_config);
         tera_context.insert("project_name", &final_project_name);
         tera_context.insert("base_project_name", &base_project_name);
+        tera_context.insert("dev_container_name", &format!("{final_project_name}-dev"));
+        tera_context.insert(
+            "package_edge_container_name",
+            &format!("{final_project_name}-package-edge"),
+        );
+        tera_context.insert(
+            "postgres_container_name",
+            &format!("{final_project_name}-postgres"),
+        );
+        tera_context.insert(
+            "build_cache_image",
+            &format!("{final_project_name}:buildcache"),
+        );
+        tera_context.insert(
+            "package_edge_cache_name",
+            &format!("{final_project_name}_package_edge_cache"),
+        );
         tera_context.insert("storage_volumes", &storage.mounts);
         tera_context.insert("named_volumes", &storage.named_volumes);
         tera_context.insert("tmpfs_mounts", &storage.tmpfs);
@@ -437,7 +463,8 @@ impl<'a> ComposeOperations<'a> {
         self.reconcile_package_edge(container_name)?;
 
         // Start existing services directly to avoid Compose name conflicts.
-        let expected_services = self.get_expected_service_containers(instance_name.as_deref());
+        let expected_services =
+            DockerOps::list_managed_service_containers(Some(self.executable), container_name)?;
         for service in expected_services {
             if !DockerOps::container_exists(Some(self.executable), &service).unwrap_or(false) {
                 continue;
@@ -497,62 +524,6 @@ impl<'a> ComposeOperations<'a> {
             .and_then(|p| p.name.as_deref())
             .unwrap_or("vm-project");
         super::compose_model::instance_name_from_container(project_name, container_name)
-    }
-
-    /// Get list of expected service container names by parsing the generated docker-compose.yml.
-    ///
-    /// Returns a list of container names that are expected to be created by docker-compose
-    /// for the enabled services. Used for orphan detection.
-    pub fn get_expected_service_containers(&self, instance_name: Option<&str>) -> Vec<String> {
-        let compose_path = compose_path(self.generated_dir, instance_name);
-        if !compose_path.exists() {
-            return Vec::new();
-        }
-
-        let Ok(content) = fs::read_to_string(&compose_path) else {
-            return Vec::new();
-        };
-
-        let Ok(yaml) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&content) else {
-            return Vec::new();
-        };
-
-        let Some(services) = yaml.get("services").and_then(|v| v.as_mapping()) else {
-            return Vec::new();
-        };
-
-        let project_name = self
-            .config
-            .project
-            .as_ref()
-            .and_then(|p| p.name.as_deref())
-            .unwrap_or("vm-project");
-
-        let mut expected = Vec::new();
-
-        for (service_name, service_config) in services {
-            let Some(service_name_str) = service_name.as_str() else {
-                continue;
-            };
-
-            // Skip the main dev container
-            if service_name_str.ends_with("-dev") {
-                continue;
-            }
-
-            // Check for explicit container_name
-            if let Some(container_name) = service_config
-                .get("container_name")
-                .and_then(|v| v.as_str())
-            {
-                expected.push(container_name.to_string());
-            } else {
-                // Use Compose default: {project}_{service}_1
-                expected.push(format!("{}_{}_1", project_name, service_name_str));
-            }
-        }
-
-        expected
     }
 }
 
@@ -903,6 +874,10 @@ mod tests {
         let instance_rendered = compose
             .render_docker_compose_with_instance(&project_dir, "feature", &context)
             .unwrap();
+        assert!(matches!(
+            compose.render_docker_compose_with_instance(&project_dir, "a\"b", &context),
+            Err(VmError::Validation(_))
+        ));
         let instance_yaml: serde_yaml_ng::Value =
             serde_yaml_ng::from_str(&instance_rendered).unwrap();
         let instance_volumes = yaml_mapping(&instance_yaml, "volumes");

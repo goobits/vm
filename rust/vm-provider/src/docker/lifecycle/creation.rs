@@ -176,11 +176,7 @@ impl<'a> LifecycleOperations<'a> {
         }
 
         if has_orphaned_services {
-            self.start_orphaned_services_and_dev_container(
-                &compose_ops,
-                &compose_path,
-                &container_name,
-            )?;
+            self.start_orphaned_services_and_dev_container(&compose_path, &container_name)?;
         } else {
             let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
             let args: Vec<&str> = args.iter().map(String::as_str).collect();

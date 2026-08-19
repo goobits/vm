@@ -36,7 +36,7 @@ impl<'a> BuildOperations<'a> {
 
     /// Get box configuration, parsing BoxSpec from vm.box field
     fn get_box_config(&self) -> Result<BoxConfig> {
-        let base_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let base_dir = self.config.project_dir()?;
 
         if let Some(vm_settings) = &self.config.vm {
             if let Some(box_spec) = vm_settings.get_box_spec() {

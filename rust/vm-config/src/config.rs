@@ -117,6 +117,25 @@ impl VmConfig {
         Ok(())
     }
 
+    /// Resolve the project root without ever treating the global VM state
+    /// directory as a project workspace.
+    pub fn project_dir(&self) -> Result<PathBuf> {
+        let current_dir = || Ok(std::env::current_dir()?);
+        let Some(source) = self.source_path.as_deref() else {
+            return current_dir();
+        };
+        if source == vm_core::user_paths::global_config_path()?.as_path() {
+            return current_dir();
+        }
+        Ok(if source.is_dir() {
+            source.to_path_buf()
+        } else {
+            source
+                .parent()
+                .map_or_else(|| source.to_path_buf(), Path::to_path_buf)
+        })
+    }
+
     pub fn from_file(path: &PathBuf) -> Result<Self> {
         let content = fs::read_to_string(path)?;
         crate::yaml::CoreOperations::parse_yaml_with_diagnostics(
@@ -216,6 +235,24 @@ impl VmConfig {
 #[cfg(test)]
 mod container_policy_tests {
     use super::{MemoryLimit, VmConfig, VolumeRetention, VolumeScope};
+
+    #[test]
+    fn project_dir_never_uses_the_global_config_directory() {
+        let mut config = VmConfig {
+            source_path: Some(vm_core::user_paths::global_config_path().unwrap()),
+            ..Default::default()
+        };
+        assert_eq!(
+            config.project_dir().unwrap(),
+            std::env::current_dir().unwrap()
+        );
+
+        config.source_path = Some(std::env::current_dir().unwrap().join("nested/vm.yaml"));
+        assert_eq!(
+            config.project_dir().unwrap(),
+            std::env::current_dir().unwrap().join("nested")
+        );
+    }
 
     #[test]
     fn retired_nested_configuration_is_rejected() {

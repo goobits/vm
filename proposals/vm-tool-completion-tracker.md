@@ -75,8 +75,8 @@ ownership, migration, and convergence gaps. The release remains blocked until
 these existing owners are repaired and the full gate passes:
 
 - [x] Persist package appliance state when Docker cannot report an image ID.
-- [ ] Keep global configuration outside the project workspace mount boundary.
-- [ ] Discover managed service containers independently of generated artifacts.
+- [x] Keep global configuration outside the project workspace mount boundary.
+- [x] Discover managed service containers independently of generated artifacts.
 - [ ] Apply long source-sync timeouts and temporary-mirror cleanup consistently.
 - [ ] Use canonical repository equivalence at every registration/workspace boundary.
 - [ ] Recover one target's owning config and provider without repeated inventory calls.

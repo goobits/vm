@@ -8,28 +8,7 @@ use crate::{shell_session, tart_base, VmError};
 
 impl TartProvider {
     pub(super) fn host_workspace_path(&self) -> Result<PathBuf> {
-        if let Some(source) = &self.config.source_path {
-            let resolved = if source.is_absolute() {
-                source.clone()
-            } else {
-                std::env::current_dir()
-                    .map_err(|error| {
-                        VmError::Internal(format!(
-                            "Failed to determine host workspace path: {error}"
-                        ))
-                    })?
-                    .join(source)
-            };
-            if resolved.is_dir() {
-                return Self::normalize_host_workspace_path(&resolved);
-            }
-            if let Some(parent) = resolved.parent() {
-                return Self::normalize_host_workspace_path(parent);
-            }
-        }
-        Self::normalize_host_workspace_path(&std::env::current_dir().map_err(|error| {
-            VmError::Internal(format!("Failed to determine host workspace path: {error}"))
-        })?)
+        Self::normalize_host_workspace_path(&self.config.project_dir()?)
     }
 
     pub(super) fn normalize_host_workspace_path(path: &Path) -> Result<PathBuf> {

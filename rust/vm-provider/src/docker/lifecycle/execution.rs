@@ -3,7 +3,7 @@ use super::LifecycleOperations;
 use crate::{
     audio::MacOSAudioManager,
     context::ProviderContext,
-    docker::{compose::ComposeOperations, mountpoints, DockerOps},
+    docker::{mountpoints, DockerOps},
     InstanceState,
 };
 use tracing::{info, warn};
@@ -94,23 +94,19 @@ impl<'a> LifecycleOperations<'a> {
             )));
         }
 
+        let service_containers = if context.preserve_services {
+            Vec::new()
+        } else {
+            DockerOps::list_managed_service_containers(Some(self.executable), &target_container)?
+        };
+
         // Remove the main dev container
         let result = stream_command(self.executable, &["rm", "-f", &target_container]);
 
         // Optionally remove service containers based on context
         if !context.preserve_services {
             info!("Removing service containers");
-            let compose_ops = ComposeOperations::new(
-                self.config,
-                self.generated_dir,
-                self.project_dir,
-                self.executable,
-            );
-            let instance = compose_ops.instance_name_from_container(&target_container);
-            let expected_services =
-                compose_ops.get_expected_service_containers(instance.as_deref());
-
-            for service_name in expected_services {
+            for service_name in service_containers {
                 let exists = DockerOps::container_exists(Some(self.executable), &service_name)
                     .unwrap_or(false);
                 if !exists {
@@ -235,6 +231,41 @@ mod tests {
         assert!(commands.starts_with("inspect "));
         assert!(!commands.contains(" up "));
         assert!(!commands.contains("start "));
+    }
+
+    #[test]
+    fn destroy_finds_services_without_generated_compose_state() {
+        let temp_dir = TempDir::new().unwrap();
+        let executable = temp_dir.path().join("runtime");
+        let log = temp_dir.path().join("commands.log");
+        fs::write(
+            &executable,
+            format!(
+                "#!/bin/sh\necho \"$@\" >> '{}'\nif [ \"$1\" = ps ]; then printf 'demo-dev\\ndemo-postgres\\n'; fi\n",
+                log.display()
+            ),
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&executable).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&executable, permissions).unwrap();
+        let config = config();
+        let generated_dir = temp_dir.path().join("missing-generated");
+        let project_dir = temp_dir.path().join("project");
+        let ops = LifecycleOperations::new(
+            &config,
+            &generated_dir,
+            &project_dir,
+            executable.to_str().unwrap(),
+        );
+
+        ops.destroy_container(None, &ProviderContext::default())
+            .unwrap();
+
+        let commands = fs::read_to_string(log).unwrap();
+        assert!(commands.lines().any(|line| line == "rm -f demo-dev"));
+        assert!(commands.lines().any(|line| line == "rm -f demo-postgres"));
+        assert!(commands.contains("label=com.vm.instance=demo"));
     }
 
     #[test]

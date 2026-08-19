@@ -7,7 +7,7 @@ use tracing::{info, warn};
 use super::LifecycleOperations;
 use crate::{
     context::ProviderContext,
-    docker::{compose::ComposeOperations, ComposeCommand, DockerOps},
+    docker::{ComposeCommand, DockerOps},
 };
 use vm_core::msg;
 use vm_core::{
@@ -20,12 +20,11 @@ use vm_messages::messages::MESSAGES;
 impl<'a> LifecycleOperations<'a> {
     pub(super) fn start_orphaned_services_and_dev_container(
         &self,
-        compose_ops: &ComposeOperations,
         compose_path: &std::path::Path,
         container_name: &str,
     ) -> Result<()> {
-        let instance = compose_ops.instance_name_from_container(container_name);
-        let expected_services = compose_ops.get_expected_service_containers(instance.as_deref());
+        let expected_services =
+            DockerOps::list_managed_service_containers(Some(self.executable), container_name)?;
         for service in &expected_services {
             if !DockerOps::container_exists(Some(self.executable), service).unwrap_or(false) {
                 continue;
@@ -201,19 +200,12 @@ impl<'a> LifecycleOperations<'a> {
         instance_name: Option<&str>,
         context: &ProviderContext,
     ) -> Result<bool> {
-        let all_containers = DockerOps::list_containers(Some(self.executable), true, "{{.Names}}")?;
-        let compose_ops = ComposeOperations::new(
-            self.config,
-            self.generated_dir,
-            self.project_dir,
-            self.executable,
+        let environment = instance_name.map_or_else(
+            || self.container_name(),
+            |instance| self.container_name_with_instance(instance),
         );
-        let service_patterns = compose_ops.get_expected_service_containers(instance_name);
-        let orphaned: Vec<&str> = all_containers
-            .lines()
-            .map(str::trim)
-            .filter(|container| service_patterns.iter().any(|pattern| container == pattern))
-            .collect();
+        let orphaned =
+            DockerOps::list_managed_service_containers(Some(self.executable), &environment)?;
 
         if orphaned.is_empty() {
             return Ok(false);
