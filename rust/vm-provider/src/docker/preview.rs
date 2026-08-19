@@ -28,21 +28,15 @@ fn redact_host_labels(service: &mut Mapping) {
     let Some(labels) = service.get_mut("labels").and_then(Value::as_mapping_mut) else {
         return;
     };
-    if labels.contains_key("com.vm.config-path") {
-        labels.insert(
-            Value::String("com.vm.config-path".to_string()),
-            Value::String("<host-path>".to_string()),
-        );
+    if let Some(path) = labels.get_mut("com.vm.config-path") {
+        *path = Value::String("<host-path>".to_string());
     }
 }
 
 fn redact_build_context(service: &mut Mapping) {
     if let Some(build) = service.get_mut("build").and_then(Value::as_mapping_mut) {
-        if build.contains_key("context") {
-            build.insert(
-                Value::String("context".to_string()),
-                Value::String("<generated-build-context>".to_string()),
-            );
+        if let Some(context) = build.get_mut("context") {
+            *context = Value::String("<generated-build-context>".to_string());
         }
     }
 }

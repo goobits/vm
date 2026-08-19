@@ -107,12 +107,6 @@ impl<'a> LifecycleOperations<'a> {
         if !context.preserve_services {
             info!("Removing service containers");
             for service_name in service_containers {
-                let exists = DockerOps::container_exists(Some(self.executable), &service_name)
-                    .unwrap_or(false);
-                if !exists {
-                    continue;
-                }
-
                 info!("Removing service container: {}", service_name);
                 if let Err(e) =
                     DockerOps::remove_container(Some(self.executable), &service_name, true)

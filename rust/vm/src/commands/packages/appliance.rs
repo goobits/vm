@@ -127,10 +127,10 @@ pub(super) async fn up(
         registry_image_identity,
         job_image: config.job_image,
         controller_version: env!("CARGO_PKG_VERSION").to_string(),
-        tart_home: (runtime == InfrastructureRuntime::Tart)
-            .then(|| tart::storage_home(files))
-            .transpose()?
-            .flatten(),
+        tart_home: match runtime {
+            InfrastructureRuntime::Docker => None,
+            InfrastructureRuntime::Tart => tart::storage_home(files)?,
+        },
     })?;
 
     vm_success!("Package infrastructure is ready");
