@@ -423,18 +423,13 @@ fn package_edge_revision(
     internal_gateway: &str,
     read_token: &str,
 ) -> String {
-    let image_identity = if state.registry_image_identity.is_empty() {
-        &state.registry_image
-    } else {
-        &state.registry_image_identity
-    };
     vm_packages::sha256_hex(format!(
         "{}\0{}\0{}\0{}\0{}\0{}\0{}",
         PACKAGE_EDGE_POLICY_REVISION,
         env!("CARGO_PKG_VERSION"),
         state.controller_version,
         state.registry_image,
-        image_identity,
+        state.registry_image_identity,
         internal_gateway,
         read_token
     ))

@@ -223,15 +223,10 @@ fn image_inspect(image: &str) -> VmResult<Option<ImageInspect>> {
 }
 
 pub(super) fn image_identity(image: &str) -> VmResult<String> {
-    image_inspect(image)?
+    Ok(image_inspect(image)?
         .and_then(|inspect| inspect.id)
         .filter(|identity| !identity.trim().is_empty())
-        .ok_or_else(|| {
-            crate::error::VmError::validation(
-                format!("Docker image '{image}' has no immutable identity"),
-                Some("Run `vm packages up` to rebuild or pull the package image"),
-            )
-        })
+        .unwrap_or_else(|| image.to_string()))
 }
 
 fn is_source_built(inspect: &ImageInspect) -> bool {

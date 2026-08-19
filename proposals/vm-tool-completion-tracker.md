@@ -1,6 +1,6 @@
 ---
-Status: Selector-first Docker tool updates implemented; private release rerun pending
-Date: 2026-08-18
+Status: Verified audit remediation in progress; release blocked
+Date: 2026-08-19
 Depends: docs/user-guide/package-infrastructure.md, docs/development/architecture.md
 ---
 
@@ -68,9 +68,27 @@ The CLI reference is the single complete documented public command inventory.
 Workflow guides retain task-oriented examples and link back to that catalog
 instead of maintaining partial command lists.
 
+## Verified Audit Remediation
+
+The 2026-08-19 post-implementation audit found release-blocking correctness,
+ownership, migration, and convergence gaps. The release remains blocked until
+these existing owners are repaired and the full gate passes:
+
+- [x] Persist package appliance state when Docker cannot report an image ID.
+- [ ] Keep global configuration outside the project workspace mount boundary.
+- [ ] Discover managed service containers independently of generated artifacts.
+- [ ] Apply long source-sync timeouts and temporary-mirror cleanup consistently.
+- [ ] Use canonical repository equivalence at every registration/workspace boundary.
+- [ ] Recover one target's owning config and provider without repeated inventory calls.
+- [ ] Support Docker-compatible and Tart ownership recovery through their providers.
+- [ ] Collapse managed-tool targeting to one configuration-owned execution path.
+- [ ] Make selector parsing, disabled-update output, and missing-release errors truthful.
+- [ ] Rerun static, Docker, and Tart release acceptance after remediation.
+
 ## Remaining Acceptance
 
-Implementation is complete. These are the only remaining release checks:
+Implementation is not release-ready. After the remediation checklist above is
+complete, run these remaining release checks:
 
 Live Docker evidence on 2026-08-17: `projects-dev` checked out the registered
 560 MB-history `@goobits/auth` source through its guest client, resumed the same

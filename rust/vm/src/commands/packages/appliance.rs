@@ -116,10 +116,7 @@ pub(super) async fn up(
         InfrastructureRuntime::Tart => tart::up(files, port)?,
     };
     wait_for_gateway(&gateway_url).await?;
-    let registry_image_identity = match runtime {
-        InfrastructureRuntime::Docker => docker::image_identity(&config.registry_image)?,
-        InfrastructureRuntime::Tart => config.registry_image.clone(),
-    };
+    let registry_image_identity = registry_image_identity(runtime, &config.registry_image)?;
 
     files.write_state(&ApplianceState {
         definition_revision: APPLIANCE_DEFINITION_REVISION,
@@ -183,10 +180,7 @@ pub(super) fn repair_client_access(
         InfrastructureRuntime::Docker => docker::up(files, &config, allow_source_build)?,
         InfrastructureRuntime::Tart => tart::up(files, state.gateway_port)?,
     };
-    state.registry_image_identity = match state.runtime {
-        InfrastructureRuntime::Docker => docker::image_identity(&config.registry_image)?,
-        InfrastructureRuntime::Tart => config.registry_image.clone(),
-    };
+    state.registry_image_identity = registry_image_identity(state.runtime, &config.registry_image)?;
     state.registry_image = config.registry_image;
     state.job_image = config.job_image;
     state.controller_version = env!("CARGO_PKG_VERSION").to_string();
@@ -196,6 +190,16 @@ pub(super) fn repair_client_access(
     }
     files.write_state(&state)?;
     Ok(state)
+}
+
+fn registry_image_identity(
+    runtime: InfrastructureRuntime,
+    registry_image: &str,
+) -> VmResult<String> {
+    match runtime {
+        InfrastructureRuntime::Docker => docker::image_identity(registry_image),
+        InfrastructureRuntime::Tart => Ok(registry_image.to_string()),
+    }
 }
 
 pub(super) fn state_client_access_is_current(
