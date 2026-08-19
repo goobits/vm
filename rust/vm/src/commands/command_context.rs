@@ -8,7 +8,7 @@ use crate::cli::{Command, PackagesSubcommand};
 use crate::error::{VmError, VmResult};
 use vm_config::{config::VmConfig, AppConfig, GlobalConfig};
 use vm_core::vm_progress;
-use vm_provider::{get_provider, Provider};
+use vm_provider::{get_provider, InstanceInfo, Provider};
 
 pub(super) fn ensure_controller_host(command: &Command) -> VmResult<()> {
     if !managed_guest_context()
@@ -174,47 +174,67 @@ fn assemble_runtime_context(
     provider_override: Option<String>,
     requested_target: Option<&str>,
 ) -> VmResult<RuntimeSubject> {
+    let explicit_config = config_path.is_some();
     let (mut provider, mut config, mut global_config) =
-        load_provider_context(config_path, profile, provider_override)?;
-    let target =
-        vm_ops::target::resolve_runtime_target(provider.as_ref(), &config, requested_target)?;
-    if requested_target.is_some()
-        && target_belongs_to_another_project(provider.as_ref(), &target, &config)
-    {
-        let target_config = provider.instance_config_path(&target)?.ok_or_else(|| {
+        load_provider_context(config_path, profile.clone(), provider_override)?;
+    let instance =
+        vm_ops::target::resolve_runtime_instance(provider.as_ref(), &config, requested_target)?;
+    if requested_target.is_some() && !explicit_config {
+        let target_config = provider.instance_config_path(&instance.name)?.ok_or_else(|| {
             VmError::validation(
-                format!("Cannot locate the owning configuration for environment '{target}'"),
+                format!(
+                    "Cannot locate the owning configuration for environment '{}'",
+                    instance.name
+                ),
                 Some("Run the command from that project's directory or pass its vm.yaml with --config"),
             )
         })?;
-        let app_config = AppConfig::load(Some(target_config), None, None)?;
-        config = app_config.vm;
-        packages::apply_client_environment(&mut config)?;
-        global_config = app_config.global;
-        provider = get_provider(config.clone()).map_err(VmError::from)?;
+        (provider, config, global_config) = load_provider_context(
+            Some(target_config),
+            profile,
+            Some(instance.provider.clone()),
+        )?;
     }
     Ok(RuntimeSubject {
         provider,
         config,
         global_config,
-        target,
+        target: instance.name,
     })
 }
 
-fn target_belongs_to_another_project(
-    provider: &dyn Provider,
-    target: &str,
-    config: &VmConfig,
-) -> bool {
-    let current = project_name(config);
-    provider.list_instances().ok().is_some_and(|instances| {
-        instances.into_iter().any(|instance| {
-            instance.name == target
-                && instance
-                    .project
-                    .as_deref()
-                    .is_some_and(|project| project != current)
-        })
+pub(super) fn load_runtime_subject_for_instance(
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+    instance: &InstanceInfo,
+) -> VmResult<RuntimeSubject> {
+    let target_config = match config_path {
+        Some(path) => path,
+        None => {
+            let resolver = vm_ops::configured_provider(&VmConfig::default(), &instance.provider)?;
+            resolver
+                .instance_config_path(&instance.name)?
+                .ok_or_else(|| {
+                    VmError::validation(
+                        format!(
+                            "Cannot locate the owning configuration for environment '{}'",
+                            instance.name
+                        ),
+                        Some("Pass its vm.yaml with --config"),
+                    )
+                })?
+        }
+    };
+    let (provider, config, global_config) = load_provider_context(
+        Some(target_config),
+        profile,
+        Some(instance.provider.clone()),
+    )?;
+    Ok(RuntimeSubject {
+        provider,
+        config,
+        global_config,
+        target: instance.name.clone(),
     })
 }
 

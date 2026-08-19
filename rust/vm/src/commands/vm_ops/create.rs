@@ -28,7 +28,7 @@ pub(crate) async fn resolve_or_create_target(
     requested: Option<&str>,
 ) -> VmResult<String> {
     if let Some(target) = find_runtime_target(provider, config, requested)? {
-        return Ok(target);
+        return Ok(target.name);
     }
 
     vm_progress!("No environment found; creating it from vm.yaml...");

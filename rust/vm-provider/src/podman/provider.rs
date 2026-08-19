@@ -202,6 +202,10 @@ impl Provider for PodmanProvider {
         self.docker_provider.list_instances()
     }
 
+    fn instance_config_path(&self, instance: &str) -> Result<Option<std::path::PathBuf>> {
+        self.docker_provider.instance_config_path(instance)
+    }
+
     fn reusable_host_ports(&self, environment: &str) -> Result<Vec<u16>> {
         self.docker_provider.reusable_host_ports(environment)
     }

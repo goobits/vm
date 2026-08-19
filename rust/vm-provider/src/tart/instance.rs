@@ -62,7 +62,6 @@ impl<'a> TartInstanceManager<'a> {
             VmError::Internal(format!("Failed to parse Tart list JSON output: {e}"))
         })?;
         let mut instances = Vec::new();
-        let project_prefix = format!("{}-", self.project_name());
 
         for entry in entries {
             if entry.source != "local" {
@@ -72,17 +71,16 @@ impl<'a> TartInstanceManager<'a> {
             let name = entry.name;
             let status = entry.state;
 
-            // Only include VMs that belong to this project
-            if name.starts_with(&project_prefix) || name == self.project_name() {
+            if self.belongs_to_project(&name) {
                 self.command.remember_instance(&name)?;
-                let (created_at, uptime) = self.get_vm_metadata(&name);
-                instances.push(create_tart_instance_info(
-                    &name,
-                    &status,
-                    created_at.as_deref(),
-                    uptime.as_deref(),
-                ));
             }
+            let (created_at, uptime) = self.get_vm_metadata(&name);
+            instances.push(create_tart_instance_info(
+                &name,
+                &status,
+                created_at.as_deref(),
+                uptime.as_deref(),
+            ));
         }
 
         Ok(instances)
@@ -93,9 +91,24 @@ impl<'a> TartInstanceManager<'a> {
         format!("{}-{}", self.project_name(), instance)
     }
 
+    fn belongs_to_project(&self, instance: &str) -> bool {
+        instance == self.project_name()
+            || instance
+                .strip_prefix(self.project_name())
+                .is_some_and(|suffix| suffix.starts_with('-'))
+    }
+
+    fn project_instances(&self) -> Result<Vec<InstanceInfo>> {
+        Ok(self
+            .parse_tart_list()?
+            .into_iter()
+            .filter(|instance| self.belongs_to_project(&instance.name))
+            .collect())
+    }
+
     /// Find VM by partial name matching
     pub fn find_matching_vm(&self, partial: &str) -> Result<String> {
-        let instances = self.parse_tart_list()?;
+        let instances = self.project_instances()?;
         fuzzy_match_instances(partial, &instances)
     }
 
@@ -116,7 +129,7 @@ impl<'a> InstanceResolver for TartInstanceManager<'a> {
             Some(name) => {
                 // First try exact match with project prefix
                 let candidate_name = self.project_instance_name(name);
-                let instances = self.parse_tart_list()?;
+                let instances = self.project_instances()?;
 
                 // Check if exact project-instance name exists
                 if instances.iter().any(|i| i.name == candidate_name) {

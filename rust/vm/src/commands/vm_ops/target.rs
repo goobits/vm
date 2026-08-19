@@ -8,7 +8,7 @@ use vm_config::config::VmConfig;
 use vm_provider::{InstanceInfo, Provider};
 
 enum TargetChoice {
-    Selected(String),
+    Selected(InstanceInfo),
     Ambiguous(Vec<InstanceInfo>),
     Missing,
 }
@@ -52,6 +52,14 @@ pub fn resolve_runtime_target(
     config: &VmConfig,
     requested: Option<&str>,
 ) -> VmResult<String> {
+    resolve_runtime_instance(provider, config, requested).map(|instance| instance.name)
+}
+
+pub(in crate::commands) fn resolve_runtime_instance(
+    provider: &dyn Provider,
+    config: &VmConfig,
+    requested: Option<&str>,
+) -> VmResult<InstanceInfo> {
     find_runtime_target(provider, config, requested)?.ok_or_else(|| match requested {
         Some(requested) => VmError::validation(
             format!("No environment matches '{requested}'"),
@@ -75,7 +83,7 @@ pub(super) fn find_runtime_target(
     provider: &dyn Provider,
     config: &VmConfig,
     requested: Option<&str>,
-) -> VmResult<Option<String>> {
+) -> VmResult<Option<InstanceInfo>> {
     let project = config
         .project
         .as_ref()
@@ -100,12 +108,15 @@ pub(super) fn find_runtime_target(
     }
 }
 
-fn exact_requested_target(instances: &[InstanceInfo], requested: Option<&str>) -> Option<String> {
+fn exact_requested_target(
+    instances: &[InstanceInfo],
+    requested: Option<&str>,
+) -> Option<InstanceInfo> {
     let requested = requested?;
     instances
         .iter()
         .find(|instance| instance.name == requested)
-        .map(|instance| instance.name.clone())
+        .cloned()
 }
 
 fn choose_target(
@@ -116,17 +127,23 @@ fn choose_target(
 ) -> TargetChoice {
     let Some(requested) = requested else {
         if instances.iter().any(|instance| instance.name == canonical) {
-            return TargetChoice::Selected(canonical.to_string());
+            return TargetChoice::Selected(
+                instances
+                    .iter()
+                    .find(|instance| instance.name == canonical)
+                    .expect("canonical instance exists")
+                    .clone(),
+            );
         }
         return match instances {
-            [instance] => TargetChoice::Selected(instance.name.clone()),
+            [instance] => TargetChoice::Selected(instance.clone()),
             [] => TargetChoice::Missing,
             _ => TargetChoice::Ambiguous(instances.to_vec()),
         };
     };
 
     if let Some(instance) = instances.iter().find(|instance| instance.name == requested) {
-        return TargetChoice::Selected(instance.name.clone());
+        return TargetChoice::Selected(instance.clone());
     }
 
     let aliases = [
@@ -146,7 +163,7 @@ fn choose_target(
         .cloned()
         .collect::<Vec<_>>();
     match alias_matches.as_slice() {
-        [instance] => return TargetChoice::Selected(instance.name.clone()),
+        [instance] => return TargetChoice::Selected(instance.clone()),
         [] => {}
         _ => return TargetChoice::Ambiguous(alias_matches),
     }
@@ -157,7 +174,7 @@ fn choose_target(
         .cloned()
         .collect::<Vec<_>>();
     match id_matches.as_slice() {
-        [instance] => return TargetChoice::Selected(instance.name.clone()),
+        [instance] => return TargetChoice::Selected(instance.clone()),
         [] => {}
         _ => return TargetChoice::Ambiguous(id_matches),
     }
@@ -168,13 +185,13 @@ fn choose_target(
         .cloned()
         .collect::<Vec<_>>();
     match name_matches.as_slice() {
-        [instance] => TargetChoice::Selected(instance.name.clone()),
+        [instance] => TargetChoice::Selected(instance.clone()),
         [] => TargetChoice::Missing,
         _ => TargetChoice::Ambiguous(name_matches),
     }
 }
 
-fn select_ambiguous_target(mut candidates: Vec<InstanceInfo>) -> VmResult<String> {
+fn select_ambiguous_target(mut candidates: Vec<InstanceInfo>) -> VmResult<InstanceInfo> {
     candidates.sort_by(|left, right| left.name.cmp(&right.name));
     let names = candidates
         .iter()
@@ -204,7 +221,7 @@ fn select_ambiguous_target(mut candidates: Vec<InstanceInfo>) -> VmResult<String
         .default(0)
         .interact()
         .map_err(|error| VmError::general(error, "Failed to read environment selection"))?;
-    Ok(candidates[selected].name.clone())
+    Ok(candidates[selected].clone())
 }
 
 pub fn copy_target(source: &str, destination: &str) -> VmResult<Option<String>> {
@@ -260,7 +277,7 @@ mod tests {
         let instances = vec![instance("demo-feature-dev"), instance("demo-dev")];
         assert!(matches!(
             choose_target(&instances, "demo", "demo-dev", None),
-            TargetChoice::Selected(name) if name == "demo-dev"
+            TargetChoice::Selected(instance) if instance.name == "demo-dev"
         ));
     }
 
@@ -270,10 +287,10 @@ mod tests {
         other.project = Some("projects".to_string());
 
         assert_eq!(
-            exact_requested_target(&[other], Some("projects-dev")).as_deref(),
-            Some("projects-dev")
+            exact_requested_target(&[other], Some("projects-dev")).map(|instance| instance.name),
+            Some("projects-dev".to_string())
         );
-        assert_eq!(exact_requested_target(&[], Some("projects-dev")), None);
+        assert!(exact_requested_target(&[], Some("projects-dev")).is_none());
     }
 
     #[test]
@@ -281,7 +298,7 @@ mod tests {
         let instances = vec![instance("demo-feature-dev")];
         assert!(matches!(
             choose_target(&instances, "demo", "demo-dev", None),
-            TargetChoice::Selected(name) if name == "demo-feature-dev"
+            TargetChoice::Selected(instance) if instance.name == "demo-feature-dev"
         ));
     }
 
@@ -290,7 +307,7 @@ mod tests {
         let instances = vec![instance("demo-feature-dev")];
         assert!(matches!(
             choose_target(&instances, "demo", "demo-dev", Some("feature")),
-            TargetChoice::Selected(name) if name == "demo-feature-dev"
+            TargetChoice::Selected(instance) if instance.name == "demo-feature-dev"
         ));
     }
 

@@ -14,7 +14,9 @@ use vm_provider::{InstanceInfo, Provider, ProviderContext};
 use crate::cli::{FleetArgs, ToolsSubcommand};
 use crate::error::{VmError, VmResult};
 
-use super::command_context::{load_runtime_context, load_runtime_subject, RuntimeSubject};
+use super::command_context::{
+    load_runtime_subject, load_runtime_subject_for_instance, RuntimeSubject,
+};
 use super::packages::tooling::{self, CachedToolCatalog, RefreshOutcome};
 use super::vm_ops::{self, ensure_running, FleetProgress, InstanceStateFilter};
 use super::{base, packages};
@@ -295,12 +297,7 @@ async fn update_owned_target(
     tools: &[String],
     mode: InstallMode,
 ) -> VmResult<()> {
-    let mut subject = load_runtime_context(
-        config_path,
-        profile,
-        Some(instance.provider.clone()),
-        Some(&instance.name),
-    )?;
+    let mut subject = load_runtime_subject_for_instance(config_path, profile, instance)?;
     select_tools(&mut subject.config, tools);
     reconcile_subject(&subject).await?;
     prepare_tool_catalog(&subject.config).await?;

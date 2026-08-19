@@ -16,6 +16,8 @@ const LOCK_FILE: &str = "instances.lock";
 struct StorageState {
     #[serde(default)]
     instances: BTreeMap<String, PathBuf>,
+    #[serde(default)]
+    configs: BTreeMap<String, PathBuf>,
 }
 
 pub(super) fn configured_home(config: Option<&VmConfig>) -> Option<PathBuf> {
@@ -49,17 +51,31 @@ pub(super) fn resolve_project_home(config: &VmConfig, project: &str) -> Result<O
     recover_running_project_home(project)
 }
 
-pub(super) fn remember_instance(instance: &str, home: &Path) -> Result<()> {
+pub(super) fn remember_instance(
+    instance: &str,
+    home: Option<&Path>,
+    config: Option<&Path>,
+) -> Result<()> {
     validate_instance(instance)?;
+    if home.is_none() && config.is_none() {
+        return Ok(());
+    }
     let state_dir = state_dir()?;
     fs::create_dir_all(&state_dir)?;
     set_mode(&state_dir, 0o700)?;
     let lock = lock(&state_dir)?;
     let path = state_dir.join(STATE_FILE);
     let mut state = read_state_at(&path)?;
-    state
-        .instances
-        .insert(instance.to_string(), home.to_path_buf());
+    if let Some(home) = home {
+        state
+            .instances
+            .insert(instance.to_string(), home.to_path_buf());
+    }
+    if let Some(config) = config {
+        state
+            .configs
+            .insert(instance.to_string(), config.to_path_buf());
+    }
     let mut content = serde_json::to_vec_pretty(&state)?;
     content.push(b'\n');
     vm_core::file_system::atomic_write(&path, &content)?;
@@ -78,7 +94,10 @@ pub(super) fn forget_instance(instance: &str) -> Result<()> {
     let lock = lock(&state_dir)?;
     let path = state_dir.join(STATE_FILE);
     let mut state = read_state_at(&path)?;
-    if state.instances.remove(instance).is_some() {
+    let removed_home = state.instances.remove(instance).is_some();
+    let removed_config = state.configs.remove(instance).is_some();
+    let changed = removed_home || removed_config;
+    if changed {
         let mut content = serde_json::to_vec_pretty(&state)?;
         content.push(b'\n');
         vm_core::file_system::atomic_write(&path, &content)?;
@@ -114,11 +133,16 @@ fn recover_running_project_home(project: &str) -> Result<Option<PathBuf>> {
         if let Some(home) =
             parse_tart_home_from_lsof(&String::from_utf8_lossy(&output.stdout), &instance)
         {
-            remember_instance(&instance, &home)?;
+            remember_instance(&instance, Some(&home), None)?;
             return Ok(Some(home));
         }
     }
     Ok(None)
+}
+
+pub(super) fn instance_config_path(instance: &str) -> Result<Option<PathBuf>> {
+    validate_instance(instance)?;
+    Ok(read_state()?.configs.get(instance).cloned())
 }
 
 fn read_state() -> Result<StorageState> {
@@ -232,7 +256,9 @@ fn set_mode(_path: &Path, _mode: u32) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{belongs_to_project, parse_running_tart_processes, parse_tart_home_from_lsof};
+    use super::{
+        belongs_to_project, parse_running_tart_processes, parse_tart_home_from_lsof, StorageState,
+    };
     use std::path::PathBuf;
 
     #[test]
@@ -259,5 +285,13 @@ mod tests {
         assert!(belongs_to_project("vm", "vm"));
         assert!(belongs_to_project("vm-mac", "vm"));
         assert!(!belongs_to_project("vmmac", "vm"));
+    }
+
+    #[test]
+    fn older_storage_state_defaults_missing_config_ownership() {
+        let state: StorageState =
+            serde_json::from_str(r#"{"instances":{"demo":"/tmp/tart"}}"#).unwrap();
+        assert_eq!(state.instances["demo"], PathBuf::from("/tmp/tart"));
+        assert!(state.configs.is_empty());
     }
 }

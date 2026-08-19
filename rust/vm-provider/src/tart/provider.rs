@@ -460,6 +460,10 @@ impl Provider for TartProvider {
         manager.list_instances()
     }
 
+    fn instance_config_path(&self, instance: &str) -> Result<Option<PathBuf>> {
+        self.command.instance_config_path(instance)
+    }
+
     fn clone_box(&self) -> Box<dyn Provider> {
         Box::new(self.clone())
     }

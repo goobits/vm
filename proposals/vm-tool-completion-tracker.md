@@ -79,8 +79,8 @@ these existing owners are repaired and the full gate passes:
 - [x] Discover managed service containers independently of generated artifacts.
 - [x] Apply long source-sync timeouts and temporary-mirror cleanup consistently.
 - [x] Use canonical repository equivalence at every registration/workspace boundary.
-- [ ] Recover one target's owning config and provider without repeated inventory calls.
-- [ ] Support Docker-compatible and Tart ownership recovery through their providers.
+- [x] Recover one target's owning config and provider without repeated inventory calls.
+- [x] Support Docker-compatible and Tart ownership recovery through their providers.
 - [ ] Collapse managed-tool targeting to one configuration-owned execution path.
 - [ ] Make selector parsing, disabled-update output, and missing-release errors truthful.
 - [ ] Rerun static, Docker, and Tart release acceptance after remediation.

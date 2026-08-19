@@ -14,22 +14,32 @@ use crate::tart_storage as storage;
 #[derive(Clone, Debug)]
 pub struct TartCommand {
     tart_home: Option<PathBuf>,
+    config_path: Option<PathBuf>,
 }
 
 impl TartCommand {
     pub fn new(tart_home: Option<PathBuf>) -> Self {
-        Self { tart_home }
+        Self {
+            tart_home,
+            config_path: None,
+        }
     }
 
     /// Resolve the command context from explicit config, then `TART_HOME`.
     pub fn from_config(config: Option<&VmConfig>) -> Self {
-        Self::new(storage::configured_home(config))
+        Self {
+            tart_home: storage::configured_home(config),
+            config_path: config.and_then(owning_config_path),
+        }
     }
 
     /// Resolve a project command context, including a recorded or narrowly
     /// recovered home for existing instances.
     pub fn for_project(config: &VmConfig, project: &str) -> Result<Self> {
-        Ok(Self::new(storage::resolve_project_home(config, project)?))
+        Ok(Self {
+            tart_home: storage::resolve_project_home(config, project)?,
+            config_path: owning_config_path(config),
+        })
     }
 
     pub fn home(&self) -> Option<&Path> {
@@ -37,10 +47,11 @@ impl TartCommand {
     }
 
     pub fn remember_instance(&self, instance: &str) -> Result<()> {
-        if let Some(home) = self.home() {
-            storage::remember_instance(instance, home)?;
-        }
-        Ok(())
+        storage::remember_instance(instance, self.home(), self.config_path.as_deref())
+    }
+
+    pub fn instance_config_path(&self, instance: &str) -> Result<Option<PathBuf>> {
+        storage::instance_config_path(instance)
     }
 
     pub fn command(&self) -> Command {
@@ -139,6 +150,14 @@ impl TartCommand {
     }
 }
 
+fn owning_config_path(config: &VmConfig) -> Option<PathBuf> {
+    let source = config.source_path.clone()?;
+    if vm_core::user_paths::global_config_path().is_ok_and(|global| global == source) {
+        return None;
+    }
+    Some(source)
+}
+
 fn parse_ip_address(output: &str) -> Option<IpAddr> {
     output
         .split_whitespace()
@@ -147,7 +166,7 @@ fn parse_ip_address(output: &str) -> Option<IpAddr> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_ip_address, TartCommand};
+    use super::{parse_ip_address, TartCommand, VmConfig};
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
     use std::path::PathBuf;
 
@@ -166,6 +185,20 @@ mod tests {
     fn command_omits_tart_home_when_absent() {
         let command = TartCommand::new(None).command();
         assert!(!command.get_envs().any(|(key, _)| key == "TART_HOME"));
+    }
+
+    #[test]
+    fn command_tracks_project_config_ownership() {
+        let config = VmConfig {
+            source_path: Some(PathBuf::from("/tmp/project/vm.yaml")),
+            ..Default::default()
+        };
+        let command = TartCommand::from_config(Some(&config));
+
+        assert_eq!(
+            command.config_path.as_deref(),
+            Some(std::path::Path::new("/tmp/project/vm.yaml"))
+        );
     }
 
     #[test]
