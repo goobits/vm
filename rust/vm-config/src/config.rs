@@ -235,8 +235,10 @@ impl VmConfig {
 #[cfg(test)]
 mod container_policy_tests {
     use super::{MemoryLimit, VmConfig, VolumeRetention, VolumeScope};
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn project_dir_never_uses_the_global_config_directory() {
         let mut config = VmConfig {
             source_path: Some(vm_core::user_paths::global_config_path().unwrap()),

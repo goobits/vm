@@ -126,47 +126,6 @@ impl Store {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn consumer_registration_accepts_equivalent_github_transports() {
-        let directory = tempfile::tempdir().unwrap();
-        let store = Store::open(directory.path()).await.unwrap();
-        store
-            .register_package(vm_packages::RegisterPackage {
-                name: "auth".into(),
-                ecosystem: vm_packages::PackageEcosystem::Npm,
-                repository: "https://github.com/goobits/auth.git".into(),
-                default_branch: "main".into(),
-                workspace_release: false,
-            })
-            .await
-            .unwrap();
-        let request = RegisterConsumer {
-            name: "project-a".into(),
-            repository: "ssh://git@github.com/goobits/project-a.git".into(),
-            default_branch: "main".into(),
-            dependencies: std::collections::BTreeMap::from([("auth".into(), "1.0.0".into())]),
-        };
-        store.register_consumer(request.clone()).await.unwrap();
-
-        let record = store
-            .register_consumer(RegisterConsumer {
-                repository: "https://github.com/goobits/project-a.git".into(),
-                ..request
-            })
-            .await
-            .unwrap();
-
-        assert_eq!(
-            record.repository,
-            "ssh://git@github.com/goobits/project-a.git"
-        );
-    }
-}
-
 fn package_consumers(database: &crate::store::Database, package: &str) -> Vec<ConsumerUsage> {
     database
         .consumers
@@ -222,4 +181,45 @@ fn validate_consumer(request: &RegisterConsumer) -> WorkResult<()> {
         validate_label("package version", version)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn consumer_registration_accepts_equivalent_github_transports() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).await.unwrap();
+        store
+            .register_package(vm_packages::RegisterPackage {
+                name: "auth".into(),
+                ecosystem: vm_packages::PackageEcosystem::Npm,
+                repository: "https://github.com/goobits/auth.git".into(),
+                default_branch: "main".into(),
+                workspace_release: false,
+            })
+            .await
+            .unwrap();
+        let request = RegisterConsumer {
+            name: "project-a".into(),
+            repository: "ssh://git@github.com/goobits/project-a.git".into(),
+            default_branch: "main".into(),
+            dependencies: std::collections::BTreeMap::from([("auth".into(), "1.0.0".into())]),
+        };
+        store.register_consumer(request.clone()).await.unwrap();
+
+        let record = store
+            .register_consumer(RegisterConsumer {
+                repository: "https://github.com/goobits/project-a.git".into(),
+                ..request
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            record.repository,
+            "ssh://git@github.com/goobits/project-a.git"
+        );
+    }
 }

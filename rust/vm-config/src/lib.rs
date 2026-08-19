@@ -169,6 +169,7 @@ impl AppConfig {
 #[cfg(test)]
 mod app_config_tests {
     use super::AppConfig;
+    use serial_test::serial;
     use vm_core::error::Result;
 
     fn with_temp_home<T>(test: impl FnOnce(&tempfile::TempDir) -> Result<T>) -> Result<T> {
@@ -185,6 +186,7 @@ mod app_config_tests {
     }
 
     #[test]
+    #[serial]
     fn provider_override_uses_matching_profile_when_present() -> Result<()> {
         with_temp_home(|temp_dir| {
             let config_path = temp_dir.path().join("vm.yaml");
@@ -220,6 +222,7 @@ profiles:
     }
 
     #[test]
+    #[serial]
     fn configured_provider_uses_matching_profile_when_present() -> Result<()> {
         with_temp_home(|temp_dir| {
             let config_path = temp_dir.path().join("vm.yaml");
@@ -255,6 +258,7 @@ profiles:
     }
 
     #[test]
+    #[serial]
     fn explicit_profile_takes_precedence_over_provider_override() -> Result<()> {
         with_temp_home(|temp_dir| {
             let config_path = temp_dir.path().join("vm.yaml");
@@ -294,6 +298,7 @@ profiles:
     }
 
     #[test]
+    #[serial]
     fn sole_profile_is_selected_without_an_explicit_default() -> Result<()> {
         with_temp_home(|temp_dir| {
             let config_path = temp_dir.path().join("vm.yaml");
