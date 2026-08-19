@@ -1,5 +1,5 @@
 ---
-Status: Verified audit remediation in progress; release blocked
+Status: Audit remediation complete; host acceptance blocked
 Date: 2026-08-19
 Depends: docs/user-guide/package-infrastructure.md, docs/development/architecture.md
 ---
@@ -70,8 +70,8 @@ instead of maintaining partial command lists.
 ## Verified Audit Remediation
 
 The 2026-08-19 post-implementation audit found release-blocking correctness,
-ownership, migration, and convergence gaps. The release remains blocked until
-these existing owners are repaired and the full gate passes:
+ownership, migration, and convergence gaps. Code remediation is complete; the
+release remains blocked on equipped-host acceptance:
 
 - [x] Persist package appliance state when Docker cannot report an image ID.
 - [x] Keep global configuration outside the project workspace mount boundary.
@@ -82,7 +82,8 @@ these existing owners are repaired and the full gate passes:
 - [x] Support Docker-compatible and Tart ownership recovery through their providers.
 - [x] Collapse managed-tool targeting to one configuration-owned execution path.
 - [x] Make selector parsing, disabled-update output, and missing-release errors truthful.
-- [ ] Rerun static, Docker, and Tart release acceptance after remediation.
+- [x] Rerun static release acceptance after remediation.
+- [ ] Rerun Docker and Tart release acceptance after remediation.
 
 ## Remaining Acceptance
 
@@ -626,6 +627,15 @@ duplicate script was invoked but `jscpd` is not installed in this container, so
 that conditional check remains assigned to the equipped CI runner. One
 parallel provider assertion failed once, then passed focused, with its feature
 set, and on the full unit rerun without a code change.
+
+The 2026-08-19 post-remediation gate passed formatting, the serial all-feature
+workspace check, warnings-as-errors workspace Clippy, all workspace library
+tests, and the complete compiled integration matrix. `git diff --check` also
+passed. The gate found and fixed one misplaced test module and one shared
+`HOME` mutation race, then passed on rerun. Duplicate detection was invoked but
+`jscpd` is neither installed nor locally cached. This container also has no
+Docker or Tart executable, so those checks remain assigned to their equipped
+host runners in [Remaining Acceptance](#remaining-acceptance).
 
 Focused live Docker acceptance on 2026-08-15 used a unique appliance, producer,
 consumer, port, networks, and volumes. It proved deterministic build failure
