@@ -8,9 +8,9 @@ architecture notes stay beside the package they describe.
 ## Canonical Owners
 
 - [Quick Start](getting-started/quick-start.md) owns the first-use workflow.
-- `vm --help` owns the exact command and option inventory. The
-  [CLI Reference](user-guide/cli-reference.md) owns durable workflows and
-  target-selection behavior.
+- `vm --help` is the installed-version source of truth. The
+  [CLI Reference](user-guide/cli-reference.md) is the canonical documented
+  public command inventory and owns target-selection behavior.
 - [Configuration Guide](user-guide/configuration.md) owns `vm.yaml` semantics.
 - [Package Infrastructure](user-guide/package-infrastructure.md) owns shared
   package registries, managed source releases, automatic consumer upgrades,
@@ -49,7 +49,7 @@ Reference for vm.yaml and global configuration.
 
 **CLI Reference**
 [user-guide/cli-reference.md](user-guide/cli-reference.md)
-Command reference with examples.
+Complete public command inventory and targeting rules.
 
 **Troubleshooting**
 [user-guide/troubleshooting.md](user-guide/troubleshooting.md)

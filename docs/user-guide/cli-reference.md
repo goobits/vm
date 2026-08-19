@@ -1,301 +1,180 @@
 # CLI Reference
 
+This page is the single durable inventory of public `vm` commands. Runtime
+`vm --help` output remains authoritative for the installed version.
+
 ```text
-vm - Humane Virtual Environments
-
-USAGE:
-  vm <command> [subject] [options]
+vm [--config <path>] [--profile <name>] [--dry-run] <command>
 ```
 
-## Everyday Lifecycle
-
-| Goal | Command |
-| --- | --- |
-| Run a Linux environment | `vm run linux as backend` |
-| Run a macOS environment | `vm run mac as xcode` |
-| Run a container | `vm run container as redis` |
-| List this project's environments | `vm list` |
-| List every environment | `vm list --all` |
-| Open the default environment | `vm ssh` or `vm shell` |
-| Start the default environment | `vm start` |
-| Open an unnamed macOS environment | `vm shell mac` |
-| Inspect one environment | `vm status container` |
-| Stop an environment | `vm stop backend` |
-| Restart an environment | `vm restart backend` |
-| Remove an environment | `vm remove backend` |
-
-### `vm run`
-
-```bash
-vm run <mac|linux|container> [as <name>] [options]
-```
-
-Options:
+Global options apply to every command:
 
 | Option | Purpose |
 | --- | --- |
-| `--provider <docker|podman|tart>` | Override engine routing |
-| `--image <image>` | Use a specific image or distro |
-| `--build <path>` | Build from a local Dockerfile/context |
-| `--from-snapshot <name>` | Clone from a saved state |
-| `--cpu <count>` | Limit CPU count |
-| `--memory <limit>` | Limit memory |
-| `--mount <host:guest>` | Mount a host path |
-| `--ephemeral` | Create a throwaway environment |
+| `--config <path>` | Load a specific `vm.yaml` |
+| `--profile <name>` | Apply a named configuration profile |
+| `--dry-run` | Describe the operation without changing state |
+| `-h`, `--help` | Show command-specific help |
+| `-V`, `--version` | Show the installed version |
 
-Examples:
+## Environments
 
-```bash
-vm run linux as backend
-vm run mac as xcode
-vm run mac
-vm run container as redis-cache --image redis:7
-vm run linux as secure-node --provider tart
+| Command | Purpose |
+| --- | --- |
+| `vm run <mac\|linux\|container> [as <name>] [--provider <docker\|podman\|tart>] [--image <image>] [--build <path>] [--from-snapshot <name>] [--ephemeral] [--mount <host:guest>]... [--cpu <count>] [--memory <limit>]` | Create and start an environment |
+| `vm list [--all] [--raw]` | List project environments; `--all` crosses projects, `--raw` includes provider IDs; alias: `vm ls` |
+| `vm start [environment] [--no-wait] [<fleet-options>]` | Start an existing environment |
+| `vm shell [environment] [--path <path>] [-e\|--command <command>]` | Create or start an environment, then open a shell or run one shell command; alias: `vm ssh` |
+| `vm exec [environment] [<fleet-options>] -- <command>` | Start an existing environment and run one command |
+| `vm logs [environment] [-f\|--follow] [-n\|--tail <lines>] [-s\|--service <service>]` | Stream environment or service logs |
+| `vm copy [<fleet-options>] <source> <destination>` | Copy between host and environment paths |
+| `vm stop [environment] [<fleet-options>]` | Gracefully stop an environment; aliases: `down`, `halt` |
+| `vm status [environment]` | Inspect runtime, storage, mounts, and resource state |
+| `vm restart [environment] [<fleet-options>]` | Stop and restart an environment |
+| `vm remove [environment] [--force]` | Remove an environment while preserving saved snapshots; aliases: `rm`, `destroy` |
+| `vm save [environment] as <snapshot> [--description <text>] [--quiesce] [--force]` | Save an environment state |
+| `vm revert [environment] <snapshot> [--force]` | Restore a saved environment state |
+| `vm package [environment] [-o\|--output <file>] [--compress <1-9>] [--build <path>]` | Export an environment or build context as a portable artifact |
+
+`<fleet-options>` means:
+
+```text
+--fleet [--provider <docker|podman|tart>] [--pattern <glob>]
 ```
 
-## Target Selection
+Fleet options are supported by `start`, `exec`, `copy`, `stop`, and `restart`.
+Provider and pattern filters require `--fleet`. Without filters, the command
+targets all applicable managed environments.
 
-Lifecycle and interaction commands accept an environment name but do not
-require one. With no name, `vm` chooses in this order:
+When an environment is omitted, VM prefers the configured default profile, the
+canonical project environment, then the project's sole match. Interactive
+commands offer a choice when several matches remain; non-interactive commands
+list the candidates and stop. An environment named `docker` is still an
+environment, not a provider selector.
 
-1. The project's configured default profile, when profiles are present.
-2. The canonical project environment for that configuration.
-3. The only matching project environment when the canonical one is absent.
-4. An interactive choice when multiple matches remain.
+`shell` creates a missing environment. `start`, `exec`, `status`, `logs`,
+`copy`, `stop`, `restart`, `remove`, `save`, and `revert` require an existing
+environment. Host-to-guest copy paths use `environment:/path`.
 
-Non-interactive commands fail with the candidate names instead of guessing.
-Installed providers do not cause a prompt by themselves.
+## Configuration
 
-`vm start docker` targets an environment or configured profile named `docker`;
-it does not select Docker merely because that provider is installed. Use
-`--profile docker` explicitly for a profile or `vm run ... --provider docker`
-for an advanced provider override.
+| Command | Purpose |
+| --- | --- |
+| `vm config validate` | Validate the active configuration |
+| `vm config show` | Show the merged active configuration |
+| `vm config render [--instance <name>]` | Render redacted provider configuration without applying it |
+| `vm config get [field] [--global]` | Read one field or the complete configuration |
+| `vm config set <field> <value>... [--global]` | Set a project or global field |
+| `vm config unset <field> [--global]` | Remove a project or global field |
+| `vm config preset [names] [--global] [--list] [--show <name>]` | Apply or inspect presets |
+| `vm config profile ls` | List project profiles |
+| `vm config profile set <name>` | Select the project default profile |
+| `vm config ports [--fix]` | Inspect or repair configured port conflicts |
+| `vm config clear [--global]` | Clear project or global configuration |
 
-Bulk lifecycle and interaction stay on the ordinary command through `--fleet`:
-
-```bash
-vm exec --fleet [--provider <provider>] [--pattern <pattern>] -- <command>
-vm start --fleet [--provider <provider>] [--pattern <pattern>]
-vm stop --fleet [--provider <provider>] [--pattern <pattern>]
-vm restart --fleet [--provider <provider>] [--pattern <pattern>]
-vm copy --fleet [--provider <provider>] [--pattern <pattern>] <source> <destination>
-```
-
-Omit both filters to target every managed environment. `--provider` and
-`--pattern` are valid only with `--fleet`.
-
-## Interaction
-
-```bash
-vm shell [name]
-vm ssh [name]
-vm exec [name] -- <command>
-vm logs [name] [--follow] [--tail <n>]
-vm copy <source> <destination>
-```
-
-`vm shell` and its `vm ssh` alias create a missing environment directly from
-the selected `vm.yaml` configuration, then connect. Existing stopped
-environments are started first. Other interaction commands require an existing
-environment.
-
-Examples:
-
-```bash
-vm shell backend
-vm shell mac
-vm exec backend -- npm test
-vm logs backend --follow
-vm copy ./config.json backend:/workspace/config.json
-```
-
-`vm shell` and `vm ssh` create a missing selected environment, while all three
-commands start an existing stopped environment and wait until it is ready.
-`vm exec` never creates one. `vm logs` and `vm copy` do not change lifecycle
-state.
-
-Targeted container status reports the generated Compose path, writable-layer
-size, named-volume usage, `/tmp` usage, memory and PID peaks, mounts, logging,
-and lifecycle settings. Named-volume usage is separate from writable-layer
-size.
-
-## State
-
-```bash
-vm save [name] as <snapshot>
-vm revert [name] <snapshot>
-vm package [name] [--output <file>] [--compress <1-9>]
-```
-
-Examples:
-
-```bash
-vm save backend as stable
-vm revert backend stable
-vm package backend --output backend.tar.gz
-```
-
-`vm remove` removes active environment resources and preserves explicitly saved snapshots.
-
-## Config
-
-```bash
-vm config validate
-vm config show
-vm config render [--instance <name>]
-vm config get [field]
-vm config set <field> <value...>
-vm config unset <field>
-vm config preset [names]
-vm config profile ls
-vm config profile set <name>
-vm config ports --fix
-vm config clear
-```
+Configuration fields and examples belong in the
+[Configuration Guide](configuration.md).
 
 ## Tunnels
 
-```bash
-vm tunnel add <host>:<guest> [name]
-vm tunnel ls [name]
-vm tunnel stop [port] [name] [--all]
-```
-
-Examples:
-
-```bash
-vm tunnel add 8080:3000 backend
-vm tunnel ls backend
-vm tunnel stop 8080
-```
-
-## System
-
-```bash
-vm system update [--version <version>] [--force]
-vm system uninstall [--keep-config] [--yes]
-vm system base build <preset> --provider <docker|tart> [--guest-os <auto|linux|macos>]
-vm system base validate <preset> [--provider <docker|tart|all>]
-```
-
-## Doctor
-
-```bash
-vm doctor [--fix] [--clean]
-vm doctor --prune-pnpm-store [--container <environment>]
-```
-
-`vm config validate` is read-only. `vm config render` also performs validation,
-redacts environment values and host paths, and does not contact the provider.
-`vm doctor` reports project-configuration errors and stale configured package
-access; `--fix` repairs the latter without recreating the project environment.
-pnpm pruning is explicit and never runs during create, start, or bootstrap.
+| Command | Purpose |
+| --- | --- |
+| `vm tunnel add <host-port>:<guest-port> [environment]` | Start a port forward |
+| `vm tunnel ls [environment]` | List active forwards |
+| `vm tunnel stop [port] [environment] [--all]` | Stop one or all forwards |
 
 ## Package Infrastructure
 
-```bash
-vm packages init <source-root> [--port <port>]
-vm config set packages.source_roots <absolute-path>... --global
-vm packages up [--runtime <auto|docker|tart>]
-vm packages down [--runtime <auto|docker|tart>]
-vm packages status
-vm packages doctor [--fix]
-vm packages backup
-vm packages backups
-vm packages restore <backup-id>
-vm packages register <name> --ecosystem <npm|cargo|python> --repository <url>
-vm packages register <path>... [--recursive]
-vm packages auth --github
-vm packages auth --token-file <path>
-vm packages auth --clear
-vm packages list
-vm packages checkout <package-or-tool>
-vm packages release
-vm packages cancel
-vm packages consumer register <project> --repository <url> --dependency <package>@<version>
-vm packages consumers <package>
-vm packages drift
-```
+| Command | Purpose |
+| --- | --- |
+| `vm packages init <source-root> [--port <port>]` | Store the controller source shelf and initialize the appliance |
+| `vm packages up [--runtime <auto\|docker\|tart>] [--port <port>] [--registry-image <image>] [--job-image <image>]` | Reconcile the appliance and configured sources |
+| `vm packages down [--runtime <auto\|docker\|tart>]` | Stop the appliance while preserving volumes |
+| `vm packages status [--runtime <auto\|docker\|tart>]` | Report appliance or guest workflow health |
+| `vm packages doctor [--runtime <auto\|docker\|tart>] [--fix]` | Diagnose or safely repair package infrastructure |
+| `vm packages backup [--runtime <auto\|docker\|tart>]` | Create a private named-volume backup |
+| `vm packages backups [--runtime <auto\|docker\|tart>]` | List appliance backups |
+| `vm packages restore <backup-id> [--runtime <auto\|docker\|tart>]` | Restore a backup while services are stopped |
+| `vm packages register <name-or-path>... [--ecosystem <npm\|cargo\|python>] [--repository <url>] [--branch <branch>] [--recursive]` | Register an explicit canonical package or discover repositories from paths |
+| `vm packages list` | List registered and published package state |
+| `vm packages consumer register <name> --repository <url> [--branch <branch>] --dependency <package@version>...` | Register a consumer and its internal dependencies |
+| `vm packages consumer list` | List registered consumers |
+| `vm packages consumers <package>` | Show consumers and pending upgrades for one package |
+| `vm packages drift` | Show version drift across consumers |
+| `vm packages checkout <package-or-tool>` | Create or resume a guest-owned source checkout |
+| `vm packages release` | Release the checkout or canonical workspace containing the current directory |
+| `vm packages cancel` | Cancel and clean the checkout containing the current directory |
+| `vm packages auth (--github\|--token-file <path>\|--clear)` | Import or remove the controller Git token |
 
-`init` configures the controller source shelf and appliance. Inside an existing
-managed guest, `checkout` creates or resumes a guest-owned source using the
-guest's authenticated identity and prints its absolute path; it does not launch
-an agent. Bare `release` infers either that managed checkout or a registered
-canonical package workspace from the current directory. Bare `cancel` infers a
-managed checkout. The workspace release creates and resumes its private
-transaction without mutating the repository. Its first release reviews the full
-tree; later releases use the last internally published source commit as the
-baseline.
+Controller commands run on the host. `status`, `checkout`, `release`, and
+`cancel` also have scoped behavior inside managed guests. Language packages are
+published privately and upgraded through registered consumer rollout; they are
+not installed indiscriminately into every environment.
 
-For language packages, checkout records whether the current project consumes
-the source. Source-only work runs package validation without a project override
-or fabricated consumer result. Cancellation restores any real consumer
-override before authenticated durable cleanup; a restoration failure leaves the
-cancelled checkout available for retry.
-
-Recursive registration routes repositories marked by `vm-tool.yaml` into the
-managed binary-tool or collection workflow. `packages.source_roots` is a
-controller-wide list; `vm packages up` reconciles those roots on fresh and
-existing appliance state without replacing credentials or named volumes. Roots
-are scanned before appliance mutation; configured empty shelves are accepted,
-while manual recursive registration still requires at least one repository.
-On the controller host, `status` reports exactly `healthy`, `degraded`, or
-`action required`. Inside a managed guest, it performs a read-only workflow and
-scoped-agent credential check; it does not reconcile or change infrastructure.
-`vm packages list` separates registered, published, installed, and consumable
-state; environment-only states are reported as not applicable.
-Package checkout and release commands are the managed agent workflow inside the
-assigned Docker or Tart environment. The same commands handle registered tool
-collections. All publication stays inside the private gateway.
-
-See [Package Infrastructure](package-infrastructure.md) for the provider
-boundary, registration, credentials, release workflow, and recovery model.
+The [Package Infrastructure Guide](package-infrastructure.md) owns setup,
+release, security, recovery, and consumer workflow details.
 
 ## Managed Tools
 
-```bash
-vm tools register <name> --kind <binary|collection> --repository <url>
-vm tools list
-vm tools show <name>
-vm tools refresh
-vm tools status [environment]
-vm tools update [environment] [--background]
-vm tools update --fleet [--provider <provider>] [--pattern <pattern>] [--background]
-```
+| Command | Purpose |
+| --- | --- |
+| `vm tools register <name> --repository <url> [--branch <branch>] [--kind <binary\|collection>]` | Register a trusted tool source |
+| `vm tools list` | List registered tools and publication state |
+| `vm tools show <name>` | Show one tool and its releases |
+| `vm tools refresh` | Refresh the controller tool catalog |
+| `vm tools status [environment]` | Combine controller, installed, and consumable state |
+| `vm tools update [<tool>...] [--to <environment>...] [--include-stopped] [--background] [<fleet-options>]` | Update configured or named tools across selected environments |
 
-`status` combines controller registration/publication with guest
-installation/consumability. Normal collection publication starts with `vm
-packages checkout <tool>` inside a managed guest and finishes with bare `vm
-packages release` from its printed source path. `update` applies eligible
-changes without prompting or rebuilding the base, including the authenticated,
-digest-verified guest `vm` client used by that workflow.
-`--fleet` uses the loaded tool selection for matching managed environments,
-starts stopped targets in place, repairs shared package routing, and summarizes
-failures; it does not copy the invoking project's application services to
-unrelated targets. Run these commands on the controller host. See
-[Package Infrastructure](package-infrastructure.md#register-and-consume-tools)
-for update policy, runtime ownership, locking, and recovery behavior.
+With no tool names, `update` loads every running managed Docker environment's
+own tool selection. Tool names restrict that invocation. `--to` restricts exact
+environments. Stopped environments remain untouched unless
+`--include-stopped` is explicit. Existing `vm tools update <environment>` and
+`vm tools update --fleet [--provider <provider>] [--pattern <glob>]` forms remain
+compatibility syntax; new automation should use `--to`.
 
-## Plugins
+Explicit updates include prompt-policy releases while respecting persisted
+`off` policies for ordinary upgrades. Reconciliation repairs package routing,
+the base-owned Codex runtime, and managed links without recreating the primary
+environment. Active agent sessions do not hot-reload updated skills.
 
-```bash
-vm plugin ls
-vm plugin info <name>
-vm plugin install <path>
-vm plugin rm <name>
-vm plugin new <name> --type <preset|service>
-vm plugin validate <name>
-```
+## Diagnostics And System Management
 
-Plugin-backed commands are flat at the top level:
+| Command | Purpose |
+| --- | --- |
+| `vm doctor [--fix] [--clean] [--prune-pnpm-store] [--container <environment>]` | Diagnose or repair engine, configuration, and pnpm-store issues |
+| `vm system update [--version <version>] [--force]` | Update the VM installation |
+| `vm system uninstall [--keep-config] [-y\|--yes]` | Remove VM from the host |
+| `vm system base build <preset> --provider <docker\|tart> [--guest-os <auto\|linux\|macos>]` | Build a provider-native base |
+| `vm system base validate <preset> [--provider <docker\|tart\|all>] [--rebuild-docker-base] [--build-tart-base]` | Validate provider base workflows |
 
-```bash
-vm db ls
-vm db backup <database>
-vm secret add <name> <value>
-vm secret ls
-vm secret rm <name>
-vm secret interactive
-```
+`vm config validate` is read-only. `vm config render` redacts secrets and host
+paths. Ordinary cleanup and repair preserve managed data unless a command
+explicitly states otherwise.
 
-Prefer `vm secret interactive` when a value should not appear in shell history.
+## Plugins, Databases, And Secrets
+
+| Command | Purpose |
+| --- | --- |
+| `vm plugin ls` | List installed plugins |
+| `vm plugin info <name>` | Show plugin details |
+| `vm plugin install <path>` | Install a plugin |
+| `vm plugin rm <name>` | Remove a plugin |
+| `vm plugin new <name> --type <preset\|service>` | Scaffold a plugin |
+| `vm plugin validate <name>` | Validate plugin configuration |
+| `vm db ls` | List databases and backups |
+| `vm db backup [database] [name] [--all]` | Back up one or all databases |
+| `vm db restore <backup> <database>` | Restore a database backup |
+| `vm db export <database> <file>` | Export SQL |
+| `vm db import <file> <database>` | Import SQL |
+| `vm db size` | Show database disk usage |
+| `vm db reset <database> [--force]` | Drop and recreate a database |
+| `vm db credentials <service>` | Show service credentials |
+| `vm secret status` | Check the secret proxy |
+| `vm secret add <name> <value> [--scope <scope>] [--description <text>]` | Store a secret |
+| `vm secret ls [--show-values]` | List secrets |
+| `vm secret rm <name> [-f\|--force]` | Delete a secret |
+| `vm secret interactive` | Add a secret without placing its value in shell history |
+
+Plugin-backed commands depend on installed plugin support. Use
+`vm help <command>` or `vm help <command> <subcommand>` for the installed
+version's generated help.

@@ -43,6 +43,8 @@ impl SourceManager {
             .map(|_| ());
         }
 
+        cleanup_temporary_mirrors(mirror).await?;
+
         let temporary = mirror.with_extension(format!(
             "tmp-{}",
             vm_core::secrets::generate_random_password(12)
@@ -66,11 +68,15 @@ impl SourceManager {
 
     fn git(&self) -> Command {
         let mut command = Command::new("git");
+        command.kill_on_drop(true);
         command.env("GIT_TERMINAL_PROMPT", "0");
         if let Ok(askpass) = std::env::var("PKG_WORK_GIT_ASKPASS") {
             command.env("GIT_ASKPASS", askpass);
         }
         if let Ok(token_file) = std::env::var("PKG_WORK_GIT_TOKEN_FILE") {
+            for config in vm_packages::AUTHENTICATED_GIT_CONFIG {
+                command.args(["-c", config]);
+            }
             command.env("PKG_WORK_GIT_TOKEN_FILE", token_file);
         }
         command
@@ -105,6 +111,36 @@ impl SourceManager {
             .join("agents")
             .join(managed_component("checkout ID", checkout_id)?))
     }
+}
+
+async fn cleanup_temporary_mirrors(mirror: &Path) -> WorkResult<()> {
+    let Some(parent) = mirror.parent() else {
+        return Ok(());
+    };
+    let Some(name) = mirror.file_name().and_then(|name| name.to_str()) else {
+        return Ok(());
+    };
+    let prefix = format!("{name}.tmp-");
+    let mut entries = match tokio::fs::read_dir(parent).await {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    while let Some(entry) = entries.next_entry().await? {
+        if entry
+            .file_name()
+            .to_str()
+            .is_some_and(|candidate| candidate.starts_with(&prefix))
+        {
+            let path = entry.path();
+            if entry.file_type().await?.is_dir() {
+                tokio::fs::remove_dir_all(path).await?;
+            } else {
+                tokio::fs::remove_file(path).await?;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn managed_component<'a>(field: &str, value: &'a str) -> WorkResult<&'a str> {

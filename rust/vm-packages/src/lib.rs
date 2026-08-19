@@ -55,10 +55,17 @@ pub use tools::{
     ToolKind, ToolPublicationReceipt, ToolSourceManifest, TOOL_SOURCE_SCHEMA,
 };
 pub use validation::{
-    normalize_remote_repository_url, validate_label, validate_managed_id, validate_registry_url,
-    validate_repository_url, PackageValidationError,
+    normalize_remote_repository_url, repository_urls_equivalent, validate_label,
+    validate_managed_id, validate_registry_url, validate_repository_url, PackageValidationError,
 };
 pub use workflow::{
     CheckoutLease, CheckoutRecord, CleanupRequest, CreateCheckout, LeaseRecord, LeaseRequest,
     ReceiptKind, SourceKind, TransitionRequest, WorkflowReceipt, WorkflowState, WorkflowTransition,
 };
+
+/// Rewrite GitHub SSH origins inside credential-isolated services so the
+/// controller-provided token can authenticate without forwarding host SSH keys.
+pub const AUTHENTICATED_GIT_CONFIG: [&str; 2] = [
+    "url.https://github.com/.insteadOf=ssh://git@github.com/",
+    "url.https://github.com/.insteadOf=ssh://github.com/",
+];

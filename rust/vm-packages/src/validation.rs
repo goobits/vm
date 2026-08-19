@@ -94,6 +94,38 @@ pub fn normalize_remote_repository_url(value: &str) -> Result<String, PackageVal
     Ok(candidate)
 }
 
+/// Treat GitHub HTTPS and SSH transports as the same canonical repository.
+/// The package appliance stores the original origin for receipts while its
+/// credential-isolated Git processes may use either transport.
+pub fn repository_urls_equivalent(left: &str, right: &str) -> bool {
+    if left == right {
+        return true;
+    }
+    github_repository_identity(left)
+        .zip(github_repository_identity(right))
+        .is_some_and(|(left, right)| left == right)
+}
+
+fn github_repository_identity(value: &str) -> Option<String> {
+    let repository = url::Url::parse(value).ok()?;
+    if !repository
+        .host_str()
+        .is_some_and(|host| host.eq_ignore_ascii_case("github.com"))
+        || !matches!(repository.scheme(), "https" | "ssh")
+    {
+        return None;
+    }
+    if repository.scheme() == "ssh" && !matches!(repository.username(), "" | "git") {
+        return None;
+    }
+    let path = repository
+        .path()
+        .trim_matches('/')
+        .strip_suffix(".git")
+        .unwrap_or_else(|| repository.path().trim_matches('/'));
+    (!path.is_empty()).then(|| path.to_ascii_lowercase())
+}
+
 pub fn validate_registry_url(value: &str) -> Result<(), PackageValidationError> {
     let value = value.strip_prefix("sparse+").unwrap_or(value);
     let registry = url::Url::parse(value)
@@ -115,8 +147,8 @@ pub fn validate_registry_url(value: &str) -> Result<(), PackageValidationError> 
 #[cfg(test)]
 mod tests {
     use super::{
-        normalize_remote_repository_url, validate_label, validate_managed_id,
-        validate_registry_url, validate_repository_url,
+        normalize_remote_repository_url, repository_urls_equivalent, validate_label,
+        validate_managed_id, validate_registry_url, validate_repository_url,
     };
 
     #[test]
@@ -132,6 +164,18 @@ mod tests {
             "ssh://git@example.com/team/auth.git"
         );
         assert!(normalize_remote_repository_url("file:///tmp/auth.git").is_err());
+        assert!(repository_urls_equivalent(
+            "https://github.com/goobits/auth.git",
+            "ssh://git@github.com/goobits/auth.git"
+        ));
+        assert!(!repository_urls_equivalent(
+            "https://github.com/goobits/auth.git",
+            "ssh://git@github.com/goobits/security.git"
+        ));
+        assert!(!repository_urls_equivalent(
+            "https://example.com/goobits/auth.git",
+            "ssh://git@example.com/goobits/auth.git"
+        ));
     }
 
     #[test]

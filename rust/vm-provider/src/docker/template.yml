@@ -28,6 +28,9 @@ services:
       com.vm.role: "environment"
       com.vm.project: "{{ base_project_name }}"
       com.vm.instance: "{{ project_name }}"
+      {% if config_path_label %}
+      com.vm.config-path: {{ config_path_label }}
+      {% endif %}
       {% if is_temporary %}
       com.vm.temporary: "true"
       {% endif %}

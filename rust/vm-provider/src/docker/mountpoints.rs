@@ -31,8 +31,16 @@ pub(super) fn prepare(
     let project_dir = project_dir.canonicalize().map_err(|error| {
         VmError::filesystem(error, project_dir.display(), "resolve project directory")
     })?;
+    let managed_worktree_root = crate::user_home::resolve_home_dir().map(|home| {
+        home.join(".vm/worktrees")
+            .join(project.name.as_deref().unwrap_or("vm-project"))
+    });
     let worktree_mounts = if worktrees_enabled(config) {
-        resolve_worktree_mounts(workspace, vm_config::detect_worktrees().unwrap_or_default())
+        resolve_worktree_mounts(
+            workspace,
+            vm_config::detect_worktrees_in(&project_dir).unwrap_or_default(),
+            managed_worktree_root.as_deref(),
+        )
     } else {
         Vec::new()
     };

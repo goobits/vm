@@ -14,6 +14,9 @@ fn git() -> Command {
     let mut command = Command::new("git");
     command.env("GIT_TERMINAL_PROMPT", "0");
     if let Ok(token_file) = std::env::var("PKG_RELEASE_GIT_TOKEN_FILE") {
+        for config in vm_packages::AUTHENTICATED_GIT_CONFIG {
+            command.args(["-c", config]);
+        }
         command
             .env("GIT_ASKPASS", "pkg-git-askpass")
             .env("PKG_WORK_GIT_TOKEN_FILE", token_file);

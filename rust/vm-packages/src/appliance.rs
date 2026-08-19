@@ -32,6 +32,9 @@ pub struct ApplianceState {
     pub gateway_url: String,
     pub gateway_port: u16,
     pub registry_image: String,
+    /// Immutable image identity used to refresh same-tag package edges.
+    #[serde(default)]
+    pub registry_image_identity: String,
     #[serde(default, alias = "review_image")]
     pub job_image: String,
     pub controller_version: String,
@@ -216,6 +219,7 @@ mod tests {
             gateway_url: "http://192.0.2.2:3080".into(),
             gateway_port: 3080,
             registry_image: "registry.example/vm-packages:1".into(),
+            registry_image_identity: "sha256:registry-image".into(),
             job_image: "registry.example/vm-package-jobs:1".into(),
             controller_version: "1.0.0".into(),
             tart_home: Some("/Volumes/External/Tart".into()),
@@ -241,6 +245,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(state.tart_home, None);
+        assert!(state.registry_image_identity.is_empty());
         assert_eq!(state.definition_revision, 0);
     }
 }

@@ -165,9 +165,10 @@ archives. No host checkout, host approval, npmjs.org, crates.io, or PyPI
 publication participates.
 
 After a configured tool is published, normal managed-tool reconciliation or an
-explicit `vm tools update <environment>` activates it in each project that
-selects it. Language packages are not installed directly; their existing
-consumer rollout workers remain authoritative.
+explicit `vm tools update <tool>` activates it across running managed Docker
+environments. Use `--to <environment>...` to limit activation. Language packages
+are not installed directly; their existing consumer rollout workers remain
+authoritative.
 
 For a language package, the unpublished checkout is attached only to the
 assigned consumer; other consumers stay on their published versions. Every
@@ -250,7 +251,26 @@ vm packages auth --token-file /secure/input/git-token
 controller secret without printing it. If GitHub reports an invalid session,
 run `gh auth login --hostname github.com` once and retry. Input files are read
 once. The token is exposed only to the source and release services that need
-it. Public-only sources do not need a Git credential.
+it. GitHub SSH origins remain the canonical repository identity, but those
+isolated services rewrite the transport to HTTPS so the token works without
+receiving a host SSH key. The first checkout may need to build a full canonical
+mirror; its request remains active for up to one hour instead of inheriting the
+short control-plane timeout. Interrupted clones are killed and their temporary
+directories are removed on retry. Public-only sources do not need a Git
+credential.
+Re-registration treats the HTTPS and SSH forms of the same GitHub repository
+as one source, so changing a local clone's transport does not degrade catalog
+reconciliation.
+
+For source-built Docker appliances, guest package-edge identity follows the
+immutable image digest rather than only the version tag. Rebuilding the same VM
+version therefore updates the managed guest client without recreating the main
+environment container.
+Explicit cross-project environment names resolve their owning `vm.yaml` from
+managed Docker metadata before reconciliation, so running `vm tools update
+--to projects-dev` from another repository updates `projects-package-edge`, not
+the caller's package edge. Legacy Docker Desktop bind paths are translated back
+to native host paths without recreating the container.
 
 Register each package repository and each consumer inventory:
 
@@ -323,18 +343,16 @@ language-package protocols:
 vm tools register agent-skills \
   --kind collection \
   --repository https://github.com/example/agent-skills.git
-vm tools list
-vm tools show agent-skills
 ```
 
 Use `vm packages checkout <tool>` inside a managed guest for isolated tool work.
 From a registered canonical workspace, use bare `vm packages release`. The same
 review, build, and release workflow validates, integrates, archives, and
 receipts the exact commit. Managed checkouts push their integrated source;
-canonical workspace releases retain the immutable source internally. Projects select
-versions through the one-level `tools:` map in `vm.yaml`. A collection such as
-`agent-skills` is one atomic version, even when it activates into several agent
-directories.
+canonical workspace releases retain the immutable source internally. Projects
+select versions through the one-level `tools:` map in `vm.yaml`. A collection
+such as `agent-skills` is one atomic version, even when it activates into
+several agent directories.
 
 Binary tools use a versioned, argument-safe manifest. A credential-separated
 builder builds each declared target from the submitted source bundle, validates
@@ -366,33 +384,43 @@ The Vibe base owns Antigravity, Claude Code, and Codex executables. They do not
 require this appliance; `agent-skills` remains an intentionally managed tool.
 For the built-in `agent-skills` selection, `vm tools update` automatically
 registers the canonical Goobits repository when it is missing. Tool updates
-activate inside an already-running
-environment and do not require a base rebuild. Read credentials travel to the
-guest over standard input rather than command arguments. Collection activation
-merges individual skills into an existing agent skill directory, preserving
-unmanaged personal and system skills. Published binary tools and collections
-become eligible only in projects that configure them. Reconciliation selects
-the guest OS/architecture artifact, verifies its digest before extraction,
-installs one immutable release, and atomically updates its configured links.
-Normal shell reconciliation adopts an automatic update without approval; an
-already-running agent session is not hot-reloaded.
+activate inside an already-running environment and do not require a base
+rebuild. Read credentials travel to the guest over standard input rather than
+command arguments. Collection activation merges individual skills into an
+existing agent skill directory, preserving unmanaged personal and system
+skills. Published binary tools and collections become eligible only in projects
+that configure them. Reconciliation selects the guest OS/architecture artifact,
+verifies its digest before extraction, installs one immutable release, and
+atomically updates its configured links. Normal shell reconciliation adopts an
+automatic update without approval; an already-running agent session is not
+hot-reloaded.
 
 ```bash
-vm tools refresh
-vm tools status [environment]
-vm tools update [environment]
-vm tools update [environment] --background
-vm tools update --fleet [--provider docker] [--pattern 'project-*']
+vm tools update
+vm tools update agent-skills another-tool
+vm tools update agent-skills --to projects-dev typemill-dev
 ```
 
+These are the common all-tools, selected-tools, and selected-environments
+forms. See the [CLI reference](cli-reference.md#managed-tools) for every update
+option and the compatibility syntax.
+
+With no names, `update` uses every running managed Docker environment's own
+configured tool selection. Positional names restrict the update to those tools
+and intentionally make an unconfigured tool eligible for that invocation.
+`--to` accepts exact environment names. Stopped environments are ignored unless
+`--include-stopped` is explicit; then VM starts selected stopped environments in
+place. Exact legacy environment positionals and `--fleet` remain compatible,
+but `--to` is the unambiguous current syntax.
+
 Omitted versions track the latest release. Explicit semantic versions remain
-pinned. An explicit `update` installs every eligible configured change without a
-checklist. An `off` policy disables newer-release upgrades, but not a required
-first install or pinned-version repair. Normal startup never waits for the
-registry, an update prompt, a guest download, or base-owned Codex repair. It
-launches only cached automatic tool
-work and the Vibe runtime probe/repair in the background. Prompt-policy upgrades
-remain pending for an explicit `vm tools update`. The
+pinned. An explicit `update` installs every eligible selected change without a
+checklist. A persisted `off` policy disables newer-release upgrades, but not a
+required first install or pinned-version repair. Normal startup never waits for
+the registry, an update prompt, a guest download, or base-owned Codex repair. It
+launches only cached automatic tool work and the Vibe runtime probe/repair in
+the background. Prompt-policy upgrades remain pending for an explicit `vm tools
+update`. The
 [configuration guide](configuration.md#managed-tools-and-ai-state) owns the
 `tools` policy syntax.
 When no managed tools are selected, update can repair base-owned Codex without
@@ -410,15 +438,16 @@ at a declared activation path. Managed releases live under the guest home and
 never advance, remove, or otherwise rewrite project Git; the operator must pick
 one owner for overlapping collection content.
 
-`vm tools update [environment]` is also the idempotent upgrade reconciliation
-entry point. For Docker it regenerates current Compose metadata and updates only
-a missing or stale `package-edge` sidecar with `--no-deps`. For Linux Tart it
-reconciles only the guest edge container. Both paths preserve the edge cache
-named volume and leave the primary environment and base image intact. Both also
-repair managed client files in place so a new shell no longer depends on the
-primary container's creation-time environment. `vm ssh` and `vm exec` perform
-that package-edge and client-file repair before entering the guest or running
-the requested command. Tool and Codex reconciliation remains shell-specific.
+`vm tools update [<tool>...] [--to <environment>...]` is also the idempotent
+upgrade reconciliation entry point. For Docker it regenerates current Compose
+metadata and updates only a missing or stale `package-edge` sidecar with
+`--no-deps`. For Linux Tart it reconciles only the guest edge container. Both
+paths preserve the edge cache named volume and leave the primary environment
+and base image intact. Both also repair managed client files in place so a new
+shell no longer depends on the primary container's creation-time environment.
+`vm ssh` and `vm exec` perform that package-edge and client-file repair before
+entering the guest or running the requested command. Tool and Codex
+reconciliation remains shell-specific.
 The explicit tool update then
 invokes base-owned Codex reconciliation in the foreground, waiting for any
 shell-triggered repair already in flight, before it verifies managed-tool links.
@@ -435,15 +464,17 @@ seconds, so a burst of `vm ssh` sessions does not repeat downloads or probes.
 Explicit `refresh` and `update` commands bypass the recent-success window while
 still respecting active locks.
 
-`vm tools update --fleet` starts matching managed environments in place and
-reconciles the shared package routing, base-owned Codex runtime, and loaded
-managed-tool selection. It does not project the invoking project's application
-services onto unrelated environments.
+The default update discovers running managed Docker environments and loads each
+target's owning configuration before reconciling its shared package routing,
+base-owned Codex runtime, and managed-tool selection. It does not project the
+invoking project's application services or tool policy onto unrelated
+environments. The compatibility `--fleet` form retains its former provider and
+pattern behavior for existing automation.
 
 Administrative package/tool commands are host-only. Checkout, show, and release
 are intentionally guest-safe. Other commands invoked inside a managed guest
 print the exact shell-safe host command, for example `Run on the host: vm tools
-update dev`.
+update --to dev`.
 
 ## Consumer Dependency Updates
 

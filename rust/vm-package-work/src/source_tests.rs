@@ -33,6 +33,34 @@ fn git_output(repository: &Path, args: &[&str]) -> String {
 }
 
 #[tokio::test]
+async fn mirror_sync_removes_abandoned_clone_directories() {
+    let directory = tempfile::tempdir().unwrap();
+    let repository = directory.path().join("repository");
+    std::fs::create_dir(&repository).unwrap();
+    git(&repository, &["init", "--initial-branch", "main"]);
+    git(&repository, &["config", "user.email", "test@example.com"]);
+    git(&repository, &["config", "user.name", "Test"]);
+    std::fs::write(repository.join("README.md"), "test\n").unwrap();
+    git(&repository, &["add", "README.md"]);
+    git(&repository, &["commit", "-m", "initial"]);
+
+    let sources = directory.path().join("sources");
+    std::fs::create_dir(&sources).unwrap();
+    let mirror = sources.join("package.git");
+    let abandoned = sources.join("package.git.tmp-abandoned");
+    std::fs::create_dir(&abandoned).unwrap();
+    std::fs::write(abandoned.join("partial"), "stale").unwrap();
+
+    SourceManager::new(directory.path())
+        .sync_mirror(&mirror, repository.to_str().unwrap())
+        .await
+        .unwrap();
+
+    assert!(mirror.is_dir());
+    assert!(!abandoned.exists());
+}
+
+#[tokio::test]
 async fn tool_collection_checkout_uses_the_same_managed_source_boundary() {
     let directory = tempfile::tempdir().unwrap();
     let repository = directory.path().join("agent-skills");

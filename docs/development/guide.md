@@ -18,9 +18,9 @@ Shared terminal output lives in `vm-core/src/output_macros.rs`:
 - Commands return errors with context and an optional hint; `main.rs` renders them once.
 - Provider and command modules must not print the same failure before returning it.
 
-`vm --help` owns the public command inventory. The
-[CLI Reference](../user-guide/cli-reference.md) owns durable workflows. Do not
-maintain a second command list in contributor docs.
+`vm --help` is the installed-version source of truth. The
+[CLI Reference](../user-guide/cli-reference.md) owns the documented public
+command inventory. Do not maintain a second command list in contributor docs.
 
 ## Lifecycle Hooks
 

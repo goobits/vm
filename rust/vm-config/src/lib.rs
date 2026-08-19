@@ -64,7 +64,7 @@ pub use global_config::GlobalConfig;
 
 // Re-export CLI utilities
 pub use cli::init_config_file;
-pub use detector::detect_worktrees;
+pub use detector::{detect_worktrees, detect_worktrees_in};
 
 // Re-export ConfigLoader for relative path detection
 pub use loader::ConfigLoader;

@@ -485,14 +485,66 @@ fn tool_refresh_status_and_batch_update_commands_parse() {
         } if environment == "backend"
     ));
     assert!(matches!(
-        Args::parse_from(["vm", "tools", "update", "backend", "--background"]).command,
+        Args::parse_from(["vm", "tools", "update", "agent-skills", "--background"]).command,
         Command::Tools {
             command: ToolsSubcommand::Update {
-                environment: Some(environment),
+                tools,
+                to,
+                include_stopped: false,
                 background: true,
                 ..
             }
-        } if environment == "backend"
+        } if tools == ["agent-skills"] && to.is_empty()
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "tools", "update"]).command,
+        Command::Tools {
+            command: ToolsSubcommand::Update {
+                tools,
+                to,
+                include_stopped: false,
+                ..
+            }
+        } if tools.is_empty() && to.is_empty()
+    ));
+    assert!(matches!(
+        Args::parse_from([
+            "vm",
+            "tools",
+            "update",
+            "agent-skills",
+            "helper",
+            "--to",
+            "backend",
+            "worker",
+        ])
+        .command,
+        Command::Tools {
+            command: ToolsSubcommand::Update {
+                tools,
+                to,
+                include_stopped: false,
+                background: false,
+                ..
+            }
+        } if tools == ["agent-skills", "helper"] && to == ["backend", "worker"]
+    ));
+    assert!(matches!(
+        Args::parse_from([
+            "vm",
+            "tools",
+            "update",
+            "agent-skills",
+            "--include-stopped",
+        ])
+        .command,
+        Command::Tools {
+            command: ToolsSubcommand::Update {
+                tools,
+                include_stopped: true,
+                ..
+            }
+        } if tools == ["agent-skills"]
     ));
     assert!(matches!(
         Args::parse_from([
@@ -506,14 +558,25 @@ fn tool_refresh_status_and_batch_update_commands_parse() {
         .command,
         Command::Tools {
             command: ToolsSubcommand::Update {
-                environment: None,
+                tools,
+                to,
+                include_stopped: false,
                 fleet,
                 background: false,
             }
-        } if fleet.fleet && fleet.provider.as_deref() == Some("docker")
+        } if tools.is_empty() && to.is_empty() && fleet.fleet && fleet.provider.as_deref() == Some("docker")
     ));
     assert!(Args::try_parse_from(["vm", "tools", "update", "--all"]).is_err());
-    assert!(Args::try_parse_from(["vm", "tools", "update", "backend", "--fleet"]).is_err());
+    assert!(Args::try_parse_from([
+        "vm",
+        "tools",
+        "update",
+        "agent-skills",
+        "--to",
+        "backend",
+        "--fleet",
+    ])
+    .is_err());
 }
 
 #[test]

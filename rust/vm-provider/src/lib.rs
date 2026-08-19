@@ -499,6 +499,12 @@ pub trait Provider {
     /// List all instances managed by this provider.
     fn list_instances(&self) -> Result<Vec<InstanceInfo>>;
 
+    /// Return the owning project configuration for an existing instance when
+    /// the provider can prove that relationship from managed runtime metadata.
+    fn instance_config_path(&self, _instance: &str) -> Result<Option<PathBuf>> {
+        Ok(None)
+    }
+
     /// Host ports already owned by managed service containers that will be
     /// reused when this environment is created.
     fn reusable_host_ports(&self, _environment: &str) -> Result<Vec<u16>> {

@@ -193,7 +193,7 @@ For an existing environment, run this on the controller host:
 
 ```bash
 vm tools status [environment]
-vm tools update [environment]
+vm tools update --to <environment>
 ```
 
 `PROJECT_COPY=yes` means a standalone project checkout shadows the managed
@@ -217,7 +217,7 @@ The pre-shell runtime repair removes that obsolete per-shell hook; worktree
 repair remains targeted to a broken linked worktree and stays silent.
 
 For a deterministic foreground result, run `vm tools refresh` followed by `vm
-tools update [environment]` on the host. The update waits for an in-flight
+tools update --to <environment>` on the host. The update waits for an in-flight
 repair and fails if Codex remains unusable.
 
 If a package/tool command was run inside a managed guest, do not try to operate
@@ -227,8 +227,9 @@ such as `Run on the host: vm packages up`; run that command in the host terminal
 A built-in tool can be registered but not published on a fresh controller. From
 an existing managed guest, run `vm packages checkout agent-skills`, continue in
 the printed source path, commit the intended versioned change, and run bare `vm
-packages release`. Normal reconciliation or `vm tools update <environment>`
-activates the result only for projects that configure it. See
+packages release`. Normal reconciliation or `vm tools update agent-skills`
+activates the result across running managed Docker environments; use `--to` to
+limit it. See
 [Package Infrastructure](package-infrastructure.md#register-and-consume-tools)
 for normal update, locking, fleet, and package-state behavior.
 

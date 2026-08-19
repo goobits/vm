@@ -406,7 +406,7 @@ if docker inspect --format '{{range .Mounts}}{{println .Name}}{{end}}' "$environ
   exit 6
 fi
 
-run_vm --config "$consumer_root/vm.yaml" tools update "$consumer_environment"
+run_vm --config "$consumer_root/vm.yaml" tools update --to "$consumer_environment"
 docker exec --user acceptance "$consumer_environment" \
   test -L /home/acceptance/.codex/skills/acceptance
 docker exec --user acceptance "$consumer_environment" \
@@ -464,7 +464,7 @@ fi
 tool_inventory=$(run_vm tools show release-tool)
 grep -F '1.0.1 linux-arm64' <<< "$tool_inventory" >/dev/null
 test "$(grep -c '  1.0.1 linux-' <<< "$tool_inventory")" = 2
-run_vm --config "$consumer_root/vm.yaml" tools update "$consumer_environment"
+run_vm --config "$consumer_root/vm.yaml" tools update --to "$consumer_environment"
 test "$(docker exec --user acceptance "$consumer_environment" \
   /home/acceptance/.local/bin/release-tool --version)" = '1.0.1'
 
@@ -484,8 +484,8 @@ test "$installed_digest" = "$catalog_digest"
 inventory_before=$(run_vm tools show release-tool)
 docker exec --user acceptance "$environment_name" sh -ec \
   'cd /workspace && vm packages release && vm packages release'
-run_vm --config "$consumer_root/vm.yaml" tools update "$consumer_environment"
-run_vm --config "$consumer_root/vm.yaml" tools update "$consumer_environment"
+run_vm --config "$consumer_root/vm.yaml" tools update --to "$consumer_environment"
+run_vm --config "$consumer_root/vm.yaml" tools update --to "$consumer_environment"
 test "$(run_vm tools show release-tool)" = "$inventory_before"
 test "$(docker exec --user acceptance "$consumer_environment" \
   cat /home/acceptance/.local/share/vm-tools/state/release-tool.state)" = "$installed_state"

@@ -228,6 +228,19 @@ async fn catalog_retries_are_exact_and_checkout_archives_are_consumer_scoped() {
         store.register_package(package.clone()).await.unwrap(),
         store.register_package(package.clone()).await.unwrap()
     );
+    let mut alternate_transport = package.clone();
+    alternate_transport.repository = "ssh://git@github.com/goobits/auth.git".into();
+    let mut github_package = package.clone();
+    github_package.repository = "https://github.com/goobits/auth.git".into();
+    let github_directory = tempfile::tempdir().unwrap();
+    let github_store = Store::open(github_directory.path()).await.unwrap();
+    assert_eq!(
+        github_store.register_package(github_package).await.unwrap(),
+        github_store
+            .register_package(alternate_transport)
+            .await
+            .unwrap()
+    );
     let mut managed = package;
     managed.workspace_release = true;
     assert!(

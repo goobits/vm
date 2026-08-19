@@ -26,7 +26,8 @@ RUN --mount=type=cache,id=vm-packages-cargo-registry,target=/usr/local/cargo/reg
 
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git && \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates curl git openssh-client && \
     rm -rf /var/lib/apt/lists/* && \
     groupadd --gid 10001 packages && \
     useradd --uid 10001 --gid packages --create-home packages && \

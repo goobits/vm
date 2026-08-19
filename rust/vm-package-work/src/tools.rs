@@ -9,9 +9,9 @@ use chrono::Utc;
 use semver::Version;
 use serde::Deserialize;
 use vm_packages::{
-    tool_artifact_key, tool_artifact_path, validate_tool_name, validate_tool_target,
-    validate_tool_version, PublishToolArtifact, RegisterTool, ToolArtifactRecord, ToolDefinition,
-    ToolIndex, ToolInventory, ToolPublicationReceipt,
+    repository_urls_equivalent, tool_artifact_key, tool_artifact_path, validate_tool_name,
+    validate_tool_target, validate_tool_version, PublishToolArtifact, RegisterTool,
+    ToolArtifactRecord, ToolDefinition, ToolIndex, ToolInventory, ToolPublicationReceipt,
 };
 
 use crate::server::AppState;
@@ -120,7 +120,7 @@ impl Store {
         }
         if let Some(existing) = current.tools.get(&request.name).cloned() {
             if existing.kind == request.kind
-                && existing.repository == request.repository
+                && repository_urls_equivalent(&existing.repository, &request.repository)
                 && existing.default_branch == request.default_branch
             {
                 if request.workspace_release && !existing.workspace_release {
@@ -491,10 +491,21 @@ mod tests {
     async fn collection_is_one_atomic_target_independent_release() {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::open(directory.path()).await.unwrap();
-        store
+        let registered = store
             .register_tool(definition("agent-skills", ToolKind::Collection))
             .await
             .unwrap();
+        let mut ssh = definition("agent-skills", ToolKind::Collection);
+        ssh.repository = "ssh://git@github.com/goobits/agent-skills.git".into();
+        let mut https = definition("agent-skills", ToolKind::Collection);
+        https.repository = "https://github.com/goobits/agent-skills.git".into();
+        let github_directory = tempfile::tempdir().unwrap();
+        let github_store = Store::open(github_directory.path()).await.unwrap();
+        assert_eq!(
+            github_store.register_tool(https).await.unwrap(),
+            github_store.register_tool(ssh).await.unwrap()
+        );
+        assert_eq!(registered.name, "agent-skills");
         let mut release = publication("3.0.0", "any", "skills-3");
         release.links = BTreeMap::from([(".codex/skills".into(), "skills".into())]);
         store

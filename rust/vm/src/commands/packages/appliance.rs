@@ -116,6 +116,10 @@ pub(super) async fn up(
         InfrastructureRuntime::Tart => tart::up(files, port)?,
     };
     wait_for_gateway(&gateway_url).await?;
+    let registry_image_identity = match runtime {
+        InfrastructureRuntime::Docker => docker::image_identity(&config.registry_image)?,
+        InfrastructureRuntime::Tart => config.registry_image.clone(),
+    };
 
     files.write_state(&ApplianceState {
         definition_revision: APPLIANCE_DEFINITION_REVISION,
@@ -123,6 +127,7 @@ pub(super) async fn up(
         gateway_url: gateway_url.clone(),
         gateway_port: port,
         registry_image: config.registry_image,
+        registry_image_identity,
         job_image: config.job_image,
         controller_version: env!("CARGO_PKG_VERSION").to_string(),
         tart_home: (runtime == InfrastructureRuntime::Tart)
@@ -177,6 +182,10 @@ pub(super) fn repair_client_access(
     state.gateway_url = match state.runtime {
         InfrastructureRuntime::Docker => docker::up(files, &config, allow_source_build)?,
         InfrastructureRuntime::Tart => tart::up(files, state.gateway_port)?,
+    };
+    state.registry_image_identity = match state.runtime {
+        InfrastructureRuntime::Docker => docker::image_identity(&config.registry_image)?,
+        InfrastructureRuntime::Tart => config.registry_image.clone(),
     };
     state.registry_image = config.registry_image;
     state.job_image = config.job_image;

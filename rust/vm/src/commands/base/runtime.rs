@@ -406,12 +406,12 @@ esac
 
 printf "Repairing the Codex standalone runtime in '%s'...\n" "$environment"
 if ! sh "$root/codex-repair.sh"; then
-  printf "Codex repair failed. Run on the host: vm tools update %s\n" \
+  printf "Codex repair failed. Run on the host: vm tools update --to %s\n" \
     "$environment" >&2
   exit 1
 fi
 if test "$(probe_state)" != consumable; then
-  printf "Codex repair did not produce a consumable runtime. Run on the host: vm tools update %s\n" \
+  printf "Codex repair did not produce a consumable runtime. Run on the host: vm tools update --to %s\n" \
     "$environment" >&2
   exit 1
 fi

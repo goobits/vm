@@ -17,6 +17,8 @@ const LEGACY_SOURCE_FINGERPRINT_LABEL: &str = "org.goobits.vm.controller-binary-
 
 #[derive(Deserialize)]
 struct ImageInspect {
+    #[serde(rename = "Id")]
+    id: Option<String>,
     #[serde(rename = "Config")]
     config: Option<ImageConfig>,
 }
@@ -218,6 +220,18 @@ fn image_inspect(image: &str) -> VmResult<Option<ImageInspect>> {
     }
     let mut images: Vec<ImageInspect> = serde_json::from_slice(&output.stdout)?;
     Ok(images.pop())
+}
+
+pub(super) fn image_identity(image: &str) -> VmResult<String> {
+    image_inspect(image)?
+        .and_then(|inspect| inspect.id)
+        .filter(|identity| !identity.trim().is_empty())
+        .ok_or_else(|| {
+            crate::error::VmError::validation(
+                format!("Docker image '{image}' has no immutable identity"),
+                Some("Run `vm packages up` to rebuild or pull the package image"),
+            )
+        })
 }
 
 fn is_source_built(inspect: &ImageInspect) -> bool {
@@ -452,6 +466,7 @@ mod tests {
     #[test]
     fn source_image_marker_is_stable_and_recognizes_legacy_builds() {
         let inspect = |labels| ImageInspect {
+            id: None,
             config: Some(ImageConfig {
                 labels: Some(labels),
             }),

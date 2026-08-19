@@ -315,7 +315,11 @@ pub fn detect_framework() -> Option<String> {
 
 /// Detects git worktrees for the current project.
 pub fn detect_worktrees() -> Result<Vec<String>> {
-    let workspace_root = Path::new(".");
+    detect_worktrees_in(Path::new("."))
+}
+
+/// Detects git worktrees for the project rooted at `workspace_root`.
+pub fn detect_worktrees_in(workspace_root: &Path) -> Result<Vec<String>> {
     let git_dir = workspace_root.join(".git");
     let worktrees_dir = git_dir.join("worktrees");
 
@@ -382,5 +386,31 @@ pub fn detect_worktrees() -> Result<Vec<String>> {
 
     Ok(worktree_paths)
 }
+
+#[cfg(test)]
+mod worktree_tests {
+    use super::detect_worktrees_in;
+
+    #[test]
+    fn detects_worktrees_from_the_configured_project_root() {
+        let directory = tempfile::tempdir().unwrap();
+        let project = directory.path().join("project");
+        let worktree = directory.path().join("worktree");
+        let metadata = project.join(".git/worktrees/feature");
+        std::fs::create_dir_all(&metadata).unwrap();
+        std::fs::create_dir(&worktree).unwrap();
+        std::fs::write(
+            metadata.join("gitdir"),
+            worktree.join(".git").to_string_lossy().as_bytes(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            detect_worktrees_in(&project).unwrap(),
+            vec![worktree.canonicalize().unwrap().to_string_lossy()]
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests;

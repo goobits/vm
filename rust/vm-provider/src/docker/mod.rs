@@ -20,7 +20,7 @@ pub use lifecycle::LifecycleOperations;
 
 // Standard library
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
@@ -174,7 +174,12 @@ impl DockerProvider {
             )));
         }
 
-        let project_dir = std::env::current_dir()?;
+        let project_dir = config
+            .source_path
+            .as_deref()
+            .and_then(Path::parent)
+            .map(Path::to_path_buf)
+            .unwrap_or(std::env::current_dir()?);
 
         let generated_dir = artifacts::project_artifacts_dir(&config, &project_dir)?;
 
@@ -470,6 +475,21 @@ impl Provider for DockerProvider {
         Ok(instances)
     }
 
+    fn instance_config_path(&self, instance: &str) -> Result<Option<PathBuf>> {
+        let output = Command::new(&self.executable)
+            .args(["inspect", instance])
+            .output()?;
+        if !output.status.success() {
+            return Ok(None);
+        }
+        let containers: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout)?;
+        containers
+            .first()
+            .map(instance_config_path_from_inspect)
+            .transpose()
+            .map(Option::flatten)
+    }
+
     fn reusable_host_ports(&self, environment: &str) -> Result<Vec<u16>> {
         let compose = compose::ComposeOperations::new(
             &self.config,
@@ -680,6 +700,78 @@ impl Provider for DockerProvider {
     }
 }
 
+fn instance_config_path_from_inspect(container: &serde_json::Value) -> Result<Option<PathBuf>> {
+    let labels = &container["Config"]["Labels"];
+    let name = container["Name"]
+        .as_str()
+        .unwrap_or_default()
+        .trim_start_matches('/');
+    let role = labels["com.vm.role"].as_str().unwrap_or_default();
+    let compose_service = labels["com.docker.compose.service"]
+        .as_str()
+        .unwrap_or_default();
+    if labels["com.vm.managed"].as_str() != Some("true")
+        || !is_environment_container(name, role, compose_service)
+    {
+        return Ok(None);
+    }
+
+    if let Some(path) = labels["com.vm.config-path"].as_str() {
+        let path = PathBuf::from(path);
+        if path.is_absolute() && path.is_file() {
+            return Ok(Some(path));
+        }
+    }
+
+    let workspace = container["Config"]["WorkingDir"]
+        .as_str()
+        .filter(|path| path.starts_with('/'))
+        .unwrap_or("/workspace");
+    let Some(source) = container["Mounts"].as_array().and_then(|mounts| {
+        mounts.iter().find_map(|mount| {
+            (mount["Type"].as_str() == Some("bind")
+                && mount["Destination"].as_str() == Some(workspace))
+            .then(|| mount["Source"].as_str())
+            .flatten()
+        })
+    }) else {
+        return Ok(None);
+    };
+    Ok(config_path_from_workspace_source(
+        source,
+        labels["com.vm.project"].as_str(),
+    ))
+}
+
+fn config_path_from_workspace_source(source: &str, project: Option<&str>) -> Option<PathBuf> {
+    let source = Path::new(source);
+    if let Some(config) = config_path_below_workspace(source, project) {
+        return Some(config);
+    }
+
+    // Docker Desktop reports macOS bind sources below /host_mnt even though
+    // controller commands resolve them through their native absolute paths.
+    let native = source
+        .strip_prefix("/host_mnt")
+        .ok()
+        .map(|relative| Path::new("/").join(relative));
+    native.and_then(|source| config_path_below_workspace(&source, project))
+}
+
+fn config_path_below_workspace(source: &Path, project: Option<&str>) -> Option<PathBuf> {
+    let direct = source.join("vm.yaml");
+    if direct.is_absolute() && direct.is_file() {
+        return Some(direct);
+    }
+
+    let project = project.filter(|project| {
+        let mut components = Path::new(project).components();
+        matches!(components.next(), Some(Component::Normal(_))) && components.next().is_none()
+    })?;
+    let nested = source.join(project).join("vm.yaml");
+    (nested.is_absolute() && nested.is_file()).then_some(nested)
+}
+
 impl TempProvider for DockerProvider {
     fn update_mounts(&self, state: &crate::TempVmState) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
@@ -704,7 +796,10 @@ impl TempProvider for DockerProvider {
 
 #[cfg(test)]
 mod tests {
-    use super::{host_ports_from_bindings, is_environment_container, validate_docker_environment};
+    use super::{
+        host_ports_from_bindings, instance_config_path_from_inspect, is_environment_container,
+        validate_docker_environment,
+    };
     use std::io::Write;
 
     #[cfg(unix)]
@@ -764,5 +859,93 @@ exit 1
             vec![3129, 3130]
         );
         assert!(host_ports_from_bindings("not-json").is_err());
+    }
+
+    #[test]
+    fn managed_instance_recovers_its_owning_configuration() {
+        let project = tempfile::tempdir().unwrap();
+        let config = project.path().join("vm.yaml");
+        std::fs::write(&config, "project:\n  name: demo\n").unwrap();
+        let labeled = serde_json::json!({
+            "Name": "/demo-dev",
+            "Config": {
+                "Labels": {
+                    "com.vm.managed": "true",
+                    "com.vm.role": "environment",
+                    "com.vm.config-path": config,
+                },
+                "WorkingDir": "/workspace"
+            },
+            "Mounts": []
+        });
+        assert_eq!(
+            instance_config_path_from_inspect(&labeled).unwrap(),
+            Some(project.path().join("vm.yaml"))
+        );
+
+        let legacy = serde_json::json!({
+            "Name": "/demo-dev",
+            "Config": {
+                "Labels": {
+                    "com.vm.managed": "true",
+                    "com.docker.compose.service": "demo-dev"
+                },
+                "WorkingDir": "/workspace"
+            },
+            "Mounts": [{
+                "Type": "bind",
+                "Source": project.path(),
+                "Destination": "/workspace"
+            }]
+        });
+        assert_eq!(
+            instance_config_path_from_inspect(&legacy).unwrap(),
+            Some(project.path().join("vm.yaml"))
+        );
+
+        let workspace_root = tempfile::tempdir().unwrap();
+        let nested_project = workspace_root.path().join("vm");
+        std::fs::create_dir(&nested_project).unwrap();
+        std::fs::write(nested_project.join("vm.yaml"), "project:\n  name: vm\n").unwrap();
+        let legacy_workspace_root = serde_json::json!({
+            "Name": "/vm-dev",
+            "Config": {
+                "Labels": {
+                    "com.vm.managed": "true",
+                    "com.vm.project": "vm",
+                    "com.docker.compose.service": "vm-dev"
+                },
+                "WorkingDir": "/workspace"
+            },
+            "Mounts": [{
+                "Type": "bind",
+                "Source": workspace_root.path(),
+                "Destination": "/workspace"
+            }]
+        });
+        assert_eq!(
+            instance_config_path_from_inspect(&legacy_workspace_root).unwrap(),
+            Some(nested_project.join("vm.yaml"))
+        );
+
+        let docker_desktop = serde_json::json!({
+            "Name": "/demo-dev",
+            "Config": {
+                "Labels": {
+                    "com.vm.managed": "true",
+                    "com.docker.compose.service": "demo-dev"
+                },
+                "WorkingDir": "/workspace"
+            },
+            "Mounts": [{
+                "Type": "bind",
+                "Source": format!("/host_mnt{}", project.path().display()),
+                "Destination": "/workspace"
+            }]
+        });
+        assert_eq!(
+            instance_config_path_from_inspect(&docker_desktop).unwrap(),
+            Some(project.path().join("vm.yaml"))
+        );
     }
 }

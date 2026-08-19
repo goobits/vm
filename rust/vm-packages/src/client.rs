@@ -18,6 +18,7 @@ pub type PackageInventory = BTreeMap<String, Vec<String>>;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(500);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const CHECKOUT_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -140,7 +141,8 @@ impl PackageInfrastructureClient {
     }
 
     pub async fn create_checkout(&self, request: &CreateCheckout) -> Result<CheckoutLease> {
-        self.post_work("v1/checkouts", request).await
+        self.post_work_with_timeout("v1/checkouts", request, CHECKOUT_TIMEOUT)
+            .await
     }
 
     pub async fn register_package(&self, request: &RegisterPackage) -> Result<PackageDefinition> {
@@ -599,6 +601,28 @@ impl PackageInfrastructureClient {
         .await
     }
 
+    async fn post_work_with_timeout<T, B>(
+        &self,
+        path: &str,
+        body: &B,
+        timeout: Duration,
+    ) -> Result<T>
+    where
+        T: serde::de::DeserializeOwned,
+        B: Serialize + ?Sized,
+    {
+        self.post_authenticated_with_timeout(
+            path,
+            body,
+            self.controller_token
+                .as_deref()
+                .or(self.agent_token.as_deref()),
+            "agent or controller",
+            timeout,
+        )
+        .await
+    }
+
     async fn post_release<T, B>(&self, path: &str, body: &B) -> Result<T>
     where
         T: serde::de::DeserializeOwned,
@@ -642,11 +666,28 @@ impl PackageInfrastructureClient {
         T: serde::de::DeserializeOwned,
         B: Serialize + ?Sized,
     {
+        self.post_authenticated_with_timeout(path, body, token, scope, REQUEST_TIMEOUT)
+            .await
+    }
+
+    async fn post_authenticated_with_timeout<T, B>(
+        &self,
+        path: &str,
+        body: &B,
+        token: Option<&str>,
+        scope: &str,
+        timeout: Duration,
+    ) -> Result<T>
+    where
+        T: serde::de::DeserializeOwned,
+        B: Serialize + ?Sized,
+    {
         let token =
             token.with_context(|| format!("package workflow {scope} credential is unavailable"))?;
         let url = self.work_url(path);
         self.http
             .post(&url)
+            .timeout(timeout)
             .bearer_auth(token)
             .json(body)
             .send()

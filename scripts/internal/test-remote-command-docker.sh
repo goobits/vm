@@ -192,12 +192,12 @@ before_ids=$(docker inspect --format '{{.Id}}' "$service" "$environment" "$unrel
 before_volumes=$(docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}{{"\n"}}{{end}}{{end}}' \
   "$service" "$environment" "$unrelated" | sort)
 
-run_vm tools update "$environment" >/dev/null
+run_vm tools update --to "$environment" >/dev/null
 registry_digest=$(docker exec "$environment" sha256sum /etc/vm/remote-commands.json | awk '{print $1}')
-run_vm tools update "$environment" >/dev/null
+run_vm tools update --to "$environment" >/dev/null
 test "$(docker exec "$environment" sha256sum /etc/vm/remote-commands.json | awk '{print $1}')" = "$registry_digest"
 
-run_vm tools update "$unrelated" >/dev/null
+run_vm tools update --to "$unrelated" >/dev/null
 docker exec "$unrelated" test ! -e /etc/vm/remote-commands.json
 
 docker exec "$environment" sh -ec '
@@ -220,11 +220,11 @@ cat > "$controller_registry" <<'JSON'
 {"schema":1,"environments":{}}
 JSON
 chmod 0600 "$controller_registry"
-run_vm tools update "$environment" >/dev/null
+run_vm tools update --to "$environment" >/dev/null
 docker exec "$environment" test ! -e /etc/vm/remote-commands.json
 cp "$acceptance_root/registry.saved" "$controller_registry"
 chmod 0600 "$controller_registry"
-run_vm tools update "$environment" >/dev/null
+run_vm tools update --to "$environment" >/dev/null
 test "$(docker exec --user acceptance --env HOME=/home/acceptance \
   "$environment" /usr/local/bin/vm issue list)" = '#123 ready'
 

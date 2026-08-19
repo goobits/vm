@@ -163,6 +163,10 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("guest_cache_env", &guest_cache_env);
         tera_context.insert("resources", &resources);
         tera_context.insert("project_dir", &project_dir_str);
+        if let Some(config_path) = self.config.source_path.as_ref() {
+            let config_path = BuildOperations::path_to_string(config_path)?;
+            tera_context.insert("config_path_label", &serde_json::to_string(config_path)?);
+        }
         tera_context.insert("workspace_path", workspace_path);
         tera_context.insert("workspace_access", workspace_access.as_mode());
         tera_context.insert("build_context_dir", &build_context_str);
@@ -232,6 +236,7 @@ impl<'a> ComposeOperations<'a> {
         configure_worktrees(
             self.config,
             &mut tera_context,
+            self.project_dir,
             Path::new(workspace_path),
             &home_dir,
             &final_project_name,

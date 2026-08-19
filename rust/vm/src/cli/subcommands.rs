@@ -171,10 +171,17 @@ pub enum ToolsSubcommand {
     },
     /// Show registered, published, installed, and consumable tool state
     Status { environment: Option<String> },
-    /// Reconcile the package edge, base-owned Codex, and configured managed tools
+    /// Update selected tools across running Docker environments
     Update {
-        #[arg(conflicts_with = "fleet")]
-        environment: Option<String>,
+        /// Tool names to update; omit to update each environment's configured tools
+        #[arg(value_name = "TOOL")]
+        tools: Vec<String>,
+        /// Update only these managed environments
+        #[arg(long, value_name = "ENVIRONMENT", num_args = 1.., conflicts_with_all = ["fleet", "pattern"])]
+        to: Vec<String>,
+        /// Include stopped environments and start them in place
+        #[arg(long)]
+        include_stopped: bool,
         #[command(flatten)]
         fleet: FleetArgs,
         /// Reconcile prerequisites, then return after launching managed-tool downloads

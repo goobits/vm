@@ -11,5 +11,6 @@ vm secret interactive
 
 A plugin can provide presets, services, or command integrations while keeping
 the core CLI focused on everyday environment lifecycle. Use `vm plugin --help`,
-`vm db --help`, or `vm secret --help` for the exact command inventory. The
-[CLI Reference](cli-reference.md#plugins) owns the documented workflow.
+`vm db --help`, or `vm secret --help` for installed-version help. The
+[CLI Reference](cli-reference.md#plugins-databases-and-secrets) owns the
+documented public inventory.

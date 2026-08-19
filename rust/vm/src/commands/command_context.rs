@@ -174,15 +174,47 @@ fn assemble_runtime_context(
     provider_override: Option<String>,
     requested_target: Option<&str>,
 ) -> VmResult<RuntimeSubject> {
-    let (provider, config, global_config) =
+    let (mut provider, mut config, mut global_config) =
         load_provider_context(config_path, profile, provider_override)?;
     let target =
         vm_ops::target::resolve_runtime_target(provider.as_ref(), &config, requested_target)?;
+    if requested_target.is_some()
+        && target_belongs_to_another_project(provider.as_ref(), &target, &config)
+    {
+        let target_config = provider.instance_config_path(&target)?.ok_or_else(|| {
+            VmError::validation(
+                format!("Cannot locate the owning configuration for environment '{target}'"),
+                Some("Run the command from that project's directory or pass its vm.yaml with --config"),
+            )
+        })?;
+        let app_config = AppConfig::load(Some(target_config), None, None)?;
+        config = app_config.vm;
+        packages::apply_client_environment(&mut config)?;
+        global_config = app_config.global;
+        provider = get_provider(config.clone()).map_err(VmError::from)?;
+    }
     Ok(RuntimeSubject {
         provider,
         config,
         global_config,
         target,
+    })
+}
+
+fn target_belongs_to_another_project(
+    provider: &dyn Provider,
+    target: &str,
+    config: &VmConfig,
+) -> bool {
+    let current = project_name(config);
+    provider.list_instances().ok().is_some_and(|instances| {
+        instances.into_iter().any(|instance| {
+            instance.name == target
+                && instance
+                    .project
+                    .as_deref()
+                    .is_some_and(|project| project != current)
+        })
     })
 }
 

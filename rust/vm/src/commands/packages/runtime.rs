@@ -423,12 +423,18 @@ fn package_edge_revision(
     internal_gateway: &str,
     read_token: &str,
 ) -> String {
+    let image_identity = if state.registry_image_identity.is_empty() {
+        &state.registry_image
+    } else {
+        &state.registry_image_identity
+    };
     vm_packages::sha256_hex(format!(
-        "{}\0{}\0{}\0{}\0{}\0{}",
+        "{}\0{}\0{}\0{}\0{}\0{}\0{}",
         PACKAGE_EDGE_POLICY_REVISION,
         env!("CARGO_PKG_VERSION"),
         state.controller_version,
         state.registry_image,
+        image_identity,
         internal_gateway,
         read_token
     ))
@@ -558,6 +564,7 @@ mod tests {
             gateway_url: "http://192.0.2.8:3080".into(),
             gateway_port: 3080,
             registry_image: "registry/image:1".into(),
+            registry_image_identity: "sha256:image-1".into(),
             job_image: "jobs/image:1".into(),
             controller_version: "1".into(),
             tart_home: None,
@@ -617,8 +624,11 @@ mod tests {
         let upgraded = package_edge_revision(&first, &first.gateway_url, "read-token");
 
         assert_ne!(initial, upgraded);
+        first.registry_image_identity = "sha256:image-2".into();
+        let rebuilt = package_edge_revision(&first, &first.gateway_url, "read-token");
+        assert_ne!(upgraded, rebuilt);
         assert_eq!(
-            upgraded,
+            rebuilt,
             package_edge_revision(&first, &first.gateway_url, "read-token")
         );
     }

@@ -38,7 +38,7 @@ fn dry_run_redacts_secret_values_and_changes_nothing() {
 fn managed_guest_guard_precedes_dry_run_and_prints_the_exact_host_command() {
     let temp_dir = TempDir::new().unwrap();
     let output = Command::new(cargo_bin!("vm"))
-        .args(["--dry-run", "tools", "update", "dev"])
+        .args(["--dry-run", "tools", "update", "--to", "dev"])
         .current_dir(temp_dir.path())
         .env("HOME", temp_dir.path())
         .env("VM_MANAGED_GUEST", "1")
@@ -52,7 +52,7 @@ fn managed_guest_guard_precedes_dry_run_and_prints_the_exact_host_command() {
 
     assert!(!output.status.success());
     assert!(stdout.is_empty(), "{stdout}");
-    assert!(stderr.contains("Run on the host: vm --dry-run tools update dev"));
+    assert!(stderr.contains("Run on the host: vm --dry-run tools update --to dev"));
 }
 
 #[test]

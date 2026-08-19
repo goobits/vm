@@ -1,6 +1,6 @@
 ---
-Status: Guest-owned package work implemented; live Docker rerun pending
-Date: 2026-08-16
+Status: Selector-first Docker tool updates implemented; private release rerun pending
+Date: 2026-08-18
 Depends: docs/user-guide/package-infrastructure.md, docs/development/architecture.md
 ---
 
@@ -10,8 +10,8 @@ This is the single remaining-work tracker for the active VM-tool release. The
 base implementation and scoped first-run/upgrade reconciliation are complete in
 the development container. Prior live Docker acceptance passed for source
 discovery, tool state, guest updates, and data preservation. Stable source-image
-identity and nonblocking shell reconciliation are implemented but awaiting host
-acceptance.
+identity, nonblocking shell reconciliation, and the guest-owned source-only
+checkout/cancel path are host-accepted with Docker.
 
 Package development and release work runs in Docker or Linux VMs. The Mac only
 launches those runtimes and holds controller credentials; it does not build,
@@ -26,9 +26,61 @@ Credential-isolated appliance workers review, integrate, push, and publish only
 to the private gateway; host working trees and installed immutable releases are
 never treated as source.
 
+## Scoped Proposal: Brainless Managed-Tool Updates
+
+Audit on 2026-08-18 confirmed that the existing command does not provide the
+desired workflow. `vm tools update` still interprets its positional argument as
+one environment, `--fleet` requires provider/pattern flags for common targeting,
+fleet reconciliation uses the invoking project's tool selection, and stopped
+environments are included.
+
+Extend the existing command rather than adding another sync or rollout family:
+
+```bash
+vm tools update
+vm tools update agent-skills
+vm tools update agent-skills another-tool
+vm tools update agent-skills --to typemill-dev zoop-io-dev
+```
+
+The no-argument form updates each running managed Docker environment's own
+configured tools. Positional tool names temporarily select only those tools;
+this makes an intentional operator update work without editing every project
+configuration. `--to` limits the environments. Stopped environments remain
+untouched unless `--include-stopped` is explicit. Each target must load its own
+persisted `vm.yaml` ownership instead of inheriting the invoking project's
+services or tool policy. Existing single-environment and `--fleet` forms remain
+compatible during migration. Language-package consumer rollout remains
+separate and authoritative.
+
+Acceptance requires parser and selection tests, Docker Desktop legacy-mount
+ownership recovery, truthful per-environment summaries, current help/reference/
+troubleshooting documentation, and focused format/check/test/Clippy coverage.
+
+Live Docker acceptance on 2026-08-18 ran the new selector-first command against
+`projects-dev`, `typemill-dev`, `frontdesk-dev`, `pdx-fun-dev`, `goobits-dev`,
+and `sketch-api-dev`. The warm idempotent pass reported 6 of 6 successful with
+`agent-skills` 0.8.0 at the same immutable digest. Every primary container ID
+remained unchanged; only stale package-edge sidecars reconciled, and all were
+healthy afterward.
+
+The CLI reference is the single complete documented public command inventory.
+Workflow guides retain task-oriented examples and link back to that catalog
+instead of maintaining partial command lists.
+
 ## Remaining Acceptance
 
 Implementation is complete. These are the only remaining release checks:
+
+Live Docker evidence on 2026-08-17: `projects-dev` checked out the registered
+560 MB-history `@goobits/auth` source through its guest client, resumed the same
+checkout idempotently, recorded `source_only: true` without a project override,
+and cancelled to durable `closed` state with its guest copy removed. A second
+warm checkout/cancel completed in seconds. The primary environment retained
+container ID `ca8e168af769`; named package volumes remained present; a no-change
+`vm packages up` retained every appliance service ID; and cross-project `vm
+tools update projects-dev` replaced only `projects-package-edge` with the
+current image. No real package release or publication was performed.
 
 - [ ] Extend and rerun the sole Docker package-workflow acceptance test for a
   source-only language-package release and a cancelled checkout, proving local
@@ -180,6 +232,9 @@ Implementation is complete. These are the only remaining release checks:
 - [x] Let operators validate and explicitly import the active GitHub CLI
   credential into controller-only storage without printing or forwarding it to
   workers.
+- [x] Make credential-isolated Docker services consume registered GitHub SSH
+  origins through token-authenticated HTTPS without forwarding host SSH keys;
+  retain an SSH client for non-GitHub public SSH sources and clear failures.
 - [x] Let one flat host source shelf mix language packages and explicitly marked
   tool repositories without hardcoded names, paths, or accidental npm
   registration.
@@ -243,9 +298,9 @@ Implementation is complete. These are the only remaining release checks:
   continue to reject arbitrary unmanaged launchers.
 - [x] Detect managed guest context and print the exact command to run on the
   controller host.
-- [x] Require `vm tools update` to resolve an existing environment instead of
-  creating from the invoking directory's configuration, while allowing an
-  exact managed environment name to resolve across project boundaries.
+- [x] Require targeted `vm tools update --to <environment>` reconciliation to
+  resolve an existing environment instead of creating from the invoking
+  directory's configuration, while retaining exact legacy environment names.
 - [x] Keep interactive Docker startup lean by caching successful home repair
   within one CLI run, combining cached tool-state probes, avoiding unnecessary
   worktree repair, and removing the legacy job-control-producing shell hook.
@@ -362,6 +417,18 @@ public npm, Cargo, PyPI, GitHub Release, or other external publication is added.
 - [x] Make checkout idempotent by current consumer and source. Resume the one
   nonterminal checkout, return its existing source path, and reject ambiguous
   duplicates instead of creating another checkout.
+- [x] Give initial source preparation its own bounded one-hour client timeout,
+  terminate abandoned Git children, and remove interrupted temporary mirrors
+  before retry so large repositories do not fail under the 30-second
+  control-plane timeout.
+- [x] Include the immutable Docker registry-image identity in package-edge
+  reconciliation, so same-version source builds refresh the guest client while
+  preserving the main environment container.
+- [x] Treat GitHub SSH and HTTPS forms as one repository during idempotent
+  package/tool registration while preserving the originally receipted origin.
+- [x] Rehydrate an explicitly targeted Docker environment from its owning
+  project configuration, preventing cross-project tool updates from
+  reconciling the caller's package edge.
 - [x] If durable workflow state exists but the guest copy is missing, reacquire
   a scoped lease and restore the checkout into the same managed path. Never
   silently replace a locally modified checkout.
@@ -648,18 +715,21 @@ implemented but awaiting host acceptance.
 
 Live Zoop acceptance on 2026-08-12 detected its legacy `.agents/skills` and
 `.claude/skills` repository copies, then reported `PROJECT_COPY=no` after their
-scoped Git removal. In-place `vm tools update zoop-io-dev` changed Codex
+scoped Git removal. In-place legacy `vm tools update zoop-io-dev` changed Codex
 from installed/non-consumable to installed/consumable without recreating the
 Docker worker, while managed `agent-skills` remained consumable at 0.6.1.
 
-Bulk reconciliation is now exposed through ordinary command ownership rather
-than a duplicate top-level workflow. `vm tools update --fleet` applies the
-loaded declarative tool selection to matching managed environments, includes
-prompt-policy upgrades without a checklist, respects `off` for newer releases,
-starts stopped targets in place, continues on per-target failures, and reports a
-summary. It does not project the invoking project's service or package-edge
-configuration onto unrelated targets. The former `vm fleet` and tool `--all`
-surfaces are removed. This is implemented but awaiting host acceptance.
+Bulk reconciliation is exposed through ordinary command ownership rather than
+a duplicate top-level workflow. `vm tools update [<tool>...]` now applies each
+running managed Docker target's own configuration, or the explicit temporary
+tool selection, without a checklist. `--to` limits exact environments and
+`--include-stopped` is required before starting stopped targets. Reconciliation
+respects persisted `off` policy for upgrades, continues on per-target failures,
+and reports a summary. The compatibility `--fleet` form retains its former
+loaded-selection/provider/pattern behavior for existing automation. Neither
+form projects application services onto unrelated targets. The former `vm
+fleet` and tool `--all` surfaces remain removed. This is implemented but
+awaiting host acceptance.
 With no managed tools selected, base-owned Codex reconciliation no longer
 requires a tool catalog or package-appliance connection.
 

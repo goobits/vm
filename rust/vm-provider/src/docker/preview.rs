@@ -13,6 +13,7 @@ pub(super) fn redact_compose(content: &str) -> Result<String> {
             redact_build_context(service);
             redact_environment(service);
             redact_bind_mounts(service);
+            redact_host_labels(service);
         }
     }
 
@@ -21,6 +22,18 @@ pub(super) fn redact_compose(content: &str) -> Result<String> {
             "Failed to serialize redacted Compose configuration: {error}"
         ))
     })
+}
+
+fn redact_host_labels(service: &mut Mapping) {
+    let Some(labels) = service.get_mut("labels").and_then(Value::as_mapping_mut) else {
+        return;
+    };
+    if labels.contains_key("com.vm.config-path") {
+        labels.insert(
+            Value::String("com.vm.config-path".to_string()),
+            Value::String("<host-path>".to_string()),
+        );
+    }
 }
 
 fn redact_build_context(service: &mut Mapping) {
@@ -110,6 +123,8 @@ services:
     environment:
       - API_TOKEN=super-secret
       - DATABASE_URL=postgres://user:password@db/app
+    labels:
+      com.vm.config-path: /Users/miko/project/vm.yaml
     volumes:
       - /Users/miko/project:/workspace:rw
       - /Users/miko/.vm/worktrees/project:/Users/miko/.vm/worktrees/project:rw
@@ -124,6 +139,7 @@ services:
         assert!(!redacted.contains("password"));
         assert!(!redacted.contains("/Users/miko"));
         assert!(redacted.contains("API_TOKEN=<redacted>"));
+        assert!(redacted.contains("com.vm.config-path: <host-path>"));
         assert!(redacted.contains("<host-path>:/workspace:rw"));
         assert!(redacted.contains("source: node_modules"));
         assert!(redacted.contains("target: /workspace/node_modules"));

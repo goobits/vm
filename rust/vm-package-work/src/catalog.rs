@@ -1,5 +1,7 @@
 use chrono::Utc;
-use vm_packages::{InternalPackageCatalog, PackageDefinition, RegisterPackage};
+use vm_packages::{
+    repository_urls_equivalent, InternalPackageCatalog, PackageDefinition, RegisterPackage,
+};
 
 use crate::io::atomic_write;
 use crate::store::{pretty_json, Database, SourceDefinition, Store};
@@ -33,7 +35,7 @@ impl Store {
         }
         if let Some(existing) = current.packages.get(&request.name).cloned() {
             if existing.ecosystem == request.ecosystem
-                && existing.repository == request.repository
+                && repository_urls_equivalent(&existing.repository, &request.repository)
                 && existing.default_branch == request.default_branch
             {
                 if request.workspace_release && !existing.workspace_release {

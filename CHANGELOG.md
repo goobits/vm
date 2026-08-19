@@ -27,6 +27,12 @@
 - 📦 Docker binary builders place their queue credential beneath a root-only mount boundary instead of relying on Compose secret modes that Docker Desktop does not enforce consistently.
 - 📦 `vm packages checkout <source>` creates or resumes a guest-owned checkout from the managed guest's signed consumer identity.
 - 📦 Source-only package checkouts skip inapplicable consumer validation, while cancellation restores guest dependency state before closing its retryable durable checkout.
+- 📦 Credential-isolated package services translate registered GitHub SSH origins to token-authenticated HTTPS without receiving host SSH keys.
+- 📦 Large first-time package checkouts use a bounded source-preparation timeout and clean interrupted clone state before retry.
+- 📦 Same-version source builds refresh Docker package edges by immutable image identity, delivering updated managed clients without recreating environments.
+- 📦 Catalog reconciliation treats GitHub HTTPS and SSH forms as one canonical repository instead of degrading after a local transport change.
+- 📦 Explicit cross-project Docker targets load their owning project configuration before managed-tool and package-edge reconciliation.
+- 📦 `vm tools update [<tool>...]` updates all running managed Docker environments by default, supports exact `--to` targeting, and excludes stopped environments unless explicitly included.
 
 ### 🔧 Changed
 

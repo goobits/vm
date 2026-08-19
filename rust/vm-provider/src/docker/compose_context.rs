@@ -4,7 +4,7 @@ use std::path::Path;
 use std::process::Command;
 
 use tera::Context as TeraContext;
-use vm_config::{config::VmConfig, detect_worktrees};
+use vm_config::{config::VmConfig, detect_worktrees_in};
 use vm_core::{
     error::{Result, VmError},
     vm_warning,
@@ -149,6 +149,7 @@ pub(super) fn process_dotfiles(config: &VmConfig, username: &str) -> Vec<(String
 pub(super) fn configure_worktrees(
     config: &VmConfig,
     context: &mut TeraContext,
+    project_dir: &Path,
     workspace_path: &Path,
     home_dir: &str,
     project: &str,
@@ -158,14 +159,18 @@ pub(super) fn configure_worktrees(
         return;
     }
 
-    let base = format!("{home_dir}/.vm/worktrees/{project}");
+    let base = Path::new(home_dir).join(".vm/worktrees").join(project);
     if !create_directory || fs::create_dir_all(&base).is_ok() {
-        context.insert("worktrees_base_dir", &base);
+        context.insert("worktrees_base_dir", &base.to_string_lossy().to_string());
     } else {
-        vm_warning!("Failed to create worktrees directory {base}");
+        vm_warning!("Failed to create worktrees directory {}", base.display());
     }
 
-    let mounts = resolve_worktree_mounts(workspace_path, detect_worktrees().unwrap_or_default());
+    let mounts = resolve_worktree_mounts(
+        workspace_path,
+        detect_worktrees_in(project_dir).unwrap_or_default(),
+        Some(&base),
+    );
     if !mounts.is_empty() {
         context.insert("worktrees", &mounts);
     }
@@ -188,11 +193,16 @@ pub(super) fn worktrees_enabled(config: &VmConfig) -> bool {
 pub(super) fn resolve_worktree_mounts(
     workspace_path: &Path,
     worktrees: Vec<String>,
+    covered_source_root: Option<&Path>,
 ) -> Vec<(String, String)> {
     worktrees
         .into_iter()
         .filter_map(|source| {
-            let name = Path::new(&source).file_name()?;
+            let source_path = Path::new(&source);
+            if covered_source_root.is_some_and(|root| source_path.starts_with(root)) {
+                return None;
+            }
+            let name = source_path.file_name()?;
             let target = workspace_path.join(name);
             Some((source, target.to_str()?.to_string()))
         })
@@ -232,6 +242,7 @@ mod tests {
         let mounts = resolve_worktree_mounts(
             Path::new("/source"),
             vec!["/tmp/worktrees/feature".to_string()],
+            None,
         );
 
         assert_eq!(
@@ -239,6 +250,26 @@ mod tests {
             vec![(
                 "/tmp/worktrees/feature".to_string(),
                 "/source/feature".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn omits_worktrees_already_covered_by_the_managed_base_mount() {
+        let mounts = resolve_worktree_mounts(
+            Path::new("/workspace"),
+            vec![
+                "/Users/miko/.vm/worktrees/vm/storage-5x-port".to_string(),
+                "/Users/miko/other-worktree".to_string(),
+            ],
+            Some(Path::new("/Users/miko/.vm/worktrees/vm")),
+        );
+
+        assert_eq!(
+            mounts,
+            vec![(
+                "/Users/miko/other-worktree".to_string(),
+                "/workspace/other-worktree".to_string()
             )]
         );
     }
