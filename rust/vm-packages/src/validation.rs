@@ -106,23 +106,28 @@ pub fn repository_urls_equivalent(left: &str, right: &str) -> bool {
         .is_some_and(|(left, right)| left == right)
 }
 
+/// Rewrite GitHub SSH origins inside credential-isolated services so the
+/// controller-provided token can authenticate without forwarding host SSH keys.
+pub const AUTHENTICATED_GIT_CONFIG: [&str; 2] = [
+    "url.https://github.com/.insteadOf=ssh://git@github.com/",
+    "url.https://github.com/.insteadOf=ssh://github.com/",
+];
+
 fn github_repository_identity(value: &str) -> Option<String> {
     let repository = url::Url::parse(value).ok()?;
     if !repository
         .host_str()
         .is_some_and(|host| host.eq_ignore_ascii_case("github.com"))
         || !matches!(repository.scheme(), "https" | "ssh")
+        || repository.port().is_some()
     {
         return None;
     }
     if repository.scheme() == "ssh" && !matches!(repository.username(), "" | "git") {
         return None;
     }
-    let path = repository
-        .path()
-        .trim_matches('/')
-        .strip_suffix(".git")
-        .unwrap_or_else(|| repository.path().trim_matches('/'));
+    let path = repository.path().trim_matches('/');
+    let path = path.strip_suffix(".git").unwrap_or(path);
     (!path.is_empty()).then(|| path.to_ascii_lowercase())
 }
 
@@ -175,6 +180,10 @@ mod tests {
         assert!(!repository_urls_equivalent(
             "https://example.com/goobits/auth.git",
             "ssh://git@example.com/goobits/auth.git"
+        ));
+        assert!(!repository_urls_equivalent(
+            "https://github.com:8443/goobits/auth.git",
+            "ssh://git@github.com/goobits/auth.git"
         ));
     }
 

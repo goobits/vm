@@ -18,7 +18,7 @@ pub type PackageInventory = BTreeMap<String, Vec<String>>;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(500);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-const CHECKOUT_TIMEOUT: Duration = Duration::from_secs(60 * 60);
+const SOURCE_SYNC_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -141,8 +141,7 @@ impl PackageInfrastructureClient {
     }
 
     pub async fn create_checkout(&self, request: &CreateCheckout) -> Result<CheckoutLease> {
-        self.post_work_with_timeout("v1/checkouts", request, CHECKOUT_TIMEOUT)
-            .await
+        self.post_source_sync("v1/checkouts", request).await
     }
 
     pub async fn register_package(&self, request: &RegisterPackage) -> Result<PackageDefinition> {
@@ -314,7 +313,7 @@ impl PackageInfrastructureClient {
         submission_id: &str,
         request: &IntegrationRequest,
     ) -> Result<SubmissionRecord> {
-        self.post_work(
+        self.post_source_sync(
             &format!("v1/submissions/{submission_id}/integrate"),
             request,
         )
@@ -452,7 +451,7 @@ impl PackageInfrastructureClient {
     }
 
     pub async fn create_rollout(&self, request: &CreateRollout) -> Result<RolloutRecord> {
-        self.post_work("v1/rollouts", request).await
+        self.post_source_sync("v1/rollouts", request).await
     }
 
     pub async fn rollouts(&self) -> Result<Vec<RolloutRecord>> {
@@ -601,12 +600,7 @@ impl PackageInfrastructureClient {
         .await
     }
 
-    async fn post_work_with_timeout<T, B>(
-        &self,
-        path: &str,
-        body: &B,
-        timeout: Duration,
-    ) -> Result<T>
+    async fn post_source_sync<T, B>(&self, path: &str, body: &B) -> Result<T>
     where
         T: serde::de::DeserializeOwned,
         B: Serialize + ?Sized,
@@ -618,7 +612,7 @@ impl PackageInfrastructureClient {
                 .as_deref()
                 .or(self.agent_token.as_deref()),
             "agent or controller",
-            timeout,
+            SOURCE_SYNC_TIMEOUT,
         )
         .await
     }

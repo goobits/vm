@@ -1,7 +1,7 @@
 use chrono::Utc;
 use vm_packages::{
-    validate_label, validate_repository_url, ConsumerRecord, ConsumerUsage, PackageDrift,
-    RegisterConsumer, RolloutState, WorkflowState,
+    repository_urls_equivalent, validate_label, validate_repository_url, ConsumerRecord,
+    ConsumerUsage, PackageDrift, RegisterConsumer, RolloutState, WorkflowState,
 };
 
 use crate::rollout::transition_rollout;
@@ -19,7 +19,7 @@ impl Store {
             }
         }
         if let Some(existing) = current.consumers.get(&request.name) {
-            if existing.repository != request.repository
+            if !repository_urls_equivalent(&existing.repository, &request.repository)
                 || existing.default_branch != request.default_branch
             {
                 return Err(WorkError::Conflict(format!(
@@ -123,6 +123,47 @@ impl Store {
                 consumers: package_consumers(&database, package),
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn consumer_registration_accepts_equivalent_github_transports() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).await.unwrap();
+        store
+            .register_package(vm_packages::RegisterPackage {
+                name: "auth".into(),
+                ecosystem: vm_packages::PackageEcosystem::Npm,
+                repository: "https://github.com/goobits/auth.git".into(),
+                default_branch: "main".into(),
+                workspace_release: false,
+            })
+            .await
+            .unwrap();
+        let request = RegisterConsumer {
+            name: "project-a".into(),
+            repository: "ssh://git@github.com/goobits/project-a.git".into(),
+            default_branch: "main".into(),
+            dependencies: std::collections::BTreeMap::from([("auth".into(), "1.0.0".into())]),
+        };
+        store.register_consumer(request.clone()).await.unwrap();
+
+        let record = store
+            .register_consumer(RegisterConsumer {
+                repository: "https://github.com/goobits/project-a.git".into(),
+                ..request
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            record.repository,
+            "ssh://git@github.com/goobits/project-a.git"
+        );
     }
 }
 

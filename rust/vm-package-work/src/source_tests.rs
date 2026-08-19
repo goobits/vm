@@ -47,7 +47,7 @@ async fn mirror_sync_removes_abandoned_clone_directories() {
     let sources = directory.path().join("sources");
     std::fs::create_dir(&sources).unwrap();
     let mirror = sources.join("package.git");
-    let abandoned = sources.join("package.git.tmp-abandoned");
+    let abandoned = temporary_mirror_path(&mirror, "abandoned");
     std::fs::create_dir(&abandoned).unwrap();
     std::fs::write(abandoned.join("partial"), "stale").unwrap();
 
@@ -58,6 +58,14 @@ async fn mirror_sync_removes_abandoned_clone_directories() {
 
     assert!(mirror.is_dir());
     assert!(!abandoned.exists());
+
+    let abandoned_after_clone = temporary_mirror_path(&mirror, "after-clone");
+    std::fs::create_dir(&abandoned_after_clone).unwrap();
+    SourceManager::new(directory.path())
+        .sync_mirror(&mirror, repository.to_str().unwrap())
+        .await
+        .unwrap();
+    assert!(!abandoned_after_clone.exists());
 }
 
 #[tokio::test]

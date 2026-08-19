@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use tokio::process::Command;
 use tokio::sync::Mutex;
+use tracing::warn;
 use vm_packages::{sha256_hex, CheckoutRecord};
 
 use crate::{WorkError, WorkResult};
@@ -29,6 +30,12 @@ impl SourceManager {
     }
 
     async fn sync_mirror(&self, mirror: &Path, repository: &str) -> WorkResult<()> {
+        if let Err(error) = cleanup_temporary_mirrors(mirror).await {
+            warn!(
+                mirror = %mirror.display(),
+                "Failed to clean abandoned package mirror state: {error}"
+            );
+        }
         if mirror.is_dir() {
             return run(
                 self.git()
@@ -43,12 +50,8 @@ impl SourceManager {
             .map(|_| ());
         }
 
-        cleanup_temporary_mirrors(mirror).await?;
-
-        let temporary = mirror.with_extension(format!(
-            "tmp-{}",
-            vm_core::secrets::generate_random_password(12)
-        ));
+        let temporary =
+            temporary_mirror_path(mirror, &vm_core::secrets::generate_random_password(12));
         let clone = run(
             self.git()
                 .arg("clone")
@@ -62,7 +65,10 @@ impl SourceManager {
             let _ = tokio::fs::remove_dir_all(&temporary).await;
             return Err(error);
         }
-        tokio::fs::rename(temporary, mirror).await?;
+        if let Err(error) = tokio::fs::rename(&temporary, mirror).await {
+            let _ = tokio::fs::remove_dir_all(&temporary).await;
+            return Err(error.into());
+        }
         Ok(())
     }
 
@@ -117,10 +123,13 @@ async fn cleanup_temporary_mirrors(mirror: &Path) -> WorkResult<()> {
     let Some(parent) = mirror.parent() else {
         return Ok(());
     };
-    let Some(name) = mirror.file_name().and_then(|name| name.to_str()) else {
+    let Some(prefix) = temporary_mirror_path(mirror, "")
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(str::to_string)
+    else {
         return Ok(());
     };
-    let prefix = format!("{name}.tmp-");
     let mut entries = match tokio::fs::read_dir(parent).await {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -141,6 +150,11 @@ async fn cleanup_temporary_mirrors(mirror: &Path) -> WorkResult<()> {
         }
     }
     Ok(())
+}
+
+fn temporary_mirror_path(mirror: &Path, token: &str) -> PathBuf {
+    let name = mirror.file_name().unwrap_or_default().to_string_lossy();
+    mirror.with_file_name(format!("{name}.tmp-{token}"))
 }
 
 fn managed_component<'a>(field: &str, value: &'a str) -> WorkResult<&'a str> {

@@ -20,7 +20,7 @@ RUN --mount=type=cache,id=vm-packages-cargo-registry,target=/usr/local/cargo/reg
 FROM node:22-bookworm
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      build-essential ca-certificates curl git libssl-dev openssh-client pkg-config \
+      build-essential ca-certificates curl git libssl-dev pkg-config \
       python3 python3-pip python3-venv && \
     rm -rf /var/lib/apt/lists/* && \
     python3 -m venv /opt/package-tools && \

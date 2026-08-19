@@ -77,8 +77,8 @@ these existing owners are repaired and the full gate passes:
 - [x] Persist package appliance state when Docker cannot report an image ID.
 - [x] Keep global configuration outside the project workspace mount boundary.
 - [x] Discover managed service containers independently of generated artifacts.
-- [ ] Apply long source-sync timeouts and temporary-mirror cleanup consistently.
-- [ ] Use canonical repository equivalence at every registration/workspace boundary.
+- [x] Apply long source-sync timeouts and temporary-mirror cleanup consistently.
+- [x] Use canonical repository equivalence at every registration/workspace boundary.
 - [ ] Recover one target's owning config and provider without repeated inventory calls.
 - [ ] Support Docker-compatible and Tart ownership recovery through their providers.
 - [ ] Collapse managed-tool targeting to one configuration-owned execution path.
@@ -252,7 +252,7 @@ current image. No real package release or publication was performed.
   workers.
 - [x] Make credential-isolated Docker services consume registered GitHub SSH
   origins through token-authenticated HTTPS without forwarding host SSH keys;
-  retain an SSH client for non-GitHub public SSH sources and clear failures.
+  reject inaccessible non-GitHub SSH sources with clear failures.
 - [x] Let one flat host source shelf mix language packages and explicitly marked
   tool repositories without hardcoded names, paths, or accidental npm
   registration.

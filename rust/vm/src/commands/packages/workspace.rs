@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use vm_packages::{
-    CheckoutRecord, CreateCheckout, PackageDefinition, SourceKind, ToolDefinition, ToolKind,
-    WorkflowState,
+    repository_urls_equivalent, CheckoutRecord, CreateCheckout, PackageDefinition, SourceKind,
+    ToolDefinition, ToolKind, WorkflowState,
 };
 
 use crate::error::{VmError, VmResult};
@@ -145,11 +145,11 @@ fn resolve_registered_source(
 ) -> VmResult<RegisteredSource> {
     let packages = packages
         .iter()
-        .filter(|package| package.repository == repository)
+        .filter(|package| repository_urls_equivalent(&package.repository, repository))
         .collect::<Vec<_>>();
     let tools = tools
         .iter()
-        .filter(|tool| tool.repository == repository)
+        .filter(|tool| repository_urls_equivalent(&tool.repository, repository))
         .collect::<Vec<_>>();
     if packages.len() + tools.len() != 1 {
         let message = if packages.is_empty() && tools.is_empty() {
@@ -327,7 +327,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registered_workspace_requires_exact_remote_identity_and_attestation() {
+    fn registered_workspace_requires_canonical_remote_identity_and_attestation() {
         let directory = tempfile::tempdir().unwrap();
         std::fs::write(
             directory.path().join("package.json"),
@@ -351,6 +351,18 @@ mod tests {
         .unwrap();
         assert_eq!(source.name, "shared-auth");
         assert_eq!(source.kind, SourceKind::Package);
+
+        let github_packages = vec![PackageDefinition {
+            repository: "ssh://git@github.com/goobits/shared-auth.git".into(),
+            ..packages[0].clone()
+        }];
+        assert!(resolve_registered_source(
+            directory.path().to_str().unwrap(),
+            "https://github.com/goobits/shared-auth.git",
+            &github_packages,
+            &[],
+        )
+        .is_ok());
 
         let mut unattested = packages;
         unattested[0].workspace_release = false;
