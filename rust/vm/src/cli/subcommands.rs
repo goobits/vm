@@ -177,7 +177,7 @@ pub enum ToolsSubcommand {
         #[arg(value_name = "TOOL")]
         tools: Vec<String>,
         /// Update only these managed environments
-        #[arg(long, value_name = "ENVIRONMENT", num_args = 1.., conflicts_with_all = ["fleet", "pattern"])]
+        #[arg(long, value_name = "ENVIRONMENT", action = clap::ArgAction::Append, conflicts_with_all = ["fleet", "pattern"])]
         to: Vec<String>,
         /// Include stopped environments and start them in place
         #[arg(long)]

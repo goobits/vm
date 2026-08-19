@@ -1,15 +1,217 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 
 use semver::Version;
 use vm_config::config::{ToolUpdatePolicy, VmConfig};
+use vm_core::vm_println;
 use vm_packages::ToolArtifactRecord;
+use vm_provider::InstanceInfo;
 
-use super::guest::InstalledTool;
+use super::guest::{InstallMode, InstalledTool};
+use super::{apply_updates, catalog, reconcile_subject};
+use crate::cli::FleetArgs;
+use crate::commands::command_context::{load_runtime_subject_for_instance, RuntimeSubject};
+use crate::commands::vm_ops::{self, FleetProgress, InstanceStateFilter};
+use crate::error::{VmError, VmResult};
+
+pub(super) async fn run(
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+    tools: Vec<String>,
+    environments: Vec<String>,
+    include_stopped: bool,
+    fleet: FleetArgs,
+    mode: InstallMode,
+) -> VmResult<()> {
+    let (instances, requested_tools) =
+        resolve_request(&tools, &environments, include_stopped, &fleet)?;
+    if instances.is_empty() {
+        vm_println!("No managed environments found");
+        return Ok(());
+    }
+
+    let requested = requested_tools.into_iter().collect::<BTreeSet<_>>();
+    let mut configured = BTreeSet::new();
+    let mut subjects = Vec::new();
+    let mut progress = FleetProgress::default();
+    let mut load_failed = false;
+    for instance in instances {
+        match load_runtime_subject_for_instance(config_path.clone(), profile.clone(), &instance) {
+            Ok(mut subject) => {
+                configured.extend(select_configured_tools(&mut subject.config, &requested));
+                subjects.push(subject);
+            }
+            Err(error) => {
+                load_failed = true;
+                progress.failure(&instance.name, &error);
+            }
+        }
+    }
+
+    let unconfigured = requested
+        .difference(&configured)
+        .cloned()
+        .collect::<Vec<_>>();
+    if !load_failed && !unconfigured.is_empty() {
+        return Err(VmError::validation(
+            format!(
+                "Selected tools are not configured in any targeted environment: {}",
+                unconfigured.join(", ")
+            ),
+            Some("Add each tool under `tools` in a target project's vm.yaml"),
+        ));
+    }
+
+    let configs = subjects
+        .iter()
+        .map(|subject| subject.config.clone())
+        .collect::<Vec<_>>();
+    catalog::prepare(&configs).await?;
+    for subject in subjects {
+        let name = subject.target.clone();
+        let result = update_subject(&subject, mode, !requested.is_empty()).await;
+        match result {
+            Ok(()) => progress.success(&name),
+            Err(error) => progress.failure(&name, &error),
+        }
+    }
+    progress.finish()
+}
+
+async fn update_subject(
+    subject: &RuntimeSubject,
+    mode: InstallMode,
+    explicitly_selected: bool,
+) -> VmResult<()> {
+    if explicitly_selected && subject.config.tools.entries.is_empty() {
+        return Ok(());
+    }
+    reconcile_subject(subject).await?;
+    apply_updates(
+        subject.provider.as_ref(),
+        &subject.target,
+        &subject.config,
+        mode,
+        explicitly_selected,
+    )
+}
+
+fn resolve_request(
+    tools: &[String],
+    environments: &[String],
+    include_stopped: bool,
+    fleet: &FleetArgs,
+) -> VmResult<(Vec<InstanceInfo>, Vec<String>)> {
+    if fleet.fleet {
+        if !tools.is_empty() || !environments.is_empty() || include_stopped {
+            return Err(VmError::validation(
+                "Compatibility --fleet targeting cannot be combined with selectors",
+                Some("Use repeated `--to <environment>` selectors instead"),
+            ));
+        }
+        return Ok((
+            vm_ops::resolve_fleet_targets(fleet, InstanceStateFilter::Any)?,
+            Vec::new(),
+        ));
+    }
+
+    let state = if include_stopped {
+        InstanceStateFilter::Any
+    } else {
+        InstanceStateFilter::Running
+    };
+    if !environments.is_empty() {
+        let query = FleetArgs {
+            fleet: true,
+            provider: None,
+            pattern: None,
+        };
+        let instances = vm_ops::resolve_fleet_targets(&query, state)?;
+        return Ok((
+            select_named_targets(instances, environments)?,
+            tools.to_vec(),
+        ));
+    }
+
+    if tools.len() == 1 && !include_stopped {
+        let query = FleetArgs {
+            fleet: true,
+            provider: None,
+            pattern: None,
+        };
+        let instances = vm_ops::resolve_fleet_targets(&query, InstanceStateFilter::Any)?;
+        if let Some(instance) = vm_ops::target::resolve_inventory_target(&instances, &tools[0])? {
+            return Ok((vec![instance], Vec::new()));
+        }
+        return Ok((
+            instances
+                .into_iter()
+                .filter(|instance| {
+                    instance.provider == "docker"
+                        && vm_ops::targets::is_running_status(&instance.status)
+                })
+                .collect(),
+            tools.to_vec(),
+        ));
+    }
+
+    let query = FleetArgs {
+        fleet: true,
+        provider: Some("docker".into()),
+        pattern: None,
+    };
+    Ok((
+        vm_ops::resolve_fleet_targets(&query, state)?,
+        tools.to_vec(),
+    ))
+}
+
+fn select_named_targets(
+    instances: Vec<InstanceInfo>,
+    requested: &[String],
+) -> VmResult<Vec<InstanceInfo>> {
+    let mut available = instances
+        .into_iter()
+        .map(|instance| (instance.name.clone(), instance))
+        .collect::<BTreeMap<_, _>>();
+    let mut selected = Vec::new();
+    let mut missing = Vec::new();
+    for name in requested {
+        match available.remove(name) {
+            Some(instance) => selected.push(instance),
+            None if !missing.contains(name) => missing.push(name.clone()),
+            None => {}
+        }
+    }
+    if !missing.is_empty() {
+        return Err(VmError::validation(
+            format!(
+                "Managed environment{} not found or not running: {}",
+                if missing.len() == 1 { "" } else { "s" },
+                missing.join(", ")
+            ),
+            Some("Use `vm list --all` or add --include-stopped"),
+        ));
+    }
+    Ok(selected)
+}
+
+fn select_configured_tools(config: &mut VmConfig, requested: &BTreeSet<String>) -> Vec<String> {
+    if requested.is_empty() {
+        return Vec::new();
+    }
+    config
+        .tools
+        .entries
+        .retain(|name, _| requested.contains(name));
+    config.tools.entries.keys().cloned().collect()
+}
 
 #[derive(Debug, Default)]
 pub(super) struct UpdatePlan {
     pub(super) automatic: Vec<ToolArtifactRecord>,
     pub(super) prompt: Vec<ToolArtifactRecord>,
+    pub(super) suppressed: Vec<ToolArtifactRecord>,
 }
 
 impl UpdatePlan {
@@ -64,7 +266,7 @@ pub(super) fn plan(
         match selection.effective_updates(config.tools.updates) {
             ToolUpdatePolicy::Auto => plan.automatic.push(change),
             ToolUpdatePolicy::Prompt => plan.prompt.push(change),
-            ToolUpdatePolicy::Off => {}
+            ToolUpdatePolicy::Off => plan.suppressed.push(change),
         }
     }
     plan
@@ -76,6 +278,19 @@ mod tests {
     use chrono::Utc;
     use vm_config::config::{ToolConfig, ToolsConfig};
     use vm_packages::ToolKind;
+    use vm_provider::InstanceInfo;
+
+    fn instance(name: &str, provider: &str) -> InstanceInfo {
+        InstanceInfo {
+            name: name.into(),
+            id: format!("{name}-id"),
+            status: "running".into(),
+            provider: provider.into(),
+            project: Some(name.into()),
+            uptime: None,
+            created_at: None,
+        }
+    }
 
     fn artifact(name: &str, version: &str, digest: char) -> ToolArtifactRecord {
         ToolArtifactRecord {
@@ -251,5 +466,62 @@ mod tests {
 
         assert_eq!(selected.len(), 1);
         assert!(disabled.is_empty());
+        let disabled = plan(
+            &config(ToolUpdatePolicy::Off, false),
+            &available,
+            &installed,
+            &consumable,
+        );
+        assert_eq!(disabled.suppressed.len(), 1);
+    }
+
+    #[test]
+    fn explicit_selection_retains_only_configured_tools_and_their_pins() {
+        let mut config = VmConfig::default();
+        config.tools.entries.insert(
+            "agent-skills".into(),
+            ToolConfig {
+                version: Some("0.8.0".into()),
+                updates: None,
+            },
+        );
+        config
+            .tools
+            .entries
+            .insert("unrelated".into(), ToolConfig::default());
+
+        let selected = select_configured_tools(
+            &mut config,
+            &BTreeSet::from(["agent-skills".into(), "unconfigured".into()]),
+        );
+
+        assert_eq!(selected, ["agent-skills"]);
+        assert_eq!(
+            config.tools.entries["agent-skills"].version.as_deref(),
+            Some("0.8.0")
+        );
+        assert!(!config.tools.entries.contains_key("unconfigured"));
+    }
+
+    #[test]
+    fn named_targets_preserve_order_across_providers_and_reject_missing() {
+        let selected = select_named_targets(
+            vec![instance("api-dev", "docker"), instance("mac", "tart")],
+            &["mac".into(), "api-dev".into()],
+        )
+        .unwrap();
+        assert_eq!(
+            selected
+                .into_iter()
+                .map(|target| (target.name, target.provider))
+                .collect::<Vec<_>>(),
+            [
+                ("mac".into(), "tart".into()),
+                ("api-dev".into(), "docker".into())
+            ]
+        );
+        let error = select_named_targets(vec![instance("api-dev", "docker")], &["missing".into()])
+            .unwrap_err();
+        assert!(error.to_string().contains("missing"));
     }
 }

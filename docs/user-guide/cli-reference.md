@@ -123,14 +123,15 @@ release, security, recovery, and consumer workflow details.
 | `vm tools show <name>` | Show one tool and its releases |
 | `vm tools refresh` | Refresh the controller tool catalog |
 | `vm tools status [environment]` | Combine controller, installed, and consumable state |
-| `vm tools update [<tool>...] [--to <environment>...] [--include-stopped] [--background] [<fleet-options>]` | Update configured or named tools across selected environments |
+| `vm tools update [<tool>...] [--to <environment>]... [--include-stopped] [--background]` | Update configured tools across selected environments |
 
 With no tool names, `update` loads every running managed Docker environment's
-own tool selection. Tool names restrict that invocation. `--to` restricts exact
-environments. Stopped environments remain untouched unless
+own tool selection. Tool names filter those configured selections; they never
+install an unconfigured tool. Repeat `--to` to restrict exact environments,
+including Podman or Tart targets. Stopped environments remain untouched unless
 `--include-stopped` is explicit. Existing `vm tools update <environment>` and
 `vm tools update --fleet [--provider <provider>] [--pattern <glob>]` forms remain
-compatibility syntax; new automation should use `--to`.
+compatibility aliases for the same execution path; new automation should use `--to`.
 
 Explicit updates include prompt-policy releases while respecting persisted
 `off` policies for ordinary upgrades. Reconciliation repairs package routing,

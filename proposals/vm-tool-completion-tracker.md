@@ -40,13 +40,12 @@ Extend the existing command rather than adding another sync or rollout family:
 vm tools update
 vm tools update agent-skills
 vm tools update agent-skills another-tool
-vm tools update agent-skills --to typemill-dev zoop-io-dev
+vm tools update agent-skills --to typemill-dev --to zoop-io-dev
 ```
 
 The no-argument form updates each running managed Docker environment's own
-configured tools. Positional tool names temporarily select only those tools;
-this makes an intentional operator update work without editing every project
-configuration. `--to` limits the environments. Stopped environments remain
+configured tools. Positional tool names restrict the update to projects that
+configure those tools. Repeated `--to` options limit the environments. Stopped environments remain
 untouched unless `--include-stopped` is explicit. Each target must load its own
 persisted `vm.yaml` ownership instead of inheriting the invoking project's
 services or tool policy. Existing single-environment and `--fleet` forms remain
@@ -81,8 +80,8 @@ these existing owners are repaired and the full gate passes:
 - [x] Use canonical repository equivalence at every registration/workspace boundary.
 - [x] Recover one target's owning config and provider without repeated inventory calls.
 - [x] Support Docker-compatible and Tart ownership recovery through their providers.
-- [ ] Collapse managed-tool targeting to one configuration-owned execution path.
-- [ ] Make selector parsing, disabled-update output, and missing-release errors truthful.
+- [x] Collapse managed-tool targeting to one configuration-owned execution path.
+- [x] Make selector parsing, disabled-update output, and missing-release errors truthful.
 - [ ] Rerun static, Docker, and Tart release acceptance after remediation.
 
 ## Remaining Acceptance
@@ -739,12 +738,12 @@ Docker worker, while managed `agent-skills` remained consumable at 0.6.1.
 
 Bulk reconciliation is exposed through ordinary command ownership rather than
 a duplicate top-level workflow. `vm tools update [<tool>...]` now applies each
-running managed Docker target's own configuration, or the explicit temporary
-tool selection, without a checklist. `--to` limits exact environments and
+running managed Docker target's own configuration, with positional names acting
+only as a filter over configured tools. Repeated `--to` options limit exact environments and
 `--include-stopped` is required before starting stopped targets. Reconciliation
 respects persisted `off` policy for upgrades, continues on per-target failures,
-and reports a summary. The compatibility `--fleet` form retains its former
-loaded-selection/provider/pattern behavior for existing automation. Neither
+and reports a summary. The compatibility `--fleet` form retains provider and
+pattern selection while using the same owner-configured execution path. Neither
 form projects application services onto unrelated targets. The former `vm
 fleet` and tool `--all` surfaces remain removed. This is implemented but
 awaiting host acceptance.

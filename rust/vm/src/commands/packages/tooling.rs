@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
 use futures::future::join_all;
@@ -33,11 +33,15 @@ pub(in crate::commands) enum RefreshOutcome {
 }
 
 pub(in crate::commands) async fn refresh(config: &VmConfig) -> VmResult<RefreshOutcome> {
+    refresh_many(std::slice::from_ref(config)).await
+}
+
+pub(in crate::commands) async fn refresh_many(configs: &[VmConfig]) -> VmResult<RefreshOutcome> {
     let files = ApplianceFiles::discover()?;
     let Some(lock) = files.acquire_tool_cache_lock()? else {
         return Ok(RefreshOutcome::AlreadyRunning);
     };
-    refresh_locked(&files, config, lock).await?;
+    refresh_locked(&files, configs, lock).await?;
     Ok(RefreshOutcome::Refreshed)
 }
 
@@ -51,7 +55,7 @@ pub(in crate::commands) fn refresh_in_background(config: VmConfig) -> VmResult<(
     }
 
     tokio::spawn(async move {
-        if let Err(error) = refresh_locked(&files, &config, lock).await {
+        if let Err(error) = refresh_locked(&files, &[config], lock).await {
             tracing::debug!(%error, "Background tool catalog refresh failed");
         }
     });
@@ -60,7 +64,7 @@ pub(in crate::commands) fn refresh_in_background(config: VmConfig) -> VmResult<(
 
 async fn refresh_locked(
     files: &ApplianceFiles,
-    config: &VmConfig,
+    configs: &[VmConfig],
     lock: std::fs::File,
 ) -> VmResult<()> {
     let (_, client) = configured_state_and_client(files)?;
@@ -88,10 +92,9 @@ async fn refresh_locked(
         ));
     }
 
-    let pins = config
-        .tools
-        .entries
+    let pins = configs
         .iter()
+        .flat_map(|config| &config.tools.entries)
         .filter_map(|(name, tool)| {
             tool.version
                 .as_deref()
@@ -102,8 +105,9 @@ async fn refresh_locked(
             TOOL_TARGETS
                 .into_iter()
                 .map(move |target| (name.clone(), version.clone(), target))
-        });
-    let resolutions = join_all(pins.map(|(name, version, target)| {
+        })
+        .collect::<BTreeSet<_>>();
+    let resolutions = join_all(pins.into_iter().map(|(name, version, target)| {
         let client = client.clone();
         async move {
             let result = client.resolve_tool(&name, Some(&version), target).await;

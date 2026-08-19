@@ -516,6 +516,7 @@ fn tool_refresh_status_and_batch_update_commands_parse() {
             "helper",
             "--to",
             "backend",
+            "--to",
             "worker",
         ])
         .command,
@@ -528,6 +529,13 @@ fn tool_refresh_status_and_batch_update_commands_parse() {
                 ..
             }
         } if tools == ["agent-skills", "helper"] && to == ["backend", "worker"]
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "tools", "update", "--to", "backend", "agent-skills"])
+            .command,
+        Command::Tools {
+            command: ToolsSubcommand::Update { tools, to, .. }
+        } if tools == ["agent-skills"] && to == ["backend"]
     ));
     assert!(matches!(
         Args::parse_from([

@@ -32,7 +32,7 @@
 - 📦 Same-version source builds refresh Docker package edges by immutable image identity, delivering updated managed clients without recreating environments.
 - 📦 Catalog reconciliation treats GitHub HTTPS and SSH forms as one canonical repository instead of degrading after a local transport change.
 - 📦 Explicit cross-project Docker targets load their owning project configuration before managed-tool and package-edge reconciliation.
-- 📦 `vm tools update [<tool>...]` updates all running managed Docker environments by default, supports exact `--to` targeting, and excludes stopped environments unless explicitly included.
+- 📦 `vm tools update [<tool>...]` filters each running managed Docker environment's configured tools by default, supports repeated exact `--to` targeting across providers, and excludes stopped environments unless explicitly included.
 
 ### 🔧 Changed
 

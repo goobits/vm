@@ -165,8 +165,8 @@ archives. No host checkout, host approval, npmjs.org, crates.io, or PyPI
 publication participates.
 
 After a configured tool is published, normal managed-tool reconciliation or an
-explicit `vm tools update <tool>` activates it across running managed Docker
-environments. Use `--to <environment>...` to limit activation. Language packages
+explicit `vm tools update <tool>` activates it in running managed Docker
+environments that configure it. Repeat `--to <environment>` to limit activation. Language packages
 are not installed directly; their existing consumer rollout workers remain
 authoritative.
 
@@ -398,7 +398,7 @@ hot-reloaded.
 ```bash
 vm tools update
 vm tools update agent-skills another-tool
-vm tools update agent-skills --to projects-dev typemill-dev
+vm tools update agent-skills --to projects-dev --to typemill-dev
 ```
 
 These are the common all-tools, selected-tools, and selected-environments
@@ -406,9 +406,9 @@ forms. See the [CLI reference](cli-reference.md#managed-tools) for every update
 option and the compatibility syntax.
 
 With no names, `update` uses every running managed Docker environment's own
-configured tool selection. Positional names restrict the update to those tools
-and intentionally make an unconfigured tool eligible for that invocation.
-`--to` accepts exact environment names. Stopped environments are ignored unless
+configured tool selection. Positional names filter those selections and never
+make an unconfigured tool eligible. Each `--to` accepts one exact Docker,
+Podman, or Tart environment name. Stopped environments are ignored unless
 `--include-stopped` is explicit; then VM starts selected stopped environments in
 place. Exact legacy environment positionals and `--fleet` remain compatible,
 but `--to` is the unambiguous current syntax.
@@ -438,7 +438,7 @@ at a declared activation path. Managed releases live under the guest home and
 never advance, remove, or otherwise rewrite project Git; the operator must pick
 one owner for overlapping collection content.
 
-`vm tools update [<tool>...] [--to <environment>...]` is also the idempotent
+`vm tools update [<tool>...] [--to <environment>]...` is also the idempotent
 upgrade reconciliation entry point. For Docker it regenerates current Compose
 metadata and updates only a missing or stale `package-edge` sidecar with
 `--no-deps`. For Linux Tart it reconciles only the guest edge container. Both
