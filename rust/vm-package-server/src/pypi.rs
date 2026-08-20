@@ -9,7 +9,6 @@ use axum::{
 use tracing::{debug, info, warn};
 
 use crate::validation;
-use crate::validation_utils::FileStreamValidator;
 use crate::{
     normalize_pypi_name, package_utils, sha256_hash, storage, validate_filename, AppError,
     AppResult, AppState, SuccessResponse,
@@ -394,7 +393,7 @@ pub async fn upload_package(
             debug!(size = data.len(), "Read package data");
 
             // Use centralized validation for package uploads
-            FileStreamValidator::validate_package_upload(&data, &filename, "PyPI")?;
+            validation::validate_package_upload(&data, &filename, "PyPI")?;
 
             total_size += data.len() as u64;
 
@@ -432,7 +431,7 @@ pub async fn upload_package(
             total_size += field_data.len() as u64;
 
             // Use centralized validation for total upload size
-            FileStreamValidator::validate_total_upload_size(total_size, "PyPI")?;
+            validation::validate_total_upload_size(total_size, "PyPI")?;
 
             debug!(field_name = %name, size = field_data.len(), "Processed non-content field");
         }

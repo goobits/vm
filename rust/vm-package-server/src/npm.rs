@@ -11,7 +11,6 @@ use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
 
 use crate::validation;
-use crate::validation_utils::FileStreamValidator;
 use crate::{
     sha1_hash, sha256_hash, storage, validate_filename, AppError, AppResult, AppState,
     SuccessResponse,
@@ -400,7 +399,7 @@ pub async fn publish_package(
             })?;
 
             // Use centralized validation for decoded tarball size
-            FileStreamValidator::validate_package_upload(&tarball_data, filename, "NPM")?;
+            validation::validate_package_upload(&tarball_data, filename, "NPM")?;
 
             // Calculate SHA1 hash for metadata
             let shasum = sha1_hash(&tarball_data);

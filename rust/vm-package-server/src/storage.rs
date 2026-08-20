@@ -1,5 +1,5 @@
 use crate::error::{AppError, AppResult};
-use crate::validation_utils::FileStreamValidator;
+use crate::validation;
 use std::future::Future;
 use std::path::Path;
 use std::time::Duration;
@@ -81,17 +81,8 @@ pub async fn save_file<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C) -> A
 /// Read file content from the specified path with size validation
 pub async fn read_file<P: AsRef<Path>>(path: P) -> AppResult<Vec<u8>> {
     let path = path.as_ref();
-
-    if !path.exists() {
-        warn!(path = %path.display(), "File not found");
-        return Err(AppError::NotFound(format!(
-            "File not found: {}",
-            path.display()
-        )));
-    }
-
-    // Use centralized validation and file reading logic
-    FileStreamValidator::validate_and_read_file(path).await
+    validate_read_size(path).await?;
+    Ok(fs::read(path).await?)
 }
 
 /// Read an immutable artifact locally, then from a persistent read-through cache.
@@ -182,16 +173,21 @@ async fn cache_is_fresh(path: &Path, max_age: Duration) -> AppResult<bool> {
 /// Read file content as a string with size validation
 pub async fn read_file_string<P: AsRef<Path>>(path: P) -> AppResult<String> {
     let path = path.as_ref();
+    validate_read_size(path).await?;
+    Ok(fs::read_to_string(path).await?)
+}
 
-    if !path.exists() {
-        return Err(AppError::NotFound(format!(
-            "File not found: {}",
-            path.display()
-        )));
-    }
-
-    // Use centralized validation and string file reading logic
-    FileStreamValidator::validate_and_read_file_string(path).await
+async fn validate_read_size(path: &Path) -> AppResult<()> {
+    let metadata = fs::metadata(path).await.map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            warn!(path = %path.display(), "file not found");
+            AppError::NotFound(format!("File not found: {}", path.display()))
+        } else {
+            error.into()
+        }
+    })?;
+    validation::validate_file_size(metadata.len(), Some(validation::MAX_UPLOAD_SIZE))
+        .map_err(|error| AppError::BadRequest(format!("File too large: {error}")))
 }
 
 /// Append content to a file, creating it if it doesn't exist, with size validation
@@ -213,16 +209,16 @@ pub async fn append_to_file<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C)
         let existing_size = metadata.len();
 
         // Use centralized validation for existing file size
-        FileStreamValidator::validate_total_upload_size(existing_size, "file append")?;
+        validation::validate_total_upload_size(existing_size, "file append")?;
 
         // Check if appending would exceed limits
         let total_size = existing_size + content.len() as u64 + 2; // +2 for potential newlines
-        FileStreamValidator::validate_total_upload_size(total_size, "file append")?;
+        validation::validate_total_upload_size(total_size, "file append")?;
 
         fs::read_to_string(path).await?
     } else {
         // Use centralized validation for new content size
-        FileStreamValidator::validate_total_upload_size(content.len() as u64, "file content")?;
+        validation::validate_total_upload_size(content.len() as u64, "file content")?;
 
         String::new()
     };

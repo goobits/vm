@@ -194,6 +194,8 @@ current image. No real package release or publication was performed.
 - [x] Split Compose behavior from its test suite and base-image acquisition from build-context generation.
 - [x] Consolidate package and tool release source/workflow ownership, with separate
   manifest, artifact, build, and archive responsibilities.
+- [x] Remove the package server's catch-all validation wrapper and split server
+  routing, setup, response-body, storage, path, and size-limit ownership.
 
 ### Worker package data plane
 

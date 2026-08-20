@@ -1,4 +1,4 @@
-use crate::validation_utils::FileStreamValidator;
+use crate::response_body::read_bounded_response;
 use crate::{AppError, AppResult};
 use reqwest::Client;
 use serde_json::Value;
@@ -250,7 +250,7 @@ impl UpstreamClient {
         }
 
         // Use centralized validation and streaming logic
-        FileStreamValidator::validate_and_stream_response(response, "PyPI", filename).await
+        read_bounded_response(response, "PyPI", filename).await
     }
 
     /// Fetch npm package metadata as JSON.
@@ -334,7 +334,7 @@ impl UpstreamClient {
         }
 
         // Use centralized validation and streaming logic
-        FileStreamValidator::validate_and_stream_response(response, "NPM", &full_url).await
+        read_bounded_response(response, "NPM", &full_url).await
     }
 
     /// Fetch Cargo crate index
@@ -395,7 +395,7 @@ impl UpstreamClient {
 
         // Use centralized validation and streaming logic
         let crate_filename = format!("{crate_name}-{version}.crate");
-        FileStreamValidator::validate_and_stream_response(response, "Cargo", &crate_filename).await
+        read_bounded_response(response, "Cargo", &crate_filename).await
     }
 
     /// Update tarball URLs in npm metadata to point to the current server.

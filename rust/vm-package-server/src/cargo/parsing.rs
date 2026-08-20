@@ -4,7 +4,6 @@
 //! and .crate file data from the binary upload format.
 
 use super::CrateMetadata;
-use crate::validation_utils::FileStreamValidator;
 use crate::{validation, AppError, AppResult};
 use serde_json::{json, Value};
 use tracing::{debug, warn};
@@ -113,7 +112,7 @@ pub fn parse_crate_upload(body: axum::body::Bytes) -> AppResult<(CrateMetadata, 
     ]) as usize;
 
     // Use centralized validation for crate file size
-    FileStreamValidator::validate_total_upload_size(crate_len as u64, "Cargo")?;
+    validation::validate_total_upload_size(crate_len as u64, "Cargo")?;
 
     let crate_data_offset = crate_len_offset + 4;
     if payload_size < crate_data_offset + crate_len {
@@ -140,7 +139,7 @@ pub fn parse_crate_upload(body: axum::body::Bytes) -> AppResult<(CrateMetadata, 
     debug!(crate_size = crate_data.len(), "Extracted crate file data");
 
     // Use centralized validation for extracted crate package
-    FileStreamValidator::validate_package_upload(crate_data, "crate", "Cargo")?;
+    validation::validate_package_upload(crate_data, "crate", "Cargo")?;
 
     let crate_metadata = CrateMetadata {
         name: crate_name.to_string(),

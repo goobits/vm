@@ -5,7 +5,7 @@ use serde::de::DeserializeOwned;
 use url::Url;
 use vm_packages::{InternalPackageCatalog, RegistryEndpoints};
 
-use crate::validation_utils::FileStreamValidator;
+use crate::response_body::read_bounded_response;
 use crate::{AppError, AppResult};
 
 const INTERNAL_METADATA_TIMEOUT: Duration = Duration::from_secs(2);
@@ -116,7 +116,7 @@ impl InternalRegistryClient {
     }
 
     async fn get_bytes(&self, path: &str, ecosystem: &str, name: &str) -> AppResult<bytes::Bytes> {
-        FileStreamValidator::validate_and_stream_response(
+        read_bounded_response(
             self.response(path, INTERNAL_ARTIFACT_TIMEOUT).await?,
             ecosystem,
             name,
