@@ -4,6 +4,7 @@ mod catalog;
 mod checkout;
 mod consumer;
 mod container;
+mod credentials;
 mod discovery;
 mod files;
 mod integration;
@@ -75,7 +76,7 @@ async fn doctor(files: &ApplianceFiles, fix: bool) -> VmResult<()> {
         if let Some(state) = files.read_state()? {
             appliance::repair_client_access(files, state)?;
         }
-        let _ = catalog::repair_github_credential(files)?;
+        let _ = credentials::repair_github(files)?;
     }
     appliance::doctor(files).await?;
 
@@ -212,7 +213,7 @@ pub(super) async fn handle(
         } => {
             let source_root = prepare_source_root(source_root)?;
             remember_source_root(&source_root)?;
-            let _ = catalog::repair_github_credential(&files)?;
+            let _ = credentials::repair_github(&files)?;
             up(
                 &files,
                 engine,
@@ -293,7 +294,7 @@ pub(super) async fn handle(
             token_file,
             github,
             clear,
-        } => catalog::configure_auth(&files, token_file, github, clear),
+        } => credentials::configure(&files, token_file, github, clear),
     }
 }
 
