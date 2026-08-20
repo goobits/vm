@@ -32,7 +32,8 @@ use vm_core::error::Result;
 
 // Internal imports
 use crate::{
-    context::ProviderContext, preflight, InstanceState, Provider, TempProvider, VmStatusReport,
+    context::ProviderContext, preflight, CommandProvider, InstanceProvider, InstanceState,
+    Provider, TempProvider, VmStatusReport,
 };
 use vm_config::config::VmConfig;
 
@@ -147,6 +148,57 @@ pub(crate) fn get_dockerfile_tera() -> &'static Tera {
     })
 }
 
+impl CommandProvider for ContainerProvider {
+    fn exec_interactive(
+        &self,
+        container: Option<&str>,
+        working_dir: &Path,
+        cmd: &[String],
+    ) -> Result<()> {
+        self.lifecycle_ops()
+            .exec_interactive_in_container(container, working_dir, cmd)
+    }
+
+    fn exec_with_stdin(&self, container: Option<&str>, cmd: &[String], input: &[u8]) -> Result<()> {
+        self.lifecycle_ops()
+            .exec_in_container_with_stdin(container, cmd, input)
+    }
+
+    fn exec_output(&self, container: Option<&str>, cmd: &[String]) -> Result<String> {
+        self.lifecycle_ops()
+            .exec_in_container_output(container, cmd)
+    }
+}
+
+impl InstanceProvider for ContainerProvider {
+    fn create_instance(&self, instance_name: &str, context: &ProviderContext) -> Result<()> {
+        validate_container_environment(self.engine)?;
+        preflight::check_system_resources()?;
+        let lifecycle = self.lifecycle_ops();
+        lifecycle.create_container_with_instance(instance_name, context)
+    }
+
+    fn supports_multi_instance(&self) -> bool {
+        true
+    }
+
+    fn resolve_instance_name(&self, instance: Option<&str>) -> Result<String> {
+        self.lifecycle_ops().resolve_target_container(instance)
+    }
+
+    fn list_instances(&self) -> Result<Vec<crate::InstanceInfo>> {
+        ownership::list_instances(&self.executable, self.engine)
+    }
+
+    fn instance_config_path(&self, instance: &str) -> Result<Option<PathBuf>> {
+        ownership::instance_config_path(&self.executable, instance)
+    }
+
+    fn reusable_host_ports(&self, environment: &str) -> Result<Vec<u16>> {
+        ownership::reusable_host_ports(&self.executable, environment)
+    }
+}
+
 impl Provider for ContainerProvider {
     fn name(&self) -> &'static str {
         self.engine.name()
@@ -158,14 +210,6 @@ impl Provider for ContainerProvider {
 
         let lifecycle = self.lifecycle_ops();
         lifecycle.create_container(context)
-    }
-
-    fn create_instance(&self, instance_name: &str, context: &ProviderContext) -> Result<()> {
-        validate_container_environment(self.engine)?;
-        preflight::check_system_resources()?;
-
-        let lifecycle = self.lifecycle_ops();
-        lifecycle.create_container_with_instance(instance_name, context)
     }
 
     fn start(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
@@ -191,26 +235,6 @@ impl Provider for ContainerProvider {
     fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
         lifecycle.exec_in_container(container, cmd)
-    }
-
-    fn exec_interactive(
-        &self,
-        container: Option<&str>,
-        working_dir: &Path,
-        cmd: &[String],
-    ) -> Result<()> {
-        self.lifecycle_ops()
-            .exec_interactive_in_container(container, working_dir, cmd)
-    }
-
-    fn exec_with_stdin(&self, container: Option<&str>, cmd: &[String], input: &[u8]) -> Result<()> {
-        self.lifecycle_ops()
-            .exec_in_container_with_stdin(container, cmd, input)
-    }
-
-    fn exec_output(&self, container: Option<&str>, cmd: &[String]) -> Result<String> {
-        self.lifecycle_ops()
-            .exec_in_container_output(container, cmd)
     }
 
     fn logs(&self, container: Option<&str>) -> Result<()> {
@@ -303,27 +327,6 @@ impl Provider for ContainerProvider {
 
     fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
         Some(self)
-    }
-
-    fn supports_multi_instance(&self) -> bool {
-        true
-    }
-
-    fn resolve_instance_name(&self, instance: Option<&str>) -> Result<String> {
-        let lifecycle = self.lifecycle_ops();
-        lifecycle.resolve_target_container(instance)
-    }
-
-    fn list_instances(&self) -> Result<Vec<crate::InstanceInfo>> {
-        ownership::list_instances(&self.executable, self.engine)
-    }
-
-    fn instance_config_path(&self, instance: &str) -> Result<Option<PathBuf>> {
-        ownership::instance_config_path(&self.executable, instance)
-    }
-
-    fn reusable_host_ports(&self, environment: &str) -> Result<Vec<u16>> {
-        ownership::reusable_host_ports(&self.executable, environment)
     }
 
     fn clone_box(&self) -> Box<dyn Provider> {

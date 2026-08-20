@@ -15,6 +15,7 @@ use vm_core::error::Result;
 use vm_config::config::{BoxSpec, ProviderName, VmConfig};
 
 // Re-export common types for convenience
+pub use capabilities::{CommandProvider, InstanceProvider, TempProvider};
 pub use common::instance::{InstanceInfo, InstanceResolver};
 pub use context::ProviderContext;
 pub use status::{
@@ -22,6 +23,7 @@ pub use status::{
 };
 pub use vm_core::error::{Result as VmResult, VmError};
 
+mod capabilities;
 pub mod common;
 pub mod context;
 mod guest_cache;
@@ -216,35 +218,14 @@ impl BoxConfig {
     }
 }
 
-/// Trait for providers that support temporary VM mount updates
-pub trait TempProvider {
-    /// Update the mounts of a temporary VM by recreating the container
-    fn update_mounts(&self, state: &TempVmState) -> Result<()>;
-
-    /// Recreate a container with new mount configuration
-    fn recreate_with_mounts(&self, state: &TempVmState) -> Result<()>;
-
-    /// Check if a container is healthy and ready
-    fn check_container_health(&self, container_name: &str) -> Result<bool>;
-
-    /// Check if a container is currently running
-    fn is_container_running(&self, container_name: &str) -> Result<bool>;
-}
-
 /// The core trait for all VM providers.
 /// This defines the contract for creating, managing, and interacting with a VM.
-pub trait Provider {
+pub trait Provider: CommandProvider + InstanceProvider {
     /// Get the name of the provider (e.g., "docker", "podman", "tart").
     fn name(&self) -> &'static str;
 
     /// Create a new VM instance.
     fn create(&self, context: &ProviderContext) -> Result<()>;
-
-    /// Create a new VM instance with a specific name.
-    /// This allows creating multiple instances of the same project.
-    fn create_instance(&self, _instance_name: &str, context: &ProviderContext) -> Result<()> {
-        self.create(context)
-    }
 
     /// Start an existing, stopped VM.
     fn start(&self, container: Option<&str>, context: &ProviderContext) -> Result<()>;
@@ -260,38 +241,6 @@ pub trait Provider {
 
     /// Execute a command inside the VM.
     fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()>;
-
-    /// Execute an interactive command from an absolute managed checkout directory.
-    fn exec_interactive(
-        &self,
-        _container: Option<&str>,
-        _working_dir: &Path,
-        _cmd: &[String],
-    ) -> Result<()> {
-        Err(VmError::Provider(
-            "This provider does not support interactive commands".into(),
-        ))
-    }
-
-    /// Execute a command with bytes supplied only over standard input. This is
-    /// used for short-lived credentials that must not appear in process args.
-    fn exec_with_stdin(
-        &self,
-        _container: Option<&str>,
-        _cmd: &[String],
-        _input: &[u8],
-    ) -> Result<()> {
-        Err(VmError::Provider(
-            "This provider does not support command standard input".into(),
-        ))
-    }
-
-    /// Execute a command and return its standard output without opening a TTY.
-    fn exec_output(&self, _container: Option<&str>, _cmd: &[String]) -> Result<String> {
-        Err(VmError::Provider(
-            "This provider does not support captured command output".into(),
-        ))
-    }
 
     /// Get the logs of the VM.
     fn logs(&self, container: Option<&str>) -> Result<()>;
@@ -363,36 +312,6 @@ pub trait Provider {
     /// Get access to temp provider capabilities if supported
     fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
         None
-    }
-
-    /// Resolve a partial instance name to a full instance name
-    /// Returns the default instance if partial is None
-    fn resolve_instance_name(&self, instance: Option<&str>) -> Result<String> {
-        // Default implementation for backward compatibility
-        match instance {
-            Some(name) => Ok(name.to_string()),
-            None => Ok("default".to_string()),
-        }
-    }
-
-    /// List all instances managed by this provider.
-    fn list_instances(&self) -> Result<Vec<InstanceInfo>>;
-
-    /// Return the owning project configuration for an existing instance when
-    /// the provider can prove that relationship from managed runtime metadata.
-    fn instance_config_path(&self, _instance: &str) -> Result<Option<PathBuf>> {
-        Ok(None)
-    }
-
-    /// Host ports already owned by managed service containers that will be
-    /// reused when this environment is created.
-    fn reusable_host_ports(&self, _environment: &str) -> Result<Vec<u16>> {
-        Ok(Vec::new())
-    }
-
-    /// Check if this provider supports multiple instances
-    fn supports_multi_instance(&self) -> bool {
-        false // Default to single instance for backward compatibility
     }
 
     /// Clone the provider into a new Box.

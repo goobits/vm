@@ -7,7 +7,8 @@ use crate::{
     common::instance::{extract_project_name, InstanceInfo, InstanceResolver},
     context::ProviderContext,
     project_plan::ProjectPlan,
-    shell_session, InstanceState, Provider, TempProvider, VmError, VmStatusReport,
+    shell_session, CommandProvider, InstanceProvider, InstanceState, Provider, TempProvider,
+    VmError, VmStatusReport,
 };
 use duct::cmd;
 use std::ffi::OsStr;
@@ -138,6 +139,68 @@ impl TartProvider {
     }
 }
 
+impl CommandProvider for TartProvider {
+    fn exec_interactive(
+        &self,
+        container: Option<&str>,
+        working_dir: &Path,
+        cmd: &[String],
+    ) -> Result<()> {
+        self.open_interactive_command(container, working_dir, cmd)
+    }
+
+    fn exec_with_stdin(&self, container: Option<&str>, cmd: &[String], input: &[u8]) -> Result<()> {
+        let args = self.guest_exec_args(container, cmd)?;
+        self.tart_expr(&args)
+            .stdin_bytes(input.to_vec())
+            .run()
+            .map(|_| ())
+            .map_err(|_| VmError::Provider("Tart guest command with standard input failed".into()))
+    }
+
+    fn exec_output(&self, container: Option<&str>, cmd: &[String]) -> Result<String> {
+        let args = self.guest_exec_args(container, cmd)?;
+        self.tart_expr(&args)
+            .stderr_capture()
+            .read()
+            .map_err(|error| {
+                VmError::Provider(format!(
+                    "Failed to capture Tart guest command output: {error}"
+                ))
+            })
+    }
+}
+
+impl InstanceProvider for TartProvider {
+    fn create_instance(&self, instance_name: &str, context: &ProviderContext) -> Result<()> {
+        // Apply global config defaults if present, but always use the project VmConfig
+        let _ = context; // Global config is not directly applicable to VM creation
+        let vm_name = format!("{}-{}", self.vm_name(), instance_name);
+        self.create_vm_internal(&vm_name, Some(instance_name), &self.config)
+    }
+
+    fn supports_multi_instance(&self) -> bool {
+        true
+    }
+
+    fn resolve_instance_name(&self, instance: Option<&str>) -> Result<String> {
+        if let Some(name) = instance {
+            if self.get_instance_state(name)?.is_some() {
+                return Ok(name.to_string());
+            }
+        }
+        self.instance_manager().resolve_instance_name(instance)
+    }
+
+    fn list_instances(&self) -> Result<Vec<InstanceInfo>> {
+        self.instance_manager().list_instances()
+    }
+
+    fn instance_config_path(&self, instance: &str) -> Result<Option<PathBuf>> {
+        self.command.instance_config_path(instance)
+    }
+}
+
 impl Provider for TartProvider {
     fn name(&self) -> &'static str {
         "tart"
@@ -147,13 +210,6 @@ impl Provider for TartProvider {
         // Apply global config defaults if present, but always use the project VmConfig
         let _ = context; // Global config is not directly applicable to VM creation
         self.create_vm_internal(&self.vm_name(), None, &self.config)
-    }
-
-    fn create_instance(&self, instance_name: &str, context: &ProviderContext) -> Result<()> {
-        // Apply global config defaults if present, but always use the project VmConfig
-        let _ = context; // Global config is not directly applicable to VM creation
-        let vm_name = format!("{}-{}", self.vm_name(), instance_name);
-        self.create_vm_internal(&vm_name, Some(instance_name), &self.config)
     }
 
     fn start(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
@@ -207,36 +263,6 @@ impl Provider for TartProvider {
         let args = self.guest_exec_args(container, cmd)?;
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
         self.stream_tart_command_visible(&arg_refs)
-    }
-
-    fn exec_interactive(
-        &self,
-        container: Option<&str>,
-        working_dir: &Path,
-        cmd: &[String],
-    ) -> Result<()> {
-        self.open_interactive_command(container, working_dir, cmd)
-    }
-
-    fn exec_with_stdin(&self, container: Option<&str>, cmd: &[String], input: &[u8]) -> Result<()> {
-        let args = self.guest_exec_args(container, cmd)?;
-        self.tart_expr(&args)
-            .stdin_bytes(input.to_vec())
-            .run()
-            .map(|_| ())
-            .map_err(|_| VmError::Provider("Tart guest command with standard input failed".into()))
-    }
-
-    fn exec_output(&self, container: Option<&str>, cmd: &[String]) -> Result<String> {
-        let args = self.guest_exec_args(container, cmd)?;
-        self.tart_expr(&args)
-            .stderr_capture()
-            .read()
-            .map_err(|error| {
-                VmError::Provider(format!(
-                    "Failed to capture Tart guest command output: {error}"
-                ))
-            })
     }
 
     fn logs(&self, container: Option<&str>) -> Result<()> {
@@ -438,30 +464,6 @@ impl Provider for TartProvider {
 
     fn get_sync_directory(&self) -> String {
         self.effective_sync_directory()
-    }
-
-    fn supports_multi_instance(&self) -> bool {
-        true
-    }
-
-    fn resolve_instance_name(&self, instance: Option<&str>) -> Result<String> {
-        if let Some(name) = instance {
-            if self.get_instance_state(name)?.is_some() {
-                return Ok(name.to_string());
-            }
-        }
-
-        let manager = self.instance_manager();
-        manager.resolve_instance_name(instance)
-    }
-
-    fn list_instances(&self) -> Result<Vec<InstanceInfo>> {
-        let manager = self.instance_manager();
-        manager.list_instances()
-    }
-
-    fn instance_config_path(&self, instance: &str) -> Result<Option<PathBuf>> {
-        self.command.instance_config_path(instance)
     }
 
     fn clone_box(&self) -> Box<dyn Provider> {

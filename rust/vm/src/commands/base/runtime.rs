@@ -632,7 +632,10 @@ mod tests {
     #[cfg(unix)]
     use tempfile::TempDir;
     use vm_config::config::{BoxSpec, VmConfig, VmSettings};
-    use vm_provider::{InstanceInfo, InstanceState, Provider, ProviderContext, VmStatusReport};
+    use vm_provider::{
+        CommandProvider, InstanceInfo, InstanceProvider, InstanceState, Provider, ProviderContext,
+        VmStatusReport,
+    };
 
     use super::{
         codex_expected, parse_codex_state, reconcile_codex, reconcile_codex_in_background,
@@ -661,6 +664,32 @@ mod tests {
 
         fn commands(&self) -> Vec<Vec<String>> {
             self.commands.lock().unwrap().clone()
+        }
+    }
+
+    impl CommandProvider for FakeProvider {
+        fn exec_output(
+            &self,
+            _container: Option<&str>,
+            _command: &[String],
+        ) -> vm_core::error::Result<String> {
+            self.calls.lock().unwrap().push("probe");
+            let state = self.states.lock().unwrap().pop_front().unwrap();
+            Ok(format!("VM_CODEX_STATE={state}\n"))
+        }
+    }
+
+    impl InstanceProvider for FakeProvider {
+        fn create_instance(
+            &self,
+            _instance_name: &str,
+            context: &ProviderContext,
+        ) -> vm_core::error::Result<()> {
+            Provider::create(self, context)
+        }
+
+        fn list_instances(&self) -> vm_core::error::Result<Vec<InstanceInfo>> {
+            Ok(Vec::new())
         }
     }
 
@@ -707,16 +736,6 @@ mod tests {
             Ok(())
         }
 
-        fn exec_output(
-            &self,
-            _container: Option<&str>,
-            _command: &[String],
-        ) -> vm_core::error::Result<String> {
-            self.calls.lock().unwrap().push("probe");
-            let state = self.states.lock().unwrap().pop_front().unwrap();
-            Ok(format!("VM_CODEX_STATE={state}\n"))
-        }
-
         fn logs(&self, _container: Option<&str>) -> vm_core::error::Result<()> {
             Ok(())
         }
@@ -756,10 +775,6 @@ mod tests {
 
         fn get_sync_directory(&self) -> String {
             "/workspace".into()
-        }
-
-        fn list_instances(&self) -> vm_core::error::Result<Vec<InstanceInfo>> {
-            Ok(Vec::new())
         }
 
         fn clone_box(&self) -> Box<dyn Provider> {

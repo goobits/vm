@@ -202,6 +202,8 @@ current image. No real package release or publication was performed.
   materialization from the general config-init workflow.
 - [x] Split temporary-VM lifecycle orchestration from status reporting and
   mount parsing/mutation while preserving the `TempVmOps` API.
+- [x] Split provider command execution, named-instance management, and optional
+  temporary-VM behavior into explicit capability traits.
 
 ### Worker package data plane
 
