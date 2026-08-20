@@ -198,6 +198,8 @@ current image. No real package release or publication was performed.
   routing, setup, response-body, storage, path, and size-limit ownership.
 - [x] Separate package repository scanning from manifest, ecosystem, tool, and
   canonical source-identity resolution.
+- [x] Give preset initialization one loader/base-config path and isolate box
+  materialization from the general config-init workflow.
 
 ### Worker package data plane
 
