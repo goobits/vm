@@ -322,6 +322,54 @@ async fn guest_checkout_identity_is_derived_from_its_capability() {
     assert_eq!(resumed.checkout.checkout_id, created.checkout.checkout_id);
     assert_eq!(resumed.checkout.agent, "project-a");
 
+    assert_eq!(
+        server
+            .post(&format!(
+                "/v1/checkouts/{}/lease/renew",
+                resumed.checkout.checkout_id
+            ))
+            .add_header(header::AUTHORIZATION, format!("Bearer {v1_agent}"))
+            .json(&serde_json::json!({
+                "holder": "project-a",
+                "lease_token": "hijacked-token-012345678901234567890123456789",
+                "duration_seconds": 28_800,
+                "idempotency_key": "workspace-renew-v1"
+            }))
+            .await
+            .status_code(),
+        StatusCode::UNAUTHORIZED
+    );
+
+    let submission_path = format!(
+        "/v1/checkouts/{}/submission?consumer=project-a",
+        resumed.checkout.checkout_id
+    );
+    assert_eq!(
+        server
+            .post(&submission_path)
+            .add_header(
+                header::AUTHORIZATION,
+                "Bearer rotated-token-012345678901234567890123456789",
+            )
+            .bytes("not-a-bundle".into())
+            .await
+            .status_code(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        server
+            .post(&submission_path)
+            .add_header(
+                header::AUTHORIZATION,
+                "Bearer rotated-token-012345678901234567890123456789",
+            )
+            .add_header(vm_packages::AGENT_CAPABILITY_HEADER, wrong_repository,)
+            .bytes("not-a-bundle".into())
+            .await
+            .status_code(),
+        StatusCode::UNAUTHORIZED
+    );
+
     let response = server
         .post(&format!(
             "/v1/checkouts/{}/transition",

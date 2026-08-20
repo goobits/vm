@@ -1,6 +1,6 @@
 use axum::{
     extract::{Request, State},
-    http::header,
+    http::{header, HeaderMap},
     middleware::Next,
     response::Response,
 };
@@ -62,6 +62,24 @@ pub(super) async fn agent(
     };
     request.extensions_mut().insert(AgentAccess(consumer));
     Ok(next.run(request).await)
+}
+
+pub(super) fn agent_capability_access(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> WorkResult<AgentAccess> {
+    let token = headers
+        .get(vm_packages::AGENT_CAPABILITY_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(authorization_token)
+        .ok_or_else(|| {
+            WorkError::Unauthorized("missing package agent capability credential".into())
+        })?;
+    let claims = vm_packages::verify_agent_capability(&state.access.agent_signing_key, &token)
+        .map_err(|_| {
+            WorkError::Unauthorized("invalid package agent capability credential".into())
+        })?;
+    Ok(AgentAccess(Some(claims)))
 }
 
 pub(super) async fn release(
@@ -201,9 +219,18 @@ pub(super) async fn ensure_checkout_access(
     store: &Store,
     access: &AgentAccess,
     checkout_id: &str,
+) -> WorkResult<vm_packages::CheckoutRecord> {
+    let checkout = store.get_checkout(checkout_id).await?;
+    ensure_checkout_record_access(store, access, &checkout).await?;
+    Ok(checkout)
+}
+
+pub(super) async fn ensure_checkout_record_access(
+    store: &Store,
+    access: &AgentAccess,
+    checkout: &vm_packages::CheckoutRecord,
 ) -> WorkResult<()> {
     if let Some(consumer) = access.consumer() {
-        let checkout = store.get_checkout(checkout_id).await?;
         ensure_requested_consumer(access, &checkout.consumers)?;
         if !checkout
             .consumers
@@ -214,6 +241,31 @@ pub(super) async fn ensure_checkout_access(
                 "checkout is not assigned to this consumer".into(),
             ));
         }
+        if checkout.workspace_release {
+            let source = store.source(&checkout.package).await?;
+            ensure_workspace_source_access(access, true, &source.repository)?;
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn ensure_workspace_source_access(
+    access: &AgentAccess,
+    workspace_release: bool,
+    source_repository: &str,
+) -> WorkResult<()> {
+    if !workspace_release || !access.is_agent() {
+        return Ok(());
+    }
+    let repository = access.canonical_repository().ok_or_else(|| {
+        WorkError::Unauthorized(
+            "canonical workspace release requires a repository-bound v2 credential".into(),
+        )
+    })?;
+    if !vm_packages::repository_urls_equivalent(repository, source_repository) {
+        return Err(WorkError::Unauthorized(
+            "package agent credential is bound to a different canonical repository".into(),
+        ));
     }
     Ok(())
 }
@@ -222,10 +274,7 @@ pub(super) async fn ensure_submission_access(
     store: &Store,
     access: &AgentAccess,
     submission_id: &str,
-) -> WorkResult<()> {
-    if access.is_agent() {
-        let submission = store.submission(submission_id).await?;
-        ensure_checkout_access(store, access, &submission.checkout_id).await?;
-    }
-    Ok(())
+) -> WorkResult<vm_packages::CheckoutRecord> {
+    let submission = store.submission(submission_id).await?;
+    ensure_checkout_access(store, access, &submission.checkout_id).await
 }

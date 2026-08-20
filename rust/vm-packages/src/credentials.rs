@@ -8,6 +8,10 @@ use crate::{normalize_remote_repository_url, validate_label, PackageValidationEr
 const AGENT_CAPABILITY_V1: &str = "v1";
 const AGENT_CAPABILITY_V2: &str = "v2";
 
+/// HTTP header used alongside a checkout lease when an operation must retain
+/// the guest's signed package-agent authority.
+pub const AGENT_CAPABILITY_HEADER: &str = "x-vm-agent-capability";
+
 /// Authenticated guest identity. Repository binding is present only for an
 /// explicitly registered canonical workspace.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

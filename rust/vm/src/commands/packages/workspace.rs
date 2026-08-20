@@ -10,7 +10,7 @@ use crate::error::{VmError, VmResult};
 
 use super::{
     discovery::{normalize_repository_url, package_name, tool_manifest},
-    runtime::{checkout_root, copy_private, exec_output, GuestRuntime},
+    runtime::{checkout_root, copy_private, exec_output, write_checkout_access, GuestRuntime},
 };
 
 const STATE_SCHEMA: u32 = 1;
@@ -100,11 +100,7 @@ pub(super) async fn prepare(subject: &GuestRuntime) -> VmResult<WorkspaceRelease
     };
     validate_checkout(subject, &checkout, &registered)?;
     let root = checkout_root(subject, &checkout.checkout_id)?;
-    copy_private(
-        subject,
-        format!("Authorization: Bearer {}\n", state.lease_token).as_bytes(),
-        &format!("{root}/authorization-header"),
-    )?;
+    write_checkout_access(subject, &root, &state.lease_token)?;
     Ok(WorkspaceRelease {
         checkout_id: checkout.checkout_id,
         source,

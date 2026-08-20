@@ -8,7 +8,7 @@ use crate::error::{VmError, VmResult};
 
 use super::{
     overrides::{cleanup_failed_attach, OverrideRecord},
-    runtime::{checkout_root, copy_private, exec, GuestRuntime},
+    runtime::{checkout_root, exec, write_checkout_access, GuestRuntime},
 };
 
 const GUEST_WORK_TASK: &str = "managed guest package work";
@@ -263,11 +263,7 @@ fn attach(
 }
 
 fn refresh_checkout_access(subject: &GuestRuntime, root: &str, lease_token: &str) -> VmResult<()> {
-    copy_private(
-        subject,
-        format!("Authorization: Bearer {lease_token}\n").as_bytes(),
-        &format!("{root}/authorization-header"),
-    )
+    write_checkout_access(subject, root, lease_token)
 }
 
 fn ensure_override(

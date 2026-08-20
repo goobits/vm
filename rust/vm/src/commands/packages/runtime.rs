@@ -390,6 +390,28 @@ pub(super) fn copy_private(
     subject.write_private(content, destination)
 }
 
+pub(super) fn write_checkout_access(
+    subject: &GuestRuntime,
+    root: &str,
+    lease_token: &str,
+) -> VmResult<()> {
+    copy_private(
+        subject,
+        format!("Authorization: Bearer {lease_token}\n").as_bytes(),
+        &format!("{root}/authorization-header"),
+    )?;
+    copy_private(
+        subject,
+        format!(
+            "{}: {}\n",
+            vm_packages::AGENT_CAPABILITY_HEADER,
+            subject.agent_token
+        )
+        .as_bytes(),
+        &format!("{root}/agent-capability-header"),
+    )
+}
+
 pub(super) fn exec_in_workspace<I, S>(subject: &GuestRuntime, command: I) -> VmResult<()>
 where
     I: IntoIterator<Item = S>,

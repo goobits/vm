@@ -14,7 +14,10 @@ use vm_packages::{
     authorization_token, RolloutRecord, RolloutState, SubmissionRecord, WorkflowState,
 };
 
-use super::AppState;
+use super::{
+    auth::{agent_capability_access, ensure_checkout_record_access},
+    AppState,
+};
 use crate::{WorkError, WorkResult};
 
 const MAX_SUBMISSION_BYTES: u64 = 256 * 1024 * 1024;
@@ -62,6 +65,10 @@ pub(super) async fn upload_submission(
         .store
         .authorize_lease(&id, &query.consumer, &lease_token(&headers)?)
         .await?;
+    if checkout.workspace_release {
+        let access = agent_capability_access(&state, &headers)?;
+        ensure_checkout_record_access(&state.store, &access, &checkout).await?;
+    }
     let staging = state.source.submission_staging_path(&checkout).await?;
     let result = async {
         receive_bundle(body, &staging, "submitted").await?;

@@ -32,7 +32,7 @@ pub use consumer::{
 };
 pub use credentials::{
     authorization_token, issue_agent_capability, issue_agent_capability_v2,
-    verify_agent_capability, AgentCapabilityClaims,
+    verify_agent_capability, AgentCapabilityClaims, AGENT_CAPABILITY_HEADER,
 };
 pub use digest::{encode_hex, sha256_hex, sha256_reader};
 pub use ecosystem::{PackageEcosystem, ParsePackageEcosystemError};

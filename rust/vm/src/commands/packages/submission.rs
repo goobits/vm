@@ -301,6 +301,8 @@ fn upload_bundle(
             "--header",
             &format!("@{root}/authorization-header"),
             "--header",
+            &format!("@{root}/agent-capability-header"),
+            "--header",
             "Content-Type: application/x-git-bundle",
             "--data-binary",
             &format!("@{bundle}"),
