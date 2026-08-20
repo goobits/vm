@@ -2,7 +2,18 @@
 
 set -euo pipefail
 
-vm_binary=${VM_ACCEPTANCE_BIN:-${CARGO_TARGET_DIR:-/tmp/vm-rust-target}/release/vm}
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+repository_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
+if test -n "${VM_ACCEPTANCE_BIN:-}"; then
+  vm_binary=$VM_ACCEPTANCE_BIN
+else
+  cargo_target_dir=${CARGO_TARGET_DIR:-$(
+    cd "$repository_root/rust"
+    cargo metadata --no-deps --format-version 1 | \
+      sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p'
+  )}
+  vm_binary=$cargo_target_dir/release/vm
+fi
 run_id=$$
 prefix=vm-remote-acceptance-$run_id
 image=$prefix:latest
@@ -41,7 +52,7 @@ run_vm() {
 
 test -x "$vm_binary" || {
   echo "Acceptance VM binary is missing: $vm_binary" >&2
-  echo "Repair: cargo build --manifest-path rust/Cargo.toml --release --package goobits-vm" >&2
+  echo "Repair: (cd rust && cargo build --release --package goobits-vm)" >&2
   exit 2
 }
 command -v docker >/dev/null 2>&1 || {

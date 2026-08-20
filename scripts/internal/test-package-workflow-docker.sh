@@ -3,7 +3,16 @@ set -euo pipefail
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
-vm_binary=${VM_ACCEPTANCE_BIN:-${CARGO_TARGET_DIR:-/tmp/vm-rust-target}/release/vm}
+if test -n "${VM_ACCEPTANCE_BIN:-}"; then
+  vm_binary=$VM_ACCEPTANCE_BIN
+else
+  cargo_target_dir=${CARGO_TARGET_DIR:-$(
+    cd "$repository_root/rust"
+    cargo metadata --no-deps --format-version 1 | \
+      sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p'
+  )}
+  vm_binary=$cargo_target_dir/release/vm
+fi
 run_id=$$
 compose_project=vm-packages-acceptance-$run_id
 docker_config=${DOCKER_CONFIG:-$HOME/.docker}
@@ -191,7 +200,7 @@ accept_language_package_lifecycle() {
 
 test -x "$vm_binary" || {
   echo "Acceptance VM binary is missing: $vm_binary" >&2
-  echo "Repair: cargo build --manifest-path rust/Cargo.toml --release --package goobits-vm" >&2
+  echo "Repair: (cd rust && cargo build --release --package goobits-vm)" >&2
   exit 2
 }
 command -v docker >/dev/null 2>&1 || {
@@ -432,6 +441,7 @@ stable_containers=(
   "$compose_project-oci-cache-1"
   "$compose_project-registry-1"
   "$compose_project-work-1"
+  "$compose_project-build-edge-1"
   "$compose_project-reviewer-1"
   "$compose_project-builder-1"
   "$compose_project-releaser-1"
