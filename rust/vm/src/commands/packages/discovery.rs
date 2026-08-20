@@ -2,20 +2,21 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use vm_config::detector::{
-    git::{detect_repository, RepositoryFacts},
-    ProjectFacts,
-};
-use vm_packages::SourceKind;
 use vm_packages::{
     PackageDefinition, PackageEcosystem, RegisterPackage, RegisterTool, ToolDefinition,
-    ToolSourceManifest,
 };
 use walkdir::{DirEntry, WalkDir};
 
 use crate::error::{VmError, VmResult};
 
-const TOOL_MANIFEST: &str = "vm-tool.yaml";
+mod source_identity;
+
+#[cfg(test)]
+use source_identity::TOOL_MANIFEST;
+use source_identity::{discover_package, discover_tool, exact_repository, is_tool_repository};
+pub(super) use source_identity::{
+    normalize_repository_url, package_name, source_identity, tool_manifest,
+};
 
 #[derive(Default)]
 pub(super) struct Discovery {
@@ -85,7 +86,7 @@ pub(super) fn discover_local(
         .packages
         .into_iter()
         .map(|root| {
-            discover_one(&root, ecosystem, branch, true).map(|request| LocalSource {
+            discover_package(&root, ecosystem, branch, true).map(|request| LocalSource {
                 root,
                 request: SourceRequest::Package(request),
             })
@@ -153,7 +154,7 @@ fn discover_registered_source(
         })
         .collect::<Vec<_>>();
     match (packages.as_slice(), tools.as_slice()) {
-        ([package], []) => discover_one(
+        ([package], []) => discover_package(
             root,
             Some(package.ecosystem),
             Some(&package.default_branch),
@@ -192,7 +193,7 @@ fn discover_source(
     if is_tool_repository(root)? {
         discover_tool(root, branch, workspace_release).map(SourceRequest::Tool)
     } else {
-        discover_one(root, ecosystem, branch, workspace_release).map(SourceRequest::Package)
+        discover_package(root, ecosystem, branch, workspace_release).map(SourceRequest::Package)
     }
 }
 
@@ -218,29 +219,6 @@ pub(super) fn quarantined_repositories(source_root: &Path) -> VmResult<Vec<PathB
         }
     }
     Ok(repositories)
-}
-
-pub(super) fn source_identity(root: &Path) -> VmResult<(String, SourceKind)> {
-    if is_tool_repository(root)? {
-        let name = root
-            .file_name()
-            .and_then(|name| name.to_str())
-            .filter(|name| !name.trim().is_empty())
-            .ok_or_else(|| {
-                VmError::validation(
-                    format!("Tool repository {} has no usable name", root.display()),
-                    Some("Rename the repository directory, then rerun `vm packages doctor --fix`"),
-                )
-            })?;
-        let kind = match tool_manifest(root)?.kind {
-            vm_packages::ToolKind::Binary => SourceKind::ToolBinary,
-            vm_packages::ToolKind::Collection => SourceKind::ToolCollection,
-        };
-        return Ok((name.to_string(), kind));
-    }
-    let facts = ProjectFacts::detect(root);
-    let ecosystem = resolve_ecosystem(root, &facts, None)?;
-    Ok((package_name(root, ecosystem)?, SourceKind::Package))
 }
 
 fn configured_repository_paths(targets: &[String]) -> VmResult<BTreeSet<(PathBuf, PathBuf)>> {
@@ -285,7 +263,7 @@ fn discover_with_policy(
     let packages = roots
         .packages
         .iter()
-        .map(|root| discover_one(root, ecosystem, branch, false))
+        .map(|root| discover_package(root, ecosystem, branch, false))
         .collect::<VmResult<_>>()?;
     let tools = roots
         .tools
@@ -362,33 +340,6 @@ fn find_repository_roots(root: &Path) -> VmResult<RepositoryRoots> {
     Ok(repositories)
 }
 
-fn is_tool_repository(root: &Path) -> VmResult<bool> {
-    let path = root.join(TOOL_MANIFEST);
-    if !path.is_file() {
-        return Ok(false);
-    }
-    tool_manifest(root)?;
-    Ok(true)
-}
-
-pub(super) fn tool_manifest(root: &Path) -> VmResult<ToolSourceManifest> {
-    let path = root.join(TOOL_MANIFEST);
-    let manifest =
-        serde_yaml_ng::from_str::<ToolSourceManifest>(&read_manifest(&path)?).map_err(|error| {
-            VmError::validation(
-                format!("Invalid {}: {error}", path.display()),
-                Some("Fix vm-tool.yaml, then rerun the same command"),
-            )
-        })?;
-    manifest.validate().map_err(|error| {
-        VmError::validation(
-            format!("Invalid {}: {error}", path.display()),
-            Some("Fix vm-tool.yaml, then rerun the same command"),
-        )
-    })?;
-    Ok(manifest)
-}
-
 fn should_visit(entry: &DirEntry) -> bool {
     if entry.depth() == 0 {
         return true;
@@ -412,200 +363,6 @@ fn should_visit(entry: &DirEntry) -> bool {
         .path()
         .parent()
         .is_some_and(|parent| parent.join(".git").exists())
-}
-
-fn discover_one(
-    root: &Path,
-    override_ecosystem: Option<PackageEcosystem>,
-    branch: Option<&str>,
-    workspace_release: bool,
-) -> VmResult<RegisterPackage> {
-    let repository = exact_repository(root)?;
-
-    let facts = ProjectFacts::detect(root);
-    let ecosystem = resolve_ecosystem(root, &facts, override_ecosystem)?;
-    let request = RegisterPackage {
-        name: package_name(root, ecosystem)?,
-        ecosystem,
-        repository: normalize_repository_url(&repository.origin_url)?,
-        default_branch: branch
-            .map(str::to_string)
-            .or(repository.default_branch)
-            .unwrap_or_else(|| "main".into()),
-        workspace_release,
-    };
-    request.validate().map_err(|error| {
-        VmError::validation(
-            format!("Invalid package metadata in {}: {error}", root.display()),
-            None::<String>,
-        )
-    })?;
-    Ok(request)
-}
-
-fn discover_tool(
-    root: &Path,
-    branch: Option<&str>,
-    workspace_release: bool,
-) -> VmResult<RegisterTool> {
-    let manifest = tool_manifest(root)?;
-    let repository = exact_repository(root)?;
-    let name = root
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| {
-            VmError::validation(
-                format!("Tool repository {} has no usable name", root.display()),
-                None::<String>,
-            )
-        })?
-        .to_string();
-    let request = RegisterTool {
-        name,
-        kind: manifest.kind,
-        repository: normalize_repository_url(&repository.origin_url)?,
-        default_branch: branch
-            .map(str::to_string)
-            .or(repository.default_branch)
-            .unwrap_or_else(|| "main".into()),
-        workspace_release,
-    };
-    request.validate().map_err(|error| {
-        VmError::validation(
-            format!("Invalid tool metadata in {}: {error}", root.display()),
-            None::<String>,
-        )
-    })?;
-    Ok(request)
-}
-
-fn exact_repository(root: &Path) -> VmResult<RepositoryFacts> {
-    let repository = detect_repository(root).map_err(VmError::from)?;
-    if repository.root != root {
-        return Err(VmError::validation(
-            format!("{} is not a Git repository root", root.display()),
-            Some(format!("Use {} instead", repository.root.display())),
-        ));
-    }
-    Ok(repository)
-}
-
-fn resolve_ecosystem(
-    root: &Path,
-    facts: &ProjectFacts,
-    requested: Option<PackageEcosystem>,
-) -> VmResult<PackageEcosystem> {
-    if let Some(ecosystem) = requested {
-        if has_manifest(facts, ecosystem) {
-            return Ok(ecosystem);
-        }
-        return Err(VmError::validation(
-            format!("{} has no {} package manifest", root.display(), ecosystem),
-            None::<String>,
-        ));
-    }
-
-    let detected = PackageEcosystem::ALL
-        .into_iter()
-        .filter(|ecosystem| has_manifest(facts, *ecosystem))
-        .collect::<Vec<_>>();
-    match detected.as_slice() {
-        [ecosystem] => Ok(*ecosystem),
-        [] => Err(VmError::validation(
-            format!("{} has no supported package manifest", root.display()),
-            Some("Expected package.json, Cargo.toml, or pyproject.toml"),
-        )),
-        _ => Err(VmError::validation(
-            format!("{} contains multiple package ecosystems", root.display()),
-            Some("Pass --ecosystem npm, cargo, or python to select one"),
-        )),
-    }
-}
-
-fn has_manifest(facts: &ProjectFacts, ecosystem: PackageEcosystem) -> bool {
-    match ecosystem {
-        PackageEcosystem::Npm => facts.package_json,
-        PackageEcosystem::Cargo => facts.cargo_toml,
-        PackageEcosystem::Python => facts.pyproject_toml,
-    }
-}
-
-pub(super) fn package_name(root: &Path, ecosystem: PackageEcosystem) -> VmResult<String> {
-    let (manifest, name) = match ecosystem {
-        PackageEcosystem::Npm => {
-            let path = root.join("package.json");
-            let value: serde_json::Value =
-                serde_json::from_str(&read_manifest(&path)?).map_err(|error| {
-                    VmError::validation(
-                        format!("Invalid {}: {error}", path.display()),
-                        None::<String>,
-                    )
-                })?;
-            (
-                path,
-                value
-                    .get("name")
-                    .and_then(serde_json::Value::as_str)
-                    .map(str::to_string),
-            )
-        }
-        PackageEcosystem::Cargo => {
-            let path = root.join("Cargo.toml");
-            let value: toml::Value = toml::from_str(&read_manifest(&path)?).map_err(|error| {
-                VmError::validation(
-                    format!("Invalid {}: {error}", path.display()),
-                    None::<String>,
-                )
-            })?;
-            let name = value
-                .get("package")
-                .and_then(|package| package.get("name"))
-                .and_then(toml::Value::as_str)
-                .map(str::to_string);
-            (path, name)
-        }
-        PackageEcosystem::Python => {
-            let path = root.join("pyproject.toml");
-            let value: toml::Value = toml::from_str(&read_manifest(&path)?).map_err(|error| {
-                VmError::validation(
-                    format!("Invalid {}: {error}", path.display()),
-                    None::<String>,
-                )
-            })?;
-            let name = value
-                .get("project")
-                .and_then(|project| project.get("name"))
-                .or_else(|| {
-                    value
-                        .get("tool")
-                        .and_then(|tool| tool.get("poetry"))
-                        .and_then(|poetry| poetry.get("name"))
-                })
-                .and_then(toml::Value::as_str)
-                .map(str::to_string);
-            (path, name)
-        }
-    };
-    name.filter(|name| !name.trim().is_empty()).ok_or_else(|| {
-        VmError::validation(
-            format!("{} does not declare a package name", manifest.display()),
-            None::<String>,
-        )
-    })
-}
-
-fn read_manifest(path: &Path) -> VmResult<String> {
-    fs::read_to_string(path)
-        .map_err(|error| VmError::filesystem(error, path.display().to_string(), "read manifest"))
-}
-
-pub(super) fn normalize_repository_url(value: &str) -> VmResult<String> {
-    vm_packages::normalize_remote_repository_url(value).map_err(|error| {
-        VmError::validation(
-            format!("Invalid Git origin '{value}': {error}"),
-            Some("Set origin to an HTTPS or SSH repository URL"),
-        )
-    })
 }
 
 #[cfg(test)]

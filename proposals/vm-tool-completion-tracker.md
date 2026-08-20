@@ -196,6 +196,8 @@ current image. No real package release or publication was performed.
   manifest, artifact, build, and archive responsibilities.
 - [x] Remove the package server's catch-all validation wrapper and split server
   routing, setup, response-body, storage, path, and size-limit ownership.
+- [x] Separate package repository scanning from manifest, ecosystem, tool, and
+  canonical source-identity resolution.
 
 ### Worker package data plane
 
