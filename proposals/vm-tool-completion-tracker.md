@@ -192,6 +192,8 @@ current image. No real package release or publication was performed.
 - [x] Keep container inventory/config ownership in one module and provider status types outside the trait root.
 - [x] Remove the unused provider-level snapshot API; `vm-snapshot` remains the sole snapshot implementation.
 - [x] Split Compose behavior from its test suite and base-image acquisition from build-context generation.
+- [x] Consolidate package and tool release source/workflow ownership, with separate
+  manifest, artifact, build, and archive responsibilities.
 
 ### Worker package data plane
 

@@ -3,12 +3,14 @@
 use std::path::Path;
 use std::process::Command;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 use crate::runtime::command_text;
 
 pub mod package;
+mod source;
 pub mod tool;
+mod workflow;
 
 fn git() -> Command {
     let mut command = Command::new("git");
@@ -30,10 +32,4 @@ fn git_text(repository: &Path, arguments: &[&str], operation: &str) -> Result<St
             .trim()
             .to_string(),
     )
-}
-
-fn file_digest(path: &Path) -> Result<String> {
-    let file = std::fs::File::open(path)
-        .with_context(|| format!("open immutable source bundle {}", path.display()))?;
-    Ok(vm_packages::sha256_reader(std::io::BufReader::new(file))?.0)
 }
