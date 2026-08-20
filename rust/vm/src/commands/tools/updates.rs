@@ -48,19 +48,7 @@ pub(super) async fn run(
         }
     }
 
-    let unconfigured = requested
-        .difference(&configured)
-        .cloned()
-        .collect::<Vec<_>>();
-    if !load_failed && !unconfigured.is_empty() {
-        return Err(VmError::validation(
-            format!(
-                "Selected tools are not configured in any targeted environment: {}",
-                unconfigured.join(", ")
-            ),
-            Some("Add each tool under `tools` in a target project's vm.yaml"),
-        ));
-    }
+    validate_configured_selection(&requested, &configured, load_failed)?;
 
     let configs = subjects
         .iter()
@@ -102,6 +90,22 @@ fn resolve_request(
     include_stopped: bool,
     fleet: &FleetArgs,
 ) -> VmResult<(Vec<InstanceInfo>, Vec<String>)> {
+    resolve_request_with(
+        tools,
+        environments,
+        include_stopped,
+        fleet,
+        vm_ops::resolve_fleet_targets,
+    )
+}
+
+fn resolve_request_with(
+    tools: &[String],
+    environments: &[String],
+    include_stopped: bool,
+    fleet: &FleetArgs,
+    mut resolve: impl FnMut(&FleetArgs, InstanceStateFilter) -> VmResult<Vec<InstanceInfo>>,
+) -> VmResult<(Vec<InstanceInfo>, Vec<String>)> {
     if fleet.fleet {
         if !tools.is_empty() || !environments.is_empty() || include_stopped {
             return Err(VmError::validation(
@@ -109,10 +113,7 @@ fn resolve_request(
                 Some("Use repeated `--to <environment>` selectors instead"),
             ));
         }
-        return Ok((
-            vm_ops::resolve_fleet_targets(fleet, InstanceStateFilter::Any)?,
-            Vec::new(),
-        ));
+        return Ok((resolve(fleet, InstanceStateFilter::Running)?, Vec::new()));
     }
 
     let state = if include_stopped {
@@ -126,31 +127,9 @@ fn resolve_request(
             provider: None,
             pattern: None,
         };
-        let instances = vm_ops::resolve_fleet_targets(&query, state)?;
+        let instances = resolve(&query, state)?;
         return Ok((
             select_named_targets(instances, environments)?,
-            tools.to_vec(),
-        ));
-    }
-
-    if tools.len() == 1 && !include_stopped {
-        let query = FleetArgs {
-            fleet: true,
-            provider: None,
-            pattern: None,
-        };
-        let instances = vm_ops::resolve_fleet_targets(&query, InstanceStateFilter::Any)?;
-        if let Some(instance) = vm_ops::target::resolve_inventory_target(&instances, &tools[0])? {
-            return Ok((vec![instance], Vec::new()));
-        }
-        return Ok((
-            instances
-                .into_iter()
-                .filter(|instance| {
-                    instance.provider == "docker"
-                        && vm_ops::targets::is_running_status(&instance.status)
-                })
-                .collect(),
             tools.to_vec(),
         ));
     }
@@ -160,9 +139,27 @@ fn resolve_request(
         provider: Some("docker".into()),
         pattern: None,
     };
-    Ok((
-        vm_ops::resolve_fleet_targets(&query, state)?,
-        tools.to_vec(),
+    Ok((resolve(&query, state)?, tools.to_vec()))
+}
+
+fn validate_configured_selection(
+    requested: &BTreeSet<String>,
+    configured: &BTreeSet<String>,
+    load_failed: bool,
+) -> VmResult<()> {
+    let unconfigured = requested
+        .difference(configured)
+        .cloned()
+        .collect::<Vec<_>>();
+    if load_failed || unconfigured.is_empty() {
+        return Ok(());
+    }
+    Err(VmError::validation(
+        format!(
+            "Selected tools are not configured in any targeted environment: {}",
+            unconfigured.join(", ")
+        ),
+        Some("Add each tool under `tools` in a target project's vm.yaml"),
     ))
 }
 
@@ -523,5 +520,60 @@ mod tests {
         let error = select_named_targets(vec![instance("api-dev", "docker")], &["missing".into()])
             .unwrap_err();
         assert!(error.to_string().contains("missing"));
+    }
+
+    #[test]
+    fn explicit_targets_query_every_provider_and_positional_names_remain_tools() {
+        let fleet = FleetArgs::default();
+        let (targets, tools) = resolve_request_with(
+            &["agent-skills".into()],
+            &["mac".into()],
+            false,
+            &fleet,
+            |query, state| {
+                assert_eq!(query.provider, None);
+                assert_eq!(state, InstanceStateFilter::Running);
+                Ok(vec![
+                    instance("agent-skills-dev", "docker"),
+                    instance("mac", "tart"),
+                ])
+            },
+        )
+        .unwrap();
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].provider, "tart");
+        assert_eq!(tools, ["agent-skills"]);
+
+        let (targets, tools) = resolve_request_with(
+            &["agent-skills".into()],
+            &[],
+            false,
+            &fleet,
+            |query, state| {
+                assert_eq!(query.provider.as_deref(), Some("docker"));
+                assert_eq!(state, InstanceStateFilter::Running);
+                Ok(vec![instance("agent-skills-dev", "docker")])
+            },
+        )
+        .unwrap();
+        assert_eq!(targets[0].name, "agent-skills-dev");
+        assert_eq!(tools, ["agent-skills"]);
+    }
+
+    #[test]
+    fn fleet_uses_running_targets_and_load_failures_preserve_per_target_errors() {
+        let fleet = FleetArgs {
+            fleet: true,
+            ..Default::default()
+        };
+        resolve_request_with(&[], &[], false, &fleet, |_, state| {
+            assert_eq!(state, InstanceStateFilter::Running);
+            Ok(Vec::new())
+        })
+        .unwrap();
+
+        let requested = BTreeSet::from(["agent-skills".into()]);
+        assert!(validate_configured_selection(&requested, &BTreeSet::new(), true).is_ok());
+        assert!(validate_configured_selection(&requested, &BTreeSet::new(), false).is_err());
     }
 }

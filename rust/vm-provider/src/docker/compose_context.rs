@@ -160,16 +160,18 @@ pub(super) fn configure_worktrees(
     }
 
     let base = Path::new(home_dir).join(".vm/worktrees").join(project);
-    if !create_directory || fs::create_dir_all(&base).is_ok() {
+    let managed_base = if !create_directory || fs::create_dir_all(&base).is_ok() {
         context.insert("worktrees_base_dir", &base.to_string_lossy().to_string());
+        Some(base.as_path())
     } else {
         vm_warning!("Failed to create worktrees directory {}", base.display());
-    }
+        None
+    };
 
     let mounts = resolve_worktree_mounts(
         workspace_path,
         detect_worktrees_in(project_dir).unwrap_or_default(),
-        Some(&base),
+        managed_base,
     );
     if !mounts.is_empty() {
         context.insert("worktrees", &mounts);
@@ -236,6 +238,7 @@ fn maybe_chown_path_to_sudo_user(path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use vm_config::config::{HostSyncConfig, WorktreesConfig};
 
     #[test]
     fn resolves_worktree_targets_below_the_workspace() {
@@ -270,6 +273,57 @@ mod tests {
             vec![(
                 "/Users/miko/other-worktree".to_string(),
                 "/workspace/other-worktree".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn falls_back_to_individual_mounts_when_the_managed_base_cannot_be_created() {
+        let directory = tempfile::tempdir().unwrap();
+        let home = directory.path().join("home");
+        let project = directory.path().join("project");
+        let worktree = directory.path().join("feature");
+        let metadata = project.join(".git/worktrees/feature");
+        fs::create_dir_all(&home).unwrap();
+        fs::write(home.join(".vm"), "not a directory").unwrap();
+        fs::create_dir_all(&metadata).unwrap();
+        fs::create_dir(&worktree).unwrap();
+        fs::write(
+            metadata.join("gitdir"),
+            worktree.join(".git").to_string_lossy().as_bytes(),
+        )
+        .unwrap();
+        let config = VmConfig {
+            host_sync: Some(HostSyncConfig {
+                worktrees: Some(WorktreesConfig::default()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut context = TeraContext::new();
+
+        configure_worktrees(
+            &config,
+            &mut context,
+            &project,
+            Path::new("/workspace"),
+            home.to_str().unwrap(),
+            "demo",
+            true,
+        );
+
+        assert!(context.get("worktrees_base_dir").is_none());
+        let mounts: Vec<(String, String)> =
+            serde_json::from_value(context.get("worktrees").unwrap().clone()).unwrap();
+        assert_eq!(
+            mounts,
+            vec![(
+                worktree
+                    .canonicalize()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned(),
+                "/workspace/feature".into()
             )]
         );
     }

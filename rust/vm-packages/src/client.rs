@@ -463,7 +463,16 @@ impl PackageInfrastructureClient {
     }
 
     pub async fn reconcile_rollout_queue(&self) -> Result<Option<RolloutRecord>> {
-        self.post_rollout("v1/jobs/rollout/reconcile", &()).await
+        self.post_authenticated_with_timeout(
+            "v1/jobs/rollout/reconcile",
+            &(),
+            self.rollout_token
+                .as_deref()
+                .or(self.controller_token.as_deref()),
+            "rollout",
+            SOURCE_SYNC_TIMEOUT,
+        )
+        .await
     }
 
     pub async fn complete_rollout(

@@ -136,6 +136,16 @@ impl VmConfig {
         })
     }
 
+    /// Return the project-owned configuration path, excluding global state.
+    pub fn owning_config_path(&self) -> Option<&Path> {
+        let source = self.source_path.as_deref()?;
+        match vm_core::user_paths::global_config_path() {
+            Ok(global) if global == source => None,
+            Ok(_) => Some(source),
+            Err(_) => None,
+        }
+    }
+
     pub fn from_file(path: &PathBuf) -> Result<Self> {
         let content = fs::read_to_string(path)?;
         crate::yaml::CoreOperations::parse_yaml_with_diagnostics(
@@ -248,12 +258,14 @@ mod container_policy_tests {
             config.project_dir().unwrap(),
             std::env::current_dir().unwrap()
         );
+        assert_eq!(config.owning_config_path(), None);
 
         config.source_path = Some(std::env::current_dir().unwrap().join("nested/vm.yaml"));
         assert_eq!(
             config.project_dir().unwrap(),
             std::env::current_dir().unwrap().join("nested")
         );
+        assert_eq!(config.owning_config_path(), config.source_path.as_deref());
     }
 
     #[test]

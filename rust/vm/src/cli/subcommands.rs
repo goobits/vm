@@ -171,9 +171,9 @@ pub enum ToolsSubcommand {
     },
     /// Show registered, published, installed, and consumable tool state
     Status { environment: Option<String> },
-    /// Update selected tools across running Docker environments
+    /// Update configured tools across running managed environments
     Update {
-        /// Tool names to update; omit to update each environment's configured tools
+        /// Tool names to filter; omit to update every configured tool
         #[arg(value_name = "TOOL")]
         tools: Vec<String>,
         /// Update only these managed environments

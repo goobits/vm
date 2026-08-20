@@ -403,15 +403,16 @@ vm tools update agent-skills --to projects-dev --to typemill-dev
 
 These are the common all-tools, selected-tools, and selected-environments
 forms. See the [CLI reference](cli-reference.md#managed-tools) for every update
-option and the compatibility syntax.
+option.
 
 With no names, `update` uses every running managed Docker environment's own
 configured tool selection. Positional names filter those selections and never
 make an unconfigured tool eligible. Each `--to` accepts one exact Docker,
 Podman, or Tart environment name. Stopped environments are ignored unless
 `--include-stopped` is explicit; then VM starts selected stopped environments in
-place. Exact legacy environment positionals and `--fleet` remain compatible,
-but `--to` is the unambiguous current syntax.
+place. A tool absent from every successfully loaded target is rejected instead
+of being installed outside configuration. The compatibility `--fleet` form
+uses the same execution path; `--to` is the exact-target syntax.
 
 Omitted versions track the latest release. Explicit semantic versions remain
 pinned. An explicit `update` installs every eligible selected change without a

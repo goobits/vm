@@ -228,8 +228,8 @@ A built-in tool can be registered but not published on a fresh controller. From
 an existing managed guest, run `vm packages checkout agent-skills`, continue in
 the printed source path, commit the intended versioned change, and run bare `vm
 packages release`. Normal reconciliation or `vm tools update agent-skills`
-activates the result across running managed Docker environments; use `--to` to
-limit it. See
+activates the result across running managed Docker environments that configure
+it; use `--to` to limit it. See
 [Package Infrastructure](package-infrastructure.md#register-and-consume-tools)
 for normal update, locking, fleet, and package-state behavior.
 

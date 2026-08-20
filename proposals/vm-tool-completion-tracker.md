@@ -28,11 +28,8 @@ never treated as source.
 
 ## Scoped Proposal: Brainless Managed-Tool Updates
 
-Audit on 2026-08-18 confirmed that the existing command does not provide the
-desired workflow. `vm tools update` still interprets its positional argument as
-one environment, `--fleet` requires provider/pattern flags for common targeting,
-fleet reconciliation uses the invoking project's tool selection, and stopped
-environments are included.
+Audit on 2026-08-18 identified overlapping tool and environment positionals,
+caller-owned fleet configuration, and implicit stopped-environment updates.
 
 Extend the existing command rather than adding another sync or rollout family:
 
@@ -48,9 +45,10 @@ configured tools. Positional tool names restrict the update to projects that
 configure those tools. Repeated `--to` options limit the environments. Stopped environments remain
 untouched unless `--include-stopped` is explicit. Each target must load its own
 persisted `vm.yaml` ownership instead of inheriting the invoking project's
-services or tool policy. Existing single-environment and `--fleet` forms remain
-compatible during migration. Language-package consumer rollout remains
-separate and authoritative.
+services or tool policy. Positional values are tools only; exact environment
+selection uses `--to`. The compatibility `--fleet` form shares the same
+running-target path. Language-package consumer rollout remains separate and
+authoritative.
 
 Acceptance requires parser and selection tests, Docker Desktop legacy-mount
 ownership recovery, truthful per-environment summaries, current help/reference/
@@ -318,7 +316,7 @@ current image. No real package release or publication was performed.
   controller host.
 - [x] Require targeted `vm tools update --to <environment>` reconciliation to
   resolve an existing environment instead of creating from the invoking
-  directory's configuration, while retaining exact legacy environment names.
+  directory's configuration.
 - [x] Keep interactive Docker startup lean by caching successful home repair
   within one CLI run, combining cached tool-state probes, avoiding unnecessary
   worktree repair, and removing the legacy job-control-producing shell hook.

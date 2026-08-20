@@ -29,7 +29,9 @@ impl TartCommand {
     pub fn from_config(config: Option<&VmConfig>) -> Self {
         Self {
             tart_home: storage::configured_home(config),
-            config_path: config.and_then(owning_config_path),
+            config_path: config
+                .and_then(VmConfig::owning_config_path)
+                .map(Path::to_path_buf),
         }
     }
 
@@ -38,7 +40,7 @@ impl TartCommand {
     pub fn for_project(config: &VmConfig, project: &str) -> Result<Self> {
         Ok(Self {
             tart_home: storage::resolve_project_home(config, project)?,
-            config_path: owning_config_path(config),
+            config_path: config.owning_config_path().map(Path::to_path_buf),
         })
     }
 
@@ -52,6 +54,10 @@ impl TartCommand {
 
     pub fn instance_config_path(&self, instance: &str) -> Result<Option<PathBuf>> {
         storage::instance_config_path(instance)
+    }
+
+    pub fn managed_instances(&self) -> Result<std::collections::BTreeSet<String>> {
+        storage::managed_instances()
     }
 
     pub fn command(&self) -> Command {
@@ -148,14 +154,6 @@ impl TartCommand {
         stdout.read_to_string(&mut output).ok()?;
         parse_ip_address(&output)
     }
-}
-
-fn owning_config_path(config: &VmConfig) -> Option<PathBuf> {
-    let source = config.source_path.clone()?;
-    if vm_core::user_paths::global_config_path().is_ok_and(|global| global == source) {
-        return None;
-    }
-    Some(source)
 }
 
 fn parse_ip_address(output: &str) -> Option<IpAddr> {

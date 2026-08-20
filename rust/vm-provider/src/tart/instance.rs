@@ -61,19 +61,17 @@ impl<'a> TartInstanceManager<'a> {
         let entries: Vec<TartListEntry> = serde_json::from_slice(&output.stdout).map_err(|e| {
             VmError::Internal(format!("Failed to parse Tart list JSON output: {e}"))
         })?;
+        let managed = self.command.managed_instances()?;
         let mut instances = Vec::new();
 
         for entry in entries {
-            if entry.source != "local" {
+            if entry.source != "local" || !managed.contains(&entry.name) {
                 continue;
             }
 
             let name = entry.name;
             let status = entry.state;
 
-            if self.belongs_to_project(&name) {
-                self.command.remember_instance(&name)?;
-            }
             let (created_at, uptime) = self.get_vm_metadata(&name);
             instances.push(create_tart_instance_info(
                 &name,

@@ -189,7 +189,7 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("guest_cache_env", &guest_cache_env);
         tera_context.insert("resources", &resources);
         tera_context.insert("project_dir", &project_dir_str);
-        if let Some(config_path) = self.config.source_path.as_ref() {
+        if let Some(config_path) = self.config.owning_config_path() {
             let config_path = BuildOperations::path_to_string(config_path)?;
             tera_context.insert("config_path_label", &serde_json::to_string(config_path)?);
         }

@@ -129,9 +129,9 @@ With no tool names, `update` loads every running managed Docker environment's
 own tool selection. Tool names filter those configured selections; they never
 install an unconfigured tool. Repeat `--to` to restrict exact environments,
 including Podman or Tart targets. Stopped environments remain untouched unless
-`--include-stopped` is explicit. Existing `vm tools update <environment>` and
-`vm tools update --fleet [--provider <provider>] [--pattern <glob>]` forms remain
-compatibility aliases for the same execution path; new automation should use `--to`.
+`--include-stopped` is explicit. A selected tool that is not configured in any
+successfully loaded target is rejected. The compatibility `--fleet` form uses
+the same running-target execution path; new automation should use `--to`.
 
 Explicit updates include prompt-policy releases while respecting persisted
 `off` policies for ordinary upgrades. Reconciliation repairs package routing,

@@ -142,13 +142,14 @@ fn choose_target(
         };
     };
 
-    requested_target_choice(instances, requested, Some((project, canonical)))
+    requested_target_choice(instances, requested, project, canonical)
 }
 
 fn requested_target_choice(
     instances: &[InstanceInfo],
     requested: &str,
-    configured_project: Option<(&str, &str)>,
+    project: &str,
+    canonical: &str,
 ) -> TargetChoice {
     if let Some(instance) = instances.iter().find(|instance| instance.name == requested) {
         return TargetChoice::Selected(instance.clone());
@@ -161,11 +162,9 @@ fn requested_target_choice(
                     instance.name == format!("{project}-{requested}")
                         || instance.name == format!("{project}-{requested}-dev")
                 })
-                || configured_project.is_some_and(|(project, canonical)| {
-                    requested == project && instance.name == canonical
-                        || instance.name == format!("{project}-{requested}")
-                        || instance.name == format!("{project}-{requested}-dev")
-                })
+                || requested == project && instance.name == canonical
+                || instance.name == format!("{project}-{requested}")
+                || instance.name == format!("{project}-{requested}-dev")
         })
         .cloned()
         .collect::<Vec<_>>();
@@ -195,17 +194,6 @@ fn requested_target_choice(
         [instance] => TargetChoice::Selected(instance.clone()),
         [] => TargetChoice::Missing,
         _ => TargetChoice::Ambiguous(name_matches),
-    }
-}
-
-pub(in crate::commands) fn resolve_inventory_target(
-    instances: &[InstanceInfo],
-    requested: &str,
-) -> VmResult<Option<InstanceInfo>> {
-    match requested_target_choice(instances, requested, None) {
-        TargetChoice::Selected(instance) => Ok(Some(instance)),
-        TargetChoice::Ambiguous(candidates) => select_ambiguous_target(candidates).map(Some),
-        TargetChoice::Missing => Ok(None),
     }
 }
 
@@ -274,7 +262,7 @@ pub fn project_instance_matches(instance: &InstanceInfo, project_name: &str) -> 
 mod tests {
     use super::{
         canonical_instance_name, choose_target, copy_target, creation_instance_name,
-        exact_requested_target, resolve_inventory_target, TargetChoice,
+        exact_requested_target, TargetChoice,
     };
     use vm_provider::InstanceInfo;
 
@@ -327,32 +315,6 @@ mod tests {
             choose_target(&instances, "demo", "demo-dev", Some("feature")),
             TargetChoice::Selected(instance) if instance.name == "demo-feature-dev"
         ));
-    }
-
-    #[test]
-    fn compatibility_target_uses_shared_alias_id_and_substring_matching() {
-        let instances = vec![instance("demo-backend-dev")];
-        assert_eq!(
-            resolve_inventory_target(&instances, "backend")
-                .unwrap()
-                .unwrap()
-                .name,
-            "demo-backend-dev"
-        );
-        assert_eq!(
-            resolve_inventory_target(&instances, "id-demo")
-                .unwrap()
-                .unwrap()
-                .name,
-            "demo-backend-dev"
-        );
-        assert_eq!(
-            resolve_inventory_target(&instances, "back")
-                .unwrap()
-                .unwrap()
-                .name,
-            "demo-backend-dev"
-        );
     }
 
     #[test]

@@ -208,23 +208,12 @@ pub(super) fn load_runtime_subject_for_instance(
     profile: Option<String>,
     instance: &InstanceInfo,
 ) -> VmResult<RuntimeSubject> {
-    let target_config = match config_path {
-        Some(path) => path,
-        None => {
-            let resolver = vm_ops::configured_provider(&VmConfig::default(), &instance.provider)?;
-            resolver
-                .instance_config_path(&instance.name)?
-                .ok_or_else(|| {
-                    VmError::validation(
-                        format!(
-                            "Cannot locate the owning configuration for environment '{}'",
-                            instance.name
-                        ),
-                        Some("Pass its vm.yaml with --config"),
-                    )
-                })?
-        }
-    };
+    let target_config = target_config_path(config_path, instance, |instance| {
+        let resolver = vm_ops::configured_provider(&VmConfig::default(), &instance.provider)?;
+        resolver
+            .instance_config_path(&instance.name)
+            .map_err(Into::into)
+    })?;
     let (provider, config, global_config) = load_provider_context(
         Some(target_config),
         profile,
@@ -238,6 +227,25 @@ pub(super) fn load_runtime_subject_for_instance(
     })
 }
 
+fn target_config_path(
+    explicit: Option<PathBuf>,
+    instance: &InstanceInfo,
+    ownership: impl FnOnce(&InstanceInfo) -> VmResult<Option<PathBuf>>,
+) -> VmResult<PathBuf> {
+    if let Some(path) = explicit {
+        return Ok(path);
+    }
+    ownership(instance)?.ok_or_else(|| {
+        VmError::validation(
+            format!(
+                "Cannot locate the owning configuration for environment '{}'",
+                instance.name
+            ),
+            Some("Pass its vm.yaml with --config"),
+        )
+    })
+}
+
 pub(super) fn project_name(config: &VmConfig) -> &str {
     config
         .project
@@ -248,8 +256,10 @@ pub(super) fn project_name(config: &VmConfig) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::{guest_allowed_command, host_command, is_managed_guest};
+    use super::{guest_allowed_command, host_command, is_managed_guest, target_config_path};
     use crate::cli::{Command, PackagesSubcommand};
+    use std::path::PathBuf;
+    use vm_provider::InstanceInfo;
 
     #[test]
     fn detects_new_and_compatible_managed_guest_markers() {
@@ -296,5 +306,24 @@ mod tests {
         ]);
 
         assert_eq!(command, "vm tools update 'name with space'");
+    }
+
+    #[test]
+    fn explicit_config_is_authoritative_for_an_inventory_target() {
+        let instance = InstanceInfo {
+            name: "other-dev".into(),
+            id: "id".into(),
+            status: "running".into(),
+            provider: "docker".into(),
+            project: Some("other".into()),
+            uptime: None,
+            created_at: None,
+        };
+        let explicit = PathBuf::from("/tmp/explicit/vm.yaml");
+        let selected = target_config_path(Some(explicit.clone()), &instance, |_| {
+            panic!("explicit config must bypass provider ownership lookup")
+        })
+        .unwrap();
+        assert_eq!(selected, explicit);
     }
 }
