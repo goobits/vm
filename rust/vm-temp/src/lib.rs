@@ -7,6 +7,7 @@ pub mod cli;
 pub mod models;
 pub mod mount_ops;
 pub mod state;
+mod status;
 pub mod temp_ops;
 
 // Explicit public surface. Internal items (e.g. `mount_ops::MountParser`,

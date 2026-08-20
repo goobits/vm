@@ -200,6 +200,8 @@ current image. No real package release or publication was performed.
   canonical source-identity resolution.
 - [x] Give preset initialization one loader/base-config path and isolate box
   materialization from the general config-init workflow.
+- [x] Split temporary-VM lifecycle orchestration from status reporting and
+  mount parsing/mutation while preserving the `TempVmOps` API.
 
 ### Worker package data plane
 
