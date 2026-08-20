@@ -623,7 +623,7 @@ mod tests {
             },
         );
         let config = VmConfig {
-            provider: Some("docker".to_string()),
+            provider: Some("docker".into()),
             project: Some(ProjectConfig {
                 name: Some("sketch-api".to_string()),
                 ..Default::default()

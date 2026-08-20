@@ -70,7 +70,7 @@ pub fn get_all_instances() -> VmResult<Vec<InstanceInfo>> {
 
     for provider_name in providers {
         let config = VmConfig {
-            provider: Some(provider_name.to_string()),
+            provider: Some(provider_name.into()),
             ..Default::default()
         };
 
@@ -115,7 +115,7 @@ pub fn get_instances_from_provider(provider_name: &str) -> VmResult<Vec<Instance
     use vm_provider::get_provider;
 
     let config = VmConfig {
-        provider: Some(provider_name.to_string()),
+        provider: Some(provider_name.into()),
         ..Default::default()
     };
 

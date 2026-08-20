@@ -301,7 +301,7 @@ mod tests {
 
     fn config(provider: &str, box_name: &str) -> VmConfig {
         VmConfig {
-            provider: Some(provider.to_string()),
+            provider: Some(provider.into()),
             vm: Some(VmSettings {
                 r#box: Some(BoxSpec::String(box_name.to_string())),
                 ..Default::default()

@@ -52,7 +52,7 @@ mod tests {
     #[test]
     fn test_valid_config() {
         let mut config = VmConfig::default();
-        config.provider = Some("docker".to_string());
+        config.provider = Some("docker".into());
         config.project = Some(crate::config::ProjectConfig {
             name: Some("test-project".to_string()),
             hostname: Some("test.local".to_string()),
@@ -72,7 +72,7 @@ mod tests {
     #[test]
     fn test_invalid_provider() {
         let mut config = VmConfig::default();
-        config.provider = Some("invalid".to_string());
+        config.provider = Some("invalid".into());
         config.project = Some(crate::config::ProjectConfig {
             name: Some("test".to_string()),
             ..Default::default()
@@ -84,7 +84,7 @@ mod tests {
     #[test]
     fn tart_ssh_user_is_structurally_validated() {
         let config = |user: &str| VmConfig {
-            provider: Some("tart".to_string()),
+            provider: Some("tart".into()),
             project: Some(crate::config::ProjectConfig {
                 name: Some("test".to_string()),
                 ..Default::default()
@@ -103,7 +103,7 @@ mod tests {
     #[test]
     fn test_invalid_port_range() {
         let mut config = VmConfig::default();
-        config.provider = Some("docker".to_string());
+        config.provider = Some("docker".into());
         config.project = Some(crate::config::ProjectConfig {
             name: Some("test".to_string()),
             ..Default::default()
@@ -116,7 +116,7 @@ mod tests {
     #[test]
     fn test_single_port_range_is_valid() {
         let mut config = VmConfig::default();
-        config.provider = Some("docker".to_string());
+        config.provider = Some("docker".into());
         config.project = Some(crate::config::ProjectConfig {
             name: Some("test".to_string()),
             ..Default::default()
@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn test_reversed_port_range_is_invalid() {
         let mut config = VmConfig::default();
-        config.provider = Some("docker".to_string());
+        config.provider = Some("docker".into());
         config.project = Some(crate::config::ProjectConfig {
             name: Some("test".to_string()),
             ..Default::default()
@@ -142,7 +142,7 @@ mod tests {
     #[test]
     fn test_valid_container_storage_policy() {
         let mut config = VmConfig {
-            provider: Some("docker".to_string()),
+            provider: Some("docker".into()),
             project: Some(crate::config::ProjectConfig {
                 name: Some("test".to_string()),
                 ..Default::default()
@@ -180,7 +180,7 @@ mod tests {
             },
         );
         let config = VmConfig {
-            provider: Some("docker".to_string()),
+            provider: Some("docker".into()),
             project: Some(crate::config::ProjectConfig {
                 name: Some("test".to_string()),
                 ..Default::default()
@@ -199,7 +199,7 @@ mod tests {
     #[test]
     fn test_storage_policy_rejects_reserved_names_and_unnormalized_targets() {
         let base = || VmConfig {
-            provider: Some("docker".to_string()),
+            provider: Some("docker".into()),
             project: Some(crate::config::ProjectConfig {
                 name: Some("test".to_string()),
                 ..Default::default()
@@ -263,7 +263,7 @@ mounts:
     #[test]
     fn test_bootstrap_rejects_unsafe_or_duplicate_browser_names() {
         let base = || VmConfig {
-            provider: Some("docker".to_string()),
+            provider: Some("docker".into()),
             project: Some(crate::config::ProjectConfig {
                 name: Some("test".to_string()),
                 ..Default::default()

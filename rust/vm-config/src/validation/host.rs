@@ -335,7 +335,7 @@ mod tests {
 
     fn valid_config() -> VmConfig {
         VmConfig {
-            provider: Some("docker".to_string()),
+            provider: Some("docker".into()),
             project: Some(ProjectConfig {
                 name: Some("host-validation-test".to_string()),
                 ..Default::default()

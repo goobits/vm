@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use vm_core::error::Result;
 
 // Internal imports
-use vm_config::config::{BoxSpec, VmConfig};
+use vm_config::config::{BoxSpec, ProviderName, VmConfig};
 
 // Re-export common types for convenience
 pub use common::instance::{InstanceInfo, InstanceResolver};
@@ -554,20 +554,20 @@ impl Clone for Box<dyn Provider> {
 /// # Returns
 /// A boxed provider implementation or an error if the provider is unknown.
 pub fn get_provider(config: VmConfig) -> Result<Box<dyn Provider>> {
-    let provider_name = config.provider.as_deref().unwrap_or("docker");
+    let provider_name = config.provider.clone().unwrap_or_default();
 
     #[cfg(feature = "test-helpers")]
-    if provider_name == "mock" {
+    if matches!(provider_name, ProviderName::Mock) {
         return Ok(Box::new(mock::MockProvider::new(config)));
     }
 
-    match provider_name {
+    match &provider_name {
         #[cfg(feature = "docker")]
-        "docker" => Ok(Box::new(docker::DockerProvider::new(config, None)?)),
+        ProviderName::Docker => Ok(Box::new(docker::DockerProvider::new(config, None)?)),
         #[cfg(feature = "docker")]
-        "podman" => Ok(Box::new(podman::PodmanProvider::new(config)?)),
+        ProviderName::Podman => Ok(Box::new(podman::PodmanProvider::new(config)?)),
         #[cfg(feature = "tart")]
-        "tart" => Ok(Box::new(tart::TartProvider::new(config)?)),
+        ProviderName::Tart => Ok(Box::new(tart::TartProvider::new(config)?)),
         _ => Err(VmError::Provider(format!(
             "Unknown provider: {provider_name}"
         ))),

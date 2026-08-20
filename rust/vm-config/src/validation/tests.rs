@@ -3,7 +3,7 @@ use crate::config::{ProjectConfig, VmConfig, VmSettings};
 
 fn valid_config() -> VmConfig {
     VmConfig {
-        provider: Some("docker".to_string()),
+        provider: Some("docker".into()),
         project: Some(ProjectConfig {
             name: Some("validation-test".to_string()),
             ..Default::default()
@@ -19,7 +19,7 @@ fn valid_config() -> VmConfig {
 #[test]
 fn every_mode_runs_structural_validation() {
     let mut config = valid_config();
-    config.provider = Some("invalid".to_string());
+    config.provider = Some("invalid".into());
 
     for mode in [
         ValidationMode::Static,

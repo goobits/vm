@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use vm_core::error::{Result, VmError};
 
-use crate::config::VmConfig;
+use crate::config::{ProviderName, VmConfig};
 
 pub(super) fn validate_resource_limits(config: &VmConfig) -> Result<()> {
     let Some(vm) = &config.vm else {
@@ -62,7 +62,7 @@ fn is_valid_version(version: &str) -> bool {
 }
 
 pub(super) fn validate_runtime(config: &VmConfig) -> Result<()> {
-    if config.provider.as_deref() == Some("tart") {
+    if matches!(config.provider, Some(ProviderName::Tart)) {
         if let Some(user) = config
             .tart
             .as_ref()
@@ -116,7 +116,7 @@ pub(super) fn validate_runtime(config: &VmConfig) -> Result<()> {
         }
     }
 
-    if config.provider.as_deref() == Some("tart")
+    if matches!(config.provider, Some(ProviderName::Tart))
         && (vm.pids_limit.is_some() || vm.stop_grace_period.is_some() || vm.logging.is_some())
     {
         return Err(VmError::Config(

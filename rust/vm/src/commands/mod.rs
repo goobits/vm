@@ -69,7 +69,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
                 .as_ref()
                 .ok()
                 .and_then(|config| config.vm.provider.clone())
-                .unwrap_or_else(|| "docker".to_string());
+                .map_or_else(|| "docker".to_string(), |provider| provider.to_string());
             let configuration_error = match loaded {
                 Ok(config) => match validate_config(&config.vm, ValidationMode::Static) {
                     Ok(report) if report.has_errors() => Some(report.to_string()),

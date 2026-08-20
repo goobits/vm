@@ -17,6 +17,8 @@ pub fn configured_container_runtime() -> String {
             config
                 .vm
                 .provider
+                .filter(vm_config::config::ProviderName::is_container)
+                .map(|provider| provider.to_string())
                 .or(config.global.defaults.provider)
                 .filter(|provider| matches!(provider.as_str(), "docker" | "podman"))
         })

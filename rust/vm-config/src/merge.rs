@@ -449,7 +449,7 @@ mod tests {
 
         // Create a tart profile
         let tart_profile = VmConfig {
-            provider: Some("tart".to_string()),
+            provider: Some("tart".into()),
             vm: Some(VmSettings {
                 memory: Some(crate::config::MemoryLimit::Limited(16384)),
                 ..Default::default()
@@ -462,7 +462,7 @@ mod tests {
 
         // Create base config with a profile
         let base = VmConfig {
-            provider: Some("docker".to_string()),
+            provider: Some("docker".into()),
             project: Some(ProjectConfig {
                 name: Some("test-project".to_string()),
                 ..Default::default()
@@ -480,7 +480,7 @@ mod tests {
         let result = apply_profile(base, "tart").unwrap();
 
         // Verify provider is overridden
-        assert_eq!(result.provider, Some("tart".to_string()));
+        assert_eq!(result.provider.as_deref(), Some("tart"));
 
         // Verify memory is overridden but cpus is preserved from base
         let vm = result.vm.unwrap();

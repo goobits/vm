@@ -13,6 +13,7 @@ mod environment;
 mod host_sync;
 mod limits;
 pub mod mounts;
+mod provider;
 mod runtime;
 mod storage;
 pub mod tools;
@@ -26,6 +27,7 @@ pub use environment::{
 pub use host_sync::{AiSyncConfig, AiSyncTools, HostSyncConfig, WorktreesConfig};
 pub use limits::{CpuLimit, DiskLimit, MemoryLimit, SwapLimit};
 pub use mounts::{MountAccess, MountConfig};
+pub use provider::ProviderName;
 pub use runtime::{
     BootstrapConfig, BoxSpec, ContainerLoggingConfig, PlaywrightBootstrapConfig, VersionsConfig,
     VmSettings,
@@ -45,7 +47,7 @@ pub struct VmConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preset: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider: Option<String>,
+    pub provider: Option<ProviderName>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_profile: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

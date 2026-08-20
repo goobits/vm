@@ -1,8 +1,8 @@
-use crate::config::{mounts::validate_mount_target, BoxSpec, VmConfig};
+use crate::config::{mounts::validate_mount_target, BoxSpec, ProviderName, VmConfig};
 use vm_core::error::Result;
 
 /// Validate box spec configurations are compatible with the provider
-fn validate_box_spec(config: &VmConfig, provider: &str) -> Vec<String> {
+fn validate_box_spec(config: &VmConfig, provider: &ProviderName) -> Vec<String> {
     let mut errors = Vec::new();
 
     let Some(vm) = &config.vm else {
@@ -13,8 +13,10 @@ fn validate_box_spec(config: &VmConfig, provider: &str) -> Vec<String> {
     };
 
     match provider {
-        "docker" | "podman" => validate_docker_box_spec(&box_spec, &mut errors),
-        "tart" => validate_tart_box_spec(&box_spec, &mut errors),
+        ProviderName::Docker | ProviderName::Podman => {
+            validate_docker_box_spec(&box_spec, &mut errors)
+        }
+        ProviderName::Tart => validate_tart_box_spec(&box_spec, &mut errors),
         _ => {}
     }
 
@@ -60,18 +62,13 @@ pub(super) fn validate_required_fields(config: &VmConfig) -> Result<()> {
 
 pub(super) fn validate_provider(config: &VmConfig) -> Result<()> {
     if let Some(provider) = &config.provider {
-        #[cfg(feature = "test-helpers")]
-        let valid_providers = ["docker", "podman", "tart", "mock"];
-        #[cfg(not(feature = "test-helpers"))]
-        let valid_providers = ["docker", "podman", "tart"];
-
-        if valid_providers.contains(&provider.as_str()) {
+        if provider.is_supported() {
             Ok(())
         } else {
             Err(vm_core::error::VmError::Config(format!(
                 "Invalid provider '{}'. Valid providers are: {}",
                 provider,
-                valid_providers.join(", ")
+                ProviderName::SUPPORTED.join(", ")
             )))
         }
     } else {

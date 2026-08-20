@@ -46,7 +46,7 @@ impl PodmanProvider {
 
         // Keep the provider as "podman" in our config, but the docker_provider
         // will use its own logic internally
-        docker_config.provider = Some("docker".to_string());
+        docker_config.provider = Some("docker".into());
 
         // Create the underlying Docker provider
         let docker_provider = DockerProvider::new(docker_config, Some("podman".to_string()))?;

@@ -35,7 +35,7 @@ pub(in crate::commands) fn configured_provider(
     provider_name: &str,
 ) -> VmResult<Box<dyn Provider>> {
     let mut config = config.clone();
-    config.provider = Some(provider_name.to_string());
+    config.provider = Some(provider_name.into());
     get_provider(config).map_err(VmError::from)
 }
 

@@ -48,7 +48,7 @@ pub(super) async fn handle(intent: RunIntent) -> VmResult<()> {
         provider_override.clone(),
     )?;
     let mut config = app_config.vm;
-    config.provider = provider_override;
+    config.provider = provider_override.map(Into::into);
     apply_overrides(&mut config, &intent)?;
     apply_kind(&mut config, &intent);
     super::packages::apply_client_environment(&mut config)?;
@@ -127,7 +127,7 @@ fn handle_ephemeral(intent: RunIntent) -> VmResult<()> {
         .clone()
         .or_else(|| Some(intent.kind.default_provider().to_string()));
     let mut config = load_config_lenient(intent.config_path)?;
-    config.provider = provider_override;
+    config.provider = provider_override.map(Into::into);
     let provider = get_provider(config.clone()).map_err(VmError::from)?;
     TempVmOps::create(intent.mounts, intent.ephemeral, config, provider).map_err(VmError::from)
 }
@@ -141,7 +141,7 @@ fn load_config_lenient(config_path: Option<PathBuf>) -> VmResult<VmConfig> {
     const DEFAULTS: &str = include_str!("../../../../configs/defaults.yaml");
     let mut config: VmConfig = serde_yaml_ng::from_str(DEFAULTS)
         .map_err(|error| VmError::config(error, "Failed to parse embedded defaults"))?;
-    config.provider.get_or_insert_with(|| "docker".to_string());
+    config.provider.get_or_insert_with(Default::default);
     Ok(config)
 }
 

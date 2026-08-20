@@ -3,14 +3,14 @@ use vm_core::error::{Result, VmError};
 
 use crate::config::{
     mounts::{resolve_mount_source, validate_mount_target},
-    VmConfig,
+    ProviderName, VmConfig,
 };
 
 pub(super) fn validate_storage(config: &VmConfig) -> Result<()> {
     if config.storage.is_empty() {
         return Ok(());
     }
-    if config.provider.as_deref() == Some("tart") {
+    if matches!(config.provider, Some(ProviderName::Tart)) {
         return Err(VmError::Config(
             "Named volumes and tmpfs mounts are not supported by Tart".to_string(),
         ));

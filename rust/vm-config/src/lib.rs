@@ -93,7 +93,8 @@ impl AppConfig {
             return Some(profile.to_string());
         }
 
-        let effective_provider = provider_override.or(vm.provider.as_deref());
+        let effective_provider =
+            provider_override.or_else(|| vm.provider.as_ref().map(config::ProviderName::as_str));
         if let Some(provider_name) = effective_provider {
             if vm
                 .profiles
@@ -141,7 +142,7 @@ impl AppConfig {
         }
 
         if let Some(provider_name) = provider_override {
-            vm.provider = Some(provider_name);
+            vm.provider = Some(provider_name.into());
         }
 
         // Handle host integrations
