@@ -4,13 +4,29 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use vm_packages::authorization_token;
+use vm_packages::{authorization_token, AgentCapabilityClaims};
 
 use super::AppState;
 use crate::{Store, WorkError, WorkResult};
 
 #[derive(Debug, Clone)]
-pub(super) struct AgentAccess(pub(super) Option<String>);
+pub(super) struct AgentAccess(Option<AgentCapabilityClaims>);
+
+impl AgentAccess {
+    pub(super) fn consumer(&self) -> Option<&str> {
+        self.0.as_ref().map(|claims| claims.consumer.as_str())
+    }
+
+    pub(super) fn canonical_repository(&self) -> Option<&str> {
+        self.0
+            .as_ref()
+            .and_then(|claims| claims.canonical_repository.as_deref())
+    }
+
+    pub(super) fn is_agent(&self) -> bool {
+        self.0.is_some()
+    }
+}
 
 pub(super) async fn read(
     State(state): State<AppState>,
@@ -133,8 +149,8 @@ pub(super) fn ensure_requested_consumer(
     access: &AgentAccess,
     consumers: &[String],
 ) -> WorkResult<()> {
-    if let Some(expected) = &access.0 {
-        if consumers.len() != 1 || consumers.first() != Some(expected) {
+    if let Some(expected) = access.consumer() {
+        if consumers.len() != 1 || consumers.first().map(String::as_str) != Some(expected) {
             return Err(WorkError::Unauthorized(
                 "package agent credential is bound to a different consumer".into(),
             ));
@@ -147,10 +163,12 @@ pub(super) fn checkout_is_visible(
     access: &AgentAccess,
     checkout: &vm_packages::CheckoutRecord,
 ) -> bool {
-    access
-        .0
-        .as_ref()
-        .map_or(true, |consumer| checkout.consumers.contains(consumer))
+    access.consumer().map_or(true, |consumer| {
+        checkout
+            .consumers
+            .iter()
+            .any(|candidate| candidate == consumer)
+    })
 }
 
 pub(super) fn ensure_checkout_is_visible(
@@ -184,10 +202,14 @@ pub(super) async fn ensure_checkout_access(
     access: &AgentAccess,
     checkout_id: &str,
 ) -> WorkResult<()> {
-    if let Some(consumer) = &access.0 {
+    if let Some(consumer) = access.consumer() {
         let checkout = store.get_checkout(checkout_id).await?;
         ensure_requested_consumer(access, &checkout.consumers)?;
-        if !checkout.consumers.contains(consumer) {
+        if !checkout
+            .consumers
+            .iter()
+            .any(|candidate| candidate == consumer)
+        {
             return Err(WorkError::Unauthorized(
                 "checkout is not assigned to this consumer".into(),
             ));
@@ -201,7 +223,7 @@ pub(super) async fn ensure_submission_access(
     access: &AgentAccess,
     submission_id: &str,
 ) -> WorkResult<()> {
-    if access.0.is_some() {
+    if access.is_agent() {
         let submission = store.submission(submission_id).await?;
         ensure_checkout_access(store, access, &submission.checkout_id).await?;
     }

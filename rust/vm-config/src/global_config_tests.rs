@@ -98,6 +98,7 @@ fn test_serialization_deserialization_cycle() {
     config.services.postgresql.enabled = true;
     config.defaults.cpus = Some(4);
     config.packages.source_roots = vec!["/srv/packages".to_string()];
+    config.packages.canonical_sources = vec!["/srv/projects/typemill".to_string()];
 
     let yaml = serde_yaml_ng::to_string(&config).unwrap();
     let deserialized: GlobalConfig = serde_yaml_ng::from_str(&yaml).unwrap();
@@ -105,6 +106,10 @@ fn test_serialization_deserialization_cycle() {
     assert!(deserialized.services.postgresql.enabled);
     assert_eq!(deserialized.defaults.cpus, Some(4));
     assert_eq!(deserialized.packages.source_roots, ["/srv/packages"]);
+    assert_eq!(
+        deserialized.packages.canonical_sources,
+        ["/srv/projects/typemill"]
+    );
 }
 
 #[test]
@@ -126,6 +131,15 @@ fn package_source_roots_are_omitted_when_empty() {
 
     assert!(!yaml.contains("packages:"));
     assert!(!yaml.contains("source_roots:"));
+    assert!(!yaml.contains("canonical_sources:"));
+}
+
+#[test]
+fn older_package_settings_default_canonical_sources() {
+    let config: GlobalConfig =
+        serde_yaml_ng::from_str("packages:\n  source_roots: [/srv/packages]\n").unwrap();
+
+    assert!(config.packages.canonical_sources.is_empty());
 }
 
 #[test]

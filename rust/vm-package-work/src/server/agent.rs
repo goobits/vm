@@ -22,9 +22,21 @@ pub(super) async fn create_checkout(
     Json(mut request): Json<CreateCheckout>,
 ) -> WorkResult<(StatusCode, Json<CheckoutLease>)> {
     let source = state.store.source(&request.package).await?;
-    if let Some(consumer) = &access.0 {
-        request.agent = consumer.clone();
-        request.consumers = vec![consumer.clone()];
+    if request.workspace_release && access.is_agent() {
+        let repository = access.canonical_repository().ok_or_else(|| {
+            WorkError::Unauthorized(
+                "canonical workspace release requires a repository-bound v2 credential".into(),
+            )
+        })?;
+        if !vm_packages::repository_urls_equivalent(repository, &source.repository) {
+            return Err(WorkError::Unauthorized(
+                "package agent credential is bound to a different canonical repository".into(),
+            ));
+        }
+    }
+    if let Some(consumer) = access.consumer() {
+        request.agent = consumer.to_string();
+        request.consumers = vec![consumer.to_string()];
         request.task = "managed guest package work".into();
         request.source_only =
             if source.kind == vm_packages::SourceKind::Package && !request.workspace_release {
@@ -46,7 +58,7 @@ pub(super) async fn create_checkout(
                 checkout.package == request.package
                     && checkout.workspace_release == request.workspace_release
                     && checkout.consumers.len() == 1
-                    && checkout.consumers[0] == *consumer
+                    && checkout.consumers[0] == consumer
                     && !checkout.state.revokes_lease()
             })
             .collect::<Vec<_>>();
@@ -95,7 +107,7 @@ pub(super) async fn renew_lease(
     Json(mut request): Json<LeaseRequest>,
 ) -> WorkResult<Json<vm_packages::CheckoutRecord>> {
     ensure_checkout_access(&state.store, &access, &id).await?;
-    if access.0.is_some() {
+    if access.is_agent() {
         request.holder = state.store.get_checkout(&id).await?.agent;
         Ok(Json(state.store.reacquire_lease(&id, request).await?))
     } else {
@@ -110,7 +122,7 @@ pub(super) async fn release_lease(
     Json(mut request): Json<LeaseRequest>,
 ) -> WorkResult<Json<vm_packages::CheckoutRecord>> {
     ensure_checkout_access(&state.store, &access, &id).await?;
-    if access.0.is_some() {
+    if access.is_agent() {
         request.holder = state.store.get_checkout(&id).await?.agent;
     }
     Ok(Json(state.store.release_lease(&id, request).await?))
@@ -123,10 +135,10 @@ pub(super) async fn transition(
     Json(mut request): Json<TransitionRequest>,
 ) -> WorkResult<Json<vm_packages::CheckoutRecord>> {
     ensure_checkout_access(&state.store, &access, &id).await?;
-    if access.0.is_some() {
+    if access.is_agent() {
         request.actor = state.store.get_checkout(&id).await?.agent;
     }
-    if access.0.is_some()
+    if access.is_agent()
         && !matches!(
             request.next,
             WorkflowState::Active | WorkflowState::Cancelled | WorkflowState::Failed
@@ -146,8 +158,8 @@ pub(super) async fn cleanup_checkout(
     Json(mut request): Json<CleanupRequest>,
 ) -> WorkResult<Json<vm_packages::CheckoutRecord>> {
     ensure_checkout_access(&state.store, &access, &id).await?;
-    if let Some(consumer) = &access.0 {
-        request.actor = consumer.clone();
+    if let Some(consumer) = access.consumer() {
+        request.actor = consumer.to_string();
     }
     super::controller::cleanup_checkout(State(state), Path(id), Json(request)).await
 }
@@ -159,7 +171,7 @@ pub(super) async fn validate_submission(
     Json(mut request): Json<ValidationRequest>,
 ) -> WorkResult<Json<SubmissionRecord>> {
     ensure_submission_access(&state.store, &access, &id).await?;
-    if access.0.is_some() {
+    if access.is_agent() {
         request.actor = submission_actor(&state, &id).await?;
     }
     Ok(Json(state.store.validate_submission(&id, request).await?))
@@ -173,7 +185,7 @@ pub(super) async fn prepare_integration(
 ) -> WorkResult<Json<SubmissionRecord>> {
     ensure_submission_access(&state.store, &access, &id).await?;
     let submission = state.store.submission(&id).await?;
-    if access.0.is_some() {
+    if access.is_agent() {
         request.actor = state
             .store
             .get_checkout(&submission.checkout_id)
@@ -195,7 +207,7 @@ pub(super) async fn complete_integration(
     Json(mut request): Json<ValidationRequest>,
 ) -> WorkResult<Json<SubmissionRecord>> {
     ensure_submission_access(&state.store, &access, &id).await?;
-    if access.0.is_some() {
+    if access.is_agent() {
         request.actor = submission_actor(&state, &id).await?;
     }
     let completed = state.store.complete_integration(&id, request).await?;

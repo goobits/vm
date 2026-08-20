@@ -60,7 +60,7 @@ pub use paths::{
 pub use config_ops::{load_global_config, ConfigOps};
 
 // Re-export global config for use by other crates
-pub use global_config::GlobalConfig;
+pub use global_config::{GlobalConfig, PackageInfrastructureSettings};
 
 // Re-export CLI utilities
 pub use cli::init_config_file;

@@ -16,7 +16,7 @@ consumer_edge=$consumer_name-package-edge
 acceptance_root=$(mktemp -d "${TMPDIR:-/tmp}/vm-package-acceptance.XXXXXX")
 acceptance_home=$acceptance_root/home
 source_shelf=$acceptance_root/sources
-project_root=$source_shelf/release-tool
+project_root=$acceptance_root/projects/release-tool
 consumer_root=$acceptance_root/consumer
 fixture_root=$acceptance_root/agent-skills
 fake_bin=$acceptance_root/bin
@@ -264,6 +264,7 @@ git -C "$fixture_root" commit -m 'feat: initial collection'
     --registry-image "$server_image" \
     --job-image "$jobs_image"
 )
+run_vm packages register "$project_root"
 test "$(run_vm packages status)" = 'Package infrastructure: healthy'
 
 run_vm --config "$project_root/vm.yaml" create
@@ -379,6 +380,11 @@ docker exec --user acceptance "$environment_name" test ! -e "$checkout_source"
 assert_guest_only_checkout
 
 for container in "${workflow_containers[@]}"; do
+  if docker inspect --format '{{range .Mounts}}{{println .Source}}{{end}}' "$container" | \
+    grep -Fx "$project_root" >/dev/null; then
+    echo "Package infrastructure mounted the canonical project workspace in $container" >&2
+    exit 5
+  fi
   if docker top "$container" -eo args | grep -E '[c]odex|[c]laude|[a]ntigravity' >/dev/null; then
     echo "Package appliance launched an AI agent in $container" >&2
     echo "Repair: remove agent launchers from package infrastructure" >&2
@@ -405,6 +411,19 @@ if docker inspect --format '{{range .Mounts}}{{println .Name}}{{end}}' "$environ
   echo "Repair: remove appliance volume mounts from managed guests" >&2
   exit 6
 fi
+
+docker exec --user acceptance "$environment_name" sh -ec '
+  clone=/home/acceptance/unregistered-release-clone
+  rm -rf "$clone"
+  git clone /workspace "$clone" >/dev/null 2>&1
+  cd "$clone"
+  if vm packages release >/tmp/unregistered-release.log 2>&1; then
+    echo "Unregistered same-origin clone unexpectedly received release authority" >&2
+    exit 1
+  fi
+  grep -F "not the configured canonical workspace" /tmp/unregistered-release.log >/dev/null
+  rm -rf "$clone" /tmp/unregistered-release.log
+'
 
 run_vm --config "$consumer_root/vm.yaml" tools update --to "$consumer_environment"
 docker exec --user acceptance "$consumer_environment" \

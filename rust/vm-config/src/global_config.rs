@@ -58,11 +58,15 @@ pub struct PackageInfrastructureSettings {
     /// Absolute host directories scanned recursively by `vm packages up`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub source_roots: Vec<String>,
+
+    /// Exact physical Git roots inspected read-only for workspace releases.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub canonical_sources: Vec<String>,
 }
 
 impl PackageInfrastructureSettings {
     pub fn is_default(&self) -> bool {
-        self.source_roots.is_empty()
+        self.source_roots.is_empty() && self.canonical_sources.is_empty()
     }
 }
 

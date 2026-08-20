@@ -11,9 +11,9 @@ use vm_packages::{
 
 use crate::error::{VmError, VmResult};
 
+use super::access::gateway_for_provider;
 use super::appliance::configured_state_and_client;
 use super::files::ApplianceFiles;
-use super::runtime::gateway_for_provider;
 
 const CACHE_MAX_AGE: Duration = Duration::from_secs(6 * 60 * 60);
 const BACKGROUND_REFRESH_INTERVAL: Duration = Duration::from_secs(60);

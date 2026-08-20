@@ -1,3 +1,4 @@
+mod access;
 mod appliance;
 mod catalog;
 mod checkout;
@@ -8,8 +9,10 @@ mod files;
 mod integration;
 mod overrides;
 mod process;
+mod registration;
 mod release;
 mod runtime;
+mod sources;
 mod submission;
 mod tart;
 pub(in crate::commands) mod tooling;
@@ -49,18 +52,21 @@ async fn status(
     let mut health = appliance::status(files, runtime)
         .await
         .unwrap_or(appliance::PackageHealth::ActionRequired);
-    let global = vm_config::GlobalConfig::load().ok();
-    if global.as_ref().map_or(true, |global| {
-        catalog::prepare_source_roots(&global.packages.source_roots).is_err()
-            || (!global.packages.source_roots.is_empty() && !files.has_git_token().unwrap_or(false))
-    }) {
+    if let Ok(global) = vm_config::GlobalConfig::load() {
+        if let Ok(plans) = sources::prepare_sources(&global.packages) {
+            if !global.packages.is_default() && !files.has_git_token().unwrap_or(false) {
+                health = appliance::PackageHealth::ActionRequired;
+            } else if health == appliance::PackageHealth::Healthy
+                && (sources::has_quarantined_sources(&global.packages.source_roots)
+                    || plans.iter().any(|plan| !plan.discovery.failures.is_empty()))
+            {
+                health = appliance::PackageHealth::Degraded;
+            }
+        } else {
+            health = appliance::PackageHealth::ActionRequired;
+        }
+    } else {
         health = appliance::PackageHealth::ActionRequired;
-    } else if health == appliance::PackageHealth::Healthy
-        && global
-            .as_ref()
-            .is_some_and(|global| catalog::has_quarantined_sources(&global.packages.source_roots))
-    {
-        health = appliance::PackageHealth::Degraded;
     }
     vm_println!("Package infrastructure: {}", health.label());
     Ok(())
@@ -83,30 +89,31 @@ async fn doctor(
     let mut unresolved = Vec::new();
     if fix && files.read_state()?.is_some() {
         let repaired =
-            catalog::repair_quarantined_sources(files, &global.packages.source_roots).await?;
+            sources::repair_quarantined_sources(files, &global.packages.source_roots).await?;
         unresolved.extend(repaired.failures);
-        let plan = catalog::prepare_source_roots(&global.packages.source_roots)?;
-        let reconciled = catalog::reconcile_source_roots(files, plan).await?;
+        let plans = sources::prepare_sources(&global.packages)?;
+        let reconciled = sources::reconcile_source_plans(files, plans).await?;
         unresolved.extend(reconciled.failures);
     } else {
-        let plan = catalog::prepare_source_roots(&global.packages.source_roots)?;
-        unresolved.extend(
-            plan.discovery
-                .failures
-                .iter()
-                .map(|failure| failure.message.clone()),
-        );
+        for plan in sources::prepare_sources(&global.packages)? {
+            unresolved.extend(
+                plan.discovery
+                    .failures
+                    .iter()
+                    .map(|failure| failure.message.clone()),
+            );
+        }
     }
 
     for failure in &unresolved {
         vm_core::vm_warning!("{failure}");
     }
     let health = if files.read_state()?.is_none()
-        || (!global.packages.source_roots.is_empty() && !files.has_git_token()?)
+        || (!global.packages.is_default() && !files.has_git_token()?)
     {
         appliance::PackageHealth::ActionRequired
     } else if !unresolved.is_empty()
-        || catalog::has_quarantined_sources(&global.packages.source_roots)
+        || sources::has_quarantined_sources(&global.packages.source_roots)
     {
         appliance::PackageHealth::Degraded
     } else {
@@ -132,9 +139,9 @@ async fn up(
     profile: Option<String>,
 ) -> VmResult<()> {
     let global_config = vm_config::GlobalConfig::load()?;
-    let source_roots = catalog::prepare_source_roots(&global_config.packages.source_roots)?;
+    let source_plans = sources::prepare_sources(&global_config.packages)?;
     appliance::up(files, runtime, port, registry_image, job_image).await?;
-    let outcome = catalog::reconcile_source_roots(files, source_roots).await?;
+    let outcome = sources::reconcile_source_plans(files, source_plans).await?;
     if outcome.is_degraded() {
         vm_core::vm_warning!(
             "Package infrastructure is degraded: {} quarantined, {} unresolved",
@@ -254,9 +261,9 @@ pub(super) async fn handle(
             branch,
             recursive,
         } => {
-            catalog::register(
+            registration::register(
                 &files,
-                catalog::RegistrationIntent {
+                registration::RegistrationIntent {
                     targets,
                     ecosystem,
                     repository,

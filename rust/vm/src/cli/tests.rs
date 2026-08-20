@@ -254,6 +254,26 @@ fn package_source_roots_parse_as_global_string_array() {
         } if field == "packages.source_roots"
             && values == ["/srv/packages", "/opt/shared"]
     ));
+    assert!(matches!(
+        Args::parse_from([
+            "vm",
+            "config",
+            "set",
+            "packages.canonical_sources",
+            "/srv/projects/typemill",
+            "/srv/projects/codeatlas",
+            "--global",
+        ])
+        .command,
+        Command::Config {
+            command: ConfigSubcommand::Set {
+                field,
+                values,
+                global: true,
+            }
+        } if field == "packages.canonical_sources"
+            && values == ["/srv/projects/typemill", "/srv/projects/codeatlas"]
+    ));
 }
 
 #[test]
@@ -301,6 +321,10 @@ fn package_registration_parses_explicit_and_discovery_modes() {
             }
         } if targets == ["./packages/auth", "./packages/ui"]
     ));
+    let help = Args::try_parse_from(["vm", "packages", "register", "--help"])
+        .unwrap_err()
+        .to_string();
+    assert!(help.contains("remember local Git roots as read-only workspaces"));
 }
 
 #[test]

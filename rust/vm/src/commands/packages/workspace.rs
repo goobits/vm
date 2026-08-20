@@ -203,8 +203,8 @@ fn resolve_registered_source(
 
 fn unattested_workspace() -> VmError {
     VmError::validation(
-        "Workspace source was not registered from a configured package source root",
-        Some("Run `vm packages init <source-root>` on the controller host"),
+        "Workspace source is not registered as a read-only canonical workspace",
+        Some("Run `vm packages register <local-path>` on the controller host"),
     )
 }
 

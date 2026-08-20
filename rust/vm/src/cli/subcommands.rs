@@ -92,9 +92,9 @@ pub enum PackagesSubcommand {
         #[arg(long, value_enum, default_value = "auto")]
         runtime: PackageInfrastructureRuntime,
     },
-    /// Register canonical repositories explicitly or discover them from local paths
+    /// Register repository URLs or remember local Git roots as read-only workspaces
     Register {
-        /// One explicit package name, or one or more package repository paths
+        /// One explicit package name, or local Git roots remembered after registration
         #[arg(required = true, value_name = "NAME_OR_PATH")]
         targets: Vec<String>,
         #[arg(long, value_parser = ["npm", "cargo", "python"])]

@@ -279,7 +279,7 @@ fn build_global_schema_cache() -> HashMap<String, SchemaType> {
     add_strings!(cache, "worktrees.base_path");
 
     // Shared package source discovery
-    add_string_arrays!(cache, "packages.source_roots");
+    add_string_arrays!(cache, "packages.source_roots", "packages.canonical_sources");
 
     cache
 }
@@ -454,6 +454,7 @@ mod tests {
         assert!(schema["properties"]["backups"].is_mapping());
         assert!(schema["properties"]["snapshots"].is_mapping());
         assert!(schema["properties"]["packages"]["properties"]["source_roots"].is_mapping());
+        assert!(schema["properties"]["packages"]["properties"]["canonical_sources"].is_mapping());
     }
 
     #[test]
@@ -493,12 +494,14 @@ mod tests {
 
     #[test]
     fn looks_up_global_package_source_roots() {
-        assert_eq!(
-            lookup_field_type("packages.source_roots", true),
-            SchemaType::Array {
-                item_type: Box::new(SchemaType::String)
-            }
-        );
+        for field in ["packages.source_roots", "packages.canonical_sources"] {
+            assert_eq!(
+                lookup_field_type(field, true),
+                SchemaType::Array {
+                    item_type: Box::new(SchemaType::String)
+                }
+            );
+        }
     }
 
     #[test]

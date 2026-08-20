@@ -137,8 +137,8 @@ pub(super) async fn list_consumers(
     Extension(access): Extension<AgentAccess>,
 ) -> WorkResult<Json<Vec<ConsumerRecord>>> {
     let mut records = state.store.consumers().await;
-    if let Some(expected) = &access.0 {
-        records.retain(|record| &record.name == expected);
+    if let Some(expected) = access.consumer() {
+        records.retain(|record| record.name == expected);
     }
     Ok(Json(records))
 }
@@ -149,8 +149,8 @@ pub(super) async fn package_consumers(
     Path(name): Path<String>,
 ) -> WorkResult<Json<Vec<ConsumerUsage>>> {
     let mut records = state.store.package_consumers(&name).await?;
-    if let Some(expected) = &access.0 {
-        records.retain(|record| &record.consumer == expected);
+    if let Some(expected) = access.consumer() {
+        records.retain(|record| record.consumer == expected);
     }
     Ok(Json(records))
 }
@@ -160,11 +160,11 @@ pub(super) async fn drift(
     Extension(access): Extension<AgentAccess>,
 ) -> WorkResult<Json<Vec<PackageDrift>>> {
     let mut records = state.store.drift().await;
-    if let Some(expected) = &access.0 {
+    if let Some(expected) = access.consumer() {
         for record in &mut records {
             record
                 .consumers
-                .retain(|consumer| &consumer.consumer == expected);
+                .retain(|consumer| consumer.consumer == expected);
         }
         records.retain(|record| !record.consumers.is_empty());
     }
@@ -176,8 +176,8 @@ pub(super) async fn list_rollouts(
     Extension(access): Extension<AgentAccess>,
 ) -> WorkResult<Json<Vec<RolloutRecord>>> {
     let mut records = state.store.rollouts().await;
-    if let Some(expected) = &access.0 {
-        records.retain(|record| &record.consumer == expected);
+    if let Some(expected) = access.consumer() {
+        records.retain(|record| record.consumer == expected);
     }
     Ok(Json(records))
 }
@@ -189,9 +189,8 @@ pub(super) async fn get_rollout(
 ) -> WorkResult<Json<RolloutRecord>> {
     let record = state.store.rollout(&id).await?;
     if access
-        .0
-        .as_ref()
-        .is_some_and(|expected| expected != &record.consumer)
+        .consumer()
+        .is_some_and(|expected| expected != record.consumer)
     {
         return Err(WorkError::Unauthorized(
             "package agent credential is bound to a different consumer".into(),

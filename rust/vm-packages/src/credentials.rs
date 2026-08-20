@@ -1,10 +1,38 @@
 use base64::Engine;
 use hmac::{Hmac, KeyInit, Mac};
+use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-use crate::{validate_label, PackageValidationError};
+use crate::{normalize_remote_repository_url, validate_label, PackageValidationError};
 
-const AGENT_CAPABILITY_VERSION: &str = "v1";
+const AGENT_CAPABILITY_V1: &str = "v1";
+const AGENT_CAPABILITY_V2: &str = "v2";
+
+/// Authenticated guest identity. Repository binding is present only for an
+/// explicitly registered canonical workspace.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentCapabilityClaims {
+    pub consumer: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_repository: Option<String>,
+}
+
+impl AgentCapabilityClaims {
+    pub fn new(
+        consumer: impl Into<String>,
+        canonical_repository: Option<String>,
+    ) -> Result<Self, PackageValidationError> {
+        let consumer = consumer.into();
+        validate_label("consumer", &consumer)?;
+        let canonical_repository = canonical_repository
+            .map(|repository| normalize_remote_repository_url(&repository))
+            .transpose()?;
+        Ok(Self {
+            consumer,
+            canonical_repository,
+        })
+    }
+}
 
 /// Parse the authorization forms used by npm, Cargo, pip, and VM clients.
 pub fn authorization_token(value: &str) -> Option<String> {
@@ -37,20 +65,37 @@ pub fn issue_agent_capability(
     validate_label("consumer", consumer)?;
     let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(consumer);
     let signature = sign(signing_key, &payload)?;
-    Ok(format!("{AGENT_CAPABILITY_VERSION}.{payload}.{signature}"))
+    Ok(format!("{AGENT_CAPABILITY_V1}.{payload}.{signature}"))
 }
 
-/// Verify a guest capability and return its bound consumer identity.
+/// Create a structured capability for an explicitly attested workspace.
+pub fn issue_agent_capability_v2(
+    signing_key: &str,
+    claims: &AgentCapabilityClaims,
+) -> Result<String, PackageValidationError> {
+    validate_signing_key(signing_key)?;
+    let claims =
+        AgentCapabilityClaims::new(claims.consumer.clone(), claims.canonical_repository.clone())?;
+    let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(
+        serde_json::to_vec(&claims)
+            .map_err(|_| PackageValidationError::new("invalid package agent capability"))?,
+    );
+    let signed = format!("{AGENT_CAPABILITY_V2}.{payload}");
+    let signature = sign(signing_key, &signed)?;
+    Ok(format!("{signed}.{signature}"))
+}
+
+/// Verify a v1 or v2 guest capability and return its authenticated claims.
 pub fn verify_agent_capability(
     signing_key: &str,
     capability: &str,
-) -> Result<String, PackageValidationError> {
+) -> Result<AgentCapabilityClaims, PackageValidationError> {
     validate_signing_key(signing_key)?;
     let mut parts = capability.split('.');
     let version = parts.next();
     let payload = parts.next();
     let signature = parts.next();
-    if version != Some(AGENT_CAPABILITY_VERSION)
+    if !matches!(version, Some(AGENT_CAPABILITY_V1 | AGENT_CAPABILITY_V2))
         || payload.is_none()
         || signature.is_none()
         || parts.next().is_some()
@@ -63,18 +108,35 @@ pub fn verify_agent_capability(
     let signature = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(signature.expect("capability signature checked"))
         .map_err(|_| PackageValidationError::new("invalid package agent capability"))?;
+    let signed = if version == Some(AGENT_CAPABILITY_V2) {
+        format!("{AGENT_CAPABILITY_V2}.{payload}")
+    } else {
+        payload.to_string()
+    };
+    verify_signature(signing_key, &signed, &signature)?;
+    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload)
+        .map_err(|_| PackageValidationError::new("invalid package agent capability"))?;
+    if version == Some(AGENT_CAPABILITY_V1) {
+        let consumer = String::from_utf8(decoded)
+            .map_err(|_| PackageValidationError::new("invalid package agent capability"))?;
+        return AgentCapabilityClaims::new(consumer, None);
+    }
+    let claims: AgentCapabilityClaims = serde_json::from_slice(&decoded)
+        .map_err(|_| PackageValidationError::new("invalid package agent capability"))?;
+    AgentCapabilityClaims::new(claims.consumer, claims.canonical_repository)
+}
+
+fn verify_signature(
+    signing_key: &str,
+    payload: &str,
+    signature: &[u8],
+) -> Result<(), PackageValidationError> {
     let mut mac = Hmac::<Sha256>::new_from_slice(signing_key.as_bytes())
         .map_err(|_| PackageValidationError::new("invalid package agent signing key"))?;
     mac.update(payload.as_bytes());
-    mac.verify_slice(&signature)
-        .map_err(|_| PackageValidationError::new("invalid package agent capability"))?;
-    let consumer = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(payload)
-        .ok()
-        .and_then(|value| String::from_utf8(value).ok())
-        .ok_or_else(|| PackageValidationError::new("invalid package agent capability"))?;
-    validate_label("consumer", &consumer)?;
-    Ok(consumer)
+    mac.verify_slice(signature)
+        .map_err(|_| PackageValidationError::new("invalid package agent capability"))
 }
 
 fn sign(signing_key: &str, payload: &str) -> Result<String, PackageValidationError> {
@@ -96,7 +158,10 @@ fn validate_signing_key(signing_key: &str) -> Result<(), PackageValidationError>
 
 #[cfg(test)]
 mod tests {
-    use super::{authorization_token, issue_agent_capability, verify_agent_capability};
+    use super::{
+        authorization_token, issue_agent_capability, issue_agent_capability_v2,
+        verify_agent_capability, AgentCapabilityClaims,
+    };
 
     #[test]
     fn parses_package_manager_authorization_forms() {
@@ -121,12 +186,32 @@ mod tests {
         let capability = issue_agent_capability(key, "project-a").unwrap();
         assert_eq!(
             verify_agent_capability(key, &capability).unwrap(),
-            "project-a"
+            AgentCapabilityClaims::new("project-a", None).unwrap()
         );
         assert!(verify_agent_capability(key, &capability.replace("v1.", "v2.")).is_err());
         assert!(
             verify_agent_capability("different-key-012345678901234567890123456", &capability)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn v2_capabilities_bind_normalized_canonical_repositories() {
+        let key = "signing-key-012345678901234567890123456789";
+        let claims =
+            AgentCapabilityClaims::new("project-a", Some("git@github.com:team/project.git".into()))
+                .unwrap();
+        let capability = issue_agent_capability_v2(key, &claims).unwrap();
+
+        let verified = verify_agent_capability(key, &capability).unwrap();
+        assert_eq!(verified.consumer, "project-a");
+        assert!(crate::repository_urls_equivalent(
+            verified.canonical_repository.as_deref().unwrap(),
+            "https://github.com/team/project.git"
+        ));
+        let mut tampered = capability.clone().into_bytes();
+        tampered[3] ^= 1;
+        assert!(verify_agent_capability(key, &String::from_utf8(tampered).unwrap()).is_err());
+        assert!(verify_agent_capability(key, &capability.replace("v2.", "v1.")).is_err());
     }
 }

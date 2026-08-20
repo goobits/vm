@@ -2,7 +2,10 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use vm_config::detector::{git::detect_repository, ProjectFacts};
+use vm_config::detector::{
+    git::{detect_repository, RepositoryFacts},
+    ProjectFacts,
+};
 use vm_packages::SourceKind;
 use vm_packages::{PackageEcosystem, RegisterPackage, RegisterTool, ToolSourceManifest};
 use walkdir::{DirEntry, WalkDir};
@@ -25,6 +28,16 @@ pub(super) struct DiscoveryFailure {
     pub(super) message: String,
 }
 
+pub(super) struct LocalSource {
+    pub(super) root: PathBuf,
+    pub(super) request: SourceRequest,
+}
+
+pub(super) enum SourceRequest {
+    Package(RegisterPackage),
+    Tool(RegisterTool),
+}
+
 #[derive(Default)]
 struct RepositoryRoots {
     packages: BTreeSet<PathBuf>,
@@ -44,14 +57,8 @@ pub(super) fn discover_configured(targets: &[String]) -> VmResult<Discovery> {
     let repositories = configured_repository_paths(targets)?;
     let mut discovery = Discovery::default();
     for (source_root, repository) in repositories {
-        let result = match is_tool_repository(&repository) {
-            Ok(true) => {
-                discover_tool(&repository, None, true).map(|tool| discovery.tools.push(tool))
-            }
-            Ok(false) => discover_one(&repository, None, None, true)
-                .map(|package| discovery.packages.push(package)),
-            Err(error) => Err(error),
-        };
+        let result =
+            discover_source(&repository, None, None, true).map(|source| discovery.push(source));
         if let Err(error) = result {
             discovery.failures.push(DiscoveryFailure {
                 source_root,
@@ -61,6 +68,83 @@ pub(super) fn discover_configured(targets: &[String]) -> VmResult<Discovery> {
         }
     }
     Ok(discovery)
+}
+
+/// Discover explicit local registrations and retain their physical roots.
+pub(super) fn discover_local(
+    targets: &[String],
+    recursive: bool,
+    ecosystem: Option<PackageEcosystem>,
+    branch: Option<&str>,
+) -> VmResult<Vec<LocalSource>> {
+    let roots = repository_roots(targets, recursive, false)?;
+    roots
+        .packages
+        .into_iter()
+        .map(|root| {
+            discover_one(&root, ecosystem, branch, true).map(|request| LocalSource {
+                root,
+                request: SourceRequest::Package(request),
+            })
+        })
+        .chain(roots.tools.into_iter().map(|root| {
+            discover_tool(&root, branch, true).map(|request| LocalSource {
+                root,
+                request: SourceRequest::Tool(request),
+            })
+        }))
+        .collect()
+}
+
+/// Inspect exact configured repositories independently without mutating them.
+pub(super) fn discover_canonical(targets: &[String]) -> Discovery {
+    let mut discovery = Discovery::default();
+    for target in targets {
+        let configured = PathBuf::from(target);
+        let result = if !configured.is_absolute() {
+            Err(VmError::validation(
+                format!("Canonical package source '{target}' is not an absolute host path"),
+                Some("Re-register the repository with `vm packages register <local-path>`"),
+            ))
+        } else {
+            fs::canonicalize(&configured)
+                .map_err(|error| {
+                    VmError::filesystem(error, target, "resolve canonical package source")
+                })
+                .and_then(|root| discover_source(&root, None, None, true))
+        };
+        match result {
+            Ok(source) => discovery.push(source),
+            Err(error) => discovery.failures.push(DiscoveryFailure {
+                source_root: configured.clone(),
+                repository: configured,
+                message: error.to_string(),
+            }),
+        }
+    }
+    discovery
+}
+
+impl Discovery {
+    fn push(&mut self, source: SourceRequest) {
+        match source {
+            SourceRequest::Package(request) => self.packages.push(request),
+            SourceRequest::Tool(request) => self.tools.push(request),
+        }
+    }
+}
+
+fn discover_source(
+    root: &Path,
+    ecosystem: Option<PackageEcosystem>,
+    branch: Option<&str>,
+    workspace_release: bool,
+) -> VmResult<SourceRequest> {
+    if is_tool_repository(root)? {
+        discover_tool(root, branch, workspace_release).map(SourceRequest::Tool)
+    } else {
+        discover_one(root, ecosystem, branch, workspace_release).map(SourceRequest::Package)
+    }
 }
 
 pub(super) fn quarantined_repositories(source_root: &Path) -> VmResult<Vec<PathBuf>> {
@@ -287,13 +371,7 @@ fn discover_one(
     branch: Option<&str>,
     workspace_release: bool,
 ) -> VmResult<RegisterPackage> {
-    let repository = detect_repository(root).map_err(VmError::from)?;
-    if repository.root != root {
-        return Err(VmError::validation(
-            format!("{} is not a Git repository root", root.display()),
-            Some(format!("Use {} instead", repository.root.display())),
-        ));
-    }
+    let repository = exact_repository(root)?;
 
     let facts = ProjectFacts::detect(root);
     let ecosystem = resolve_ecosystem(root, &facts, override_ecosystem)?;
@@ -322,7 +400,7 @@ fn discover_tool(
     workspace_release: bool,
 ) -> VmResult<RegisterTool> {
     let manifest = tool_manifest(root)?;
-    let repository = detect_repository(root).map_err(VmError::from)?;
+    let repository = exact_repository(root)?;
     let name = root
         .file_name()
         .and_then(|name| name.to_str())
@@ -350,6 +428,17 @@ fn discover_tool(
         )
     })?;
     Ok(request)
+}
+
+fn exact_repository(root: &Path) -> VmResult<RepositoryFacts> {
+    let repository = detect_repository(root).map_err(VmError::from)?;
+    if repository.root != root {
+        return Err(VmError::validation(
+            format!("{} is not a Git repository root", root.display()),
+            Some(format!("Use {} instead", repository.root.display())),
+        ));
+    }
+    Ok(repository)
 }
 
 fn resolve_ecosystem(
@@ -478,7 +567,10 @@ mod tests {
     use git2::Repository;
     use vm_packages::PackageEcosystem;
 
-    use super::{discover, discover_configured, normalize_repository_url, TOOL_MANIFEST};
+    use super::{
+        discover, discover_canonical, discover_configured, discover_local,
+        normalize_repository_url, SourceRequest, TOOL_MANIFEST,
+    };
 
     fn package(root: &Path, directory: &str, manifest: &str, content: &str) -> PathBuf {
         let path = root.join(directory);
@@ -640,6 +732,72 @@ mod tests {
         assert_eq!(configured.packages.len(), 1);
         assert_eq!(configured.failures.len(), 1);
         assert!(configured.failures[0].message.contains("broken"));
+    }
+
+    #[test]
+    fn exact_discovery_retains_physical_roots_and_release_attestation() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = package(
+            directory.path(),
+            "typemill",
+            "package.json",
+            r#"{"name":"typemill","version":"1.0.0"}"#,
+        );
+        let discovered =
+            discover_local(&[source.to_string_lossy().into_owned()], false, None, None).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].root, source.canonicalize().unwrap());
+        let SourceRequest::Package(request) = &discovered[0].request else {
+            panic!("expected package registration");
+        };
+        assert!(request.workspace_release);
+    }
+
+    #[test]
+    fn exact_tool_registration_requires_the_git_root() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = package(
+            directory.path(),
+            "codeatlas",
+            "package.json",
+            r#"{"name":"codeatlas","version":"1.0.0"}"#,
+        );
+        let nested = source.join("packages/codeatlas");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(nested.join(TOOL_MANIFEST), "kind: collection\n").unwrap();
+
+        let error = discover_local(&[nested.to_string_lossy().into_owned()], false, None, None)
+            .err()
+            .unwrap();
+
+        assert!(error.to_string().contains("not a Git repository root"));
+        assert_eq!(
+            error.hint().unwrap(),
+            format!("Use {} instead", source.display())
+        );
+    }
+
+    #[test]
+    fn canonical_discovery_keeps_healthy_sources_when_one_is_missing() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = package(
+            directory.path(),
+            "typemill",
+            "package.json",
+            r#"{"name":"typemill","version":"1.0.0"}"#,
+        );
+        let missing = directory.path().join("missing");
+
+        let discovery = discover_canonical(&[
+            source.to_string_lossy().into_owned(),
+            missing.to_string_lossy().into_owned(),
+        ]);
+
+        assert_eq!(discovery.packages.len(), 1);
+        assert!(discovery.packages[0].workspace_release);
+        assert_eq!(discovery.failures.len(), 1);
+        assert!(!missing.exists());
     }
 
     #[test]

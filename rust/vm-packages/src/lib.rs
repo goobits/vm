@@ -31,7 +31,10 @@ pub use consumer::{
     ConsumerRecord, ConsumerUsage, CreateRollout, PackageDrift, RegisterConsumer, RolloutRecord,
     RolloutState, RolloutTransition, RolloutValidationRequest,
 };
-pub use credentials::{authorization_token, issue_agent_capability, verify_agent_capability};
+pub use credentials::{
+    authorization_token, issue_agent_capability, issue_agent_capability_v2,
+    verify_agent_capability, AgentCapabilityClaims,
+};
 pub use digest::{encode_hex, sha256_hex, sha256_reader};
 pub use ecosystem::{PackageEcosystem, ParsePackageEcosystemError};
 pub use environment::{ClientEnvironment, ManagedClientSettings, RegistryEndpoints};

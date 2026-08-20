@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use serde::Serialize;
 use url::Url;
 
-use crate::sha256_hex;
+use crate::{sha256_hex, AgentCapabilityClaims};
 
 /// Stable gateway endpoints exposed to a project environment.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,7 +63,7 @@ pub struct ClientEnvironment {
 struct AgentAccess {
     gateway: String,
     token: String,
-    consumer: String,
+    claims: AgentCapabilityClaims,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -99,19 +99,18 @@ impl ClientEnvironment {
         mut self,
         gateway: impl Into<String>,
         token: impl Into<String>,
-        consumer: impl Into<String>,
+        claims: AgentCapabilityClaims,
     ) -> Result<Self> {
         let gateway = RegistryEndpoints::new(gateway)?.gateway().to_string();
         let token = token.into();
-        let consumer = consumer.into();
         if token.trim().is_empty() {
             bail!("package agent token cannot be empty");
         }
-        crate::validate_label("consumer", &consumer)?;
+        let claims = AgentCapabilityClaims::new(claims.consumer, claims.canonical_repository)?;
         self.agent_access = Some(AgentAccess {
             gateway,
             token,
-            consumer,
+            claims,
         });
         Ok(self)
     }
@@ -157,7 +156,10 @@ impl ClientEnvironment {
                 ),
                 ("VM_PACKAGES_WORK_GATEWAY".into(), access.gateway.clone()),
                 ("VM_PACKAGES_AGENT_TOKEN".into(), access.token.clone()),
-                ("VM_PACKAGES_CONSUMER".into(), access.consumer.clone()),
+                (
+                    "VM_PACKAGES_CONSUMER".into(),
+                    access.claims.consumer.clone(),
+                ),
             ]);
         }
         if let Some(workspace) = &self.canonical_workspace {
@@ -239,6 +241,7 @@ fn shell_quote(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{ClientEnvironment, RegistryEndpoints};
+    use crate::AgentCapabilityClaims;
 
     #[test]
     fn creates_protocol_urls_from_one_gateway() {
@@ -254,7 +257,11 @@ mod tests {
         assert!(variables[0].1.contains("reader:read%20secret@"));
 
         let agent = environment
-            .with_agent_access("https://packages.internal", "agent-token", "project-a")
+            .with_agent_access(
+                "https://packages.internal",
+                "agent-token",
+                AgentCapabilityClaims::new("project-a", None).unwrap(),
+            )
             .unwrap()
             .with_canonical_workspace("/workspace")
             .unwrap()
@@ -302,7 +309,11 @@ mod tests {
             "read-token",
         )
         .unwrap()
-        .with_agent_access("https://packages.internal", "agent-token", "project-a")
+        .with_agent_access(
+            "https://packages.internal",
+            "agent-token",
+            AgentCapabilityClaims::new("project-a", None).unwrap(),
+        )
         .unwrap()
         .managed_settings();
 

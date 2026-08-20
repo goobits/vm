@@ -109,6 +109,13 @@ properties:
           type: string
           minLength: 1
         uniqueItems: true
+      canonical_sources:
+        type: array
+        description: "Exact physical Git repository roots inspected read-only for canonical workspace releases"
+        items:
+          type: string
+          minLength: 1
+        uniqueItems: true
     additionalProperties: false
 
 additionalProperties: true

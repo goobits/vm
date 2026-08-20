@@ -85,9 +85,9 @@ fn handle_request(stream: &mut TcpStream, requests: &Arc<Mutex<Vec<String>>>) {
     let path = request_line.next().unwrap();
     requests.lock().unwrap().push(format!("{method} {path}"));
 
-    let authorized_agent = headers.lines().any(|line| {
+    let authorized = headers.lines().any(|line| {
         line.split_once(':').is_some_and(|(name, value)| {
-            name.eq_ignore_ascii_case("authorization") && value.trim() == "Bearer agent-token"
+            name.eq_ignore_ascii_case("authorization") && value.trim().starts_with("Bearer ")
         })
     });
     let (status, body) = if method == "POST" && path == "/work/v1/packages" {
@@ -99,11 +99,12 @@ fn handle_request(stream: &mut TcpStream, requests: &Arc<Mutex<Vec<String>>>) {
                 "ecosystem": registered["ecosystem"],
                 "repository": registered["repository"],
                 "default_branch": registered["default_branch"],
+                "workspace_release": registered["workspace_release"],
                 "registered_at": "2026-08-11T00:00:00Z"
             })
             .to_string(),
         )
-    } else if method == "GET" && path == "/work/v1/packages" && authorized_agent {
+    } else if method == "GET" && path == "/work/v1/packages" && authorized {
         (
             "200 OK",
             json!([{
@@ -115,7 +116,7 @@ fn handle_request(stream: &mut TcpStream, requests: &Arc<Mutex<Vec<String>>>) {
             }])
             .to_string(),
         )
-    } else if method == "GET" && path == "/work/v1/tools" && authorized_agent {
+    } else if method == "GET" && path == "/work/v1/tools" && authorized {
         (
             "200 OK",
             json!([{
@@ -127,6 +128,8 @@ fn handle_request(stream: &mut TcpStream, requests: &Arc<Mutex<Vec<String>>>) {
             }])
             .to_string(),
         )
+    } else if method == "GET" && path == "/work/v1/checkouts" {
+        ("200 OK", "[]".to_string())
     } else if method == "GET" && matches!(path, "/work/v1/packages" | "/work/v1/tools") {
         ("401 Unauthorized", "{}".to_string())
     } else if matches!(path, "/health" | "/work/health" | "/v2/") {
@@ -174,7 +177,7 @@ fn read_http_request(stream: &mut TcpStream) -> Vec<u8> {
     request
 }
 
-fn fixture_package(source_root: &Path) {
+fn fixture_package(source_root: &Path) -> PathBuf {
     let package = source_root.join("shared-auth");
     fs::create_dir_all(&package).unwrap();
     let repository = Repository::init(&package).unwrap();
@@ -190,6 +193,40 @@ fn fixture_package(source_root: &Path) {
         )
         .unwrap();
     fs::write(package.join("package.json"), r#"{"name":"@shared/auth"}"#).unwrap();
+    package
+}
+
+fn tree_snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+    fn visit(root: &Path, current: &Path, snapshot: &mut Vec<(PathBuf, Vec<u8>)>) {
+        let mut entries = fs::read_dir(current)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect::<Vec<_>>();
+        entries.sort();
+        for path in entries {
+            let relative = path.strip_prefix(root).unwrap().to_path_buf();
+            let metadata = fs::symlink_metadata(&path).unwrap();
+            if metadata.is_dir() {
+                snapshot.push((relative, b"directory".to_vec()));
+                visit(root, &path, snapshot);
+            } else if metadata.file_type().is_symlink() {
+                snapshot.push((
+                    relative,
+                    fs::read_link(&path)
+                        .unwrap()
+                        .to_string_lossy()
+                        .as_bytes()
+                        .to_vec(),
+                ));
+            } else {
+                snapshot.push((relative, fs::read(&path).unwrap()));
+            }
+        }
+    }
+
+    let mut snapshot = Vec::new();
+    visit(root, root, &mut snapshot);
+    snapshot
 }
 
 fn fixture_broken_package(source_root: &Path) -> PathBuf {
@@ -237,10 +274,23 @@ exit 97
 }
 
 fn configure_source_roots(directory: &TempDir, roots: &[&Path]) {
+    configure_sources(directory, roots, &[]);
+}
+
+fn configure_sources(directory: &TempDir, roots: &[&Path], canonical: &[&Path]) {
     fs::create_dir_all(directory.path().join(".vm")).unwrap();
-    let mut config = String::from("packages:\n  source_roots:\n");
-    for root in roots {
-        config.push_str(&format!("    - {}\n", root.display()));
+    let mut config = String::from("packages:\n");
+    if !roots.is_empty() {
+        config.push_str("  source_roots:\n");
+        for root in roots {
+            config.push_str(&format!("    - {}\n", root.display()));
+        }
+    }
+    if !canonical.is_empty() {
+        config.push_str("  canonical_sources:\n");
+        for root in canonical {
+            config.push_str(&format!("    - {}\n", root.display()));
+        }
     }
     fs::write(directory.path().join(".vm/config.yaml"), config).unwrap();
 }
@@ -307,6 +357,53 @@ fn packages_status(directory: &TempDir, context: &str) -> Output {
         .unwrap()
 }
 
+fn packages_register(directory: &TempDir, repository: &Path, gateway: &FakeGateway) -> Output {
+    Command::new(cargo_bin!("vm"))
+        .args(["packages", "register", repository.to_str().unwrap()])
+        .current_dir(directory.path())
+        .env("HOME", directory.path())
+        .env("VM_TEST_MODE", "1")
+        .env("VM_TEST_COMMAND_CONTEXT", "host")
+        .env(
+            "VM_PACKAGES_WORK_GATEWAY",
+            format!("http://127.0.0.1:{}", gateway.port),
+        )
+        .env_remove("VM_MANAGED_GUEST")
+        .output()
+        .unwrap()
+}
+
+fn packages_doctor(
+    directory: &TempDir,
+    config: &Path,
+    fake_bin: &Path,
+    docker_log: &Path,
+) -> Output {
+    let mut path = std::ffi::OsString::from(fake_bin);
+    path.push(":");
+    path.push(std::env::var_os("PATH").unwrap_or_default());
+    Command::new(cargo_bin!("vm"))
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "packages",
+            "doctor",
+            "--runtime",
+            "docker",
+            "--fix",
+        ])
+        .current_dir(directory.path())
+        .env("HOME", directory.path())
+        .env("PATH", path)
+        .env("VM_FAKE_DOCKER_LOG", docker_log)
+        .env("VM_TEST_MODE", "1")
+        .env("VM_TEST_COMMAND_CONTEXT", "host")
+        .env("CI", "1")
+        .env_remove("VM_MANAGED_GUEST")
+        .output()
+        .unwrap()
+}
+
 #[test]
 fn isolated_checkout_is_guest_only_with_one_exact_repair_command() {
     let directory = TempDir::new().unwrap();
@@ -345,7 +442,7 @@ fn fresh_setup_and_existing_state_reconciliation_are_idempotent() {
     );
     let first_stdout = String::from_utf8_lossy(&first.stdout);
     assert!(first_stdout.contains("Package infrastructure is ready"));
-    assert!(first_stdout.contains("Reconciling package sources from 1 configured root(s)"));
+    assert!(first_stdout.contains("Reconciling 1 managed package shelf"));
     assert!(first_stdout.contains("Registered @shared/auth (npm)"));
 
     let appliance = directory.path().join(".vm/infrastructure/packages");
@@ -407,6 +504,104 @@ fn configured_empty_shelf_is_a_successful_noop() {
         .unwrap()
         .contains("Package source scan complete; no package or tool repositories found"));
     assert_eq!(gateway.package_registrations(), 0);
+}
+
+#[test]
+fn exact_registration_is_persisted_and_reconciled_without_source_mutation() {
+    let directory = TempDir::new().unwrap();
+    let gateway = FakeGateway::start();
+    let fake_bin = directory.path().join("bin");
+    fs::create_dir_all(&fake_bin).unwrap();
+    let (_, docker_log) = fake_docker(&fake_bin);
+    fs::create_dir_all(directory.path().join(".vm")).unwrap();
+    fs::write(directory.path().join(".vm/config.yaml"), "{}\n").unwrap();
+    let project = fixture_package(&directory.path().join("projects"));
+    let config = project_config(&directory);
+    let before = tree_snapshot(&project);
+
+    let up = packages_up(&directory, &config, &fake_bin, &docker_log, gateway.port);
+    assert!(
+        up.status.success(),
+        "{}",
+        String::from_utf8_lossy(&up.stderr)
+    );
+    let registered = packages_register(&directory, &project, &gateway);
+    assert!(
+        registered.status.success(),
+        "{}",
+        String::from_utf8_lossy(&registered.stderr)
+    );
+    assert_eq!(tree_snapshot(&project), before);
+    let global = fs::read_to_string(directory.path().join(".vm/config.yaml")).unwrap();
+    assert!(global.contains("canonical_sources:"));
+    assert!(global.contains(project.canonicalize().unwrap().to_str().unwrap()));
+    assert!(!global.contains("source_roots:"));
+
+    let reconciled = packages_up(&directory, &config, &fake_bin, &docker_log, gateway.port);
+    assert!(
+        reconciled.status.success(),
+        "{}",
+        String::from_utf8_lossy(&reconciled.stderr)
+    );
+    assert_eq!(tree_snapshot(&project), before);
+    assert_eq!(gateway.package_registrations(), 2);
+
+    fs::write(
+        directory
+            .path()
+            .join(".vm/infrastructure/packages/git-token"),
+        "test-token",
+    )
+    .unwrap();
+    let doctor = packages_doctor(&directory, &config, &fake_bin, &docker_log);
+    assert!(
+        doctor.status.success(),
+        "{}",
+        String::from_utf8_lossy(&doctor.stderr)
+    );
+    assert_eq!(tree_snapshot(&project), before);
+}
+
+#[test]
+fn invalid_canonical_source_is_degraded_in_place_without_quarantine() {
+    let directory = TempDir::new().unwrap();
+    let gateway = FakeGateway::start();
+    let fake_bin = directory.path().join("bin");
+    fs::create_dir_all(&fake_bin).unwrap();
+    let (_, docker_log) = fake_docker(&fake_bin);
+    let source = fixture_broken_package(&directory.path().join("projects"));
+    configure_sources(&directory, &[], &[&source]);
+    let config = project_config(&directory);
+    let before = tree_snapshot(&source);
+
+    let output = packages_up(&directory, &config, &fake_bin, &docker_log, gateway.port);
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Package infrastructure: degraded"));
+    assert_eq!(tree_snapshot(&source), before);
+    assert!(source.exists());
+    assert!(!directory.path().join("projects/.vm-quarantine").exists());
+    assert_eq!(gateway.package_registrations(), 0);
+
+    fs::write(
+        directory
+            .path()
+            .join(".vm/infrastructure/packages/git-token"),
+        "test-token",
+    )
+    .unwrap();
+    let doctor = packages_doctor(&directory, &config, &fake_bin, &docker_log);
+    assert!(
+        doctor.status.success(),
+        "{}",
+        String::from_utf8_lossy(&doctor.stderr)
+    );
+    assert!(String::from_utf8_lossy(&doctor.stderr).contains("repair"));
+    assert_eq!(tree_snapshot(&source), before);
 }
 
 #[test]

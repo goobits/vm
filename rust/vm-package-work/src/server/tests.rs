@@ -244,7 +244,7 @@ async fn guest_checkout_identity_is_derived_from_its_capability() {
             .status_code(),
         StatusCode::CREATED
     );
-    let agent = vm_packages::issue_agent_capability(
+    let v1_agent = vm_packages::issue_agent_capability(
         "agent-signing-key-012345678901234567890123456789",
         "project-a",
     )
@@ -259,6 +259,42 @@ async fn guest_checkout_identity_is_derived_from_its_capability() {
         "lease_token": "lease-token-012345678901234567890123456789",
         "idempotency_key": "workspace-create-1"
     });
+    assert_eq!(
+        server
+            .post("/v1/checkouts")
+            .add_header(header::AUTHORIZATION, format!("Bearer {v1_agent}"))
+            .json(&request)
+            .await
+            .status_code(),
+        StatusCode::UNAUTHORIZED
+    );
+    let wrong_repository = vm_packages::issue_agent_capability_v2(
+        "agent-signing-key-012345678901234567890123456789",
+        &vm_packages::AgentCapabilityClaims::new(
+            "project-a",
+            Some("https://example.com/other.git".into()),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        server
+            .post("/v1/checkouts")
+            .add_header(header::AUTHORIZATION, format!("Bearer {wrong_repository}"),)
+            .json(&request)
+            .await
+            .status_code(),
+        StatusCode::UNAUTHORIZED
+    );
+    let agent = vm_packages::issue_agent_capability_v2(
+        "agent-signing-key-012345678901234567890123456789",
+        &vm_packages::AgentCapabilityClaims::new(
+            "project-a",
+            Some("https://example.com/workspace-auth.git".into()),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let response = server
         .post("/v1/checkouts")
         .add_header(header::AUTHORIZATION, format!("Bearer {agent}"))
