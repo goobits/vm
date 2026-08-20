@@ -55,6 +55,11 @@ tar = { workspace = true }
 fs2 = { workspace = true }
 url = { workspace = true }
 
+# Release and source-installed macOS binaries always include the native Tart
+# provider. The explicit feature remains available for cross-platform checks.
+[target.'cfg(target_os = "macos")'.dependencies]
+vm-provider = { path = "../vm-provider", features = ["tart"] }
+
 [features]
 default = []
 integration = []

@@ -181,6 +181,7 @@ current image. No real package release or publication was performed.
 - [x] Remove the parallel Tart appliance lifecycle and controller-local Tart state.
 - [x] Let Docker, Podman, and Linux Tart environments consume the same authenticated gateway.
 - [x] Keep engine selection on appliance creation while operational commands use persisted state.
+- [x] Include Tart automatically in macOS source and release binaries while keeping non-macOS builds lean.
 
 ### Worker package data plane
 

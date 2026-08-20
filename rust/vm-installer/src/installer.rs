@@ -280,10 +280,6 @@ fn build_workspace(project_root: &Path) -> Result<PathBuf> {
     let mut cmd = Command::new("cargo");
     cmd.args(["build", "--profile", &install_profile, "--bin", "vm"]);
 
-    // Enable Tart provider on macOS (Apple Silicon VMs)
-    #[cfg(target_os = "macos")]
-    cmd.args(["--features", "tart"]);
-
     cmd.env("CARGO_TARGET_DIR", &target_dir)
         .env("CARGO_TERM_PROGRESS_WHEN", "always") // Force progress display
         .env("CARGO_TERM_PROGRESS_WIDTH", "80") // Set reasonable width

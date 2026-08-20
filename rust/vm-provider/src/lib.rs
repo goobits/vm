@@ -627,6 +627,20 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "tart")]
+    fn test_get_provider_explicit_tart() {
+        let config = VmConfig {
+            provider: Some("tart".into()),
+            ..Default::default()
+        };
+        match get_provider(config) {
+            Ok(provider) => assert_eq!(provider.name(), "tart"),
+            Err(VmError::Dependency(dependency)) => assert_eq!(dependency, "Tart"),
+            Err(error) => panic!("Tart provider was not registered: {error}"),
+        }
+    }
+
+    #[test]
     #[cfg(feature = "test-helpers")]
     fn test_get_provider_mock() {
         let config = VmConfig {
