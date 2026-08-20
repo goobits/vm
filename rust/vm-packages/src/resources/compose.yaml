@@ -79,6 +79,7 @@ services:
       - source-mirrors:/volumes/sources
       - package-catalog:/volumes/catalog
       - binary-build-artifacts:/volumes/builds
+      - builder-package-cache:/volumes/builder_cache
 
   registry:
     image: "${VM_PACKAGES_REGISTRY_IMAGE:?required}"
@@ -156,6 +157,31 @@ services:
       - package-catalog:/data/catalog
     networks: [packages, egress]
 
+  build-edge:
+    image: "${VM_PACKAGES_REGISTRY_IMAGE:?required}"
+    restart: unless-stopped
+    depends_on:
+      volume-init:
+        condition: service_completed_successfully
+    environment:
+      PKG_SERVER_INTERNAL_GATEWAY: http://gateway:8080
+      PKG_SERVER_INTERNAL_TOKEN_FILE: /run/secrets/build_edge_read_token
+    secrets: [build_edge_read_token]
+    expose: ["3080"]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:3080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp:rw,nosuid,size=64m"]
+    volumes:
+      - builder-package-cache:/data
+    networks: [packages, egress]
+
   reviewer:
     image: "${VM_PACKAGES_JOB_IMAGE:?required}"
     restart: unless-stopped
@@ -214,6 +240,9 @@ services:
     image: "${VM_PACKAGES_JOB_IMAGE:?required}"
     user: "0:0"
     restart: unless-stopped
+    depends_on:
+      build-edge:
+        condition: service_healthy
     environment:
       PKG_BUILD_GATEWAY: http://gateway:8080
       PKG_BUILD_TOKEN_FILE: /run/build-secrets/build-token
@@ -278,7 +307,7 @@ services:
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
-        datasets="gateway_data gateway_config oci npm cargo pypi tools cache metadata state receipts logs agents rollouts sources catalog builds"
+        datasets="gateway_data gateway_config oci npm cargo pypi tools cache metadata state receipts logs agents rollouts sources catalog builds builder_cache"
         valid_id() {
           test -n "$${BACKUP_ID}" &&
           test "$${#BACKUP_ID}" -le 160 &&
@@ -354,6 +383,7 @@ services:
       - source-mirrors:/volumes/sources
       - package-catalog:/volumes/catalog
       - binary-build-artifacts:/volumes/builds
+      - builder-package-cache:/volumes/builder_cache
 
 networks:
   packages:
@@ -395,6 +425,8 @@ secrets:
     file: ./read-token
   rollout_read_token:
     file: ./read-token
+  build_edge_read_token:
+    file: ./read-token
   rollout_token:
     file: ./rollout-token
   git_token:
@@ -417,4 +449,5 @@ volumes:
   source-mirrors:
   package-catalog:
   binary-build-artifacts:
+  builder-package-cache:
   infrastructure-backups:

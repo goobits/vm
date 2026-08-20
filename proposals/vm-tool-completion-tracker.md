@@ -112,17 +112,20 @@ vm packages release
 - [x] Update the sole Docker package acceptance script to keep the producer
   outside the managed shelf, register it explicitly, reject a second clone,
   check infrastructure mounts, and retain container/volume identity checks.
-- [ ] Add the approved Typemill and CodeAtlas manifests/build tests in their
-  separate project repositories; those repositories are not present in this
-  workspace.
+- [x] Add and verify the CodeAtlas binary manifest and canonical-packager build
+  adapter in its separate project repository.
+- [ ] Replace Typemill's pinned Git dependencies with registry-backed immutable
+  packages before adding its binary manifest; the no-egress builder must not
+  gain general Git or source-repository access.
 
 Static acceptance on 2026-08-19 passed formatting, the all-target workspace
 check, all workspace library and compiled integration tests, strict workspace
 Clippy, shell syntax, and `git diff --check`. The focused reconciliation suite
 passed all 10 tests, including byte-for-byte repository and Git-state
 preservation. Duplicate detection was invoked but `jscpd` is not installed;
-Docker/Tart acceptance and the external project integrations remain assigned to
-an equipped host with those repositories.
+Docker acceptance and the external project integrations remain assigned to an
+equipped host with those repositories. Tart is outside this Docker-only
+completion gate.
 
 ## Remaining Acceptance
 
@@ -151,10 +154,8 @@ current image. No real package release or publication was performed.
   Python release/rollout, private immutable artifacts, per-worker overrides,
   public fallback, persistent caches, and fail-closed internal misses during an
   appliance outage.
-- [ ] Host-accept two consecutive macOS Tart connections and targeted VirtioFS
-  remount repair without replacing guest or host source state.
-- [ ] Run the complete build, lint, unit, integration, Docker, and Tart matrix
-  after the host checks above pass.
+- [ ] Run the complete build, lint, unit, integration, and Docker matrix after
+  the host checks above pass.
 
 ## Non-Negotiable Boundaries
 
@@ -639,6 +640,9 @@ orchestrator, registry protocol, public publishing workflow, or transactional
   configured environments.
 - [x] Prove workspace release, rework, private publication, activation, and
   Docker persistence in the real acceptance suite.
+- [x] Give binary build commands credential-free registry-backed npm, Cargo,
+  and Python reads through a private edge while retaining the no-egress builder
+  boundary.
 
 The implementation must remain an adapter over checkout, submission, review,
 integration, publication, and activation services. It must not introduce a

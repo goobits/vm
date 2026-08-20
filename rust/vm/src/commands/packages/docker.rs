@@ -88,6 +88,7 @@ pub(super) fn maintenance(files: &ApplianceFiles, task: MaintenanceTask<'_>) -> 
                 "oci-cache",
                 "registry",
                 "work",
+                "build-edge",
                 "reviewer",
                 "builder",
                 "releaser",

@@ -200,7 +200,7 @@ pub(super) fn maintenance(files: &ApplianceFiles, task: MaintenanceTask<'_>) -> 
     if task.requires_pause() {
         process::run(
             &mut tart.compose_command(
-                "stop gateway oci-cache registry work reviewer builder releaser rollout",
+                "stop gateway oci-cache registry work build-edge reviewer builder releaser rollout",
             ),
             "pause the Tart package appliance",
         )?;

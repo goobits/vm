@@ -370,6 +370,12 @@ several agent directories.
 Binary tools use a versioned, argument-safe manifest. A credential-separated
 builder builds each declared target from the submitted source bundle, validates
 the archive and executable links, and stages immutable content-addressed bytes.
+Its package managers can resolve registry-backed npm, Cargo, and Python
+dependencies through a private read-only edge. The edge holds the private
+upstream read credential; repository commands receive only unauthenticated edge
+URLs and no credential value. Git dependencies are intentionally unavailable in
+the no-egress builder; publish them to the private registry or replace them with
+registry releases before registering the binary tool.
 The release worker cannot run the repository build command; it revalidates and
 publishes those exact staged bytes:
 
@@ -538,6 +544,8 @@ your infrastructure backup system to protect against physical disk loss.
   volumes.
 - Worktrees are isolated by checkout or rollout ID.
 - Repository binary commands run as an unprivileged user in a no-egress builder.
+  They can reach only the appliance's credential-free read-only package edge,
+  not public registries or arbitrary network destinations.
   The narrow queue credential is mounted beneath a root-only directory because
   Docker Desktop does not consistently enforce Compose secret modes; repository
   commands cannot traverse that boundary or read any release, publish, or Git

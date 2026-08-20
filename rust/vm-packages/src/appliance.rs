@@ -165,6 +165,7 @@ mod tests {
         assert!(COMPOSE_YAML.contains("package-catalog:/data/catalog"));
         assert!(COMPOSE_YAML.contains("infrastructure-backups:/backups"));
         assert!(COMPOSE_YAML.contains("registry-tool-artifacts:/volumes/tools"));
+        assert!(COMPOSE_YAML.contains("builder-package-cache:/volumes/builder_cache"));
         assert!(COMPOSE_YAML.contains("volume-init:"));
         assert!(COMPOSE_YAML.contains("cap_add: [\"CHOWN\", \"FOWNER\"]"));
         assert!(COMPOSE_YAML.contains("condition: service_completed_successfully"));
@@ -179,6 +180,7 @@ mod tests {
         assert!(COMPOSE_YAML.contains("exec pkg-build"));
         assert!(COMPOSE_YAML.contains("exec pkg-review"));
         assert!(COMPOSE_YAML.contains("exec pkg-rollout"));
+        assert!(COMPOSE_YAML.contains("build-edge:"));
         assert!(COMPOSE_YAML.contains("profiles: [maintenance]"));
         assert!(GATEWAY_CONFIG.contains("reverse_proxy work:3091"));
         assert!(GATEWAY_CONFIG.contains("reverse_proxy oci-cache:5000"));
@@ -199,6 +201,13 @@ mod tests {
         assert!(!builder_text.contains("publish_token"));
         assert!(!builder_text.contains("release_token"));
         assert!(!builder_text.contains("git_token"));
+        let build_edge = &definition["services"]["build-edge"];
+        assert_eq!(build_edge["networks"][0], "packages");
+        assert_eq!(build_edge["networks"][1], "egress");
+        assert!(build_edge.get("ports").is_none());
+        assert!(build_edge["environment"]
+            .get("PKG_SERVER_READ_TOKEN")
+            .is_none());
         assert!(definition["services"]["releaser"]["volumes"]
             .as_sequence()
             .unwrap()

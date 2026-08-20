@@ -261,8 +261,24 @@ fn prepare_unprivileged_build(root: &Path, source: &Path) -> Result<()> {
         return Ok(());
     };
     let gid = std::env::var_os("PKG_BUILD_GID").context("PKG_BUILD_GID is required")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mut permissions = std::fs::metadata(root)?.permissions();
+        permissions.set_mode(0o711);
+        std::fs::set_permissions(root, permissions)?;
+    }
     let sandbox = root.join("untrusted");
-    std::fs::create_dir(&sandbox)?;
+    for directory in [
+        sandbox.join("cargo-home"),
+        sandbox.join("cargo-target"),
+        sandbox.join("npm-cache"),
+        sandbox.join("pip-cache"),
+        sandbox.join("xdg-cache"),
+    ] {
+        std::fs::create_dir_all(directory)?;
+    }
     run_command(
         Command::new("chown")
             .arg("-R")
@@ -719,6 +735,9 @@ fn run_isolated(
     } else {
         release_root
     };
+    let package_gateway = std::env::var("PKG_BUILD_PACKAGE_GATEWAY")
+        .unwrap_or_else(|_| "http://build-edge:3080".into());
+    let package_gateway = package_gateway.trim_end_matches('/');
     command
         .args(["--signal=TERM", "--kill-after=10s", "30m"])
         .arg(program)
@@ -727,10 +746,24 @@ fn run_isolated(
         .env_clear()
         .env("HOME", sandbox_home)
         .env("TMPDIR", sandbox_home)
-        .env("NPM_CONFIG_OFFLINE", "true")
-        .env("CARGO_NET_OFFLINE", "true")
-        .env("PIP_NO_INDEX", "1");
-    for variable in ["PATH", "CARGO_HOME", "RUSTUP_HOME"] {
+        .env("XDG_CACHE_HOME", sandbox_home.join("xdg-cache"))
+        .env("CARGO_HOME", sandbox_home.join("cargo-home"))
+        .env("CARGO_TARGET_DIR", sandbox_home.join("cargo-target"))
+        .env("npm_config_cache", sandbox_home.join("npm-cache"))
+        .env("PIP_CACHE_DIR", sandbox_home.join("pip-cache"))
+        .env("NPM_CONFIG_REGISTRY", format!("{package_gateway}/npm/"))
+        .env("PIP_INDEX_URL", format!("{package_gateway}/pypi/simple/"))
+        .env("UV_INDEX_URL", format!("{package_gateway}/pypi/simple/"))
+        .env(
+            "CARGO_REGISTRIES_VM_INDEX",
+            format!("sparse+{package_gateway}/cargo/index/"),
+        )
+        .env("CARGO_SOURCE_CRATES_IO_REPLACE_WITH", "vm")
+        .env(
+            "CARGO_SOURCE_VM_REGISTRY",
+            format!("sparse+{package_gateway}/cargo/index/"),
+        );
+    for variable in ["PATH", "RUSTUP_HOME"] {
         if let Some(value) = std::env::var_os(variable) {
             command.env(variable, value);
         }

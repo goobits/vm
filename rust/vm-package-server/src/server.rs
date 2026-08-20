@@ -287,7 +287,7 @@ fn configure_security(
     let publish_token = publish_token.filter(|token| !token.trim().is_empty());
 
     if !is_loopback_host(host) {
-        if read_token.is_none() {
+        if read_token.is_none() && !read_only {
             anyhow::bail!(
                 "Refusing to bind package server to non-loopback host '{host}' without a read token"
             );
@@ -360,6 +360,14 @@ mod tests {
         assert_eq!(config.security.publish_keys, ["publish"]);
     }
 
+    #[test]
+    fn remote_read_only_edge_can_serve_without_exposing_a_credential() {
+        let config = configure_security("0.0.0.0", None, None, true).unwrap();
+        assert!(!config.security.require_authentication);
+        assert!(config.security.read_keys.is_empty());
+        assert!(config.security.publish_keys.is_empty());
+    }
+
     #[tokio::test]
     async fn router_separates_health_read_and_publish_access() {
         let directory = tempfile::tempdir().unwrap();
@@ -423,7 +431,7 @@ mod tests {
     #[tokio::test]
     async fn worker_edge_exposes_no_publish_routes() {
         let directory = tempfile::tempdir().unwrap();
-        let config = Arc::new(configure_security("0.0.0.0", Some("read"), None, true).unwrap());
+        let config = Arc::new(configure_security("0.0.0.0", None, None, true).unwrap());
         let state = AppState {
             data_dir: directory.path().to_path_buf(),
             server_addr: "http://127.0.0.1:3080".into(),
