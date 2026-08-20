@@ -38,6 +38,39 @@ fn volume_mount<'a>(
 }
 
 #[test]
+fn host_bind_paths_round_trip_as_one_yaml_scalar() {
+    let temp_dir = TempDir::new().unwrap();
+    let project_dir = temp_dir.path().join("project #1");
+    let generated_dir = temp_dir.path().join("generated");
+    std::fs::create_dir_all(&project_dir).unwrap();
+    let config: VmConfig = serde_yaml_ng::from_str(
+        r#"
+provider: docker
+project:
+  name: quoted-bind
+host_sync:
+  worktrees:
+    enabled: false
+"#,
+    )
+    .unwrap();
+    let compose = ComposeOperations::new(&config, &generated_dir, &project_dir, "docker");
+
+    let rendered = compose
+        .render_docker_compose(&project_dir, &ProviderContext::default())
+        .unwrap();
+    let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(&rendered).unwrap();
+    let mounts = yaml["services"]["quoted-bind-dev"]["volumes"]
+        .as_sequence()
+        .unwrap();
+    let expected = format!("{}:/workspace:rw", project_dir.display());
+
+    assert!(mounts
+        .iter()
+        .any(|mount| mount.as_str() == Some(expected.as_str())));
+}
+
+#[test]
 fn renders_stable_scoped_storage_and_runtime_policy() {
     let (_temp_dir, project_dir, temp_path) = setup_test_env();
     let mut volumes = indexmap::IndexMap::new();

@@ -1,5 +1,4 @@
 // Standard library
-use std::env;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -11,7 +10,7 @@ use tera::Context as TeraContext;
 use vm_core::error::{Result, VmError};
 
 // Internal imports
-use super::UserConfig;
+use super::{compose_context::managed_worktree_root, UserConfig};
 use crate::BoxConfig;
 use crate::{project_plan::NodeToolchainPlan, resources};
 use vm_config::config::VmConfig;
@@ -111,17 +110,11 @@ Thumbs.db
         context.insert("project_gid", &user_config.gid.to_string());
         context.insert("project_user", &user_config.username);
 
-        // Add worktrees_base_dir to context (required by Dockerfile.j2 template)
-        let project_name = self
-            .config
-            .project
-            .as_ref()
-            .and_then(|p| p.name.as_ref())
-            .map(|s| s.as_str())
-            .unwrap_or("dev");
-        let home = env::var("HOME").unwrap_or_else(|_| "/home/developer".to_string());
-        let worktrees_base_dir = format!("{}/.vm/worktrees/{}", home, project_name);
-        context.insert("worktrees_base_dir", &worktrees_base_dir);
+        // Keep the image's shell helper aligned with the runtime worktree mount.
+        context.insert(
+            "worktrees_base_dir",
+            &managed_worktree_root(self.config).to_string_lossy(),
+        );
 
         let content = tera
             .render("Dockerfile", &context)

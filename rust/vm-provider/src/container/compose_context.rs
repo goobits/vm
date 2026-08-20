@@ -152,29 +152,84 @@ pub(super) fn configure_worktrees(
     project_dir: &Path,
     workspace_path: &Path,
     home_dir: &str,
-    project: &str,
     create_directory: bool,
 ) {
-    if !worktrees_enabled(config) {
-        return;
-    }
-
-    let base = Path::new(home_dir).join(".vm/worktrees").join(project);
-    let managed_base = if !create_directory || fs::create_dir_all(&base).is_ok() {
+    let plan = worktree_mount_plan_with_root(
+        config,
+        project_dir,
+        workspace_path,
+        managed_worktree_root_at(config, Path::new(home_dir)),
+        create_directory,
+    );
+    if let Some(base) = plan.managed_root {
         context.insert("worktrees_base_dir", &base.to_string_lossy().to_string());
-        Some(base.as_path())
+    }
+    if !plan.mounts.is_empty() {
+        context.insert("worktrees", &plan.mounts);
+    }
+}
+
+pub(super) struct WorktreeMountPlan {
+    pub(super) managed_root: Option<std::path::PathBuf>,
+    pub(super) mounts: Vec<(String, String)>,
+}
+
+pub(super) fn managed_worktree_root(config: &VmConfig) -> std::path::PathBuf {
+    let home = resolve_home_dir().unwrap_or_else(|| "/home/developer".into());
+    managed_worktree_root_at(config, &home)
+}
+
+fn managed_worktree_root_at(config: &VmConfig, home: &Path) -> std::path::PathBuf {
+    let project = config
+        .project
+        .as_ref()
+        .and_then(|project| project.name.as_deref())
+        .unwrap_or("vm-project");
+    home.join(".vm/worktrees").join(project)
+}
+
+pub(super) fn worktree_mount_plan(
+    config: &VmConfig,
+    project_dir: &Path,
+    workspace_path: &Path,
+    create_directory: bool,
+) -> WorktreeMountPlan {
+    worktree_mount_plan_with_root(
+        config,
+        project_dir,
+        workspace_path,
+        managed_worktree_root(config),
+        create_directory,
+    )
+}
+
+fn worktree_mount_plan_with_root(
+    config: &VmConfig,
+    project_dir: &Path,
+    workspace_path: &Path,
+    root: std::path::PathBuf,
+    create_directory: bool,
+) -> WorktreeMountPlan {
+    if !worktrees_enabled(config) {
+        return WorktreeMountPlan {
+            managed_root: None,
+            mounts: Vec::new(),
+        };
+    }
+    let managed_root = if !create_directory || fs::create_dir_all(&root).is_ok() {
+        Some(root)
     } else {
-        vm_warning!("Failed to create worktrees directory {}", base.display());
+        vm_warning!("Failed to create worktrees directory {}", root.display());
         None
     };
-
     let mounts = resolve_worktree_mounts(
         workspace_path,
         detect_worktrees_in(project_dir).unwrap_or_default(),
-        managed_base,
+        managed_root.as_deref(),
     );
-    if !mounts.is_empty() {
-        context.insert("worktrees", &mounts);
+    WorktreeMountPlan {
+        managed_root,
+        mounts,
     }
 }
 
@@ -278,6 +333,22 @@ mod tests {
     }
 
     #[test]
+    fn managed_worktree_root_uses_the_configured_project_identity() {
+        let config = VmConfig {
+            project: Some(vm_config::config::ProjectConfig {
+                name: Some("demo".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            managed_worktree_root_at(&config, Path::new("/Users/miko")),
+            Path::new("/Users/miko/.vm/worktrees/demo")
+        );
+    }
+
+    #[test]
     fn falls_back_to_individual_mounts_when_the_managed_base_cannot_be_created() {
         let directory = tempfile::tempdir().unwrap();
         let home = directory.path().join("home");
@@ -308,7 +379,6 @@ mod tests {
             &project,
             Path::new("/workspace"),
             home.to_str().unwrap(),
-            "demo",
             true,
         );
 

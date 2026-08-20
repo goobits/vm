@@ -283,7 +283,6 @@ impl<'a> ComposeOperations<'a> {
             self.project_dir,
             Path::new(workspace_path),
             &home_dir,
-            &final_project_name,
             mode == RenderMode::Runtime,
         );
 

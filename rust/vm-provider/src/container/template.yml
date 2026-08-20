@@ -39,29 +39,35 @@ services:
       - postgres
     {%- endif %}
     volumes:
-      - {{ project_dir }}:{{ workspace_path }}:{{ workspace_access }}
+      {% set workspace_mount = project_dir ~ ":" ~ workspace_path ~ ":" ~ workspace_access %}
+      - {{ workspace_mount | json_encode }}
       {% if ssh_auth_sock %}
       # SSH agent forwarding (read-only for security)
-      - {{ ssh_auth_sock }}:/ssh-agent:ro
+      {% set ssh_agent_mount = ssh_auth_sock ~ ":/ssh-agent:ro" %}
+      - {{ ssh_agent_mount | json_encode }}
       {% endif %}
       {% if ssh_config_path %}
       # SSH config (read-only)
-      - {{ ssh_config_path }}:/home/{{ project_user }}/.ssh/config:ro
+      {% set ssh_config_mount = ssh_config_path ~ ":/home/" ~ project_user ~ "/.ssh/config:ro" %}
+      - {{ ssh_config_mount | json_encode }}
       {% endif %}
       {% if dotfile_mounts %}
       # Dotfiles sync (read-only)
       {% for dotfile in dotfile_mounts %}
-      - {{ dotfile.0 }}:{{ dotfile.1 }}:ro
+      {% set dotfile_mount = dotfile.0 ~ ":" ~ dotfile.1 ~ ":ro" %}
+      - {{ dotfile_mount | json_encode }}
       {% endfor %}
       {% endif %}
       {% if worktrees_base_dir %}
       # Git worktrees base directory (mounted at identical absolute path)
-      - {{ worktrees_base_dir }}:{{ worktrees_base_dir }}:{{ workspace_access }}
+      {% set worktrees_base_mount = worktrees_base_dir ~ ":" ~ worktrees_base_dir ~ ":" ~ workspace_access %}
+      - {{ worktrees_base_mount | json_encode }}
       {% endif %}
       {% if worktrees %}
       # Git worktrees (fallback: individual worktree mounts)
       {% for worktree in worktrees %}
-      - {{ worktree.0 }}:{{ worktree.1 }}:{{ workspace_access }}
+      {% set worktree_mount = worktree.0 ~ ":" ~ worktree.1 ~ ":" ~ workspace_access %}
+      - {{ worktree_mount | json_encode }}
       {% endfor %}
       {% endif %}
       # Shell history persistence (survives container recreation)
@@ -95,20 +101,24 @@ services:
       {% if extra_mounts %}
       # Temporary VM custom mounts
       {% for mount in extra_mounts %}
-      - {{ mount.source }}:{{ mount.target }}:{{ mount.permissions }}
+      {% set extra_mount = mount.source ~ ":" ~ mount.target ~ ":" ~ mount.permissions %}
+      - {{ extra_mount | json_encode }}
       {% endfor %}
       {% endif %}
       {% if claude_sync_enabled %}
       # Claude AI data persistence (stored in ~/.vm/ai-sync/ to avoid polluting ~/.claude/)
-      - {{ home_dir }}/.vm/ai-sync/claude/{{ project_name }}:/home/{{ project_user }}/.claude:rw
+      {% set claude_mount = home_dir ~ "/.vm/ai-sync/claude/" ~ project_name ~ ":/home/" ~ project_user ~ "/.claude:rw" %}
+      - {{ claude_mount | json_encode }}
       {% endif %}
       {% if antigravity_sync_enabled %}
       # Antigravity CLI data persistence (Antigravity retains ~/.gemini)
-      - {{ home_dir }}/.vm/ai-sync/gemini/{{ project_name }}:/home/{{ project_user }}/.gemini:rw
+      {% set antigravity_mount = home_dir ~ "/.vm/ai-sync/gemini/" ~ project_name ~ ":/home/" ~ project_user ~ "/.gemini:rw" %}
+      - {{ antigravity_mount | json_encode }}
       {% endif %}
       {% if codex_sync_enabled %}
       # OpenAI Codex data persistence
-      - {{ home_dir }}/.vm/ai-sync/codex/{{ project_name }}:/home/{{ project_user }}/.codex:rw
+      {% set codex_mount = home_dir ~ "/.vm/ai-sync/codex/" ~ project_name ~ ":/home/" ~ project_user ~ "/.codex:rw" %}
+      - {{ codex_mount | json_encode }}
       {% endif %}
       {% if config.services.audio | default(value=false) %}
       # Audio: PulseAudio socket

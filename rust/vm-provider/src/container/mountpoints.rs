@@ -11,7 +11,7 @@ use vm_core::error::{Result, VmError};
 
 use crate::Mount;
 
-use super::compose_context::{resolve_worktree_mounts, worktrees_enabled};
+use super::compose_context::worktree_mount_plan;
 
 /// Prepare directories that runc cannot create after attaching the read-only
 /// workspace bind. Existing directories are left unchanged.
@@ -31,19 +31,7 @@ pub(super) fn prepare(
     let project_dir = project_dir.canonicalize().map_err(|error| {
         VmError::filesystem(error, project_dir.display(), "resolve project directory")
     })?;
-    let managed_worktree_root = crate::user_home::resolve_home_dir().map(|home| {
-        home.join(".vm/worktrees")
-            .join(project.name.as_deref().unwrap_or("vm-project"))
-    });
-    let worktree_mounts = if worktrees_enabled(config) {
-        resolve_worktree_mounts(
-            workspace,
-            vm_config::detect_worktrees_in(&project_dir).unwrap_or_default(),
-            managed_worktree_root.as_deref(),
-        )
-    } else {
-        Vec::new()
-    };
+    let worktree_mounts = worktree_mount_plan(config, &project_dir, workspace, true).mounts;
     let targets = std::iter::once(workspace.join("node_modules"))
         .chain(
             config
