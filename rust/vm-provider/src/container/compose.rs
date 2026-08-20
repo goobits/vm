@@ -2,7 +2,6 @@ use std::path::{Path, PathBuf};
 
 // External crates
 use tera::Context as TeraContext;
-use vm_core::command_stream::stream_command;
 use vm_core::error::{Result, VmError};
 
 // Internal imports
@@ -13,8 +12,9 @@ use super::compose_context::{
     process_dotfiles,
 };
 use super::compose_model::{RenderedResources, RenderedStorage};
+use super::engine::ComposeRuntime;
 use super::preview::redact_compose;
-use super::{DockerOps, UserConfig};
+use super::{ContainerOps, UserConfig};
 use crate::guest_cache::GuestCachePolicy;
 use crate::user_home::resolve_home_dir;
 use crate::{Mount, ProviderContext, TempVmState};
@@ -25,6 +25,7 @@ pub struct ComposeOperations<'a> {
     pub generated_dir: &'a Path,
     pub project_dir: &'a Path,
     pub executable: &'a str,
+    compose_runtime: ComposeRuntime,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -45,6 +46,23 @@ impl<'a> ComposeOperations<'a> {
             generated_dir,
             project_dir,
             executable,
+            compose_runtime: ComposeRuntime::BuiltIn,
+        }
+    }
+
+    pub(crate) fn with_runtime(
+        config: &'a VmConfig,
+        generated_dir: &'a Path,
+        project_dir: &'a Path,
+        executable: &'a str,
+        compose_runtime: ComposeRuntime,
+    ) -> Self {
+        Self {
+            config,
+            generated_dir,
+            project_dir,
+            executable,
+            compose_runtime,
         }
     }
 
@@ -449,7 +467,7 @@ impl<'a> ComposeOperations<'a> {
         let instance_name = self.instance_name_from_container(container_name);
         let compose_path = compose_path(self.generated_dir, instance_name.as_deref());
         let container_exists =
-            DockerOps::container_exists(Some(self.executable), container_name).unwrap_or(false);
+            ContainerOps::container_exists(Some(self.executable), container_name).unwrap_or(false);
 
         if !container_exists {
             return Err(VmError::NotFound(format!(
@@ -464,17 +482,17 @@ impl<'a> ComposeOperations<'a> {
 
         // Start existing services directly to avoid Compose name conflicts.
         let expected_services =
-            DockerOps::list_managed_service_containers(Some(self.executable), container_name)?;
+            ContainerOps::list_managed_service_containers(Some(self.executable), container_name)?;
         for service in expected_services {
-            if !DockerOps::container_exists(Some(self.executable), &service).unwrap_or(false) {
+            if !ContainerOps::container_exists(Some(self.executable), &service).unwrap_or(false) {
                 continue;
             }
-            let running =
-                DockerOps::is_container_running(Some(self.executable), &service).unwrap_or(false);
+            let running = ContainerOps::is_container_running(Some(self.executable), &service)
+                .unwrap_or(false);
             if running {
                 continue;
             }
-            DockerOps::start_container(Some(self.executable), &service)?;
+            ContainerOps::start_container(Some(self.executable), &service)?;
         }
 
         if !compose_path.exists() {
@@ -484,7 +502,7 @@ impl<'a> ComposeOperations<'a> {
             );
         }
 
-        DockerOps::start_container(Some(self.executable), container_name)
+        ContainerOps::start_container(Some(self.executable), container_name)
     }
 
     pub fn reconcile_package_edge(&self, container_name: &str) -> Result<()> {
@@ -507,13 +525,14 @@ impl<'a> ComposeOperations<'a> {
             return Ok(());
         }
 
-        let args = super::ComposeCommand::build_args(
-            &compose_path,
-            "up",
-            &["--detach", "--no-deps", "package-edge"],
-        )?;
-        let args = args.iter().map(String::as_str).collect::<Vec<_>>();
-        stream_command(self.executable, &args)
+        self.compose_runtime
+            .command(
+                self.executable,
+                &compose_path,
+                "up",
+                &["--detach", "--no-deps", "package-edge"],
+            )?
+            .stream()
     }
 
     pub(super) fn instance_name_from_container(&self, container_name: &str) -> Option<String> {
@@ -552,7 +571,7 @@ fn package_edge_is_current(executable: &str, container: &str, revision: &str) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::docker::compose_model::container_architecture;
+    use crate::container::compose_model::container_architecture;
     use tempfile::TempDir;
     use vm_config::config::{
         ContainerLoggingConfig, CpuLimit, MemoryLimit, PackageEdgeConfig, ProjectConfig,

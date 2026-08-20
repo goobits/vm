@@ -5,8 +5,9 @@
 
 use anyhow::Result;
 use std::process::{Command, Stdio};
+use vm_config::config::ProviderName;
 use vm_core::{vm_hint, vm_println, vm_progress, vm_success, vm_warning};
-use vm_provider::docker::validate_docker_environment;
+use vm_provider::container::{validate_container_environment, ContainerEngine};
 
 /// Run diagnostics with optional auto-fix
 pub fn run_with_fix(fix: bool, provider: &str, configuration_error: Option<&str>) -> Result<()> {
@@ -175,7 +176,10 @@ fn provider_label(provider: &str) -> &str {
 
 fn validate_provider_environment(provider: &str) -> vm_provider::VmResult<()> {
     match provider {
-        "docker" | "podman" => validate_docker_environment(provider),
+        "docker" | "podman" => {
+            let engine = ContainerEngine::detect(&ProviderName::from(provider))?;
+            validate_container_environment(engine)
+        }
         "tart" => {
             let output = Command::new("tart")
                 .arg("--version")
@@ -384,7 +388,7 @@ fn try_start_docker() -> bool {
             if out.status.success() {
                 // Wait a moment for Docker to start
                 std::thread::sleep(std::time::Duration::from_secs(2));
-                return validate_docker_environment("docker").is_ok();
+                return validate_provider_environment("docker").is_ok();
             }
         }
         false

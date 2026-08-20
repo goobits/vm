@@ -2,8 +2,8 @@
 use super::LifecycleOperations;
 use crate::{
     audio::MacOSAudioManager,
+    container::{mountpoints, ContainerOps},
     context::ProviderContext,
-    docker::{mountpoints, DockerOps},
     InstanceState,
 };
 use tracing::{info, warn};
@@ -45,7 +45,7 @@ impl<'a> LifecycleOperations<'a> {
         match self.instance_state_for_name(&target_container)? {
             InstanceState::Running | InstanceState::Starting => return Ok(()),
             InstanceState::Paused => {
-                return DockerOps::unpause_container(Some(self.executable), &target_container);
+                return ContainerOps::unpause_container(Some(self.executable), &target_container);
             }
             InstanceState::Stopped | InstanceState::Suspended => {}
             InstanceState::Unknown(state) => {
@@ -58,7 +58,7 @@ impl<'a> LifecycleOperations<'a> {
         mountpoints::prepare(self.config, self.project_dir, None)?;
 
         if context.global_config.is_none() {
-            return DockerOps::start_container(Some(self.executable), &target_container);
+            return ContainerOps::start_container(Some(self.executable), &target_container);
         }
 
         let compose_ops = self.regenerate_compose_with_context(container, context)?;
@@ -88,7 +88,9 @@ impl<'a> LifecycleOperations<'a> {
         let target_container = self.resolve_target_container(container)?;
 
         // Check if container exists before attempting destruction
-        if !DockerOps::container_exists(Some(self.executable), &target_container).unwrap_or(false) {
+        if !ContainerOps::container_exists(Some(self.executable), &target_container)
+            .unwrap_or(false)
+        {
             return Err(VmError::Internal(format!(
                 "Container '{target_container}' does not exist"
             )));
@@ -97,7 +99,7 @@ impl<'a> LifecycleOperations<'a> {
         let service_containers = if context.preserve_services {
             Vec::new()
         } else {
-            DockerOps::list_managed_service_containers(Some(self.executable), &target_container)?
+            ContainerOps::list_managed_service_containers(Some(self.executable), &target_container)?
         };
 
         // Remove the main dev container
@@ -109,7 +111,7 @@ impl<'a> LifecycleOperations<'a> {
             for service_name in service_containers {
                 info!("Removing service container: {}", service_name);
                 if let Err(e) =
-                    DockerOps::remove_container(Some(self.executable), &service_name, true)
+                    ContainerOps::remove_container(Some(self.executable), &service_name, true)
                 {
                     warn!("Failed to remove service container {}: {}", service_name, e);
                 }

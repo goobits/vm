@@ -169,9 +169,7 @@ pub mod preflight;
 mod user_home;
 
 #[cfg(feature = "docker")]
-pub mod docker;
-#[cfg(feature = "docker")]
-pub mod podman;
+pub mod container;
 #[cfg(feature = "tart")]
 pub mod tart;
 
@@ -563,9 +561,10 @@ pub fn get_provider(config: VmConfig) -> Result<Box<dyn Provider>> {
 
     match &provider_name {
         #[cfg(feature = "docker")]
-        ProviderName::Docker => Ok(Box::new(docker::DockerProvider::new(config, None)?)),
-        #[cfg(feature = "docker")]
-        ProviderName::Podman => Ok(Box::new(podman::PodmanProvider::new(config)?)),
+        ProviderName::Docker | ProviderName::Podman => {
+            let engine = container::ContainerEngine::detect(&provider_name)?;
+            Ok(Box::new(container::ContainerProvider::new(config, engine)?))
+        }
         #[cfg(feature = "tart")]
         ProviderName::Tart => Ok(Box::new(tart::TartProvider::new(config)?)),
         _ => Err(VmError::Provider(format!(

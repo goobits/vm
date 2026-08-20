@@ -3,7 +3,7 @@ use std::io::IsTerminal;
 use std::path::Path;
 
 use super::LifecycleOperations;
-use crate::{docker::UserConfig, security::SecurityValidator, shell_session};
+use crate::{container::UserConfig, security::SecurityValidator, shell_session};
 use vm_core::msg;
 use vm_core::{
     command_stream::stream_command_visible,
@@ -186,7 +186,7 @@ impl<'a> LifecycleOperations<'a> {
                     // Only clean up other duct command errors that include the full command
                     // but preserve "is not running" errors for proper handling
                     if error_str.contains("exited with code 1") {
-                        Err(VmError::Internal("Docker command failed".to_string()))
+                        Err(VmError::Internal("Container command failed".to_string()))
                     } else {
                         Err(VmError::Internal("Command execution failed".to_string()))
                     }

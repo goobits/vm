@@ -1,4 +1,4 @@
-//! Docker container lifecycle management operations.
+//! Docker-compatible container lifecycle management operations.
 
 // Module declarations in dependency order
 mod configuration;
@@ -21,7 +21,10 @@ use vm_core::{
     vm_warning,
 };
 
-use super::{artifacts::compose_path, compose::ComposeOperations, mountpoints, ComposeCommand};
+use super::{
+    artifacts::compose_path, compose::ComposeOperations, engine::ComposeRuntime, mountpoints,
+    ContainerEngine,
+};
 
 // Constants for container lifecycle operations
 const DEFAULT_SHELL: &str = "zsh";
@@ -36,6 +39,7 @@ pub struct LifecycleOperations<'a> {
     pub generated_dir: &'a std::path::PathBuf,
     pub project_dir: &'a std::path::PathBuf,
     pub executable: &'a str,
+    pub(crate) compose_runtime: ComposeRuntime,
 }
 
 impl<'a> LifecycleOperations<'a> {
@@ -51,6 +55,23 @@ impl<'a> LifecycleOperations<'a> {
             generated_dir,
             project_dir,
             executable,
+            compose_runtime: ComposeRuntime::BuiltIn,
+        }
+    }
+
+    pub fn with_engine(
+        config: &'a VmConfig,
+        generated_dir: &'a std::path::PathBuf,
+        project_dir: &'a std::path::PathBuf,
+        executable: &'a str,
+        engine: ContainerEngine,
+    ) -> Self {
+        Self {
+            config,
+            generated_dir,
+            project_dir,
+            executable,
+            compose_runtime: engine.compose_runtime(),
         }
     }
 }
@@ -72,9 +93,9 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
 
         ProgressReporter::task(&main_phase, "Starting container...");
         let compose_path = compose_path(self.generated_dir, None);
-        let args = ComposeCommand::build_args(&compose_path, "up", &["-d"])?;
-        let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        stream_command(self.executable, &args_refs)?;
+        self.compose_runtime
+            .command(self.executable, &compose_path, "up", &["-d"])?
+            .stream()?;
 
         ProgressReporter::task(&main_phase, "Checking container health...");
         if !self.check_container_health(&state.container_name)? {
@@ -99,17 +120,18 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
 
         let temp_config = self.prepare_temp_config()?;
         mountpoints::prepare(&temp_config, self.project_dir, Some(&state.mounts))?;
-        let compose_ops = ComposeOperations::new(
+        let compose_ops = ComposeOperations::with_runtime(
             &temp_config,
             self.generated_dir,
             self.project_dir,
             self.executable,
+            self.compose_runtime,
         );
         let content = compose_ops.render_docker_compose_with_mounts(state)?;
         let compose_path = compose_path(self.generated_dir, None);
         // Atomic write so a crash mid-write can't leave a half-rendered compose
         // file that the next `docker-compose up` would fail to parse.
-        crate::docker::artifacts::secure_write_if_changed(&compose_path, content.as_bytes())?;
+        crate::container::artifacts::secure_write_if_changed(&compose_path, content.as_bytes())?;
 
         ProgressReporter::task(&phase, "Removing old container...");
         if let Err(e) = stream_command(self.executable, &["rm", "-f", &state.container_name]) {

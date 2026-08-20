@@ -2,8 +2,8 @@
 use super::LifecycleOperations;
 use crate::common::instance::{fuzzy_match_instances, InstanceInfo};
 use crate::{
+    container::{build::BuildOperations, compose::ComposeOperations},
     context::ProviderContext,
-    docker::{build::BuildOperations, compose::ComposeOperations},
 };
 use vm_core::error::{Result, VmError};
 
@@ -52,7 +52,7 @@ impl<'a> LifecycleOperations<'a> {
             None => Ok(self.container_name()),
             Some(name)
                 if name == self.container_name()
-                    || crate::docker::compose_model::instance_name_from_container(
+                    || crate::container::compose_model::instance_name_from_container(
                         self.project_name(),
                         name,
                     )
@@ -74,7 +74,7 @@ impl<'a> LifecycleOperations<'a> {
         if name == self.container_name() {
             return Ok(None);
         }
-        let target = if crate::docker::compose_model::instance_name_from_container(
+        let target = if crate::container::compose_model::instance_name_from_container(
             self.project_name(),
             name,
         )
@@ -85,10 +85,12 @@ impl<'a> LifecycleOperations<'a> {
             self.resolve_target_container(Some(name))?
         };
 
-        Ok(crate::docker::compose_model::instance_name_from_container(
-            self.project_name(),
-            &target,
-        ))
+        Ok(
+            crate::container::compose_model::instance_name_from_container(
+                self.project_name(),
+                &target,
+            ),
+        )
     }
 
     /// Get sync directory path
@@ -118,10 +120,10 @@ impl<'a> LifecycleOperations<'a> {
         }
     }
 
-    #[must_use = "Docker daemon status should be checked"]
+    #[must_use = "container engine status should be checked"]
     pub(super) fn check_daemon_is_running(&self) -> Result<()> {
-        crate::docker::DockerOps::check_daemon_running(Some(self.executable))
-            .map_err(|_| VmError::Internal("Docker daemon is not running".to_string()))
+        crate::container::ContainerOps::check_daemon_running(Some(self.executable))
+            .map_err(|_| VmError::Internal("Container engine is not running".to_string()))
     }
 
     /// Check Docker build requirements (disk space, resources)
@@ -263,11 +265,12 @@ impl<'a> LifecycleOperations<'a> {
         let build_ops = BuildOperations::new(self.config, self.generated_dir, self.executable);
         let build_context = build_ops.prepare_compose_build_context()?;
 
-        let compose_ops = ComposeOperations::new(
+        let compose_ops = ComposeOperations::with_runtime(
             self.config,
             self.generated_dir,
             self.project_dir,
             self.executable,
+            self.compose_runtime,
         );
         if let Some(instance_name) = self.resolve_instance_name_for_target(container)? {
             compose_ops.write_docker_compose_with_instance(

@@ -3,7 +3,7 @@
 use std::process::Command;
 
 use super::LifecycleOperations;
-use crate::docker::artifacts::compose_path;
+use crate::container::artifacts::compose_path;
 use crate::{MountUsage, RuntimeDiagnostics};
 
 impl<'a> LifecycleOperations<'a> {

@@ -1,27 +1,24 @@
-//! Docker command abstraction and builder utilities.
+//! Container-engine command abstraction and builder utilities.
 //!
-//! This module provides a centralized interface for executing Docker commands
-//! with consistent error handling, logging, and argument validation. It reduces
-//! code duplication across Docker operations by providing common patterns
-//! for executing Docker subcommands.
+//! This module provides one interface for Docker-compatible engine commands
+//! with consistent error handling, logging, and argument validation.
 
 use std::process::Command;
 use vm_core::error::{Result, VmError};
 use vm_core::vm_dbg;
 
-/// Builder for Docker commands with fluent interface and consistent error handling.
+/// Builder for container-engine commands with consistent error handling.
 ///
-/// Provides a centralized way to construct and execute Docker commands with
-/// proper argument validation, error handling, and logging.
+/// Provides one way to construct and execute engine commands.
 #[derive(Debug, Clone)]
-pub struct DockerCommand {
+pub struct ContainerCommand {
     executable: String,
     subcommand: Option<String>,
     args: Vec<String>,
 }
 
-impl DockerCommand {
-    /// Create a new Docker command builder.
+impl ContainerCommand {
+    /// Create a new container-engine command builder.
     pub fn new(executable: Option<&str>) -> Self {
         Self {
             executable: executable.unwrap_or("docker").to_string(),
@@ -49,17 +46,17 @@ impl DockerCommand {
     pub fn execute(self) -> Result<()> {
         let mut cmd = self.build_command()?;
 
-        vm_dbg!("Executing Docker command");
+        vm_dbg!("Executing container-engine command");
 
         let status = cmd
             .status()
-            .map_err(|e| VmError::Internal(format!("Failed to execute Docker command: {e}")))?;
+            .map_err(|e| VmError::Internal(format!("Failed to execute container command: {e}")))?;
 
         if status.success() {
             Ok(())
         } else {
             Err(VmError::Internal(format!(
-                "Docker command failed with status: {status}"
+                "Container command failed with status: {status}"
             )))
         }
     }
@@ -70,18 +67,18 @@ impl DockerCommand {
     pub fn execute_with_output(self) -> Result<String> {
         let mut cmd = self.build_command()?;
 
-        vm_dbg!("Executing Docker command with captured output");
+        vm_dbg!("Executing container-engine command with captured output");
 
         let output = cmd
             .output()
-            .map_err(|e| VmError::Internal(format!("Failed to execute Docker command: {e}")))?;
+            .map_err(|e| VmError::Internal(format!("Failed to execute container command: {e}")))?;
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
             Err(VmError::Internal(format!(
-                "Docker command failed with status: {}. Error: {}",
+                "Container command failed with status: {}. Error: {}",
                 output.status, stderr
             )))
         }
@@ -106,7 +103,7 @@ impl DockerCommand {
     }
 }
 
-impl Default for DockerCommand {
+impl Default for ContainerCommand {
     fn default() -> Self {
         Self::new(None)
     }
@@ -116,18 +113,18 @@ impl Default for DockerCommand {
 ///
 /// Provides convenience methods for frequently used Docker operations
 /// with proper argument patterns and error handling.
-pub struct DockerOps;
+pub struct ContainerOps;
 
-impl DockerOps {
-    /// Check if Docker daemon is running by executing 'docker info'.
+impl ContainerOps {
+    /// Check whether the configured container engine is available.
     pub fn check_daemon_running(executable: Option<&str>) -> Result<()> {
-        let mut cmd = DockerCommand::new(executable)
+        let mut cmd = ContainerCommand::new(executable)
             .subcommand("info")
             .build_command()?;
 
         let output = cmd.output().map_err(|e| {
             VmError::Internal(format!(
-                "Docker daemon is not running or not accessible: {e}"
+                "Container engine is not running or not accessible: {e}"
             ))
         })?;
 
@@ -136,7 +133,7 @@ impl DockerOps {
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
             Err(VmError::Internal(format!(
-                "Docker daemon is not running or not accessible: {stderr}"
+                "Container engine is not running or not accessible: {stderr}"
             )))
         }
     }
@@ -147,7 +144,7 @@ impl DockerOps {
     /// * `all` - Include stopped containers (uses -a flag)
     /// * `format` - Docker format string (e.g., "{{.Names}}")
     pub fn list_containers(executable: Option<&str>, all: bool, format: &str) -> Result<String> {
-        let mut cmd = DockerCommand::new(executable).subcommand("ps");
+        let mut cmd = ContainerCommand::new(executable).subcommand("ps");
 
         if all {
             cmd = cmd.arg("-a");
@@ -162,7 +159,7 @@ impl DockerOps {
         environment: &str,
     ) -> Result<Vec<String>> {
         let instance = environment.strip_suffix("-dev").unwrap_or(environment);
-        let output = DockerCommand::new(executable)
+        let output = ContainerCommand::new(executable)
             .subcommand("ps")
             .arg("-a")
             .arg("--filter")
@@ -198,7 +195,7 @@ impl DockerOps {
     /// * `source` - Source path (container:path or local path)
     /// * `destination` - Destination path (container:path or local path)
     pub fn copy(executable: Option<&str>, source: &str, destination: &str) -> Result<()> {
-        DockerCommand::new(executable)
+        ContainerCommand::new(executable)
             .subcommand("cp")
             .arg(source)
             .arg(destination)
@@ -207,7 +204,7 @@ impl DockerOps {
 
     /// Start a container by name.
     pub fn start_container(executable: Option<&str>, container_name: &str) -> Result<()> {
-        DockerCommand::new(executable)
+        ContainerCommand::new(executable)
             .subcommand("start")
             .arg(container_name)
             .execute_with_output()
@@ -216,7 +213,7 @@ impl DockerOps {
 
     /// Resume a paused container by name.
     pub fn unpause_container(executable: Option<&str>, container_name: &str) -> Result<()> {
-        DockerCommand::new(executable)
+        ContainerCommand::new(executable)
             .subcommand("unpause")
             .arg(container_name)
             .execute_with_output()
@@ -229,7 +226,7 @@ impl DockerOps {
         container_name: &str,
         force: bool,
     ) -> Result<()> {
-        let mut cmd = DockerCommand::new(executable).subcommand("rm");
+        let mut cmd = ContainerCommand::new(executable).subcommand("rm");
 
         if force {
             cmd = cmd.arg("-f");
@@ -240,7 +237,7 @@ impl DockerOps {
 
     /// Test container readiness by executing a simple command.
     pub fn test_container_readiness(executable: Option<&str>, container_name: &str) -> bool {
-        DockerCommand::new(executable)
+        ContainerCommand::new(executable)
             .subcommand("exec")
             .arg(container_name)
             .arg("echo")
@@ -251,7 +248,7 @@ impl DockerOps {
 
     /// Check if a Docker network exists by name.
     pub fn network_exists(executable: Option<&str>, network_name: &str) -> Result<bool> {
-        let output = DockerCommand::new(executable)
+        let output = ContainerCommand::new(executable)
             .subcommand("network")
             .arg("ls")
             .arg("--format")
@@ -265,7 +262,7 @@ impl DockerOps {
     pub fn create_network(executable: Option<&str>, network_name: &str) -> Result<()> {
         vm_dbg!("Creating Docker network: {}", network_name);
 
-        DockerCommand::new(executable)
+        ContainerCommand::new(executable)
             .subcommand("network")
             .arg("create")
             .arg(network_name)
@@ -351,7 +348,7 @@ mod tests {
 
     #[test]
     fn test_docker_command_builder() {
-        let cmd = DockerCommand::new(None)
+        let cmd = ContainerCommand::new(None)
             .subcommand("ps")
             .arg("-a")
             .arg("--format")
@@ -382,9 +379,11 @@ mod tests {
         permissions.set_mode(0o755);
         fs::set_permissions(&runtime, permissions).unwrap();
 
-        let services =
-            DockerOps::list_managed_service_containers(Some(runtime.to_str().unwrap()), "demo-dev")
-                .unwrap();
+        let services = ContainerOps::list_managed_service_containers(
+            Some(runtime.to_str().unwrap()),
+            "demo-dev",
+        )
+        .unwrap();
 
         assert_eq!(services, ["demo-postgres", "demo-package-edge"]);
         let args = fs::read_to_string(log).unwrap();

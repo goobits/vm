@@ -13,7 +13,7 @@ use vm_core::error::{Result, VmError};
 use vm_core::{vm_dbg, vm_info};
 
 // Internal imports
-use super::{DockerOps, UserConfig};
+use super::{ContainerOps, UserConfig};
 use crate::BoxConfig;
 use crate::{project_plan::NodeToolchainPlan, resources};
 use vm_config::config::VmConfig;
@@ -222,7 +222,7 @@ impl<'a> BuildOperations<'a> {
                 let image_name = self.get_custom_image_name();
 
                 // Pass build args from BoxSpec::Build variant
-                DockerOps::build_custom_image(
+                ContainerOps::build_custom_image(
                     Some(self.executable),
                     path,
                     &image_name,
@@ -331,7 +331,7 @@ impl<'a> BuildOperations<'a> {
             }
             _ => {
                 return Err(VmError::Internal(
-                    "Invalid box configuration for Docker provider".to_string(),
+                    "Invalid box configuration for container provider".to_string(),
                 ));
             }
         };

@@ -112,8 +112,9 @@ pub fn extract_project_name(config: &VmConfig) -> &str {
         .unwrap_or("vm-project")
 }
 
-/// Helper to create InstanceInfo for Docker containers
-pub fn create_docker_instance_info(
+/// Helper to create instance information for Docker-compatible containers.
+pub fn create_container_instance_info(
+    provider: &str,
     name: &str,
     id: &str,
     status: &str,
@@ -131,7 +132,7 @@ pub fn create_docker_instance_info(
         name: name.to_string(),
         id: id.to_string(),
         status: status.to_string(),
-        provider: "docker".to_string(),
+        provider: provider.to_string(),
         project,
         uptime: uptime.map(|s| s.to_string()),
         created_at: created_at.map(|s| s.to_string()),
@@ -258,9 +259,16 @@ mod tests {
     }
 
     #[test]
-    fn test_create_docker_instance_info() {
-        let info =
-            create_docker_instance_info("myproject-dev", "abc123", "running", None, None, None);
+    fn test_create_container_instance_info() {
+        let info = create_container_instance_info(
+            "docker",
+            "myproject-dev",
+            "abc123",
+            "running",
+            None,
+            None,
+            None,
+        );
         assert_eq!(info.name, "myproject-dev");
         assert_eq!(info.id, "abc123");
         assert_eq!(info.status, "running");
@@ -283,8 +291,9 @@ mod tests {
     }
 
     #[test]
-    fn test_create_docker_instance_info_with_metadata() {
-        let info = create_docker_instance_info(
+    fn test_create_container_instance_info_with_metadata() {
+        let info = create_container_instance_info(
+            "podman",
             "myproject-dev",
             "abc123",
             "running",
@@ -295,7 +304,7 @@ mod tests {
         assert_eq!(info.name, "myproject-dev");
         assert_eq!(info.id, "abc123");
         assert_eq!(info.status, "running");
-        assert_eq!(info.provider, "docker");
+        assert_eq!(info.provider, "podman");
         assert_eq!(info.project, Some("myproject".to_string()));
         assert_eq!(info.created_at, Some("2023-01-01T00:00:00Z".to_string()));
         assert_eq!(info.uptime, Some("2 hours ago".to_string()));

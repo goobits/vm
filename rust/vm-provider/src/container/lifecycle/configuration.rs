@@ -3,7 +3,7 @@
 use std::{borrow::Cow, fs, process::Command};
 
 use super::LifecycleOperations;
-use crate::docker::{build::BuildOperations, DockerOps, UserConfig};
+use crate::container::{build::BuildOperations, ContainerOps, UserConfig};
 use crate::guest_cache::{GuestCachePolicy, CACHE_ENV_CONFIG_KEY};
 use crate::project_plan::{ProjectPlan, PROJECT_PLAN_CONFIG_KEY};
 use vm_config::config::VmConfig;
@@ -158,7 +158,7 @@ impl<'a> LifecycleOperations<'a> {
             .is_some_and(|existing| existing == config_json);
 
         if !local_config_matches {
-            crate::docker::artifacts::secure_write_if_changed(
+            crate::container::artifacts::secure_write_if_changed(
                 &generated_config_path,
                 config_json.as_bytes(),
             )
@@ -172,7 +172,7 @@ impl<'a> LifecycleOperations<'a> {
 
         let source = BuildOperations::path_to_string(&generated_config_path)?;
         let destination = format!("{container_name}:{}", super::TEMP_CONFIG_PATH);
-        DockerOps::copy(Some(self.executable), source, &destination).map_err(|error| {
+        ContainerOps::copy(Some(self.executable), source, &destination).map_err(|error| {
             VmError::Internal(format!(
                 "Failed to copy VM configuration to container '{container_name}': {error}"
             ))

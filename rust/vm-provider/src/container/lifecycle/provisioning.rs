@@ -1,7 +1,7 @@
 //! Container provisioning orchestration
 use super::LifecycleOperations;
+use crate::container::UserConfig;
 use crate::context::ProviderContext;
-use crate::docker::UserConfig;
 use crate::progress::{AnsibleProgressParser, ProgressParser};
 use std::collections::HashSet;
 use std::sync::{Mutex, OnceLock};
@@ -159,7 +159,7 @@ impl<'a> LifecycleOperations<'a> {
         let max_backoff = Duration::from_secs(1);
 
         loop {
-            if crate::docker::DockerOps::test_container_readiness(
+            if crate::container::ContainerOps::test_container_readiness(
                 Some(self.executable),
                 container_name,
             ) {
@@ -251,7 +251,7 @@ impl<'a> LifecycleOperations<'a> {
 #[cfg(test)]
 mod tests {
     use super::LifecycleOperations;
-    use crate::docker::UserConfig;
+    use crate::container::UserConfig;
     use crate::resources::HOME_STATE_REPAIR;
 
     #[test]

@@ -1,10 +1,11 @@
-// Docker provider implementation split into logical modules
+// Shared Docker-compatible container provider.
 
 mod artifacts;
 pub mod build;
 pub mod command;
 mod compose_context;
 mod compose_model;
+pub mod engine;
 mod mountpoints;
 mod ownership;
 
@@ -16,7 +17,8 @@ mod preview;
 
 // Re-export the main types and functions for backwards compatibility
 pub use build::BuildOperations;
-pub use command::DockerOps;
+pub use command::ContainerOps;
+pub use engine::ContainerEngine;
 pub use lifecycle::LifecycleOperations;
 
 // Standard library
@@ -34,41 +36,11 @@ use crate::{
     context::ProviderContext, preflight, InstanceState, Provider, TempProvider, VmStatusReport,
 };
 use vm_config::config::VmConfig;
-use vm_core::command_stream::is_tool_installed;
 
 use ownership::is_environment_container;
 
-pub fn validate_docker_environment(executable: &str) -> Result<()> {
-    // Check 1: Docker installed
-    let version_output = Command::new(executable)
-        .arg("--version")
-        .output()
-        .map_err(|_| {
-            VmError::DockerNotInstalled(
-                "Install from: https://docs.docker.com/get-docker/".to_string(),
-            )
-        })?;
-    if !version_output.status.success() {
-        return Err(VmError::DockerNotInstalled(
-            "Install from: https://docs.docker.com/get-docker/".to_string(),
-        ));
-    }
-
-    // Check 2: Docker daemon running
-    let output = Command::new(executable).arg("ps").output()?;
-    if !output.status.success() {
-        if String::from_utf8_lossy(&output.stderr).contains("permission denied") {
-            return Err(VmError::DockerPermission(
-                "Fix: sudo usermod -aG docker $USER && newgrp docker".to_string(),
-            ));
-        } else {
-            return Err(VmError::DockerNotRunning(
-                "Start Docker Desktop or run: sudo systemctl start docker".to_string(),
-            ));
-        }
-    }
-
-    Ok(())
+pub fn validate_container_environment(engine: ContainerEngine) -> Result<()> {
+    engine.validate()
 }
 
 fn host_ports_from_bindings(bindings: &str) -> Result<Vec<u16>> {
@@ -123,45 +95,18 @@ impl UserConfig {
     }
 }
 
-/// Helper for building docker-compose command arguments
-pub struct ComposeCommand;
-
-impl ComposeCommand {
-    /// Build docker-compose command arguments with compose file path
-    pub fn build_args(
-        compose_path: &Path,
-        subcommand: &str,
-        extra_args: &[&str],
-    ) -> Result<Vec<String>> {
-        let mut args = vec![
-            "compose".to_string(),
-            "-f".to_string(),
-            BuildOperations::path_to_string(compose_path)?.to_string(),
-            subcommand.to_string(),
-        ];
-        args.extend(extra_args.iter().map(|s| s.to_string()));
-        Ok(args)
-    }
-}
-
 #[derive(Clone)]
-pub struct DockerProvider {
+pub struct ContainerProvider {
     config: VmConfig,
     project_dir: PathBuf,
     generated_dir: PathBuf,
     executable: String,
+    engine: ContainerEngine,
 }
 
-impl DockerProvider {
-    pub fn new(config: VmConfig, executable: Option<String>) -> Result<Self> {
-        let executable = executable.unwrap_or("docker".to_string());
-
-        if !is_tool_installed(&executable) {
-            return Err(VmError::Dependency(format!(
-                "{} is not installed",
-                executable
-            )));
-        }
+impl ContainerProvider {
+    pub fn new(config: VmConfig, engine: ContainerEngine) -> Result<Self> {
+        let executable = engine.executable().to_string();
 
         let project_dir = config.project_dir()?;
 
@@ -172,16 +117,18 @@ impl DockerProvider {
             project_dir,
             generated_dir,
             executable,
+            engine,
         })
     }
 
     /// Helper to create LifecycleOperations instance
     fn lifecycle_ops(&self) -> LifecycleOperations<'_> {
-        LifecycleOperations::new(
+        LifecycleOperations::with_engine(
             &self.config,
             &self.generated_dir,
             &self.project_dir,
             &self.executable,
+            self.engine,
         )
     }
 }
@@ -224,13 +171,13 @@ pub(crate) fn get_dockerfile_tera() -> &'static Tera {
     })
 }
 
-impl Provider for DockerProvider {
+impl Provider for ContainerProvider {
     fn name(&self) -> &'static str {
-        "docker"
+        self.engine.name()
     }
 
     fn create(&self, context: &ProviderContext) -> Result<()> {
-        validate_docker_environment(&self.executable)?;
+        validate_container_environment(self.engine)?;
         preflight::check_system_resources()?;
 
         let lifecycle = self.lifecycle_ops();
@@ -238,7 +185,7 @@ impl Provider for DockerProvider {
     }
 
     fn create_instance(&self, instance_name: &str, context: &ProviderContext) -> Result<()> {
-        validate_docker_environment(&self.executable)?;
+        validate_container_environment(self.engine)?;
         preflight::check_system_resources()?;
 
         let lifecycle = self.lifecycle_ops();
@@ -341,7 +288,7 @@ impl Provider for DockerProvider {
             destination.to_string()
         };
 
-        DockerOps::copy(
+        ContainerOps::copy(
             Some(&self.executable),
             &resolved_source,
             &resolved_destination,
@@ -392,7 +339,7 @@ impl Provider for DockerProvider {
     }
 
     fn list_instances(&self) -> Result<Vec<crate::InstanceInfo>> {
-        use crate::common::instance::create_docker_instance_info;
+        use crate::common::instance::create_container_instance_info;
 
         // Use label-based filtering to find all vm-managed containers
         let output = std::process::Command::new(&self.executable)
@@ -414,7 +361,7 @@ impl Provider for DockerProvider {
 
         if !output.status.success() {
             return Err(VmError::Internal(format!(
-                "Docker container listing failed using '{}': {}",
+                "Container listing failed using '{}': {}",
                 self.executable,
                 String::from_utf8_lossy(&output.stderr)
             )));
@@ -445,7 +392,8 @@ impl Provider for DockerProvider {
                     .filter(|project| !project.is_empty())
                     .map(|project| project.to_string());
 
-                instances.push(create_docker_instance_info(
+                instances.push(create_container_instance_info(
+                    self.engine.name(),
                     name,
                     id,
                     status,
@@ -475,7 +423,7 @@ impl Provider for DockerProvider {
     fn reusable_host_ports(&self, environment: &str) -> Result<Vec<u16>> {
         let mut ports = Vec::new();
         for service in
-            DockerOps::list_managed_service_containers(Some(&self.executable), environment)?
+            ContainerOps::list_managed_service_containers(Some(&self.executable), environment)?
         {
             let output = Command::new(&self.executable)
                 .args([
@@ -674,7 +622,7 @@ impl Provider for DockerProvider {
     }
 }
 
-impl TempProvider for DockerProvider {
+impl TempProvider for ContainerProvider {
     fn update_mounts(&self, state: &crate::TempVmState) -> Result<()> {
         let lifecycle = self.lifecycle_ops();
         lifecycle.update_mounts(state)
@@ -698,7 +646,7 @@ impl TempProvider for DockerProvider {
 
 #[cfg(test)]
 mod tests {
-    use super::{host_ports_from_bindings, validate_docker_environment};
+    use super::{host_ports_from_bindings, ContainerEngine};
     use std::io::Write;
 
     #[cfg(unix)]
@@ -728,7 +676,11 @@ exit 1
         permissions.set_mode(0o755);
         std::fs::set_permissions(&docker, permissions).unwrap();
 
-        validate_docker_environment(docker.to_str().unwrap()).unwrap();
+        let engine = ContainerEngine::Docker;
+        assert_eq!(engine.executable(), "docker");
+        engine
+            .validate_executable(docker.to_str().unwrap())
+            .unwrap();
     }
 
     #[test]

@@ -5,13 +5,9 @@ use std::io::{self, IsTerminal, Write};
 use tracing::{info, warn};
 
 use super::LifecycleOperations;
-use crate::{
-    context::ProviderContext,
-    docker::{ComposeCommand, DockerOps},
-};
+use crate::{container::ContainerOps, context::ProviderContext};
 use vm_core::msg;
 use vm_core::{
-    command_stream::stream_command_visible,
     error::{Result, VmError},
     vm_hint, vm_progress, vm_warning,
 };
@@ -24,19 +20,19 @@ impl<'a> LifecycleOperations<'a> {
         container_name: &str,
     ) -> Result<()> {
         let expected_services =
-            DockerOps::list_managed_service_containers(Some(self.executable), container_name)?;
+            ContainerOps::list_managed_service_containers(Some(self.executable), container_name)?;
         for service in &expected_services {
-            if !DockerOps::container_exists(Some(self.executable), service).unwrap_or(false) {
+            if !ContainerOps::container_exists(Some(self.executable), service).unwrap_or(false) {
                 continue;
             }
 
             let running =
-                DockerOps::is_container_running(Some(self.executable), service).unwrap_or(false);
+                ContainerOps::is_container_running(Some(self.executable), service).unwrap_or(false);
             if running {
                 continue;
             }
 
-            if let Err(error) = DockerOps::start_container(Some(self.executable), service) {
+            if let Err(error) = ContainerOps::start_container(Some(self.executable), service) {
                 warn!("Failed to start existing service container '{service}': {error}");
             } else {
                 info!("Started existing service: {service}");
@@ -44,14 +40,14 @@ impl<'a> LifecycleOperations<'a> {
         }
 
         let flags = ["-d", "--no-deps", "--no-recreate", container_name];
-        let args = ComposeCommand::build_args(compose_path, "up", &flags)?;
-        let args: Vec<&str> = args.iter().map(String::as_str).collect();
-
-        stream_command_visible(self.executable, &args).map_err(|error| {
-            VmError::Internal(format!(
+        self.compose_runtime
+            .command(self.executable, compose_path, "up", &flags)?
+            .stream_visible()
+            .map_err(|error| {
+                VmError::Internal(format!(
                 "Failed to start dev container '{container_name}' while reusing services: {error}"
             ))
-        })
+            })
     }
 
     pub(super) fn handle_compose_start_error(
@@ -78,7 +74,7 @@ impl<'a> LifecycleOperations<'a> {
     #[must_use = "existing container handling results should be checked"]
     pub(super) fn handle_existing_container(&self, context: &ProviderContext) -> Result<()> {
         let container_name = self.container_name();
-        let is_running = DockerOps::is_container_running(Some(self.executable), &container_name)
+        let is_running = ContainerOps::is_container_running(Some(self.executable), &container_name)
             .map_err(|error| warn!("Failed to check running containers: {error}"))
             .unwrap_or(false);
 
@@ -126,7 +122,7 @@ impl<'a> LifecycleOperations<'a> {
         context: &ProviderContext,
     ) -> Result<()> {
         let container_name = self.container_name_with_instance(instance_name);
-        let is_running = DockerOps::is_container_running(Some(self.executable), &container_name)
+        let is_running = ContainerOps::is_container_running(Some(self.executable), &container_name)
             .map_err(|error| warn!("Failed to check running containers: {error}"))
             .unwrap_or(false);
 
@@ -205,7 +201,7 @@ impl<'a> LifecycleOperations<'a> {
             |instance| self.container_name_with_instance(instance),
         );
         let orphaned =
-            DockerOps::list_managed_service_containers(Some(self.executable), &environment)?;
+            ContainerOps::list_managed_service_containers(Some(self.executable), &environment)?;
 
         if orphaned.is_empty() {
             return Ok(false);
