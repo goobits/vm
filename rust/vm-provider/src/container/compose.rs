@@ -549,6 +549,8 @@ fn package_edge_is_current(executable: &str, container: &str, revision: &str) ->
     let Ok(output) = std::process::Command::new(executable)
         .args([
             "inspect",
+            "--type",
+            "container",
             "--format",
             "{{.State.Status}}\t{{index .Config.Labels \"com.vm.package-edge.revision\"}}",
             container,

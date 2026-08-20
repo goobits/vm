@@ -52,9 +52,11 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     fn inspect_layer_sizes(&self, container_name: &str) -> (Option<u64>, Option<u64>) {
-        let Some(info) = command_json(self.executable, &["inspect", "--size", container_name])
-            .and_then(|value| value.get(0).cloned())
-        else {
+        let Some(info) = command_json(
+            self.executable,
+            &["inspect", "--type", "container", "--size", container_name],
+        )
+        .and_then(|value| value.get(0).cloned()) else {
             return (None, None);
         };
 

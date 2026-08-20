@@ -160,7 +160,14 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
 
     fn is_container_running(&self, container_name: &str) -> Result<bool> {
         let output = std::process::Command::new(self.executable)
-            .args(["inspect", "--format", "{{.State.Status}}", container_name])
+            .args([
+                "inspect",
+                "--type",
+                "container",
+                "--format",
+                "{{.State.Status}}",
+                container_name,
+            ])
             .output()?;
         if !output.status.success() {
             return Ok(false);

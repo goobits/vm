@@ -274,6 +274,8 @@ fn inspect_container_network(executable: &str, container_name: &str) -> VmResult
     let output = StdCommand::new(executable)
         .args([
             "inspect",
+            "--type",
+            "container",
             "--format",
             "{{range $name, $network := .NetworkSettings.Networks}}{{$name}} {{$network.IPAddress}}{{println}}{{end}}",
             container_name,
@@ -319,7 +321,14 @@ fn inspect_container_network(executable: &str, container_name: &str) -> VmResult
 /// Check if a Docker container is running
 fn is_container_running(executable: &str, container_id: &str) -> bool {
     StdCommand::new(executable)
-        .args(["inspect", "-f", "{{.State.Running}}", container_id])
+        .args([
+            "inspect",
+            "--type",
+            "container",
+            "-f",
+            "{{.State.Running}}",
+            container_id,
+        ])
         .output()
         .ok()
         .and_then(|output| {

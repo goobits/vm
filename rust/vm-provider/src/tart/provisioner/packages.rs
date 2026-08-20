@@ -207,7 +207,7 @@ docker info >/dev/null 2>&1 || sudo docker info >/dev/null 2>&1"#
 sudo install -d -m 0700 /etc/vm
 printf '%s\n' {gateway} {internal_token} {read_token} | sudo tee /etc/vm/package-edge.env >/dev/null
 sudo chmod 0600 /etc/vm/package-edge.env
-current="$(sudo docker inspect --format '{{{{ index .Config.Labels "com.vm.package-edge.revision" }}}}' vm-package-edge 2>/dev/null || true)"
+current="$(sudo docker container inspect --format '{{{{ index .Config.Labels "com.vm.package-edge.revision" }}}}' vm-package-edge 2>/dev/null || true)"
 if [ "$current" != {revision} ]; then
   sudo docker rm -f vm-package-edge >/dev/null 2>&1 || true
   sudo docker run --detach \
@@ -227,7 +227,7 @@ else
   sudo docker start vm-package-edge >/dev/null
 fi
 attempt=0
-until [ "$(sudo docker inspect --format '{{{{.State.Health.Status}}}}' vm-package-edge 2>/dev/null || true)" = healthy ]; do
+until [ "$(sudo docker container inspect --format '{{{{.State.Health.Status}}}}' vm-package-edge 2>/dev/null || true)" = healthy ]; do
   attempt=$((attempt + 1))
   if [ "$attempt" -ge 40 ]; then
     sudo docker logs --tail 20 vm-package-edge >&2 || true

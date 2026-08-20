@@ -77,8 +77,8 @@ capture_runtime_state() {
   local volume_names=$acceptance_root/volume-names
   : > "$volume_names"
   for container in "${stable_containers[@]}"; do
-    docker inspect --format '{{.Name}} {{.Id}}' "$container"
-    docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{println .Name}}{{end}}{{end}}' \
+    docker container inspect --format '{{.Name}} {{.Id}}' "$container"
+    docker container inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{println .Name}}{{end}}{{end}}' \
       "$container" >> "$volume_names"
   done | sort > "$ids"
   : > "$volumes"
@@ -532,7 +532,7 @@ docker exec --user acceptance "$environment_name" test ! -e "$checkout_source"
 assert_guest_only_checkout
 
 for container in "${workflow_containers[@]}"; do
-  if docker inspect --format '{{range .Mounts}}{{println .Source}}{{end}}' "$container" | \
+  if docker container inspect --format '{{range .Mounts}}{{println .Source}}{{end}}' "$container" | \
     grep -Fx "$project_root" >/dev/null; then
     echo "Package infrastructure mounted the canonical project workspace in $container" >&2
     exit 5
@@ -557,7 +557,7 @@ docker exec --user acceptance "$environment_name" sh -ec '
     test ! -e "$secret"
   done
 '
-if docker inspect --format '{{range .Mounts}}{{println .Name}}{{end}}' "$environment_name" | \
+if docker container inspect --format '{{range .Mounts}}{{println .Name}}{{end}}' "$environment_name" | \
   grep -F "${compose_project}_" >/dev/null; then
   echo "Producer guest received writable package-appliance storage" >&2
   echo "Repair: remove appliance volume mounts from managed guests" >&2

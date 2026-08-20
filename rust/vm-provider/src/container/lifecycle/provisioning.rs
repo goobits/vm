@@ -196,6 +196,8 @@ impl<'a> LifecycleOperations<'a> {
         let status_output = std::process::Command::new(self.executable)
             .args([
                 "inspect",
+                "--type",
+                "container",
                 "--format",
                 "{{.State.Status}}",
                 &target_container,

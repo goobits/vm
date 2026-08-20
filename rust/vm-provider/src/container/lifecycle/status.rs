@@ -12,7 +12,14 @@ impl<'a> LifecycleOperations<'a> {
 
     pub(super) fn instance_state_for_name(&self, container_name: &str) -> Result<InstanceState> {
         let output = std::process::Command::new(self.executable)
-            .args(["inspect", "--format", "{{.State.Status}}", container_name])
+            .args([
+                "inspect",
+                "--type",
+                "container",
+                "--format",
+                "{{.State.Status}}",
+                container_name,
+            ])
             .output()
             .map_err(|error| VmError::Internal(format!("Failed to inspect container: {error}")))?;
 
@@ -36,7 +43,7 @@ impl<'a> LifecycleOperations<'a> {
     pub fn status_report(&self, container: Option<&str>) -> Result<VmStatusReport> {
         let container_name = self.resolve_probe_target(container)?;
         let inspect_output = std::process::Command::new(self.executable)
-            .args(["inspect", &container_name])
+            .args(["inspect", "--type", "container", &container_name])
             .output()
             .map_err(|error| VmError::Internal(format!("Failed to inspect container: {error}")))?;
 

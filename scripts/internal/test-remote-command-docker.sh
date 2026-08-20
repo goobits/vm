@@ -208,8 +208,8 @@ test "$ready" = true || {
   exit 1
 }
 
-before_ids=$(docker inspect --format '{{.Id}}' "$service" "$environment" "$unrelated")
-before_volumes=$(docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}{{"\n"}}{{end}}{{end}}' \
+before_ids=$(docker container inspect --format '{{.Id}}' "$service" "$environment" "$unrelated")
+before_volumes=$(docker container inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}{{"\n"}}{{end}}{{end}}' \
   "$service" "$environment" "$unrelated" | sort)
 
 run_vm tools update --to "$environment" >/dev/null
@@ -248,8 +248,8 @@ run_vm tools update --to "$environment" >/dev/null
 test "$(docker exec --user acceptance --env HOME=/home/acceptance \
   "$environment" /usr/local/bin/vm issue list)" = '#123 ready'
 
-after_ids=$(docker inspect --format '{{.Id}}' "$service" "$environment" "$unrelated")
-after_volumes=$(docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}{{"\n"}}{{end}}{{end}}' \
+after_ids=$(docker container inspect --format '{{.Id}}' "$service" "$environment" "$unrelated")
+after_volumes=$(docker container inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}{{"\n"}}{{end}}{{end}}' \
   "$service" "$environment" "$unrelated" | sort)
 test "$after_ids" = "$before_ids"
 test "$after_volumes" = "$before_volumes"

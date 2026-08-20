@@ -78,6 +78,8 @@ pub(super) fn reusable_host_ports(executable: &str, environment: &str) -> Result
         let output = Command::new(executable)
             .args([
                 "inspect",
+                "--type",
+                "container",
                 "--format",
                 "{{json .HostConfig.PortBindings}}",
                 &service,

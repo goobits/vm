@@ -443,9 +443,11 @@ async fn snapshot_container(
     })?;
     execute_docker_with_output(executable, &["save", &image_tag, "-o", image_path_str]).await?;
 
-    let digest_output =
-        execute_docker_with_output(executable, &["inspect", "--format={{.Id}}", &image_tag])
-            .await?;
+    let digest_output = execute_docker_with_output(
+        executable,
+        &["image", "inspect", "--format={{.Id}}", &image_tag],
+    )
+    .await?;
     let image_digest = if digest_output.is_empty() {
         None
     } else {
@@ -599,9 +601,11 @@ async fn handle_create_from_dockerfile(
     execute_docker_streaming(executable, &["save", &image_tag, "-o", image_path_str]).await?;
 
     // Get image digest
-    let digest_output =
-        execute_docker_with_output(executable, &["inspect", "--format={{.Id}}", &image_tag])
-            .await?;
+    let digest_output = execute_docker_with_output(
+        executable,
+        &["image", "inspect", "--format={{.Id}}", &image_tag],
+    )
+    .await?;
     let digest = if digest_output.is_empty() {
         None
     } else {

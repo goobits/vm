@@ -116,7 +116,14 @@ impl<'a> LifecycleOperations<'a> {
         // repeating separate existence and running inspections.
         let status = duct::cmd(
             self.executable,
-            &["inspect", "--format", "{{.State.Running}}", &container_name],
+            &[
+                "inspect",
+                "--type",
+                "container",
+                "--format",
+                "{{.State.Running}}",
+                &container_name,
+            ],
         )
         .stderr_null()
         .read()
@@ -355,7 +362,7 @@ impl<'a> LifecycleOperations<'a> {
 
         // Check if container exists
         let check = std::process::Command::new(self.executable)
-            .args(["inspect", container])
+            .args(["inspect", "--type", "container", container])
             .output();
 
         match check {
