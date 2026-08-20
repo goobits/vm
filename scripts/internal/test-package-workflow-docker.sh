@@ -19,8 +19,10 @@ source_shelf=$acceptance_root/sources
 project_root=$acceptance_root/projects/release-tool
 consumer_root=$acceptance_root/consumer
 fixture_root=$acceptance_root/agent-skills
+language_root=$acceptance_root/language-package
 fake_bin=$acceptance_root/bin
 checkout_log=$acceptance_root/checkout.log
+language_log=$acceptance_root/language.log
 workspace_log=$acceptance_root/workspace.log
 before_ids=$acceptance_root/before.ids
 after_ids=$acceptance_root/after.ids
@@ -77,6 +79,116 @@ capture_runtime_state() {
   done | sort > "$volumes"
 }
 
+checkout_source_from_log() {
+  local log=$1
+  local source
+  source=$(sed -n 's/^Source: //p' "$log")
+  if test "$(printf '%s\n' "$source" | sed '/^$/d' | wc -l | tr -d ' ')" != 1; then
+    cat "$log" >&2
+    echo "Package checkout did not report exactly one source" >&2
+    exit 3
+  fi
+  case "$source" in
+    /home/acceptance/.local/share/vm/package-checkouts/*/source) ;;
+    *)
+      cat "$log" >&2
+      echo "Managed checkout escaped guest storage: $source" >&2
+      exit 3
+      ;;
+  esac
+  printf '%s\n' "$source"
+}
+
+release_source_only_language_package() {
+  local checkout_id source
+
+  # Release from a source-only checkout: without a registered dependency, no
+  # project override should be created or restored.
+  docker exec --user acceptance "$environment_name" \
+    vm packages checkout vm-acceptance-language >"$language_log" 2>&1
+  source=$(checkout_source_from_log "$language_log")
+  checkout_id=$(basename "$(dirname "$source")")
+  run_vm packages show "$checkout_id" | grep -F '"source_only": true' >/dev/null
+  docker exec --user acceptance "$environment_name" \
+    test ! -e "$(dirname "$source")/override.json"
+  docker exec --user acceptance "$environment_name" sh -ec '
+    source=$1
+    cd "$source"
+    sed -i '\''s/"version": "1.0.0"/"version": "1.0.1"/'\'' package.json
+    git add package.json
+    git commit -m "feat: publish source-only language package"
+    vm packages release
+  ' sh "$source" >>"$language_log" 2>&1
+  docker exec --user acceptance "$environment_name" test ! -e "$source"
+  docker exec --user acceptance "$environment_name" sh -ec '
+    test "$(npm view vm-acceptance-language@1.0.1 version)" = 1.0.1
+  '
+}
+
+assert_language_dependency_restoration() {
+  local cancel_status checkout_id source
+
+  # Add a durable dependency pin, activate a checkout override, then prove a
+  # failed restoration retains the checkout in cancelled state. Retrying after
+  # repair must restore the published dependency before durable closure.
+  run_vm packages consumer register "$project_name" \
+    --repository "https://example.invalid/$project_name.git" \
+    --dependency vm-acceptance-language@1.0.1
+  docker exec --user acceptance "$environment_name" sh -ec '
+    cd /workspace
+    npm install --no-save --package-lock=false vm-acceptance-language@1.0.1
+    test "$(node -p "require('\''./node_modules/vm-acceptance-language/package.json'\'').version")" = 1.0.1
+    test "$(cat node_modules/vm-acceptance-language/source-marker.txt)" = published
+  '
+  docker exec --user acceptance "$environment_name" \
+    vm packages checkout vm-acceptance-language >"$language_log.cancel" 2>&1
+  source=$(checkout_source_from_log "$language_log.cancel")
+  checkout_id=$(basename "$(dirname "$source")")
+  run_vm packages show "$checkout_id" | grep -F '"source_only": false' >/dev/null
+  docker exec --user acceptance "$environment_name" \
+    test -f "$(dirname "$source")/override.json"
+  docker exec --user acceptance "$environment_name" sh -ec '
+    printf "%s\n" checkout-only > "$1/source-marker.txt"
+    test "$(cat /workspace/node_modules/vm-acceptance-language/source-marker.txt)" = checkout-only
+    sed -i '\''s/"pinned_version": "1.0.1"/"pinned_version": "9.9.9"/'\'' "$(dirname "$1")/override.json"
+  ' sh "$source"
+
+  set +e
+  docker exec --user acceptance "$environment_name" sh -ec \
+    'cd "$1" && vm packages cancel' sh "$source" \
+    >>"$language_log.cancel" 2>&1
+  cancel_status=$?
+  set -e
+  test "$cancel_status" -ne 0 || {
+    cat "$language_log.cancel" >&2
+    echo "Checkout closed even though dependency restoration failed" >&2
+    exit 4
+  }
+  docker exec --user acceptance "$environment_name" test -d "$source"
+  run_vm packages show "$checkout_id" | grep -F '"state": "cancelled"' >/dev/null
+  docker exec --user acceptance "$environment_name" sh -ec '
+    test "$(cat /workspace/node_modules/vm-acceptance-language/source-marker.txt)" = checkout-only
+    sed -i '\''s/"pinned_version": "9.9.9"/"pinned_version": "1.0.1"/'\'' "$(dirname "$1")/override.json"
+    cd "$1"
+    vm packages cancel
+  ' sh "$source" >>"$language_log.cancel" 2>&1
+  docker exec --user acceptance "$environment_name" test ! -e "$source"
+  run_vm packages show "$checkout_id" | grep -F '"state": "closed"' >/dev/null
+  docker exec --user acceptance "$environment_name" sh -ec '
+    cd /workspace
+    test "$(node -p "require('\''./node_modules/vm-acceptance-language/package.json'\'').version")" = 1.0.1
+    test "$(cat node_modules/vm-acceptance-language/source-marker.txt)" = published
+    test ! -e package-lock.json
+  '
+}
+
+accept_language_package_lifecycle() {
+  release_source_only_language_package
+  assert_language_dependency_restoration
+  test "$(git -C "$project_root" hash-object package.json)" = "$project_manifest_digest"
+  test -z "$(git -C "$project_root" status --porcelain --untracked-files=all)"
+}
+
 test -x "$vm_binary" || {
   echo "Acceptance VM binary is missing: $vm_binary" >&2
   echo "Repair: cargo build --manifest-path rust/Cargo.toml --release --package goobits-vm" >&2
@@ -89,7 +201,7 @@ command -v docker >/dev/null 2>&1 || {
 }
 
 mkdir -p "$acceptance_home" "$project_root" "$consumer_root" \
-  "$fixture_root/skills/initial" "$fake_bin"
+  "$fixture_root/skills/initial" "$language_root" "$fake_bin"
 
 version=$("$vm_binary" --version | awk '{print $2}')
 server_image=vm-package-server-acceptance:$version-$run_id
@@ -230,6 +342,17 @@ const archive = `dist/release-tool-${target}.tar.gz`;
 const result = spawnSync('tar', ['-czf', archive, '-C', stage, 'bin'], { stdio: 'inherit' });
 process.exit(result.status ?? 1);
 JAVASCRIPT
+cat > "$project_root/package.json" <<'JSON'
+{
+  "name": "vm-acceptance-release-tool-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "test": "true"
+  }
+}
+JSON
+printf '%s\n' 'node_modules/' > "$project_root/.gitignore"
 printf '%s\n' '# Generic binary workspace acceptance fixture' > "$project_root/README.md"
 git -C "$project_root" init --initial-branch main
 git -C "$project_root" config user.name 'VM Acceptance'
@@ -255,6 +378,27 @@ git -C "$fixture_root" config user.email 'vm-acceptance@example.invalid'
 git -C "$fixture_root" add .
 git -C "$fixture_root" commit -m 'feat: initial collection'
 
+cat > "$language_root/package.json" <<'JSON'
+{
+  "name": "vm-acceptance-language",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test.js"
+  }
+}
+JSON
+printf '%s\n' "module.exports = 'published';" > "$language_root/index.js"
+cat > "$language_root/test.js" <<'JAVASCRIPT'
+if (require('./index.js') !== 'published') process.exit(1);
+JAVASCRIPT
+printf '%s\n' 'published' > "$language_root/source-marker.txt"
+git -C "$language_root" init --initial-branch main
+git -C "$language_root" config user.name 'VM Acceptance'
+git -C "$language_root" config user.email 'vm-acceptance@example.invalid'
+git -C "$language_root" add .
+git -C "$language_root" commit -m 'feat: initial language package'
+
 (
   cd "$project_root"
   gateway_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')
@@ -272,11 +416,16 @@ run_vm --config "$consumer_root/vm.yaml" create
 
 docker run --rm --user 0:0 \
   --volume "${compose_project}_source-mirrors:/data/sources" \
-  --volume "$fixture_root:/fixture:ro" \
+  --volume "$fixture_root:/tool-fixture:ro" \
+  --volume "$language_root:/language-fixture:ro" \
   --entrypoint /bin/sh "$server_image" -ec \
-  'git clone --bare /fixture /data/sources/acceptance-agent-skills.git && chown -R 10001:10001 /data/sources/acceptance-agent-skills.git'
+  'git clone --bare /tool-fixture /data/sources/acceptance-agent-skills.git &&
+   git clone --bare /language-fixture /data/sources/acceptance-language.git &&
+   chown -R 10001:10001 /data/sources/acceptance-agent-skills.git /data/sources/acceptance-language.git'
 run_vm tools register agent-skills --kind collection \
   --repository file:///data/sources/acceptance-agent-skills.git
+run_vm packages register vm-acceptance-language --ecosystem npm \
+  --repository file:///data/sources/acceptance-language.git
 
 stable_containers=(
   "$compose_project-gateway-1"
@@ -293,6 +442,7 @@ stable_containers=(
   "$consumer_edge"
 )
 capture_runtime_state "$before_ids" "$before_volumes"
+project_manifest_digest=$(git -C "$project_root" hash-object package.json)
 
 workflow_containers=(
   "$compose_project-gateway-1"
@@ -303,19 +453,11 @@ workflow_containers=(
   "$compose_project-rollout-1"
 )
 
+accept_language_package_lifecycle
+
 docker exec --user acceptance "$environment_name" \
   vm packages checkout agent-skills >"$checkout_log" 2>&1
-checkout_source=$(sed -n 's/^Source: //p' "$checkout_log")
-test "$(printf '%s\n' "$checkout_source" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
-case "$checkout_source" in
-  /home/acceptance/.local/share/vm/package-checkouts/*/source) ;;
-  *)
-    cat "$checkout_log" >&2
-    echo "Managed checkout escaped guest storage: $checkout_source" >&2
-    echo "Repair: rerun this acceptance script with a guest-owned checkout build" >&2
-    exit 3
-    ;;
-esac
+checkout_source=$(checkout_source_from_log "$checkout_log")
 checkout_id=$(basename "$(dirname "$checkout_source")")
 docker exec --user acceptance "$environment_name" test -d "$checkout_source/.git"
 
@@ -473,7 +615,8 @@ if ! docker exec --user acceptance "$environment_name" sh -ec '
   exit 4
 fi
 grep -Eq 'Package (review|release) requested changes' "$workspace_log"
-test ! -e "$project_root/package.json"
+test "$(git -C "$project_root" hash-object package.json)" = "$project_manifest_digest"
+test ! -e "$project_root/package-lock.json"
 if GIT_TERMINAL_PROMPT=0 git -C "$project_root" ls-remote origin >/dev/null 2>&1; then
   echo "Acceptance source origin unexpectedly became reachable" >&2
   echo "Repair: use an unreachable fixture origin and rerun this acceptance script" >&2

@@ -81,7 +81,8 @@ release remains blocked on equipped-host acceptance:
 - [x] Collapse managed-tool targeting to one configuration-owned execution path.
 - [x] Make selector parsing, disabled-update output, and missing-release errors truthful.
 - [x] Rerun static release acceptance after remediation.
-- [ ] Rerun Docker and Tart release acceptance after remediation.
+
+Docker and Tart reruns are tracked once under Remaining Acceptance.
 
 ## Read-Only Existing Project Workspaces
 
@@ -111,8 +112,6 @@ vm packages release
 - [x] Update the sole Docker package acceptance script to keep the producer
   outside the managed shelf, register it explicitly, reject a second clone,
   check infrastructure mounts, and retain container/volume identity checks.
-- [ ] Run the updated Docker acceptance script on a host with Docker and the
-  built appliance images.
 - [ ] Add the approved Typemill and CodeAtlas manifests/build tests in their
   separate project repositories; those repositories are not present in this
   workspace.
@@ -140,10 +139,11 @@ container ID `ca8e168af769`; named package volumes remained present; a no-change
 tools update projects-dev` replaced only `projects-package-edge` with the
 current image. No real package release or publication was performed.
 
-- [ ] Extend and rerun the sole Docker package-workflow acceptance test for a
-  source-only language-package release and a cancelled checkout, proving local
-  dependency restoration precedes durable closure and no container or volume
-  is recreated.
+- [x] Extend the sole Docker package-workflow acceptance test with a source-only
+  language-package release and a failed-then-retried cancellation, proving
+  local dependency restoration precedes durable closure.
+- [ ] Run the extended Docker package-workflow acceptance test on an equipped
+  host and confirm no container or volume is recreated.
 - [ ] Host-accept steady-state package startup, concurrent shell
   reconciliation, targeted and fleet tool updates, read-only workspace restart,
   and first-shell `codex-code-mode-host` availability.
