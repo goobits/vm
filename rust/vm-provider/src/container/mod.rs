@@ -6,6 +6,7 @@ pub mod command;
 mod compose_context;
 mod compose_model;
 pub mod engine;
+mod image_source;
 mod mountpoints;
 mod ownership;
 
@@ -22,14 +23,12 @@ pub use engine::ContainerEngine;
 pub use lifecycle::LifecycleOperations;
 
 // Standard library
-use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::OnceLock;
 
 // External crates
 use tera::Tera;
-use vm_core::error::{Result, VmError};
+use vm_core::error::Result;
 
 // Internal imports
 use crate::{
@@ -37,31 +36,8 @@ use crate::{
 };
 use vm_config::config::VmConfig;
 
-use ownership::is_environment_container;
-
 pub fn validate_container_environment(engine: ContainerEngine) -> Result<()> {
     engine.validate()
-}
-
-fn host_ports_from_bindings(bindings: &str) -> Result<Vec<u16>> {
-    let value: serde_json::Value = serde_json::from_str(bindings).map_err(|error| {
-        VmError::Internal(format!(
-            "Failed to parse managed service port bindings: {error}"
-        ))
-    })?;
-    let mut ports = value
-        .as_object()
-        .into_iter()
-        .flat_map(|bindings| bindings.values())
-        .filter_map(serde_json::Value::as_array)
-        .flatten()
-        .filter_map(|binding| binding.get("HostPort"))
-        .filter_map(serde_json::Value::as_str)
-        .filter_map(|port| port.parse::<u16>().ok())
-        .collect::<Vec<_>>();
-    ports.sort_unstable();
-    ports.dedup();
-    Ok(ports)
 }
 
 /// Container user and permission configuration
@@ -339,282 +315,15 @@ impl Provider for ContainerProvider {
     }
 
     fn list_instances(&self) -> Result<Vec<crate::InstanceInfo>> {
-        use crate::common::instance::create_container_instance_info;
-
-        // Use label-based filtering to find all vm-managed containers
-        let output = std::process::Command::new(&self.executable)
-            .args([
-                "ps",
-                "-a",
-                "--filter",
-                "label=com.vm.managed=true",
-                "--format",
-                "{{.Names}}\t{{.ID}}\t{{.Status}}\t{{.CreatedAt}}\t{{.RunningFor}}\t{{.Label \"com.vm.project\"}}\t{{.Label \"com.vm.role\"}}\t{{.Label \"com.docker.compose.service\"}}",
-            ])
-            .output()
-            .map_err(|e| {
-                VmError::Internal(format!(
-                    "Failed to list containers with vm label using '{}': {}",
-                    self.executable, e
-                ))
-            })?;
-
-        if !output.status.success() {
-            return Err(VmError::Internal(format!(
-                "Container listing failed using '{}': {}",
-                self.executable,
-                String::from_utf8_lossy(&output.stderr)
-            )));
-        }
-
-        let containers_output = String::from_utf8_lossy(&output.stdout);
-        let mut instances = Vec::new();
-
-        for line in containers_output.lines() {
-            if line.is_empty() {
-                continue;
-            }
-            let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() >= 5 {
-                // project label is optional
-                let name = parts[0];
-                let id = parts[1];
-                let status = parts[2];
-                let created_at = parts[3];
-                let running_for = parts[4];
-                let role = parts.get(6).copied().unwrap_or_default();
-                let compose_service = parts.get(7).copied().unwrap_or_default();
-                if !is_environment_container(name, role, compose_service) {
-                    continue;
-                }
-                let project = parts
-                    .get(5)
-                    .filter(|project| !project.is_empty())
-                    .map(|project| project.to_string());
-
-                instances.push(create_container_instance_info(
-                    self.engine.name(),
-                    name,
-                    id,
-                    status,
-                    Some(created_at),
-                    Some(running_for),
-                    project,
-                ));
-            }
-        }
-
-        Ok(instances)
+        ownership::list_instances(&self.executable, self.engine)
     }
 
     fn instance_config_path(&self, instance: &str) -> Result<Option<PathBuf>> {
-        let output = Command::new(&self.executable)
-            .args(["inspect", "--type", "container", instance])
-            .output()?;
-        if !output.status.success() {
-            return Ok(None);
-        }
-        let containers: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout)?;
-        Ok(containers
-            .first()
-            .and_then(ownership::config_path_from_inspect))
+        ownership::instance_config_path(&self.executable, instance)
     }
 
     fn reusable_host_ports(&self, environment: &str) -> Result<Vec<u16>> {
-        let mut ports = Vec::new();
-        for service in
-            ContainerOps::list_managed_service_containers(Some(&self.executable), environment)?
-        {
-            let output = Command::new(&self.executable)
-                .args([
-                    "inspect",
-                    "--format",
-                    "{{json .HostConfig.PortBindings}}",
-                    &service,
-                ])
-                .output()
-                .map_err(|error| {
-                    VmError::Internal(format!(
-                        "Failed to inspect managed service '{service}': {error}"
-                    ))
-                })?;
-            if !output.status.success() {
-                return Err(VmError::Internal(format!(
-                    "Failed to inspect managed service '{}': {}",
-                    service,
-                    String::from_utf8_lossy(&output.stderr).trim()
-                )));
-            }
-            ports.extend(host_ports_from_bindings(
-                String::from_utf8_lossy(&output.stdout).trim(),
-            )?);
-        }
-        ports.sort_unstable();
-        ports.dedup();
-        Ok(ports)
-    }
-
-    fn snapshot(&self, request: &crate::SnapshotRequest) -> Result<()> {
-        let lifecycle = self.lifecycle_ops();
-        let target_container = lifecycle.resolve_target_container(None)?;
-
-        tracing::info!(
-            "Creating snapshot '{}' for container '{}'",
-            request.snapshot_name,
-            target_container
-        );
-
-        // Step 1: Commit the container to an image
-        let image_tag = format!("vm-snapshot:{}", request.snapshot_name);
-
-        let mut commit_args = vec![
-            "commit".to_string(),
-            target_container.clone(),
-            image_tag.clone(),
-        ];
-
-        if let Some(desc) = &request.description {
-            commit_args.insert(1, "--message".to_string());
-            commit_args.insert(2, desc.clone());
-        }
-
-        let commit_output = std::process::Command::new(&self.executable)
-            .args(&commit_args)
-            .output()
-            .map_err(|e| VmError::Internal(format!("Failed to commit container: {e}")))?;
-
-        if !commit_output.status.success() {
-            return Err(VmError::Internal(format!(
-                "Failed to commit container: {}",
-                String::from_utf8_lossy(&commit_output.stderr)
-            )));
-        }
-
-        tracing::info!("Container committed to image '{}'", image_tag);
-
-        // Step 2: Save the image to a tar file
-        let snapshot_dir = std::path::PathBuf::from("/tmp/vm-snapshots");
-        std::fs::create_dir_all(&snapshot_dir)
-            .map_err(|e| VmError::Internal(format!("Failed to create snapshot directory: {e}")))?;
-
-        let snapshot_path = snapshot_dir.join(format!("{}.tar", request.snapshot_name));
-
-        let snapshot_path_str = snapshot_path
-            .to_str()
-            .ok_or_else(|| VmError::Internal("Invalid UTF-8 in snapshot path".to_string()))?;
-
-        let save_output = std::process::Command::new(&self.executable)
-            .args(["save", "-o", snapshot_path_str, &image_tag])
-            .output()
-            .map_err(|e| VmError::Internal(format!("Failed to save image: {e}")))?;
-
-        if !save_output.status.success() {
-            return Err(VmError::Internal(format!(
-                "Failed to save image: {}",
-                String::from_utf8_lossy(&save_output.stderr)
-            )));
-        }
-
-        tracing::info!("Snapshot saved to {:?}", snapshot_path);
-
-        Ok(())
-    }
-
-    fn restore_snapshot(&self, request: &crate::SnapshotRestoreRequest) -> Result<()> {
-        tracing::info!(
-            "Restoring snapshot '{}' from {:?}",
-            request.snapshot_name,
-            request.snapshot_path
-        );
-
-        // Verify snapshot file exists
-        if !request.snapshot_path.exists() {
-            return Err(VmError::Internal(format!(
-                "Snapshot file not found: {}",
-                request.snapshot_path.display()
-            )));
-        }
-
-        // Verify snapshot file is not empty
-        let metadata = fs::metadata(&request.snapshot_path).map_err(|e| {
-            VmError::Internal(format!("Failed to read snapshot file metadata: {}", e))
-        })?;
-
-        if metadata.len() == 0 {
-            return Err(VmError::Internal(format!(
-                "Snapshot file is empty: {}",
-                request.snapshot_path.display()
-            )));
-        }
-
-        // Step 1: Load the image from tar file
-        let snapshot_path_str = request
-            .snapshot_path
-            .to_str()
-            .ok_or_else(|| VmError::Internal("Invalid UTF-8 in snapshot path".to_string()))?;
-
-        let load_output = std::process::Command::new(&self.executable)
-            .args(["load", "-i", snapshot_path_str])
-            .output()
-            .map_err(|e| VmError::Internal(format!("Failed to load snapshot: {e}")))?;
-
-        if !load_output.status.success() {
-            return Err(VmError::Internal(format!(
-                "Failed to load snapshot: {}",
-                String::from_utf8_lossy(&load_output.stderr)
-            )));
-        }
-
-        let image_tag = format!("vm-snapshot:{}", request.snapshot_name);
-        tracing::info!("Loaded image '{}'", image_tag);
-
-        // Step 2: Stop the current container if it exists
-        let lifecycle = self.lifecycle_ops();
-        if let Ok(target_container) = lifecycle.resolve_target_container(None) {
-            tracing::info!("Stopping current container '{}'", target_container);
-            let _ = lifecycle.stop_container(None); // Best effort
-
-            if request.force {
-                tracing::info!("Removing current container '{}'", target_container);
-                let _ = lifecycle.destroy_container(None, &ProviderContext::default());
-            }
-        }
-
-        // Step 3: Create new container from snapshot image
-        // Get the project name for the new container
-        let project_name = self
-            .config
-            .project
-            .as_ref()
-            .and_then(|p| p.name.as_deref())
-            .unwrap_or("default");
-
-        let container_name = format!("{}-restored", project_name);
-
-        let run_output = std::process::Command::new(&self.executable)
-            .args(["run", "-d", "--name", &container_name, &image_tag])
-            .output()
-            .map_err(|e| {
-                VmError::Internal(format!("Failed to create container from snapshot: {e}"))
-            })?;
-
-        if !run_output.status.success() {
-            return Err(VmError::Internal(format!(
-                "Failed to create container from snapshot: {}",
-                String::from_utf8_lossy(&run_output.stderr)
-            )));
-        }
-
-        let container_id = String::from_utf8_lossy(&run_output.stdout)
-            .trim()
-            .to_string();
-        tracing::info!(
-            "Created new container '{}' ({})",
-            container_name,
-            container_id
-        );
-
-        Ok(())
+        ownership::reusable_host_ports(&self.executable, environment)
     }
 
     fn clone_box(&self) -> Box<dyn Provider> {
@@ -646,7 +355,7 @@ impl TempProvider for ContainerProvider {
 
 #[cfg(test)]
 mod tests {
-    use super::{host_ports_from_bindings, ContainerEngine};
+    use super::ContainerEngine;
     use std::io::Write;
 
     #[cfg(unix)]
@@ -681,17 +390,5 @@ exit 1
         engine
             .validate_executable(docker.to_str().unwrap())
             .unwrap();
-    }
-
-    #[test]
-    fn parses_managed_service_host_port_bindings() {
-        assert_eq!(
-            host_ports_from_bindings(
-                r#"{"5432/tcp":[{"HostIp":"127.0.0.1","HostPort":"3129"}],"6379/tcp":[{"HostIp":"::1","HostPort":"3130"}]}"#
-            )
-            .unwrap(),
-            vec![3129, 3130]
-        );
-        assert!(host_ports_from_bindings("not-json").is_err());
     }
 }

@@ -60,7 +60,7 @@ pub enum PackagesSubcommand {
     },
     /// Stop the appliance while preserving all named volumes
     Down,
-    /// Show the appliance runtime and gateway health
+    /// Show the appliance engine and gateway health
     Status,
     /// Validate the runtime, appliance definition, and gateway
     Doctor {
@@ -258,7 +258,11 @@ pub struct FleetArgs {
     #[arg(long)]
     pub fleet: bool,
     /// Provider filter (docker, podman, tart)
-    #[arg(long, requires = "fleet", value_parser = ["docker", "podman", "tart"])]
+    #[arg(
+        long,
+        requires = "fleet",
+        value_parser = vm_config::config::ProviderName::SUPPORTED
+    )]
     pub provider: Option<String>,
     /// Match pattern for instance names
     #[arg(long, requires = "fleet")]

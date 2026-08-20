@@ -182,6 +182,10 @@ current image. No real package release or publication was performed.
 - [x] Let Docker, Podman, and Linux Tart environments consume the same authenticated gateway.
 - [x] Keep engine selection on appliance creation while operational commands use persisted state.
 - [x] Include Tart automatically in macOS source and release binaries while keeping non-macOS builds lean.
+- [x] Reuse `ProviderName` for persisted appliance engines instead of maintaining a second engine enum.
+- [x] Keep container inventory/config ownership in one module and provider status types outside the trait root.
+- [x] Remove the unused provider-level snapshot API; `vm-snapshot` remains the sole snapshot implementation.
+- [x] Split Compose behavior from its test suite and base-image acquisition from build-context generation.
 
 ### Worker package data plane
 

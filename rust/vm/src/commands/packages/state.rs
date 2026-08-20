@@ -4,42 +4,13 @@ use vm_provider::container::ContainerEngine;
 
 use crate::error::{VmError, VmResult};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub(super) enum ApplianceEngine {
-    Docker,
-    Podman,
-}
-
-impl ApplianceEngine {
-    pub(super) fn as_str(self) -> &'static str {
-        match self {
-            Self::Docker => "docker",
-            Self::Podman => "podman",
-        }
-    }
-
-    pub(super) fn detect(self) -> VmResult<ContainerEngine> {
-        ContainerEngine::detect(&ProviderName::from(self.as_str())).map_err(VmError::from)
-    }
-}
-
-impl From<ContainerEngine> for ApplianceEngine {
-    fn from(engine: ContainerEngine) -> Self {
-        match engine {
-            ContainerEngine::Docker => Self::Docker,
-            ContainerEngine::Podman(_) => Self::Podman,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(super) struct ApplianceState {
     #[serde(default)]
     pub definition_revision: u32,
     /// Kept as `runtime` on disk so existing Docker state remains readable.
     #[serde(rename = "runtime")]
-    pub engine: ApplianceEngine,
+    pub engine: ProviderName,
     pub gateway_url: String,
     pub gateway_port: u16,
     pub registry_image: String,
@@ -51,6 +22,16 @@ pub(super) struct ApplianceState {
 }
 
 impl ApplianceState {
+    pub(super) fn container_engine(&self) -> VmResult<ContainerEngine> {
+        if !self.engine.is_container() {
+            return Err(VmError::validation(
+                format!("Invalid package appliance engine '{}'", self.engine),
+                Some("Run `vm packages up --engine docker|podman`"),
+            ));
+        }
+        ContainerEngine::detect(&self.engine).map_err(VmError::from)
+    }
+
     pub(super) fn to_json(&self) -> VmResult<Vec<u8>> {
         let mut json = serde_json::to_vec_pretty(self)?;
         json.push(b'\n');
@@ -64,13 +45,14 @@ impl ApplianceState {
 
 #[cfg(test)]
 mod tests {
-    use super::{ApplianceEngine, ApplianceState};
+    use super::ApplianceState;
+    use vm_config::config::ProviderName;
 
     #[test]
     fn state_round_trips_without_changing_the_docker_disk_shape() {
         let state = ApplianceState {
             definition_revision: 3,
-            engine: ApplianceEngine::Docker,
+            engine: ProviderName::Docker,
             gateway_url: "http://127.0.0.1:3080".into(),
             gateway_port: 3080,
             registry_image: "registry.example/vm-packages:1".into(),
@@ -85,7 +67,7 @@ mod tests {
 
     #[test]
     fn retired_tart_appliance_state_is_rejected() {
-        let error = ApplianceState::from_json(
+        let state = ApplianceState::from_json(
             br#"{
                 "runtime": "tart",
                 "gateway_url": "http://192.0.2.2:3080",
@@ -95,7 +77,7 @@ mod tests {
                 "controller_version": "1"
             }"#,
         )
-        .unwrap_err();
-        assert!(error.to_string().contains("unknown variant"));
+        .unwrap();
+        assert!(state.container_engine().is_err());
     }
 }

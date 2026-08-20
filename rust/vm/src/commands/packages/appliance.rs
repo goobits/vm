@@ -8,12 +8,8 @@ use vm_packages::{
 use crate::cli::PackageInfrastructureEngine;
 use crate::error::{VmError, VmResult};
 
-use super::{
-    container,
-    files::ApplianceFiles,
-    process,
-    state::{ApplianceEngine, ApplianceState},
-};
+use super::{container, files::ApplianceFiles, process, state::ApplianceState};
+use vm_config::config::ProviderName;
 
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(60);
 const HEALTH_INTERVAL: Duration = Duration::from_millis(500);
@@ -88,8 +84,11 @@ pub(super) async fn up(
     job_image: Option<String>,
 ) -> VmResult<()> {
     let previous = files.read_state()?;
-    let engine_name = resolve_engine(requested, previous.as_ref().map(|state| state.engine));
-    let engine = engine_name.detect()?;
+    let engine_name = resolve_engine(
+        requested,
+        previous.as_ref().map(|state| state.engine.clone()),
+    );
+    let engine = vm_provider::container::ContainerEngine::detect(&engine_name)?;
     let image = resolve_image(
         registry_image,
         previous.as_ref().map(|state| {
@@ -129,7 +128,7 @@ pub(super) async fn up(
 
     vm_success!("Package infrastructure is ready");
     vm_println!("Gateway: {gateway_url}");
-    vm_println!("Engine: {}", engine_name.as_str());
+    vm_println!("Engine: {}", engine.name());
     Ok(())
 }
 
@@ -166,7 +165,7 @@ pub(super) fn repair_client_access(
     let allow_source_build = config.registry_image == default_registry_image()
         && config.job_image == default_job_image();
     files.materialize(&config)?;
-    let engine = state.engine.detect()?;
+    let engine = state.container_engine()?;
     state.gateway_url = container::up(engine, files, &config, allow_source_build)?;
     state.registry_image_identity = container::image_identity(engine, &config.registry_image)?;
     state.registry_image = config.registry_image;
@@ -190,7 +189,7 @@ pub(super) fn down(files: &ApplianceFiles) -> VmResult<()> {
         vm_println!("Package infrastructure is not configured");
         return Ok(());
     };
-    container::down(state.engine.detect()?, files)?;
+    container::down(state.container_engine()?, files)?;
     vm_success!("Package infrastructure stopped; named volumes were preserved");
     Ok(())
 }
@@ -199,8 +198,8 @@ pub(super) async fn status(files: &ApplianceFiles) -> VmResult<PackageHealth> {
     let Some(state) = files.read_state()? else {
         return Ok(PackageHealth::ActionRequired);
     };
-    let runtime_status = container::status(state.engine.detect()?, files)?;
-    let healthy = runtime_status == "running" && gateway_is_healthy(&state.gateway_url).await;
+    let engine_status = container::status(state.container_engine()?, files)?;
+    let healthy = engine_status == "running" && gateway_is_healthy(&state.gateway_url).await;
 
     Ok(if healthy && files.runtime_credentials_ready()? {
         PackageHealth::Healthy
@@ -213,11 +212,12 @@ pub(super) async fn doctor(files: &ApplianceFiles) -> VmResult<()> {
     let state = files.read_state()?;
     let engine_name = state
         .as_ref()
-        .map(|state| state.engine)
+        .map(|state| state.engine.clone())
         .unwrap_or_else(first_run_engine);
 
     files.validate_definition()?;
-    container::doctor(engine_name.detect()?, files)?;
+    let engine = vm_provider::container::ContainerEngine::detect(&engine_name)?;
+    container::doctor(engine, files)?;
 
     if let Some(state) = state {
         if !gateway_is_healthy(&state.gateway_url).await {
@@ -265,7 +265,7 @@ fn maintenance(files: &ApplianceFiles, task: MaintenanceTask<'_>) -> VmResult<()
     if let Some(backup_id) = task.backup_id() {
         process::validate_job_id(backup_id)?;
     }
-    let output = container::maintenance(state.engine.detect()?, files, task)?;
+    let output = container::maintenance(state.container_engine()?, files, task)?;
     if matches!(task, MaintenanceTask::List) {
         if output.trim().is_empty() {
             vm_println!("No package infrastructure backups");
@@ -278,23 +278,23 @@ fn maintenance(files: &ApplianceFiles, task: MaintenanceTask<'_>) -> VmResult<()
 
 fn resolve_engine(
     requested: PackageInfrastructureEngine,
-    previous: Option<ApplianceEngine>,
-) -> ApplianceEngine {
+    previous: Option<ProviderName>,
+) -> ProviderName {
     match requested {
         PackageInfrastructureEngine::Auto => previous.unwrap_or_else(first_run_engine),
-        PackageInfrastructureEngine::Docker => ApplianceEngine::Docker,
-        PackageInfrastructureEngine::Podman => ApplianceEngine::Podman,
+        PackageInfrastructureEngine::Docker => ProviderName::Docker,
+        PackageInfrastructureEngine::Podman => ProviderName::Podman,
     }
 }
 
-fn first_run_engine() -> ApplianceEngine {
+fn first_run_engine() -> ProviderName {
     first_run_engine_for(&crate::utils::configured_container_runtime())
 }
 
-fn first_run_engine_for(provider: &str) -> ApplianceEngine {
+fn first_run_engine_for(provider: &str) -> ProviderName {
     match provider {
-        "podman" => ApplianceEngine::Podman,
-        _ => ApplianceEngine::Docker,
+        "podman" => ProviderName::Podman,
+        _ => ProviderName::Docker,
     }
 }
 
@@ -371,23 +371,23 @@ fn workflow_client(
 mod tests {
     use super::{default_registry_image, first_run_engine_for, resolve_engine, resolve_image};
     use crate::cli::PackageInfrastructureEngine;
-    use crate::commands::packages::state::ApplianceEngine;
+    use vm_config::config::ProviderName;
 
     #[test]
     fn auto_engine_reuses_state_before_platform_default() {
         assert_eq!(
             resolve_engine(
                 PackageInfrastructureEngine::Auto,
-                Some(ApplianceEngine::Podman)
+                Some(ProviderName::Podman)
             ),
-            ApplianceEngine::Podman
+            ProviderName::Podman
         );
     }
 
     #[test]
     fn first_run_follows_the_configured_container_engine() {
-        assert_eq!(first_run_engine_for("podman"), ApplianceEngine::Podman);
-        assert_eq!(first_run_engine_for("tart"), ApplianceEngine::Docker);
+        assert_eq!(first_run_engine_for("podman"), ProviderName::Podman);
+        assert_eq!(first_run_engine_for("tart"), ProviderName::Docker);
     }
 
     #[test]
@@ -395,9 +395,9 @@ mod tests {
         assert_eq!(
             resolve_engine(
                 PackageInfrastructureEngine::Docker,
-                Some(ApplianceEngine::Podman)
+                Some(ProviderName::Podman)
             ),
-            ApplianceEngine::Docker
+            ProviderName::Docker
         );
     }
 

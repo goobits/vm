@@ -66,9 +66,7 @@ pub fn get_all_instances() -> VmResult<Vec<InstanceInfo>> {
 
     let mut all_instances = Vec::new();
     let mut provider_errors = Vec::new();
-    let providers = ["docker", "podman", "tart"];
-
-    for provider_name in providers {
+    for provider_name in vm_config::config::ProviderName::SUPPORTED {
         let config = VmConfig {
             provider: Some(provider_name.into()),
             ..Default::default()

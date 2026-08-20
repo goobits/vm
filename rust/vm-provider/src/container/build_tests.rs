@@ -9,11 +9,11 @@ fn generated_images_are_marked_as_vm_managed() {
 }
 
 #[test]
-fn test_docker_pull_error_message_explains_unprivileged_nested_docker() {
+fn image_pull_error_explains_unprivileged_nested_engines() {
     let stderr = "failed to register layer: unshare: operation not permitted";
-    let message = BuildOperations::docker_pull_error_message("ubuntu:jammy", stderr);
+    let message = BuildOperations::image_pull_error_message("ubuntu:jammy", stderr);
 
-    assert!(message.contains("Docker cannot register image layers"));
+    assert!(message.contains("container engine cannot register image layers"));
     assert!(message.contains("unprivileged container"));
     assert!(message.contains("Run vm from the host machine"));
     assert!(message.contains(stderr));

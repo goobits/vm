@@ -196,7 +196,7 @@ mod tests {
     fn state() -> ApplianceState {
         ApplianceState {
             definition_revision: vm_packages::APPLIANCE_DEFINITION_REVISION,
-            engine: crate::commands::packages::state::ApplianceEngine::Docker,
+            engine: vm_config::config::ProviderName::Docker,
             gateway_url: "http://127.0.0.1:3080".into(),
             gateway_port: 3080,
             registry_image: "registry/image:1".into(),

@@ -78,7 +78,7 @@ pub enum Command {
         #[arg(num_args = 0..=2)]
         words: Vec<String>,
         /// Advanced provider override
-        #[arg(long, value_parser = ["docker", "podman", "tart"])]
+        #[arg(long, value_parser = vm_config::config::ProviderName::SUPPORTED)]
         provider: Option<String>,
         /// Use a specific image, distro, or snapshot name
         #[arg(long)]
