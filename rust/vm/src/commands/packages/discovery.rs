@@ -7,7 +7,10 @@ use vm_config::detector::{
     ProjectFacts,
 };
 use vm_packages::SourceKind;
-use vm_packages::{PackageEcosystem, RegisterPackage, RegisterTool, ToolSourceManifest};
+use vm_packages::{
+    PackageDefinition, PackageEcosystem, RegisterPackage, RegisterTool, ToolDefinition,
+    ToolSourceManifest,
+};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::error::{VmError, VmResult};
@@ -97,7 +100,11 @@ pub(super) fn discover_local(
 }
 
 /// Inspect exact configured repositories independently without mutating them.
-pub(super) fn discover_canonical(targets: &[String]) -> Discovery {
+pub(super) fn discover_canonical(
+    targets: &[String],
+    packages: &[PackageDefinition],
+    tools: &[ToolDefinition],
+) -> Discovery {
     let mut discovery = Discovery::default();
     for target in targets {
         let configured = PathBuf::from(target);
@@ -111,7 +118,7 @@ pub(super) fn discover_canonical(targets: &[String]) -> Discovery {
                 .map_err(|error| {
                     VmError::filesystem(error, target, "resolve canonical package source")
                 })
-                .and_then(|root| discover_source(&root, None, None, true))
+                .and_then(|root| discover_registered_source(&root, packages, tools))
         };
         match result {
             Ok(source) => discovery.push(source),
@@ -123,6 +130,48 @@ pub(super) fn discover_canonical(targets: &[String]) -> Discovery {
         }
     }
     discovery
+}
+
+fn discover_registered_source(
+    root: &Path,
+    packages: &[PackageDefinition],
+    tools: &[ToolDefinition],
+) -> VmResult<SourceRequest> {
+    let repository = normalize_repository_url(&exact_repository(root)?.origin_url)?;
+    let packages = packages
+        .iter()
+        .filter(|package| {
+            package.workspace_release
+                && vm_packages::repository_urls_equivalent(&package.repository, &repository)
+        })
+        .collect::<Vec<_>>();
+    let tools = tools
+        .iter()
+        .filter(|tool| {
+            tool.workspace_release
+                && vm_packages::repository_urls_equivalent(&tool.repository, &repository)
+        })
+        .collect::<Vec<_>>();
+    match (packages.as_slice(), tools.as_slice()) {
+        ([package], []) => discover_one(
+            root,
+            Some(package.ecosystem),
+            Some(&package.default_branch),
+            true,
+        )
+        .map(SourceRequest::Package),
+        ([], [tool]) => {
+            discover_tool(root, Some(&tool.default_branch), true).map(SourceRequest::Tool)
+        }
+        ([], []) => discover_source(root, None, None, true),
+        _ => Err(VmError::validation(
+            format!(
+                "Canonical source {} has more than one registered workspace-release identity",
+                root.display()
+            ),
+            Some("Remove duplicate source registrations, then retry"),
+        )),
+    }
 }
 
 impl Discovery {
@@ -565,7 +614,7 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use git2::Repository;
-    use vm_packages::PackageEcosystem;
+    use vm_packages::{PackageDefinition, PackageEcosystem};
 
     use super::{
         discover, discover_canonical, discover_configured, discover_local,
@@ -789,15 +838,55 @@ mod tests {
         );
         let missing = directory.path().join("missing");
 
-        let discovery = discover_canonical(&[
-            source.to_string_lossy().into_owned(),
-            missing.to_string_lossy().into_owned(),
-        ]);
+        let discovery = discover_canonical(
+            &[
+                source.to_string_lossy().into_owned(),
+                missing.to_string_lossy().into_owned(),
+            ],
+            &[],
+            &[],
+        );
 
         assert_eq!(discovery.packages.len(), 1);
         assert!(discovery.packages[0].workspace_release);
         assert_eq!(discovery.failures.len(), 1);
         assert!(!missing.exists());
+    }
+
+    #[test]
+    fn canonical_discovery_reuses_registered_branch_and_ecosystem() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = package(
+            directory.path(),
+            "multi-package",
+            "Cargo.toml",
+            "[package]\nname = \"multi-package\"\nversion = \"1.0.0\"\n",
+        );
+        fs::write(
+            source.join("package.json"),
+            r#"{"name":"multi-package-js","version":"1.0.0"}"#,
+        )
+        .unwrap();
+        let registered = PackageDefinition {
+            name: "multi-package".into(),
+            ecosystem: PackageEcosystem::Cargo,
+            repository: "https://example.com/shared/multi-package.git".into(),
+            default_branch: "release".into(),
+            workspace_release: true,
+            registered_at: chrono::Utc::now(),
+        };
+        let repository = git2::Repository::open(&source).unwrap();
+        repository
+            .remote_set_url("origin", &registered.repository)
+            .unwrap();
+
+        let discovery =
+            discover_canonical(&[source.to_string_lossy().into_owned()], &[registered], &[]);
+
+        assert!(discovery.failures.is_empty());
+        assert_eq!(discovery.packages.len(), 1);
+        assert_eq!(discovery.packages[0].ecosystem, PackageEcosystem::Cargo);
+        assert_eq!(discovery.packages[0].default_branch, "release");
     }
 
     #[test]

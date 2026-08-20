@@ -50,7 +50,7 @@ async fn status(files: &ApplianceFiles) -> VmResult<()> {
         .await
         .unwrap_or(appliance::PackageHealth::ActionRequired);
     if let Ok(global) = vm_config::GlobalConfig::load() {
-        if let Ok(plans) = sources::prepare_sources(&global.packages) {
+        if let Ok(plans) = sources::prepare_sources(files, &global.packages).await {
             if !global.packages.is_default() && !files.has_git_token().unwrap_or(false) {
                 health = appliance::PackageHealth::ActionRequired;
             } else if health == appliance::PackageHealth::Healthy
@@ -84,11 +84,11 @@ async fn doctor(files: &ApplianceFiles, fix: bool) -> VmResult<()> {
         let repaired =
             sources::repair_quarantined_sources(files, &global.packages.source_roots).await?;
         unresolved.extend(repaired.failures);
-        let plans = sources::prepare_sources(&global.packages)?;
+        let plans = sources::prepare_sources(files, &global.packages).await?;
         let reconciled = sources::reconcile_source_plans(files, plans).await?;
         unresolved.extend(reconciled.failures);
     } else {
-        for plan in sources::prepare_sources(&global.packages)? {
+        for plan in sources::prepare_sources(files, &global.packages).await? {
             unresolved.extend(
                 plan.discovery
                     .failures
@@ -132,8 +132,12 @@ async fn up(
     profile: Option<String>,
 ) -> VmResult<()> {
     let global_config = vm_config::GlobalConfig::load()?;
-    let source_plans = sources::prepare_sources(&global_config.packages)?;
+    let managed_sources = sources::prepare_source_roots(&global_config.packages.source_roots)?;
     appliance::up(files, engine, port, registry_image, job_image).await?;
+    let canonical_sources =
+        sources::prepare_canonical_sources(files, &global_config.packages.canonical_sources)
+            .await?;
+    let source_plans = [managed_sources, canonical_sources];
     let outcome = sources::reconcile_source_plans(files, source_plans).await?;
     if outcome.is_degraded() {
         vm_core::vm_warning!(

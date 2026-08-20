@@ -236,6 +236,16 @@ fn fixture_broken_package(source_root: &Path) -> PathBuf {
     repository
         .remote("origin", "git@example.com:shared/broken-package.git")
         .unwrap();
+    fs::write(package.join("README.md"), "broken package fixture\n").unwrap();
+    let mut index = repository.index().unwrap();
+    index.add_path(Path::new("README.md")).unwrap();
+    index.write().unwrap();
+    let tree_id = index.write_tree().unwrap();
+    let tree = repository.find_tree(tree_id).unwrap();
+    let signature = git2::Signature::now("VM Test", "vm@example.invalid").unwrap();
+    repository
+        .commit(Some("HEAD"), &signature, &signature, "initial", &tree, &[])
+        .unwrap();
     package
 }
 

@@ -40,7 +40,7 @@ pub(super) struct SourcePlan {
     pub(super) discovery: discovery::Discovery,
 }
 
-fn prepare_source_roots(source_roots: &[String]) -> VmResult<SourcePlan> {
+pub(super) fn prepare_source_roots(source_roots: &[String]) -> VmResult<SourcePlan> {
     let source_roots = validated_source_roots(source_roots)?;
     let discovery = if source_roots.is_empty() {
         discovery::Discovery::default()
@@ -54,20 +54,31 @@ fn prepare_source_roots(source_roots: &[String]) -> VmResult<SourcePlan> {
     })
 }
 
-fn prepare_canonical_sources(canonical_sources: &[String]) -> SourcePlan {
-    SourcePlan {
+pub(super) async fn prepare_canonical_sources(
+    files: &ApplianceFiles,
+    canonical_sources: &[String],
+) -> VmResult<SourcePlan> {
+    let discovery = if canonical_sources.is_empty() {
+        discovery::Discovery::default()
+    } else {
+        let client = configured_client(files)?;
+        let (packages, tools) = tokio::try_join!(client.package_definitions(), client.tools())?;
+        discovery::discover_canonical(canonical_sources, &packages, &tools)
+    };
+    Ok(SourcePlan {
         source_count: canonical_sources.len(),
         policy: SourcePolicy::Canonical,
-        discovery: discovery::discover_canonical(canonical_sources),
-    }
+        discovery,
+    })
 }
 
-pub(super) fn prepare_sources(
+pub(super) async fn prepare_sources(
+    files: &ApplianceFiles,
     settings: &vm_config::PackageInfrastructureSettings,
 ) -> VmResult<[SourcePlan; 2]> {
     Ok([
         prepare_source_roots(&settings.source_roots)?,
-        prepare_canonical_sources(&settings.canonical_sources),
+        prepare_canonical_sources(files, &settings.canonical_sources).await?,
     ])
 }
 
@@ -149,6 +160,15 @@ fn quarantine_repository(source_root: &Path, repository: &Path) -> VmResult<Path
             Some("Configure its parent as the package source root"),
         ));
     }
+    if !repository_is_clean_and_committed(repository) {
+        return Err(VmError::validation(
+            format!(
+                "Refusing to quarantine {} because it has no committed clean state",
+                repository.display()
+            ),
+            Some("Commit or move the repository outside the managed package shelf, then retry"),
+        ));
+    }
     let destination = source_root.join(".vm-quarantine").join(relative);
     if destination.exists() {
         return Err(VmError::validation(
@@ -179,10 +199,68 @@ fn quarantine_repository(source_root: &Path, repository: &Path) -> VmResult<Path
     Ok(destination)
 }
 
+fn repository_is_clean_and_committed(repository: &Path) -> bool {
+    let Ok(repository) = git2::Repository::open(repository) else {
+        return false;
+    };
+    if repository
+        .head()
+        .and_then(|head| head.peel_to_commit())
+        .is_err()
+    {
+        return false;
+    }
+    let mut options = git2::StatusOptions::new();
+    options.include_untracked(true).recurse_untracked_dirs(true);
+    repository
+        .statuses(Some(&mut options))
+        .is_ok_and(|statuses| statuses.is_empty())
+}
+
 pub(super) fn has_quarantined_sources(source_roots: &[String]) -> bool {
     source_roots
         .iter()
-        .any(|root| Path::new(root).join(".vm-quarantine").is_dir())
+        .any(|root| quarantine_has_content(&Path::new(root).join(".vm-quarantine")))
+}
+
+fn quarantine_has_content(path: &Path) -> bool {
+    fs::read_dir(path).is_ok_and(|entries| {
+        entries.filter_map(Result::ok).any(|entry| {
+            let path = entry.path();
+            !path.is_dir() || path.join(".git").exists() || quarantine_has_content(&path)
+        })
+    })
+}
+
+fn prune_restored_quarantine(source_root: &Path, repository: &Path) -> VmResult<()> {
+    let quarantine = source_root.join(".vm-quarantine");
+    let Some(mut directory) = repository.parent() else {
+        return Ok(());
+    };
+    while directory.starts_with(&quarantine) {
+        match fs::remove_dir(directory) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                if fs::read_dir(directory).is_ok_and(|mut entries| entries.next().is_some()) {
+                    break;
+                }
+                return Err(VmError::filesystem(
+                    error,
+                    directory.display().to_string(),
+                    "prune empty package quarantine",
+                ));
+            }
+        }
+        if directory == quarantine {
+            break;
+        }
+        let Some(parent) = directory.parent() else {
+            break;
+        };
+        directory = parent;
+    }
+    Ok(())
 }
 
 pub(super) async fn repair_quarantined_sources(
@@ -253,6 +331,9 @@ pub(super) async fn repair_quarantined_sources(
             match result {
                 Ok(path) => {
                     vm_success!("Restored repaired source {}", path.display());
+                    if let Err(error) = prune_restored_quarantine(&source_root, &repository) {
+                        vm_warning!("Could not prune repaired source quarantine: {error}");
+                    }
                 }
                 Err(error) => outcome.failures.push(error.to_string()),
             }
@@ -385,7 +466,24 @@ fn validated_source_roots(source_roots: &[String]) -> VmResult<Vec<String>> {
 mod tests {
     use std::fs;
 
-    use super::{quarantine_repository, repair_repository_git, validated_source_roots};
+    use super::{
+        has_quarantined_sources, prune_restored_quarantine, quarantine_repository,
+        repair_repository_git, validated_source_roots,
+    };
+
+    fn committed_repository(path: &std::path::Path) {
+        let repository = git2::Repository::init(path).unwrap();
+        fs::write(path.join("keep.txt"), "preserved").unwrap();
+        let mut index = repository.index().unwrap();
+        index.add_path(std::path::Path::new("keep.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repository.find_tree(tree_id).unwrap();
+        let signature = git2::Signature::now("VM Test", "vm@example.invalid").unwrap();
+        repository
+            .commit(Some("HEAD"), &signature, &signature, "initial", &tree, &[])
+            .unwrap();
+    }
 
     #[test]
     fn configured_source_roots_must_be_absolute() {
@@ -403,8 +501,8 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let source_root = directory.path().join("packages");
         let repository = source_root.join("nested/broken");
-        fs::create_dir_all(repository.join(".git")).unwrap();
-        fs::write(repository.join("keep.txt"), "preserved").unwrap();
+        fs::create_dir_all(&repository).unwrap();
+        committed_repository(&repository);
 
         let quarantined = quarantine_repository(&source_root, &repository).unwrap();
 
@@ -415,6 +513,48 @@ mod tests {
         );
         assert_eq!(
             fs::read_to_string(quarantined.join("keep.txt")).unwrap(),
+            "preserved"
+        );
+    }
+
+    #[test]
+    fn uncommitted_repository_is_never_moved_to_quarantine() {
+        let directory = tempfile::tempdir().unwrap();
+        let source_root = directory.path().join("packages");
+        let repository = source_root.join("access");
+        fs::create_dir_all(&repository).unwrap();
+        git2::Repository::init(&repository).unwrap();
+        fs::write(repository.join("package.json"), r#"{"name":"access"}"#).unwrap();
+
+        let error = quarantine_repository(&source_root, &repository).unwrap_err();
+
+        assert!(error.to_string().contains("no committed clean state"));
+        assert!(repository.join("package.json").is_file());
+        assert!(!source_root.join(".vm-quarantine/access").exists());
+    }
+
+    #[test]
+    fn restored_quarantine_is_pruned_and_empty_scaffolding_is_healthy() {
+        let directory = tempfile::tempdir().unwrap();
+        let source_root = directory.path().join("packages");
+        let repository = source_root.join(".vm-quarantine/nested/repaired");
+        fs::create_dir_all(&repository).unwrap();
+        fs::write(repository.join("keep.txt"), "preserved").unwrap();
+        assert!(has_quarantined_sources(&[source_root
+            .to_string_lossy()
+            .into_owned()]));
+
+        let restored = source_root.join("nested/repaired");
+        fs::create_dir_all(restored.parent().unwrap()).unwrap();
+        fs::rename(&repository, &restored).unwrap();
+        prune_restored_quarantine(&source_root, &repository).unwrap();
+
+        assert!(!source_root.join(".vm-quarantine").exists());
+        assert!(!has_quarantined_sources(&[source_root
+            .to_string_lossy()
+            .into_owned()]));
+        assert_eq!(
+            fs::read_to_string(restored.join("keep.txt")).unwrap(),
             "preserved"
         );
     }
