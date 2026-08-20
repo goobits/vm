@@ -55,11 +55,13 @@ discovered sources. It does not select a project or an agent. Existing
 credentials and named volumes are retained.
 
 `vm packages up` remains an advanced lifecycle command. It recursively
-registers repositories below configured source roots and quarantines an
-unhealthy child repository under that shelf's `.vm-quarantine` directory
-instead of failing unrelated sources. It exits successfully and reports
-`degraded` when quarantine or registration failures remain. Exact canonical
-sources are reconciled separately and are never quarantined or repaired.
+registers repositories below configured source roots and quarantines a clean,
+committed unhealthy child repository under that shelf's `.vm-quarantine`
+directory instead of failing unrelated sources. A dirty or unborn repository
+is left untouched and reported as unresolved. The command exits successfully
+and reports `degraded` when quarantine or registration failures remain. Exact
+canonical sources are reconciled separately and are never quarantined or
+repaired.
 `vm packages doctor --fix` applies safe deterministic repairs only to managed
 shelves and reports manual instructions for an unhealthy canonical source.
 
@@ -430,7 +432,8 @@ Podman, or Tart environment name. Stopped environments are ignored unless
 `--include-stopped` is explicit; then VM starts selected stopped environments in
 place. A tool absent from every successfully loaded target is rejected instead
 of being installed outside configuration. The compatibility `--fleet` form
-uses the same execution path; `--to` is the exact-target syntax.
+uses the same execution path while retaining all-state selection, including
+starting stopped matches; `--to` is the exact-target syntax.
 
 Omitted versions track the latest release. Explicit semantic versions remain
 pinned. An explicit `update` installs every eligible selected change without a
@@ -488,7 +491,7 @@ target's owning configuration before reconciling its shared package routing,
 base-owned Codex runtime, and managed-tool selection. It does not project the
 invoking project's application services or tool policy onto unrelated
 environments. The compatibility `--fleet` form retains its former provider and
-pattern behavior for existing automation.
+pattern behavior and includes stopped matches for existing automation.
 
 Administrative package/tool commands are host-only. Checkout, show, and release
 are intentionally guest-safe. Other commands invoked inside a managed guest

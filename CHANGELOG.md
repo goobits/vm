@@ -33,7 +33,7 @@
 - 📦 Same-version source builds refresh Docker package edges by immutable image identity, delivering updated managed clients without recreating environments.
 - 📦 Catalog reconciliation treats GitHub HTTPS and SSH forms as one canonical repository instead of degrading after a local transport change.
 - 📦 Explicit cross-project Docker targets load their owning project configuration before managed-tool and package-edge reconciliation.
-- 📦 `vm tools update [<tool>...]` filters each running managed Docker environment's configured tools by default, supports repeated exact `--to` targeting across providers, and excludes stopped environments unless explicitly included.
+- 📦 `vm tools update [<tool>...]` filters each running managed Docker environment's configured tools by default, supports repeated exact `--to` targeting across providers, and excludes stopped environments unless explicitly included; compatibility `--fleet` retains its all-state behavior.
 
 ### 🔧 Changed
 
@@ -46,6 +46,7 @@
 - 🚀 Linux-first `vibe-tart` routing uses the versioned Tart base and Docker Engine directly; macOS/Colima remains an explicit fallback.
 - 🚀 macOS Tart environments use the Sequoia base and run Docker through Colima with QEMU software emulation instead of unsupported nested virtualization.
 - 📦 ⚠️ Bare `vm packages release` infers a managed checkout or registered canonical workspace from the current directory; the retired host `packages work` launcher and public checkout-ID lifecycle commands are removed.
+- 📦 ⚠️ `vm tools update` positional values are tool filters only; exact environment selection now uses repeated `--to <environment>` options.
 - 📦 Managed source shelves and exact canonical project roots now have separate policies: only shelves are recursively discovered or quarantined, while canonical roots remain read-only and require a repository-bound v2 guest capability.
 - 📦 Package infrastructure uses one Docker-or-Podman control plane shared by container and Linux Tart environments instead of maintaining a second appliance inside Tart.
 - 🚀 macOS builds always include the Tart provider through target-specific dependency wiring, including packaged releases and source installs.

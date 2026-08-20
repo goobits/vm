@@ -113,7 +113,7 @@ fn resolve_request_with(
                 Some("Use repeated `--to <environment>` selectors instead"),
             ));
         }
-        return Ok((resolve(fleet, InstanceStateFilter::Running)?, Vec::new()));
+        return Ok((resolve(fleet, InstanceStateFilter::Any)?, Vec::new()));
     }
 
     let state = if include_stopped {
@@ -129,7 +129,7 @@ fn resolve_request_with(
         };
         let instances = resolve(&query, state)?;
         return Ok((
-            select_named_targets(instances, environments)?,
+            select_named_targets(instances, environments, include_stopped)?,
             tools.to_vec(),
         ));
     }
@@ -159,13 +159,16 @@ fn validate_configured_selection(
             "Selected tools are not configured in any targeted environment: {}",
             unconfigured.join(", ")
         ),
-        Some("Add each tool under `tools` in a target project's vm.yaml"),
+        Some(
+            "Add each tool under `tools` in a target project's vm.yaml; select environments with `--to <environment>`",
+        ),
     ))
 }
 
 fn select_named_targets(
     instances: Vec<InstanceInfo>,
     requested: &[String],
+    include_stopped: bool,
 ) -> VmResult<Vec<InstanceInfo>> {
     let mut available = instances
         .into_iter()
@@ -183,11 +186,20 @@ fn select_named_targets(
     if !missing.is_empty() {
         return Err(VmError::validation(
             format!(
-                "Managed environment{} not found or not running: {}",
+                "Managed environment{} not found{}: {}",
                 if missing.len() == 1 { "" } else { "s" },
+                if include_stopped {
+                    ""
+                } else {
+                    " or not running"
+                },
                 missing.join(", ")
             ),
-            Some("Use `vm list --all` or add --include-stopped"),
+            Some(if include_stopped {
+                "Use `vm list --all`"
+            } else {
+                "Use `vm list --all` or add --include-stopped"
+            }),
         ));
     }
     Ok(selected)
@@ -505,6 +517,7 @@ mod tests {
         let selected = select_named_targets(
             vec![instance("api-dev", "docker"), instance("mac", "tart")],
             &["mac".into(), "api-dev".into()],
+            false,
         )
         .unwrap();
         assert_eq!(
@@ -517,9 +530,14 @@ mod tests {
                 ("api-dev".into(), "docker".into())
             ]
         );
-        let error = select_named_targets(vec![instance("api-dev", "docker")], &["missing".into()])
-            .unwrap_err();
+        let error = select_named_targets(
+            vec![instance("api-dev", "docker")],
+            &["missing".into()],
+            true,
+        )
+        .unwrap_err();
         assert!(error.to_string().contains("missing"));
+        assert!(!error.to_string().contains("not running"));
     }
 
     #[test]
@@ -544,6 +562,18 @@ mod tests {
         assert_eq!(targets[0].provider, "tart");
         assert_eq!(tools, ["agent-skills"]);
 
+        resolve_request_with(
+            &["agent-skills".into()],
+            &["mac".into()],
+            true,
+            &fleet,
+            |_, state| {
+                assert_eq!(state, InstanceStateFilter::Any);
+                Ok(vec![instance("mac", "tart")])
+            },
+        )
+        .unwrap();
+
         let (targets, tools) = resolve_request_with(
             &["agent-skills".into()],
             &[],
@@ -561,13 +591,13 @@ mod tests {
     }
 
     #[test]
-    fn fleet_uses_running_targets_and_load_failures_preserve_per_target_errors() {
+    fn compatibility_fleet_includes_stopped_targets_and_preserves_load_errors() {
         let fleet = FleetArgs {
             fleet: true,
             ..Default::default()
         };
         resolve_request_with(&[], &[], false, &fleet, |_, state| {
-            assert_eq!(state, InstanceStateFilter::Running);
+            assert_eq!(state, InstanceStateFilter::Any);
             Ok(Vec::new())
         })
         .unwrap();

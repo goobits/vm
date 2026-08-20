@@ -42,13 +42,13 @@ vm tools update agent-skills --to typemill-dev --to zoop-io-dev
 
 The no-argument form updates each running managed Docker environment's own
 configured tools. Positional tool names restrict the update to projects that
-configure those tools. Repeated `--to` options limit the environments. Stopped environments remain
-untouched unless `--include-stopped` is explicit. Each target must load its own
-persisted `vm.yaml` ownership instead of inheriting the invoking project's
-services or tool policy. Positional values are tools only; exact environment
-selection uses `--to`. The compatibility `--fleet` form shares the same
-running-target path. Language-package consumer rollout remains separate and
-authoritative.
+configure those tools. Repeated `--to` options limit the environments. Stopped
+environments remain untouched unless `--include-stopped` is explicit. Each
+target must load its own persisted `vm.yaml` ownership instead of inheriting
+the invoking project's services or tool policy. Positional values are tools
+only; exact environment selection uses `--to`. The compatibility `--fleet`
+form shares the same owner-configured path while retaining all-state selection.
+Language-package consumer rollout remains separate and authoritative.
 
 Acceptance requires parser and selection tests, Docker Desktop legacy-mount
 ownership recovery, truthful per-environment summaries, current help/reference/
@@ -80,6 +80,8 @@ release remains blocked on equipped-host acceptance:
 - [x] Support Docker-compatible and Tart ownership recovery through their providers.
 - [x] Collapse managed-tool targeting to one configuration-owned execution path.
 - [x] Make selector parsing, disabled-update output, and missing-release errors truthful.
+- [x] Refuse to auto-quarantine managed-shelf repositories without a clean,
+  committed recovery point.
 - [x] Rerun static release acceptance after remediation.
 
 Docker and Tart reruns are tracked once under Remaining Acceptance.
@@ -150,6 +152,10 @@ current image. No real package release or publication was performed.
 - [ ] Host-accept steady-state package startup, concurrent shell
   reconciliation, targeted and fleet tool updates, read-only workspace restart,
   and first-shell `codex-code-mode-host` availability.
+- [ ] On an equipped macOS host, run the Tart path in
+  `validate-vibe-providers.sh`; verify managed inventory, shell recovery,
+  worktree mounts, package-edge repair, exact `--to`, and all-state `--fleet`
+  updates from the same `vm.yaml` without replacing the VM or its Tart storage.
 - [ ] From a second Docker worker, verify resumable guest-owned npm, Cargo, and
   Python release/rollout, private immutable artifacts, per-worker overrides,
   public fallback, persistent caches, and fail-closed internal misses during an
@@ -805,14 +811,15 @@ Docker worker, while managed `agent-skills` remained consumable at 0.6.1.
 Bulk reconciliation is exposed through ordinary command ownership rather than
 a duplicate top-level workflow. `vm tools update [<tool>...]` now applies each
 running managed Docker target's own configuration, with positional names acting
-only as a filter over configured tools. Repeated `--to` options limit exact environments and
-`--include-stopped` is required before starting stopped targets. Reconciliation
-respects persisted `off` policy for upgrades, continues on per-target failures,
-and reports a summary. The compatibility `--fleet` form retains provider and
-pattern selection while using the same owner-configured execution path. Neither
-form projects application services onto unrelated targets. The former `vm
-fleet` and tool `--all` surfaces remain removed. This is implemented but
-awaiting host acceptance.
+only as a filter over configured tools. Repeated `--to` options limit exact
+environments and `--include-stopped` is required before starting stopped
+targets. Reconciliation respects persisted `off` policy for upgrades,
+continues on per-target failures, and reports a summary. The compatibility
+`--fleet` form retains provider and pattern selection plus stopped matches
+while using the same owner-configured execution path. Neither form projects
+application services onto unrelated targets. The former `vm fleet` and tool
+`--all` surfaces remain removed. This is implemented but awaiting host
+acceptance.
 With no managed tools selected, base-owned Codex reconciliation no longer
 requires a tool catalog or package-appliance connection.
 

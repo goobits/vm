@@ -61,8 +61,10 @@ password while installing `~/.vm/ssh/tart_ed25519.pub`; repeat connections must
 be passwordless. If both transports fail, run `vm doctor` and inspect the Tart
 run log named in the error.
 
-If `tart list` and `vm list` disagree, check whether the VM uses a nondefault
-storage volume:
+`tart list` shows every local Tart VM; `vm list` intentionally shows only
+VM-managed instances recorded in `~/.vm/tart/instances.json`. If an expected
+managed instance is missing, also check whether it uses a nondefault storage
+volume:
 
 ```bash
 echo "${TART_HOME:-<default>}"

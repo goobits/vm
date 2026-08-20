@@ -136,7 +136,9 @@ install an unconfigured tool. Repeat `--to` to restrict exact environments,
 including Podman or Tart targets. Stopped environments remain untouched unless
 `--include-stopped` is explicit. A selected tool that is not configured in any
 successfully loaded target is rejected. The compatibility `--fleet` form uses
-the same running-target execution path; new automation should use `--to`.
+the same owner-configured execution path but retains its former all-state
+selection, including starting stopped matches; new automation should use
+`--to` and opt into stopped targets explicitly.
 
 Explicit updates include prompt-policy releases while respecting persisted
 `off` policies for ordinary upgrades. Reconciliation repairs package routing,
