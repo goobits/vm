@@ -87,14 +87,17 @@ to `vm-core`; the executable renders each fatal error once.
 **Role**: Provider abstraction layer enabling support for multiple VM technologies.
 
 **Responsibilities**:
-- `Provider` trait defining the contract for all VM providers
-- `TempProvider` trait for temporary VM operations
+- `Provider` trait defining shared lifecycle behavior
+- `CommandProvider` and `InstanceProvider` capability traits composed by every
+  provider
+- `TempProvider` capability trait for optional temporary VM operations
 - Docker, Podman, and Tart provider implementations
 - VM lifecycle management (create, start, stop, destroy)
 - Enhanced status reporting with real-time metrics
 - Service health monitoring and port mapping
 
-**Key Exports**: `Provider` trait, `TempProvider` trait, `get_provider()` factory, provider implementations
+**Key Exports**: Provider capability traits, `get_provider()` factory, provider
+implementations
 
 #### vm-temp
 **Role**: Temporary VM management for ephemeral development environments.
@@ -105,7 +108,7 @@ to `vm-core`; the executable renders each fatal error once.
 - Cleanup and resource management
 - Integration with main VM providers
 
-**Key Exports**: Temporary VM operations, mount management utilities
+**Key Exports**: `TempVmOps`, `StateManager`, `TempVmState`, `MountPermission`
 
 #### vm-snapshot
 **Role**: Snapshot lifecycle management for VM state, used both for project-scoped
@@ -157,6 +160,7 @@ records, appliance resources
 - Authenticated central publication endpoints
 - Read-only worker caching and approved public fallback
 - Immutable internal artifact storage and metadata
+- Protocol-owned validation with separate server routing and setup
 
 **Key Exports**: Package server implementation, HTTP handlers, registry operations
 
@@ -179,6 +183,7 @@ store, source manager, and persistence records remain service-internal.
 - Persistent private release publication
 - Persistent isolated consumer upgrades
 - Ephemeral tool publication
+- Separate release workflow, source, artifact, manifest, build, and archive ownership
 
 **Key Exports**: Review, release, and rollout binaries
 

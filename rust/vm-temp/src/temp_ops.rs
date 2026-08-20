@@ -8,7 +8,7 @@ use vm_core::msg;
 use vm_messages::messages::MESSAGES;
 
 // Internal imports
-use crate::mount_ops::MountParser;
+use crate::mount_ops::parse_mount_strings;
 use crate::{StateManager, TempVmState};
 use vm_config::config::VmConfig;
 use vm_provider::{Provider, ProviderContext};
@@ -30,8 +30,7 @@ impl TempVmOps {
             ))
         })?;
 
-        // Parse mount strings using MountParser
-        let parsed_mounts = MountParser::parse_mount_strings(&mounts).map_err(|e| {
+        let parsed_mounts = parse_mount_strings(&mounts).map_err(|e| {
             VmError::Config(format!(
                 "Failed to parse mount path specifications. Check mount string format: {e}"
             ))

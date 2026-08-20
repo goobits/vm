@@ -19,23 +19,29 @@ vm/
 
 - `rust/vm/src/cli/` owns command parsing and the public command shape.
 - `rust/vm/src/commands/` owns application orchestration.
-- `rust/vm-config/` owns configuration loading, validation, profiles, and
-  schema behavior.
+- `rust/vm-config/` owns configuration loading, validation, profiles, schema
+  behavior, and the single preset-to-project initialization path.
 - `rust/vm-provider/` owns Docker, Podman, and Tart lifecycle implementation.
+  The core provider contract composes command-execution and named-instance
+  capabilities; temporary-VM behavior is an explicit optional capability.
+- `rust/vm-temp/` owns temporary lifecycle orchestration, state, status, and
+  mount mutation behind the `TempVmOps` facade.
 - `rust/vm-snapshot/` owns snapshot creation, restoration, import, and export.
 - `rust/vm-core/` owns shared filesystem, command, prompt, and message-format
   utilities.
 - `rust/vm-packages/` owns package identities, resolver policy, client
   environment, and shared workflow contracts.
 - `rust/vm-package-server/` owns native npm, Cargo, and Python protocol adapters
-  plus the worker-local read-only cache/proxy edge.
+  plus the worker-local read-only cache/proxy edge. Protocol modules own their
+  validation; server setup and routing remain separate internal concerns.
 - `rust/vm-package-work/` owns durable checkout, lease, submission, integration,
   rollout, bundle, and receipt state. Editable isolated source belongs to the
   authenticated managed guest; workflow services retain immutable bundles and
   only create transient internal processing trees.
 - `rust/vm-package-jobs/` owns persistent review, credential-separated binary
   build, release, and rollout workers plus isolated tool publication inside
-  infrastructure containers.
+  infrastructure containers. Release source/workflow coordination is separate
+  from artifact manifests, package builds, and tool archives.
 - `configs/` owns embedded configuration; `examples/` must not be treated as
   runtime defaults.
 

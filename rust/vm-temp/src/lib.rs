@@ -10,9 +10,7 @@ pub mod state;
 mod status;
 pub mod temp_ops;
 
-// Explicit public surface. Internal items (e.g. `mount_ops::MountParser`,
-// `state::StateError`) remain reachable via their module paths but are not
-// part of the crate's primary API.
+// Root re-exports define the primary API; mount parsing helpers stay internal.
 pub use models::{MountPermission, TempVmState};
 pub use state::StateManager;
 pub use temp_ops::TempVmOps;

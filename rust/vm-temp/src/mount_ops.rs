@@ -8,52 +8,49 @@ use vm_provider::{MountPermission, Provider};
 
 use crate::{StateManager, TempVmOps};
 
-/// Mount parsing utilities
-pub struct MountParser;
+/// Parse `source`, `source:permissions`, or `source:target:permissions`.
+fn parse_mount_string(mount_str: &str) -> Result<(PathBuf, Option<PathBuf>, MountPermission)> {
+    let parts: Vec<&str> = mount_str.split(':').collect();
 
-impl MountParser {
-    /// Parse mount string in format "source:permissions" or "source:target:permissions"
-    pub fn parse_mount_string(
-        mount_str: &str,
-    ) -> Result<(PathBuf, Option<PathBuf>, MountPermission)> {
-        let parts: Vec<&str> = mount_str.split(':').collect();
-
-        match parts.len() {
-            1 => {
-                // Just source path, use default permissions
-                let source = PathBuf::from(parts[0]);
-                Ok((source, None, MountPermission::default()))
-            }
-            2 => {
-                // source:permissions
-                let source = PathBuf::from(parts[0]);
-                let permissions = parts[1].parse::<MountPermission>()
-                    .map_err(|e| VmError::Config(format!("Invalid permission in mount string '{mount_str}': {e}")))?;
-                Ok((source, None, permissions))
-            }
-            3 => {
-                // source:target:permissions
-                let source = PathBuf::from(parts[0]);
-                let target = PathBuf::from(parts[1]);
-                let permissions = parts[2].parse::<MountPermission>()
-                    .map_err(|e| VmError::Config(format!("Invalid permission in mount string '{mount_str}': {e}")))?;
-                Ok((source, Some(target), permissions))
-            }
-            _ => Err(VmError::Config(format!(
-                "Invalid mount string format: {mount_str}. Expected 'source', 'source:permissions', or 'source:target:permissions'"
-            ))),
+    match parts.len() {
+        1 => Ok((
+            PathBuf::from(parts[0]),
+            None,
+            MountPermission::default(),
+        )),
+        2 => {
+            let permissions = parts[1].parse::<MountPermission>().map_err(|error| {
+                VmError::Config(format!(
+                    "Invalid permission in mount string '{mount_str}': {error}"
+                ))
+            })?;
+            Ok((PathBuf::from(parts[0]), None, permissions))
         }
+        3 => {
+            let permissions = parts[2].parse::<MountPermission>().map_err(|error| {
+                VmError::Config(format!(
+                    "Invalid permission in mount string '{mount_str}': {error}"
+                ))
+            })?;
+            Ok((
+                PathBuf::from(parts[0]),
+                Some(PathBuf::from(parts[1])),
+                permissions,
+            ))
+        }
+        _ => Err(VmError::Config(format!(
+            "Invalid mount string format: {mount_str}. Expected 'source', 'source:permissions', or 'source:target:permissions'"
+        ))),
     }
+}
 
-    /// Parse multiple mount strings
-    pub fn parse_mount_strings(
-        mount_strings: &[String],
-    ) -> Result<Vec<(PathBuf, Option<PathBuf>, MountPermission)>> {
-        mount_strings
-            .iter()
-            .map(|s| Self::parse_mount_string(s))
-            .collect()
-    }
+pub(crate) fn parse_mount_strings(
+    mount_strings: &[String],
+) -> Result<Vec<(PathBuf, Option<PathBuf>, MountPermission)>> {
+    mount_strings
+        .iter()
+        .map(|mount| parse_mount_string(mount))
+        .collect()
 }
 
 impl TempVmOps {
@@ -80,12 +77,11 @@ impl TempVmOps {
             return Ok(());
         }
 
-        let (source, target, permissions) =
-            MountParser::parse_mount_string(&path).map_err(|error| {
-                VmError::Config(format!(
-                    "Failed to parse mount string '{path}'. Check mount path format: {error}"
-                ))
-            })?;
+        let (source, target, permissions) = parse_mount_string(&path).map_err(|error| {
+            VmError::Config(format!(
+                "Failed to parse mount string '{path}'. Check mount path format: {error}"
+            ))
+        })?;
         let mut state = state_manager.load_state()?;
         if state.has_mount(&source) {
             return Err(VmError::Internal(format!(
@@ -341,23 +337,22 @@ mod tests {
     #[test]
     fn test_mount_parser() {
         // Test simple source
-        let (source, target, perm) = MountParser::parse_mount_string("/home/user")
-            .expect("Should parse simple mount string");
+        let (source, target, perm) =
+            parse_mount_string("/home/user").expect("Should parse simple mount string");
         assert_eq!(source, PathBuf::from("/home/user"));
         assert_eq!(target, None);
         assert_eq!(perm, MountPermission::ReadWrite);
 
         // Test source with permissions
-        let (source, target, perm) = MountParser::parse_mount_string("/home/user:ro")
+        let (source, target, perm) = parse_mount_string("/home/user:ro")
             .expect("Should parse mount string with permissions");
         assert_eq!(source, PathBuf::from("/home/user"));
         assert_eq!(target, None);
         assert_eq!(perm, MountPermission::ReadOnly);
 
         // Test source with target and permissions
-        let (source, target, perm) =
-            MountParser::parse_mount_string("/home/user:/workspace/user:rw")
-                .expect("Should parse mount string with target and permissions");
+        let (source, target, perm) = parse_mount_string("/home/user:/workspace/user:rw")
+            .expect("Should parse mount string with target and permissions");
         assert_eq!(source, PathBuf::from("/home/user"));
         assert_eq!(target, Some(PathBuf::from("/workspace/user")));
         assert_eq!(perm, MountPermission::ReadWrite);

@@ -31,7 +31,7 @@ pub use error::{ApiErrorResponse, AppError, AppResult, ErrorCode};
 pub use hash_utils::{sha1_hash, sha256_hash};
 pub use internal::InternalRegistryClient;
 pub use pypi_utils::normalize_pypi_name;
-pub use server::{run_server, run_server_background, run_server_with_shutdown};
+pub use server::{run_server, run_server_with_shutdown};
 pub use state::{AppState, SuccessResponse};
 pub use upstream::{UpstreamClient, UpstreamConfig};
 pub use validation::{

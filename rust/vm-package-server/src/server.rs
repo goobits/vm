@@ -17,24 +17,7 @@ use routes::app_router;
 #[cfg(test)]
 use setup::configure_security;
 
-pub async fn run_server_background(host: String, port: u16, data_dir: PathBuf) -> Result<()> {
-    run_server_with_shutdown(host, port, data_dir, None).await
-}
-
 pub async fn run_server_with_shutdown(
-    host: String,
-    port: u16,
-    data_dir: PathBuf,
-    shutdown_receiver: Option<tokio::sync::oneshot::Receiver<()>>,
-) -> Result<()> {
-    run_server_internal(host, port, data_dir, shutdown_receiver).await
-}
-
-pub async fn run_server(host: String, port: u16, data_dir: PathBuf) -> Result<()> {
-    run_server_internal(host, port, data_dir, None).await
-}
-
-async fn run_server_internal(
     host: String,
     port: u16,
     data_dir: PathBuf,
@@ -78,6 +61,10 @@ async fn run_server_internal(
     }
 
     Ok(())
+}
+
+pub async fn run_server(host: String, port: u16, data_dir: PathBuf) -> Result<()> {
+    run_server_with_shutdown(host, port, data_dir, None).await
 }
 
 #[cfg(test)]

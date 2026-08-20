@@ -204,6 +204,8 @@ current image. No real package release or publication was performed.
   mount parsing/mutation while preserving the `TempVmOps` API.
 - [x] Split provider command execution, named-instance management, and optional
   temporary-VM behavior into explicit capability traits.
+- [x] Remove obsolete server/parser wrappers and align architecture docs with
+  the consolidated module and capability boundaries.
 
 ### Worker package data plane
 
