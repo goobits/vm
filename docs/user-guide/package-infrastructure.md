@@ -67,17 +67,16 @@ Configured roots are resolved and scanned before the appliance is started or
 updated. A missing root therefore fails without changing appliance state. An
 existing empty shelf is a successful no-op.
 
-On its first run, macOS selects Tart and prepares the versioned Linux base
-automatically. Later runs reuse the stored runtime. Other platforms select
-Docker. Use `--runtime docker` only when every consumer is Docker-based, or
-`--runtime tart` to switch explicitly. The Docker gateway is loopback-bound and
-is deliberately rejected for Tart consumers. The Tart appliance exposes its
-gateway on the private VM address so both providers can reach it.
+The appliance runs once on the controller host through Docker or Podman. The
+first setup follows the configured container provider and later runs reuse the
+stored engine; `vm packages up --engine docker|podman` overrides it. Docker,
+Podman, and Linux Tart project environments all reach this authenticated
+control plane, so Tart does not carry a second package-appliance lifecycle.
 Explicit appliance image overrides are also reused by later runs of the same
 controller version; upgrading the CLI selects that release's matching images.
 When a source-installed CLI cannot pull unreleased matching images, it discovers
-its checkout and builds those infrastructure images inside Docker automatically.
-Local source images re-enter Docker's content-addressed build cache on each
+its checkout and builds those infrastructure images with the selected engine.
+Local source images re-enter the engine's content-addressed build cache on each
 appliance start, so service- or job-only edits cannot be hidden behind a stale
 image. They carry a stable source-build marker instead of the changing controller
 binary hash, so an unrelated CLI rebuild does not by itself change the effective

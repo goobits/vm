@@ -1,59 +1,10 @@
 use anyhow::{bail, Result};
-use serde::{Deserialize, Serialize};
 
 pub const COMPOSE_PROJECT: &str = "vm-packages";
-pub const TART_INSTANCE_NAME: &str = "vm-packages-infra";
 pub const COMPOSE_YAML: &str = include_str!("resources/compose.yaml");
 pub const GATEWAY_CONFIG: &str = include_str!("resources/Caddyfile");
 /// Bump when running appliance services must be rebuilt or recreated.
 pub const APPLIANCE_DEFINITION_REVISION: u32 = 2;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum InfrastructureRuntime {
-    Docker,
-    Tart,
-}
-
-impl InfrastructureRuntime {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Docker => "docker",
-            Self::Tart => "tart",
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ApplianceState {
-    #[serde(default)]
-    pub definition_revision: u32,
-    pub runtime: InfrastructureRuntime,
-    pub gateway_url: String,
-    pub gateway_port: u16,
-    pub registry_image: String,
-    /// Immutable image identity used to refresh same-tag package edges.
-    #[serde(default)]
-    pub registry_image_identity: String,
-    #[serde(default, alias = "review_image")]
-    pub job_image: String,
-    pub controller_version: String,
-    /// Stable Tart storage context for the package appliance.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tart_home: Option<String>,
-}
-
-impl ApplianceState {
-    pub fn to_json(&self) -> Result<Vec<u8>> {
-        let mut json = serde_json::to_vec_pretty(self)?;
-        json.push(b'\n');
-        Ok(json)
-    }
-
-    pub fn from_json(json: &[u8]) -> Result<Self> {
-        Ok(serde_json::from_slice(json)?)
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplianceConfig {
@@ -118,10 +69,7 @@ fn checked_image(value: String) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        ApplianceConfig, ApplianceState, InfrastructureRuntime, APPLIANCE_DEFINITION_REVISION,
-        COMPOSE_YAML, GATEWAY_CONFIG,
-    };
+    use super::{ApplianceConfig, COMPOSE_YAML, GATEWAY_CONFIG};
 
     #[test]
     fn compose_keeps_private_data_in_named_volumes() {
@@ -218,43 +166,5 @@ mod tests {
     #[test]
     fn environment_rejects_line_injection() {
         assert!(ApplianceConfig::new("127.0.0.1", 3080, "image\nBAD=value", "review:1").is_err());
-    }
-
-    #[test]
-    fn state_round_trips() {
-        let state = ApplianceState {
-            definition_revision: APPLIANCE_DEFINITION_REVISION,
-            runtime: InfrastructureRuntime::Tart,
-            gateway_url: "http://192.0.2.2:3080".into(),
-            gateway_port: 3080,
-            registry_image: "registry.example/vm-packages:1".into(),
-            registry_image_identity: "sha256:registry-image".into(),
-            job_image: "registry.example/vm-package-jobs:1".into(),
-            controller_version: "1.0.0".into(),
-            tart_home: Some("/Volumes/External/Tart".into()),
-        };
-        assert_eq!(
-            ApplianceState::from_json(&state.to_json().unwrap()).unwrap(),
-            state
-        );
-    }
-
-    #[test]
-    fn older_state_without_tart_home_remains_readable() {
-        let state = ApplianceState::from_json(
-            br#"{
-                "runtime": "tart",
-                "gateway_url": "http://192.0.2.2:3080",
-                "gateway_port": 3080,
-                "registry_image": "registry:1",
-                "job_image": "jobs:1",
-                "controller_version": "1"
-            }"#,
-        )
-        .unwrap();
-
-        assert_eq!(state.tart_home, None);
-        assert!(state.registry_image_identity.is_empty());
-        assert_eq!(state.definition_revision, 0);
     }
 }

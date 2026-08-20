@@ -175,6 +175,13 @@ current image. No real package release or publication was performed.
 
 ## Completed Implementation
 
+### Shared package control plane
+
+- [x] Run package infrastructure through the selected Docker or Podman engine.
+- [x] Remove the parallel Tart appliance lifecycle and controller-local Tart state.
+- [x] Let Docker, Podman, and Linux Tart environments consume the same authenticated gateway.
+- [x] Keep engine selection on appliance creation while operational commands use persisted state.
+
 ### Worker package data plane
 
 - [x] Give Docker and Linux Tart workers one read-only package edge with native
@@ -734,9 +741,9 @@ explicit authenticated `POST` command with no obsolete compatibility path.
 The first Docker shell smoke test exposed and fixed an uninitialized zsh prompt
 hook, then revealed that standard AI CLIs had been incorrectly coupled to the
 private package appliance. Vibe bases again own Antigravity, Claude Code, and
-Codex; only `agent-skills` remains selected through `vm tools`. Tart appliance
-startup now accepts the inventory format returned by Tart 2.32.1. Full package
-appliance acceptance remains tracked in
+Codex; only `agent-skills` remains selected through `vm tools`. The former Tart
+appliance was retired in favor of the shared container-engine control plane.
+Full package appliance acceptance remains tracked in
 [Remaining Acceptance](#remaining-acceptance).
 
 Docker appliance startup now succeeds with the source-installed CLI, remains

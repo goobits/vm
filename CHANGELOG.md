@@ -47,6 +47,7 @@
 - 🚀 macOS Tart environments use the Sequoia base and run Docker through Colima with QEMU software emulation instead of unsupported nested virtualization.
 - 📦 ⚠️ Bare `vm packages release` infers a managed checkout or registered canonical workspace from the current directory; the retired host `packages work` launcher and public checkout-ID lifecycle commands are removed.
 - 📦 Managed source shelves and exact canonical project roots now have separate policies: only shelves are recursively discovered or quarantined, while canonical roots remain read-only and require a repository-bound v2 guest capability.
+- 📦 Package infrastructure uses one Docker-or-Podman control plane shared by container and Linux Tart environments instead of maintaining a second appliance inside Tart.
 
 ### 🐛 Fixed
 
@@ -82,7 +83,6 @@
 - 🌐 Invalid nested built-in commands remain with their owning CLI parser instead of falling through to remote-command namespace resolution.
 - 🌐 Resubmitted package generations now receive distinct validation, review, and integration operations, and `vm packages release` resumes a durable submitted generation instead of waiting indefinitely.
 - 🌐 Canonical workspace releases review the full tree initially and every commit since the last internal publication thereafter, while deterministic binary-build failures return actionable rework instead of hot-looping.
-- 🌐 Tart package-appliance startup accepts Tart 2.32.1's `Name` and `State` inventory fields.
 - 🌐 Docker image pulls retry transient transport failures while permanent authentication and image errors fail immediately.
 - 🌐 Single-port ranges and explicit create-time port mappings now validate correctly.
 - 🚀 Tart stop operations are idempotent, and resolved stopped guests start reliably before shell connections.

@@ -3,8 +3,8 @@ mod appliance;
 mod catalog;
 mod checkout;
 mod consumer;
+mod container;
 mod discovery;
-mod docker;
 mod files;
 mod integration;
 mod overrides;
@@ -13,8 +13,8 @@ mod registration;
 mod release;
 mod runtime;
 mod sources;
+mod state;
 mod submission;
-mod tart;
 pub(in crate::commands) mod tooling;
 mod workspace;
 
@@ -45,11 +45,8 @@ pub(in crate::commands) fn diagnose_client_access(fix: bool) -> VmResult<Option<
     )?))
 }
 
-async fn status(
-    files: &ApplianceFiles,
-    runtime: crate::cli::PackageInfrastructureRuntime,
-) -> VmResult<()> {
-    let mut health = appliance::status(files, runtime)
+async fn status(files: &ApplianceFiles) -> VmResult<()> {
+    let mut health = appliance::status(files)
         .await
         .unwrap_or(appliance::PackageHealth::ActionRequired);
     if let Ok(global) = vm_config::GlobalConfig::load() {
@@ -72,11 +69,7 @@ async fn status(
     Ok(())
 }
 
-async fn doctor(
-    files: &ApplianceFiles,
-    runtime: crate::cli::PackageInfrastructureRuntime,
-    fix: bool,
-) -> VmResult<()> {
+async fn doctor(files: &ApplianceFiles, fix: bool) -> VmResult<()> {
     let global = vm_config::GlobalConfig::load()?;
     if fix {
         if let Some(state) = files.read_state()? {
@@ -84,7 +77,7 @@ async fn doctor(
         }
         let _ = catalog::repair_github_credential(files)?;
     }
-    appliance::doctor(files, runtime).await?;
+    appliance::doctor(files).await?;
 
     let mut unresolved = Vec::new();
     if fix && files.read_state()?.is_some() {
@@ -131,7 +124,7 @@ async fn doctor(
 
 async fn up(
     files: &ApplianceFiles,
-    runtime: crate::cli::PackageInfrastructureRuntime,
+    engine: crate::cli::PackageInfrastructureEngine,
     port: u16,
     registry_image: Option<String>,
     job_image: Option<String>,
@@ -140,7 +133,7 @@ async fn up(
 ) -> VmResult<()> {
     let global_config = vm_config::GlobalConfig::load()?;
     let source_plans = sources::prepare_sources(&global_config.packages)?;
-    appliance::up(files, runtime, port, registry_image, job_image).await?;
+    appliance::up(files, engine, port, registry_image, job_image).await?;
     let outcome = sources::reconcile_source_plans(files, source_plans).await?;
     if outcome.is_degraded() {
         vm_core::vm_warning!(
@@ -197,18 +190,18 @@ pub(super) async fn handle(
     }
     let files = ApplianceFiles::discover()?;
     let _operation_lock = match &command {
-        PackagesSubcommand::Backups { .. }
-        | PackagesSubcommand::Backup { .. }
+        PackagesSubcommand::Backups
+        | PackagesSubcommand::Backup
         | PackagesSubcommand::Restore { .. } => None,
         PackagesSubcommand::Init { .. }
         | PackagesSubcommand::Up { .. }
-        | PackagesSubcommand::Down { .. } => Some(files.acquire_lifecycle_lock()?),
+        | PackagesSubcommand::Down => Some(files.acquire_lifecycle_lock()?),
         _ => Some(files.acquire_operation_lock()?),
     };
     match command {
         PackagesSubcommand::Init {
             source_root,
-            runtime,
+            engine,
             port,
             registry_image,
             job_image,
@@ -218,7 +211,7 @@ pub(super) async fn handle(
             let _ = catalog::repair_github_credential(&files)?;
             up(
                 &files,
-                runtime,
+                engine,
                 port,
                 registry_image,
                 job_image,
@@ -230,14 +223,14 @@ pub(super) async fn handle(
             Ok(())
         }
         PackagesSubcommand::Up {
-            runtime,
+            engine,
             port,
             registry_image,
             job_image,
         } => {
             up(
                 &files,
-                runtime,
+                engine,
                 port,
                 registry_image,
                 job_image,
@@ -246,14 +239,12 @@ pub(super) async fn handle(
             )
             .await
         }
-        PackagesSubcommand::Down { runtime } => appliance::down(&files, runtime),
-        PackagesSubcommand::Status { runtime } => status(&files, runtime).await,
-        PackagesSubcommand::Doctor { runtime, fix } => doctor(&files, runtime, fix).await,
-        PackagesSubcommand::Backups { runtime } => appliance::list_backups(&files, runtime),
-        PackagesSubcommand::Backup { runtime } => appliance::backup(&files, runtime),
-        PackagesSubcommand::Restore { backup_id, runtime } => {
-            appliance::restore(&files, runtime, &backup_id)
-        }
+        PackagesSubcommand::Down => appliance::down(&files),
+        PackagesSubcommand::Status => status(&files).await,
+        PackagesSubcommand::Doctor { fix } => doctor(&files, fix).await,
+        PackagesSubcommand::Backups => appliance::list_backups(&files),
+        PackagesSubcommand::Backup => appliance::backup(&files),
+        PackagesSubcommand::Restore { backup_id } => appliance::restore(&files, &backup_id),
         PackagesSubcommand::Register {
             targets,
             ecosystem,
@@ -312,7 +303,7 @@ async fn handle_guest(
             "Package initialization runs on the controller host",
             Some("Run on the host: vm packages init <source-root>"),
         )),
-        PackagesSubcommand::Status { .. } => catalog::status_guest().await,
+        PackagesSubcommand::Status => catalog::status_guest().await,
         PackagesSubcommand::Checkout { source } => checkout::handle_guest(source).await,
         PackagesSubcommand::Show { checkout_id } => catalog::show_guest(&checkout_id).await,
         PackagesSubcommand::Release => release::handle_guest().await,

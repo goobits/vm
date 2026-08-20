@@ -2,7 +2,9 @@ use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
 
 use crate::error::{VmError, VmResult};
-use vm_packages::{ApplianceConfig, ApplianceState, COMPOSE_YAML, GATEWAY_CONFIG};
+use vm_packages::{ApplianceConfig, COMPOSE_YAML, GATEWAY_CONFIG};
+
+use super::state::ApplianceState;
 
 const COMPOSE_FILE: &str = "compose.yaml";
 const GATEWAY_FILE: &str = "Caddyfile";
@@ -158,10 +160,6 @@ impl ApplianceFiles {
         Ok(token.trim().to_string())
     }
 
-    pub(super) fn tart_log_path(&self) -> PathBuf {
-        self.root.join("tart-run.log")
-    }
-
     pub(super) fn acquire_maintenance_lock(&self) -> VmResult<File> {
         use fs2::FileExt;
 
@@ -302,9 +300,7 @@ impl ApplianceFiles {
     pub(super) fn read_state(&self) -> VmResult<Option<ApplianceState>> {
         let path = self.root.join(STATE_FILE);
         match fs::read(&path) {
-            Ok(json) => ApplianceState::from_json(&json)
-                .map(Some)
-                .map_err(VmError::from),
+            Ok(json) => ApplianceState::from_json(&json).map(Some),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(error) => Err(VmError::filesystem(
                 error,
@@ -316,10 +312,7 @@ impl ApplianceFiles {
 
     pub(super) fn write_state(&self, state: &ApplianceState) -> VmResult<()> {
         self.ensure_root()?;
-        write_private(
-            &self.root.join(STATE_FILE),
-            &state.to_json().map_err(VmError::from)?,
-        )
+        write_private(&self.root.join(STATE_FILE), &state.to_json()?)
     }
 
     pub(super) fn validate_definition(&self) -> VmResult<()> {

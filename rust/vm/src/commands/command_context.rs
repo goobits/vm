@@ -34,7 +34,7 @@ fn guest_allowed_command(command: &Command) -> bool {
     matches!(
         command,
         Command::Packages {
-            command: PackagesSubcommand::Status { .. }
+            command: PackagesSubcommand::Status
                 | PackagesSubcommand::Checkout { .. }
                 | PackagesSubcommand::Show { .. }
                 | PackagesSubcommand::Release
@@ -272,9 +272,7 @@ mod tests {
     #[test]
     fn guests_can_only_enter_agent_safe_package_commands() {
         assert!(guest_allowed_command(&Command::Packages {
-            command: PackagesSubcommand::Status {
-                runtime: crate::cli::PackageInfrastructureRuntime::Auto,
-            },
+            command: PackagesSubcommand::Status,
         }));
         assert!(guest_allowed_command(&Command::Packages {
             command: PackagesSubcommand::Show {
@@ -289,7 +287,7 @@ mod tests {
         }));
         assert!(!guest_allowed_command(&Command::Packages {
             command: PackagesSubcommand::Up {
-                runtime: crate::cli::PackageInfrastructureRuntime::Auto,
+                engine: crate::cli::PackageInfrastructureEngine::Auto,
                 port: 3080,
                 registry_image: None,
                 job_image: None,

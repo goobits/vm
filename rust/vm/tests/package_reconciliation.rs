@@ -321,7 +321,7 @@ fn packages_up(
             config.to_str().unwrap(),
             "packages",
             "up",
-            "--runtime",
+            "--engine",
             "docker",
             "--port",
             &port.to_string(),
@@ -388,8 +388,6 @@ fn packages_doctor(
             config.to_str().unwrap(),
             "packages",
             "doctor",
-            "--runtime",
-            "docker",
             "--fix",
         ])
         .current_dir(directory.path())

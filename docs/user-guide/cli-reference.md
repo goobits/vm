@@ -88,13 +88,13 @@ Configuration fields and examples belong in the
 | Command | Purpose |
 | --- | --- |
 | `vm packages init <source-root> [--port <port>]` | Store the controller source shelf and initialize the appliance |
-| `vm packages up [--runtime <auto\|docker\|tart>] [--port <port>] [--registry-image <image>] [--job-image <image>]` | Reconcile the appliance and configured sources |
-| `vm packages down [--runtime <auto\|docker\|tart>]` | Stop the appliance while preserving volumes |
-| `vm packages status [--runtime <auto\|docker\|tart>]` | Report appliance or guest workflow health |
-| `vm packages doctor [--runtime <auto\|docker\|tart>] [--fix]` | Diagnose or safely repair package infrastructure |
-| `vm packages backup [--runtime <auto\|docker\|tart>]` | Create a private named-volume backup |
-| `vm packages backups [--runtime <auto\|docker\|tart>]` | List appliance backups |
-| `vm packages restore <backup-id> [--runtime <auto\|docker\|tart>]` | Restore a backup while services are stopped |
+| `vm packages up [--engine <auto\|docker\|podman>] [--port <port>] [--registry-image <image>] [--job-image <image>]` | Reconcile the appliance and configured sources |
+| `vm packages down` | Stop the appliance while preserving volumes |
+| `vm packages status` | Report appliance or guest workflow health |
+| `vm packages doctor [--fix]` | Diagnose or safely repair package infrastructure |
+| `vm packages backup` | Create a private named-volume backup |
+| `vm packages backups` | List appliance backups |
+| `vm packages restore <backup-id>` | Restore a backup while services are stopped |
 | `vm packages register <name-or-path>... [--ecosystem <npm\|cargo\|python>] [--repository <url>] [--branch <branch>] [--recursive]` | Register catalog metadata; successful local roots are remembered read-only |
 | `vm packages list` | List registered and published package state |
 | `vm packages consumer register <name> --repository <url> [--branch <branch>] --dependency <package@version>...` | Register a consumer and its internal dependencies |

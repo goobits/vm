@@ -57,6 +57,18 @@ impl ContainerEngine {
         self.name()
     }
 
+    /// Start a Compose command using the engine's supported invocation form.
+    pub fn compose_command(self) -> Command {
+        match self.compose_runtime() {
+            ComposeRuntime::BuiltIn => {
+                let mut command = Command::new(self.executable());
+                command.arg("compose");
+                command
+            }
+            ComposeRuntime::Standalone => Command::new("podman-compose"),
+        }
+    }
+
     pub(crate) fn compose_runtime(self) -> ComposeRuntime {
         match self {
             Self::Docker | Self::Podman(PodmanCompose::BuiltIn) => ComposeRuntime::BuiltIn,

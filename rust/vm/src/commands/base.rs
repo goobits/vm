@@ -165,10 +165,6 @@ pub(super) fn ensure_configured_tart_base(config: &VmConfig) -> VmResult<()> {
     ensure_tart_vibe_base(base, Some(config)).map(|_| ())
 }
 
-pub(crate) fn ensure_tart_linux_base(command: &TartCommand) -> VmResult<String> {
-    ensure_tart_vibe_base_with_command(TartVibeBase { guest_os: "linux" }, command)
-}
-
 fn ensure_tart_vibe_base(base: TartVibeBase, config: Option<&VmConfig>) -> VmResult<String> {
     let command = TartCommand::from_config(config);
     ensure_tart_vibe_base_with_command(base, &command)

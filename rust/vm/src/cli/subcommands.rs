@@ -3,13 +3,13 @@ use std::path::PathBuf;
 use clap::{Subcommand, ValueEnum};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
-pub enum PackageInfrastructureRuntime {
-    /// Reuse the last runtime; first setup uses Tart on macOS and Docker elsewhere
+pub enum PackageInfrastructureEngine {
+    /// Reuse the configured appliance engine; first setup follows the container provider
     Auto,
-    /// Run the appliance directly in Docker
+    /// Run the appliance with Docker
     Docker,
-    /// Run Docker Compose inside a dedicated Linux Tart VM
-    Tart,
+    /// Run the appliance with Podman
+    Podman,
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -36,7 +36,7 @@ pub enum PackagesSubcommand {
         #[arg(value_name = "SOURCE_ROOT")]
         source_root: PathBuf,
         #[arg(long, value_enum, default_value = "auto", hide = true)]
-        runtime: PackageInfrastructureRuntime,
+        engine: PackageInfrastructureEngine,
         /// Override the host gateway port (useful for isolated acceptance environments)
         #[arg(long, default_value = "3080")]
         port: u16,
@@ -48,7 +48,7 @@ pub enum PackagesSubcommand {
     /// Prepare or reconcile the shared package-infrastructure appliance and configured sources
     Up {
         #[arg(long, value_enum, default_value = "auto")]
-        runtime: PackageInfrastructureRuntime,
+        engine: PackageInfrastructureEngine,
         #[arg(long, default_value = "3080")]
         port: u16,
         /// Override the immutable registry service image
@@ -59,39 +59,21 @@ pub enum PackagesSubcommand {
         job_image: Option<String>,
     },
     /// Stop the appliance while preserving all named volumes
-    Down {
-        #[arg(long, value_enum, default_value = "auto")]
-        runtime: PackageInfrastructureRuntime,
-    },
+    Down,
     /// Show the appliance runtime and gateway health
-    Status {
-        #[arg(long, value_enum, default_value = "auto")]
-        runtime: PackageInfrastructureRuntime,
-    },
+    Status,
     /// Validate the runtime, appliance definition, and gateway
     Doctor {
-        #[arg(long, value_enum, default_value = "auto")]
-        runtime: PackageInfrastructureRuntime,
         /// Apply safe, deterministic package-infrastructure repairs
         #[arg(long)]
         fix: bool,
     },
     /// List appliance-local infrastructure backups
-    Backups {
-        #[arg(long, value_enum, default_value = "auto")]
-        runtime: PackageInfrastructureRuntime,
-    },
+    Backups,
     /// Create a consistent backup in a private named volume
-    Backup {
-        #[arg(long, value_enum, default_value = "auto")]
-        runtime: PackageInfrastructureRuntime,
-    },
+    Backup,
     /// Restore a private named-volume backup while services are stopped
-    Restore {
-        backup_id: String,
-        #[arg(long, value_enum, default_value = "auto")]
-        runtime: PackageInfrastructureRuntime,
-    },
+    Restore { backup_id: String },
     /// Register repository URLs or remember local Git roots as read-only workspaces
     Register {
         /// One explicit package name, or local Git roots remembered after registration

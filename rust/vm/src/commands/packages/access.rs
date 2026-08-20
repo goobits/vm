@@ -1,11 +1,11 @@
 use std::path::{Path, PathBuf};
 
 use vm_config::config::{PackageEdgeConfig, VmConfig};
-use vm_packages::{ApplianceState, ClientEnvironment, InfrastructureRuntime, RegistryEndpoints};
+use vm_packages::{ClientEnvironment, RegistryEndpoints};
 
 use crate::error::{VmError, VmResult};
 
-use super::{appliance, files::ApplianceFiles};
+use super::{appliance, files::ApplianceFiles, state::ApplianceState};
 
 // Bump when edge labels, environment, mounts, or lifecycle policy change
 // without requiring a new registry image.
@@ -173,21 +173,19 @@ fn package_edge_revision(
 }
 
 pub(super) fn gateway_for_provider(state: &ApplianceState, provider: &str) -> VmResult<String> {
-    match (state.runtime, provider) {
-        (InfrastructureRuntime::Docker, "tart") => Err(VmError::validation(
-            "A Docker-hosted package appliance is not reachable from Tart guests",
-            Some("Run `vm packages up --runtime tart` so every environment can reach it"),
-        )),
-        (InfrastructureRuntime::Docker, "docker" | "podman") => Ok(format!(
+    match provider {
+        "docker" | "podman" => Ok(format!(
             "http://{}:{}",
             vm_platform::platform::get_host_gateway(),
             state.gateway_port
         )),
-        (InfrastructureRuntime::Docker, _) => Err(VmError::validation(
-            format!("Provider '{provider}' cannot reach a Docker-hosted package appliance"),
-            Some("Use the Tart package infrastructure runtime"),
+        // Tart's Virtualization.framework network exposes the controller host
+        // at the first address on its private subnet.
+        "tart" => Ok(format!("http://192.168.64.1:{}", state.gateway_port)),
+        _ => Err(VmError::validation(
+            format!("Provider '{provider}' cannot reach the package appliance"),
+            Some("Use Docker, Podman, or a Linux Tart guest"),
         )),
-        (InfrastructureRuntime::Tart, _) => Ok(state.gateway_url.clone()),
     }
 }
 
@@ -195,23 +193,22 @@ pub(super) fn gateway_for_provider(state: &ApplianceState, provider: &str) -> Vm
 mod tests {
     use super::*;
 
-    fn state(runtime: InfrastructureRuntime) -> ApplianceState {
+    fn state() -> ApplianceState {
         ApplianceState {
             definition_revision: vm_packages::APPLIANCE_DEFINITION_REVISION,
-            runtime,
-            gateway_url: "http://192.0.2.8:3080".into(),
+            engine: crate::commands::packages::state::ApplianceEngine::Docker,
+            gateway_url: "http://127.0.0.1:3080".into(),
             gateway_port: 3080,
             registry_image: "registry/image:1".into(),
             registry_image_identity: "sha256:image-1".into(),
             job_image: "jobs/image:1".into(),
             controller_version: "1".into(),
-            tart_home: None,
         }
     }
 
     #[test]
-    fn tart_appliance_has_one_provider_neutral_client_shape() {
-        let state = state(InfrastructureRuntime::Tart);
+    fn one_container_appliance_serves_docker_and_tart_guests() {
+        let state = state();
         let signing_key = "agent-signing-key-012345678901234567890123456789";
         let (docker, docker_edge) = client_environment(
             &state,
@@ -243,19 +240,20 @@ mod tests {
             .collect::<std::collections::BTreeMap<_, _>>();
         assert!(docker_variables["NPM_CONFIG_REGISTRY"].contains("package-edge"));
         assert!(tart_variables["NPM_CONFIG_REGISTRY"].contains("127.0.0.1"));
-        assert_eq!(docker_variables["VM_OCI_MIRROR"], state.gateway_url);
+        assert!(docker_variables["VM_OCI_MIRROR"].ends_with(":3080"));
         assert_eq!(docker_variables["VM_PACKAGES_CONSUMER"], "project-a");
-        assert_eq!(tart_variables["VM_OCI_MIRROR"], state.gateway_url);
+        assert_eq!(tart_variables["VM_OCI_MIRROR"], "http://192.168.64.1:3080");
         assert_eq!(docker_edge.client_gateway, "http://package-edge:3080");
         assert_eq!(tart_edge.client_gateway, "http://127.0.0.1:3080");
-        assert_eq!(docker_edge.internal_gateway, state.gateway_url);
+        assert!(docker_edge.internal_gateway.ends_with(":3080"));
+        assert_eq!(tart_edge.internal_gateway, "http://192.168.64.1:3080");
     }
 
     #[test]
     fn canonical_repository_issues_a_v2_workspace_capability() {
         let signing_key = "agent-signing-key-012345678901234567890123456789";
         let (client, _) = client_environment(
-            &state(InfrastructureRuntime::Docker),
+            &state(),
             "read-token".into(),
             signing_key,
             "project-a",
@@ -316,7 +314,7 @@ mod tests {
 
     #[test]
     fn edge_revision_tracks_controller_and_runtime_policy() {
-        let mut first = state(InfrastructureRuntime::Tart);
+        let mut first = state();
         let initial = package_edge_revision(&first, &first.gateway_url, "read-token");
         first.controller_version = "2".into();
         let upgraded = package_edge_revision(&first, &first.gateway_url, "read-token");
@@ -327,7 +325,10 @@ mod tests {
     }
 
     #[test]
-    fn tart_guests_reject_a_loopback_only_docker_appliance() {
-        assert!(gateway_for_provider(&state(InfrastructureRuntime::Docker), "tart").is_err());
+    fn tart_guests_use_the_controller_side_of_the_vmnet_subnet() {
+        assert_eq!(
+            gateway_for_provider(&state(), "tart").unwrap(),
+            "http://192.168.64.1:3080"
+        );
     }
 }

@@ -2,14 +2,18 @@ use std::time::Duration;
 
 use vm_core::{vm_println, vm_progress, vm_success};
 use vm_packages::{
-    ApplianceConfig, ApplianceState, InfrastructureRuntime, PackageInfrastructureClient,
-    RegistryEndpoints, APPLIANCE_DEFINITION_REVISION,
+    ApplianceConfig, PackageInfrastructureClient, RegistryEndpoints, APPLIANCE_DEFINITION_REVISION,
 };
 
-use crate::cli::PackageInfrastructureRuntime;
+use crate::cli::PackageInfrastructureEngine;
 use crate::error::{VmError, VmResult};
 
-use super::{docker, files::ApplianceFiles, process, tart};
+use super::{
+    container,
+    files::ApplianceFiles,
+    process,
+    state::{ApplianceEngine, ApplianceState},
+};
 
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(60);
 const HEALTH_INTERVAL: Duration = Duration::from_millis(500);
@@ -78,13 +82,14 @@ pub(super) fn configured_state_and_client(
 
 pub(super) async fn up(
     files: &ApplianceFiles,
-    requested: PackageInfrastructureRuntime,
+    requested: PackageInfrastructureEngine,
     port: u16,
     registry_image: Option<String>,
     job_image: Option<String>,
 ) -> VmResult<()> {
     let previous = files.read_state()?;
-    let runtime = resolve_runtime(requested, previous.as_ref().map(|state| state.runtime));
+    let engine_name = resolve_engine(requested, previous.as_ref().map(|state| state.engine));
+    let engine = engine_name.detect()?;
     let image = resolve_image(
         registry_image,
         previous.as_ref().map(|state| {
@@ -102,40 +107,29 @@ pub(super) async fn up(
             .map(|state| (state.controller_version.as_str(), state.job_image.as_str())),
         default_job_image(),
     );
-    let bind = match runtime {
-        InfrastructureRuntime::Docker => "127.0.0.1",
-        InfrastructureRuntime::Tart => "0.0.0.0",
-    };
-    let config = ApplianceConfig::new(bind, port, image, job_image).map_err(VmError::from)?;
+    let config = ApplianceConfig::new("0.0.0.0", port, image, job_image).map_err(VmError::from)?;
     let allow_source_build = config.registry_image == default_registry_image()
         && config.job_image == default_job_image();
     files.materialize(&config)?;
 
-    let gateway_url = match runtime {
-        InfrastructureRuntime::Docker => docker::up(files, &config, allow_source_build)?,
-        InfrastructureRuntime::Tart => tart::up(files, port)?,
-    };
+    let gateway_url = container::up(engine, files, &config, allow_source_build)?;
     wait_for_gateway(&gateway_url).await?;
-    let registry_image_identity = registry_image_identity(runtime, &config.registry_image)?;
+    let registry_image_identity = container::image_identity(engine, &config.registry_image)?;
 
     files.write_state(&ApplianceState {
         definition_revision: APPLIANCE_DEFINITION_REVISION,
-        runtime,
+        engine: engine_name,
         gateway_url: gateway_url.clone(),
         gateway_port: port,
         registry_image: config.registry_image,
         registry_image_identity,
         job_image: config.job_image,
         controller_version: env!("CARGO_PKG_VERSION").to_string(),
-        tart_home: match runtime {
-            InfrastructureRuntime::Docker => None,
-            InfrastructureRuntime::Tart => tart::storage_home(files)?,
-        },
     })?;
 
     vm_success!("Package infrastructure is ready");
     vm_println!("Gateway: {gateway_url}");
-    vm_println!("Runtime: {}", runtime.as_str());
+    vm_println!("Engine: {}", engine_name.as_str());
     Ok(())
 }
 
@@ -167,39 +161,20 @@ pub(super) fn repair_client_access(
         Some((&state.controller_version, &state.job_image)),
         default_job_image(),
     );
-    let bind = match state.runtime {
-        InfrastructureRuntime::Docker => "127.0.0.1",
-        InfrastructureRuntime::Tart => "0.0.0.0",
-    };
-    let config = ApplianceConfig::new(bind, state.gateway_port, registry_image, job_image)
+    let config = ApplianceConfig::new("0.0.0.0", state.gateway_port, registry_image, job_image)
         .map_err(VmError::from)?;
     let allow_source_build = config.registry_image == default_registry_image()
         && config.job_image == default_job_image();
     files.materialize(&config)?;
-    state.gateway_url = match state.runtime {
-        InfrastructureRuntime::Docker => docker::up(files, &config, allow_source_build)?,
-        InfrastructureRuntime::Tart => tart::up(files, state.gateway_port)?,
-    };
-    state.registry_image_identity = registry_image_identity(state.runtime, &config.registry_image)?;
+    let engine = state.engine.detect()?;
+    state.gateway_url = container::up(engine, files, &config, allow_source_build)?;
+    state.registry_image_identity = container::image_identity(engine, &config.registry_image)?;
     state.registry_image = config.registry_image;
     state.job_image = config.job_image;
     state.controller_version = env!("CARGO_PKG_VERSION").to_string();
     state.definition_revision = APPLIANCE_DEFINITION_REVISION;
-    if state.runtime == InfrastructureRuntime::Tart {
-        state.tart_home = tart::storage_home(files)?;
-    }
     files.write_state(&state)?;
     Ok(state)
-}
-
-fn registry_image_identity(
-    runtime: InfrastructureRuntime,
-    registry_image: &str,
-) -> VmResult<String> {
-    match runtime {
-        InfrastructureRuntime::Docker => docker::image_identity(registry_image),
-        InfrastructureRuntime::Tart => Ok(registry_image.to_string()),
-    }
 }
 
 pub(super) fn state_client_access_is_current(
@@ -210,43 +185,22 @@ pub(super) fn state_client_access_is_current(
         && files.runtime_credentials_ready()?)
 }
 
-pub(super) fn down(
-    files: &ApplianceFiles,
-    requested: PackageInfrastructureRuntime,
-) -> VmResult<()> {
+pub(super) fn down(files: &ApplianceFiles) -> VmResult<()> {
     let Some(state) = files.read_state()? else {
         vm_println!("Package infrastructure is not configured");
         return Ok(());
     };
-    match resolve_runtime(requested, Some(state.runtime)) {
-        InfrastructureRuntime::Docker => docker::down(files)?,
-        InfrastructureRuntime::Tart => tart::down(files)?,
-    }
+    container::down(state.engine.detect()?, files)?;
     vm_success!("Package infrastructure stopped; named volumes were preserved");
     Ok(())
 }
 
-pub(super) async fn status(
-    files: &ApplianceFiles,
-    requested: PackageInfrastructureRuntime,
-) -> VmResult<PackageHealth> {
+pub(super) async fn status(files: &ApplianceFiles) -> VmResult<PackageHealth> {
     let Some(state) = files.read_state()? else {
         return Ok(PackageHealth::ActionRequired);
     };
-    let runtime = resolve_runtime(requested, Some(state.runtime));
-    let runtime_status = match runtime {
-        InfrastructureRuntime::Docker => docker::status(files)?,
-        InfrastructureRuntime::Tart => tart::status(files)?,
-    };
-    let gateway_url = match runtime {
-        InfrastructureRuntime::Docker => state.gateway_url.clone(),
-        InfrastructureRuntime::Tart if runtime_status == "running" => {
-            tart::gateway_url(files, state.gateway_port)
-                .unwrap_or_else(|_| state.gateway_url.clone())
-        }
-        InfrastructureRuntime::Tart => state.gateway_url.clone(),
-    };
-    let healthy = runtime_status == "running" && gateway_is_healthy(&gateway_url).await;
+    let runtime_status = container::status(state.engine.detect()?, files)?;
+    let healthy = runtime_status == "running" && gateway_is_healthy(&state.gateway_url).await;
 
     Ok(if healthy && files.runtime_credentials_ready()? {
         PackageHealth::Healthy
@@ -255,20 +209,17 @@ pub(super) async fn status(
     })
 }
 
-pub(super) async fn doctor(
-    files: &ApplianceFiles,
-    requested: PackageInfrastructureRuntime,
-) -> VmResult<()> {
+pub(super) async fn doctor(files: &ApplianceFiles) -> VmResult<()> {
     let state = files.read_state()?;
-    let runtime = resolve_runtime(requested, state.as_ref().map(|state| state.runtime));
+    let engine_name = state
+        .as_ref()
+        .map(|state| state.engine)
+        .unwrap_or_else(first_run_engine);
 
     files.validate_definition()?;
-    match runtime {
-        InfrastructureRuntime::Docker => docker::doctor(files)?,
-        InfrastructureRuntime::Tart => tart::doctor(files)?,
-    }
+    container::doctor(engine_name.detect()?, files)?;
 
-    if let Some(state) = state.filter(|state| state.runtime == runtime) {
+    if let Some(state) = state {
         if !gateway_is_healthy(&state.gateway_url).await {
             return Err(VmError::validation(
                 "Package gateway is not healthy",
@@ -281,43 +232,29 @@ pub(super) async fn doctor(
     Ok(())
 }
 
-pub(super) fn list_backups(
-    files: &ApplianceFiles,
-    runtime: PackageInfrastructureRuntime,
-) -> VmResult<()> {
-    maintenance(files, runtime, MaintenanceTask::List)
+pub(super) fn list_backups(files: &ApplianceFiles) -> VmResult<()> {
+    maintenance(files, MaintenanceTask::List)
 }
 
-pub(super) fn backup(
-    files: &ApplianceFiles,
-    runtime: PackageInfrastructureRuntime,
-) -> VmResult<()> {
+pub(super) fn backup(files: &ApplianceFiles) -> VmResult<()> {
     let backup_id = format!(
         "backup-{}-{}",
         chrono::Utc::now().format("%Y%m%dT%H%M%SZ"),
         vm_core::secrets::generate_random_password(8)
     );
-    maintenance(files, runtime, MaintenanceTask::Backup(&backup_id))?;
+    maintenance(files, MaintenanceTask::Backup(&backup_id))?;
     vm_success!("Package infrastructure backup created");
     vm_println!("Backup: {backup_id}");
     Ok(())
 }
 
-pub(super) fn restore(
-    files: &ApplianceFiles,
-    runtime: PackageInfrastructureRuntime,
-    backup_id: &str,
-) -> VmResult<()> {
-    maintenance(files, runtime, MaintenanceTask::Restore(backup_id))?;
+pub(super) fn restore(files: &ApplianceFiles, backup_id: &str) -> VmResult<()> {
+    maintenance(files, MaintenanceTask::Restore(backup_id))?;
     vm_success!("Package infrastructure restored from {backup_id}");
     Ok(())
 }
 
-fn maintenance(
-    files: &ApplianceFiles,
-    requested: PackageInfrastructureRuntime,
-    task: MaintenanceTask<'_>,
-) -> VmResult<()> {
+fn maintenance(files: &ApplianceFiles, task: MaintenanceTask<'_>) -> VmResult<()> {
     let _maintenance_lock = files.acquire_maintenance_lock()?;
     let state = files.read_state()?.ok_or_else(|| {
         VmError::validation(
@@ -328,10 +265,7 @@ fn maintenance(
     if let Some(backup_id) = task.backup_id() {
         process::validate_job_id(backup_id)?;
     }
-    let output = match resolve_runtime(requested, Some(state.runtime)) {
-        InfrastructureRuntime::Docker => docker::maintenance(files, task)?,
-        InfrastructureRuntime::Tart => tart::maintenance(files, task)?,
-    };
+    let output = container::maintenance(state.engine.detect()?, files, task)?;
     if matches!(task, MaintenanceTask::List) {
         if output.trim().is_empty() {
             vm_println!("No package infrastructure backups");
@@ -342,26 +276,25 @@ fn maintenance(
     Ok(())
 }
 
-fn resolve_runtime(
-    requested: PackageInfrastructureRuntime,
-    previous: Option<InfrastructureRuntime>,
-) -> InfrastructureRuntime {
+fn resolve_engine(
+    requested: PackageInfrastructureEngine,
+    previous: Option<ApplianceEngine>,
+) -> ApplianceEngine {
     match requested {
-        PackageInfrastructureRuntime::Auto => previous.unwrap_or_else(first_run_runtime),
-        PackageInfrastructureRuntime::Docker => InfrastructureRuntime::Docker,
-        PackageInfrastructureRuntime::Tart => InfrastructureRuntime::Tart,
+        PackageInfrastructureEngine::Auto => previous.unwrap_or_else(first_run_engine),
+        PackageInfrastructureEngine::Docker => ApplianceEngine::Docker,
+        PackageInfrastructureEngine::Podman => ApplianceEngine::Podman,
     }
 }
 
-fn first_run_runtime() -> InfrastructureRuntime {
-    first_run_runtime_for(cfg!(target_os = "macos"))
+fn first_run_engine() -> ApplianceEngine {
+    first_run_engine_for(&crate::utils::configured_container_runtime())
 }
 
-const fn first_run_runtime_for(macos: bool) -> InfrastructureRuntime {
-    if macos {
-        InfrastructureRuntime::Tart
-    } else {
-        InfrastructureRuntime::Docker
+fn first_run_engine_for(provider: &str) -> ApplianceEngine {
+    match provider {
+        "podman" => ApplianceEngine::Podman,
+        _ => ApplianceEngine::Docker,
     }
 }
 
@@ -436,42 +369,35 @@ fn workflow_client(
 
 #[cfg(test)]
 mod tests {
-    use super::{default_registry_image, first_run_runtime_for, resolve_image, resolve_runtime};
-    use crate::cli::PackageInfrastructureRuntime;
-    use vm_packages::InfrastructureRuntime;
+    use super::{default_registry_image, first_run_engine_for, resolve_engine, resolve_image};
+    use crate::cli::PackageInfrastructureEngine;
+    use crate::commands::packages::state::ApplianceEngine;
 
     #[test]
-    fn auto_runtime_reuses_state_before_platform_default() {
+    fn auto_engine_reuses_state_before_platform_default() {
         assert_eq!(
-            resolve_runtime(
-                PackageInfrastructureRuntime::Auto,
-                Some(InfrastructureRuntime::Docker)
+            resolve_engine(
+                PackageInfrastructureEngine::Auto,
+                Some(ApplianceEngine::Podman)
             ),
-            InfrastructureRuntime::Docker
-        );
-        assert_eq!(
-            resolve_runtime(
-                PackageInfrastructureRuntime::Auto,
-                Some(InfrastructureRuntime::Tart)
-            ),
-            InfrastructureRuntime::Tart
+            ApplianceEngine::Podman
         );
     }
 
     #[test]
-    fn first_run_prefers_tart_only_on_macos() {
-        assert_eq!(first_run_runtime_for(true), InfrastructureRuntime::Tart);
-        assert_eq!(first_run_runtime_for(false), InfrastructureRuntime::Docker);
+    fn first_run_follows_the_configured_container_engine() {
+        assert_eq!(first_run_engine_for("podman"), ApplianceEngine::Podman);
+        assert_eq!(first_run_engine_for("tart"), ApplianceEngine::Docker);
     }
 
     #[test]
-    fn explicit_runtime_overrides_saved_state() {
+    fn explicit_engine_overrides_saved_state() {
         assert_eq!(
-            resolve_runtime(
-                PackageInfrastructureRuntime::Tart,
-                Some(InfrastructureRuntime::Docker)
+            resolve_engine(
+                PackageInfrastructureEngine::Docker,
+                Some(ApplianceEngine::Podman)
             ),
-            InfrastructureRuntime::Tart
+            ApplianceEngine::Docker
         );
     }
 

@@ -1,6 +1,6 @@
 use super::{
     Args, BaseSubcommand, Command, ConfigSubcommand, DbSubcommand, EnvironmentKind,
-    PackageInfrastructureRuntime, PackagesSubcommand, PluginSubcommand, SystemSubcommand,
+    PackageInfrastructureEngine, PackagesSubcommand, PluginSubcommand, SystemSubcommand,
     ToolsSubcommand,
 };
 use clap::Parser;
@@ -210,21 +210,12 @@ fn system_base_build_parses_macos_guest_os() {
 }
 
 #[test]
-fn packages_up_parses_tart_appliance() {
+fn packages_up_parses_podman_engine() {
     assert!(matches!(
-        Args::parse_from([
-            "vm",
-            "packages",
-            "up",
-            "--runtime",
-            "tart",
-            "--port",
-            "4080",
-        ])
-        .command,
+        Args::parse_from(["vm", "packages", "up", "--engine", "podman", "--port", "4080",]).command,
         Command::Packages {
             command: PackagesSubcommand::Up {
-                runtime: PackageInfrastructureRuntime::Tart,
+                engine: PackageInfrastructureEngine::Podman,
                 port: 4080,
                 ..
             }
@@ -356,7 +347,7 @@ fn package_init_parses_the_source_shelf() {
             "packages",
             "init",
             "/srv/packages",
-            "--runtime",
+            "--engine",
             "docker",
             "--port",
             "39081",
@@ -369,7 +360,7 @@ fn package_init_parses_the_source_shelf() {
         Command::Packages {
             command: PackagesSubcommand::Init {
                 source_root,
-                runtime: PackageInfrastructureRuntime::Docker,
+                engine: PackageInfrastructureEngine::Docker,
                 port: 39081,
                 registry_image: Some(registry_image),
                 job_image: Some(job_image),

@@ -412,7 +412,7 @@ git -C "$language_root" commit -m 'feat: initial language package'
   cd "$project_root"
   gateway_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')
   run_vm packages init "$source_shelf" \
-    --runtime docker \
+    --engine docker \
     --port "$gateway_port" \
     --registry-image "$server_image" \
     --job-image "$jobs_image"
