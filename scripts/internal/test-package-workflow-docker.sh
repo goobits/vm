@@ -3,7 +3,7 @@ set -euo pipefail
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
-vm_binary=${VM_ACCEPTANCE_BIN:-$repository_root/rust/target/release/vm}
+vm_binary=${VM_ACCEPTANCE_BIN:-${CARGO_TARGET_DIR:-/tmp/vm-rust-target}/release/vm}
 run_id=$$
 compose_project=vm-packages-acceptance-$run_id
 docker_config=${DOCKER_CONFIG:-$HOME/.docker}

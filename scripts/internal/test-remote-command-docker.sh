@@ -2,9 +2,7 @@
 
 set -euo pipefail
 
-script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-repository_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
-vm_binary=${VM_ACCEPTANCE_BIN:-$repository_root/rust/target/release/vm}
+vm_binary=${VM_ACCEPTANCE_BIN:-${CARGO_TARGET_DIR:-/tmp/vm-rust-target}/release/vm}
 run_id=$$
 prefix=vm-remote-acceptance-$run_id
 image=$prefix:latest
@@ -39,6 +37,17 @@ run_vm() {
     VM_TEST_COMMAND_CONTEXT=host \
     VM_REMOTE_COMMANDS_CONTROLLER_FILE="$controller_registry" \
     "$vm_binary" --config "$project_root/vm.yaml" "$@"
+}
+
+test -x "$vm_binary" || {
+  echo "Acceptance VM binary is missing: $vm_binary" >&2
+  echo "Repair: cargo build --manifest-path rust/Cargo.toml --release --package goobits-vm" >&2
+  exit 2
+}
+command -v docker >/dev/null 2>&1 || {
+  echo "Docker is unavailable" >&2
+  echo "Repair: install Docker Engine and rerun this script" >&2
+  exit 2
 }
 
 mkdir -p "$acceptance_home/.vm" "$project_root"
