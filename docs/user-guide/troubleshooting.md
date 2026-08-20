@@ -189,6 +189,19 @@ reconciliation. An unhealthy child Git repository is moved intact under
 `degraded`. Repair it with `vm packages doctor --fix`; an existing empty shelf
 remains valid.
 
+Canonical project workspaces use a different, read-only policy. If bare `vm
+packages release` reports missing attestation, run `vm packages register
+<local-path>` on the host, then reconcile the environment. The registered path
+must be the physical Git root containing its `vm.yaml`; another clone with the
+same origin is intentionally rejected. Missing paths, invalid manifests, and
+origin mismatches report degraded health but are never moved or repaired by
+`doctor --fix`.
+
+Release also requires a clean committed worktree. Commit or discard local and
+untracked changes yourself, and correct an origin mismatch explicitly before
+retrying. VM never resets files, changes remotes, creates tags, or repairs an
+exact canonical source.
+
 For an existing environment, run this on the controller host:
 
 ```bash

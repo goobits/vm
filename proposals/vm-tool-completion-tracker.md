@@ -1,5 +1,5 @@
 ---
-Status: Audit remediation complete; host acceptance blocked
+Status: Read-only workspace release implemented; host acceptance blocked
 Date: 2026-08-19
 Depends: docs/user-guide/package-infrastructure.md, docs/development/architecture.md
 ---
@@ -82,6 +82,48 @@ release remains blocked on equipped-host acceptance:
 - [x] Make selector parsing, disabled-update output, and missing-release errors truthful.
 - [x] Rerun static release acceptance after remediation.
 - [ ] Rerun Docker and Tart release acceptance after remediation.
+
+## Read-Only Existing Project Workspaces
+
+The 2026-08-19 follow-up keeps ordinary project repositories outside managed
+package shelves while reusing the existing release workflow and command set:
+
+```bash
+vm packages register ~/projects/typemill
+# inside that project's managed environment
+vm packages release
+```
+
+- [x] Separate recursively managed `packages.source_roots` from exact read-only
+  `packages.canonical_sources` in global config and schema.
+- [x] Persist only successful local registrations as canonical physical Git
+  roots; URL-only registrations remain unattested.
+- [x] Reconcile canonical roots independently, report degraded health, and
+  never quarantine, repair, move, or mount them into infrastructure.
+- [x] Issue repository-bound v2 guest capabilities only when the physical
+  `vm.yaml` project root exactly matches a configured canonical source.
+- [x] Keep v1 consumer capabilities for isolated checkouts and reject them for
+  canonical-workspace releases.
+- [x] Reject same-origin clones without exact path attestation and preserve the
+  existing clean-worktree, origin, identity, and immutable-bundle checks.
+- [x] Add static non-mutation coverage for registration, startup, doctor fix,
+  invalid canonical sources, and capability enforcement.
+- [x] Update the sole Docker package acceptance script to keep the producer
+  outside the managed shelf, register it explicitly, reject a second clone,
+  check infrastructure mounts, and retain container/volume identity checks.
+- [ ] Run the updated Docker acceptance script on a host with Docker and the
+  built appliance images.
+- [ ] Add the approved Typemill and CodeAtlas manifests/build tests in their
+  separate project repositories; those repositories are not present in this
+  workspace.
+
+Static acceptance on 2026-08-19 passed formatting, the all-target workspace
+check, all workspace library and compiled integration tests, strict workspace
+Clippy, shell syntax, and `git diff --check`. The focused reconciliation suite
+passed all 10 tests, including byte-for-byte repository and Git-state
+preservation. Duplicate detection was invoked but `jscpd` is not installed;
+Docker/Tart acceptance and the external project integrations remain assigned to
+an equipped host with those repositories.
 
 ## Remaining Acceptance
 

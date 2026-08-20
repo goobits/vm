@@ -263,16 +263,24 @@ packages:
   source_roots:
     - /absolute/path/to/packages
     - /another/absolute/source-root
+  canonical_sources:
+    - /absolute/path/to/typemill
+    - /absolute/path/to/codeatlas
 ```
 
 `init` remembers only the controller source root and appliance configuration; it
 does not select an environment or persist an agent launch target. Each `vm
 packages up` scans the roots recursively and idempotently registers detected Git
-package and tool repositories. The paths stay controller-side and are not copied
-into `vm.yaml` or mounted into the appliance. Registration from one of these
-roots attests that a clean canonical workspace may use bare `vm packages
-release`; the appliance retains its submitted source bundle rather than
-accessing the host path.
+package and tool repositories. These managed shelves may quarantine unhealthy
+children.
+
+`canonical_sources` is a separate list of exact physical Git roots. Add one with
+`vm packages register /absolute/path/to/project`; successful local registration
+persists it automatically. VM inspects these roots read-only, never recursively
+discovers, repairs, quarantines, moves, or mounts them into the appliance. Only
+an environment whose physical `vm.yaml` project root exactly matches an entry
+receives canonical-workspace release authority. URL-only registrations remain
+unattested.
 
 ## Managed Tools And AI State
 

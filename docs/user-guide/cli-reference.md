@@ -95,7 +95,7 @@ Configuration fields and examples belong in the
 | `vm packages backup [--runtime <auto\|docker\|tart>]` | Create a private named-volume backup |
 | `vm packages backups [--runtime <auto\|docker\|tart>]` | List appliance backups |
 | `vm packages restore <backup-id> [--runtime <auto\|docker\|tart>]` | Restore a backup while services are stopped |
-| `vm packages register <name-or-path>... [--ecosystem <npm\|cargo\|python>] [--repository <url>] [--branch <branch>] [--recursive]` | Register an explicit canonical package or discover repositories from paths |
+| `vm packages register <name-or-path>... [--ecosystem <npm\|cargo\|python>] [--repository <url>] [--branch <branch>] [--recursive]` | Register catalog metadata; successful local roots are remembered read-only |
 | `vm packages list` | List registered and published package state |
 | `vm packages consumer register <name> --repository <url> [--branch <branch>] --dependency <package@version>...` | Register a consumer and its internal dependencies |
 | `vm packages consumer list` | List registered consumers |
@@ -110,6 +110,11 @@ Controller commands run on the host. `status`, `checkout`, `release`, and
 `cancel` also have scoped behavior inside managed guests. Language packages are
 published privately and upgraded through registered consumer rollout; they are
 not installed indiscriminately into every environment.
+
+Local-path registration stores the physical Git root in controller-global
+`packages.canonical_sources`; URL-only registration does not grant workspace
+release authority. Managed recursive shelves remain under
+`packages.source_roots`.
 
 The [Package Infrastructure Guide](package-infrastructure.md) owns setup,
 release, security, recovery, and consumer workflow details.

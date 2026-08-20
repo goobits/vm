@@ -58,10 +58,10 @@ credentials and named volumes are retained.
 registers repositories below configured source roots and quarantines an
 unhealthy child repository under that shelf's `.vm-quarantine` directory
 instead of failing unrelated sources. It exits successfully and reports
-`degraded` when quarantine or registration failures remain. `vm packages
-doctor --fix` applies only safe deterministic repairs: client credentials,
-missing exact registered origins, stale linked worktrees, and registration
-drift. It never guesses a replacement remote or deletes repository data.
+`degraded` when quarantine or registration failures remain. Exact canonical
+sources are reconciled separately and are never quarantined or repaired.
+`vm packages doctor --fix` applies safe deterministic repairs only to managed
+shelves and reports manual instructions for an unhealthy canonical source.
 
 Configured roots are resolved and scanned before the appliance is started or
 updated. A missing root therefore fails without changing appliance state. An
@@ -195,8 +195,17 @@ cd /workspace
 vm packages release
 ```
 
-The repository must be below a configured package source root and must match
-the registered origin and package or tool identity. The command requires a
+Register the exact host repository once before creating or reconciling its
+environment:
+
+```bash
+vm packages register ~/projects/typemill
+```
+
+The environment's physical project root must exactly match that remembered
+canonical source and its origin and package or tool identity must match the
+catalog. A different clone with the same origin receives no release authority.
+The command requires a
 clean, committed worktree, creates the durable checkout and submission
 internally, and resumes the same transaction when repeated. Its lease and
 resume state live under the guest's private VM state, not in the repository.
@@ -272,11 +281,13 @@ managed Docker metadata before reconciliation, so running `vm tools update
 the caller's package edge. Legacy Docker Desktop bind paths are translated back
 to native host paths without recreating the container.
 
-Register each package repository and each consumer inventory:
+Register exact read-only project workspaces, managed-shelf repositories, and
+consumer inventory:
 
 ```bash
 vm packages register ./packages/*
 vm packages register ./packages --recursive
+vm packages register ~/projects/typemill
 
 vm packages register auth \
   --ecosystem cargo \
@@ -287,9 +298,11 @@ vm packages consumer register project-a \
   --dependency auth@1.4.2
 ```
 
-The registration path may be an absolute host directory and appliance commands
-may be run from any host directory. Configure any number of controller-wide
-source roots when they should be reconciled on every `vm packages up`:
+Successful local registration remembers each physical Git root in
+`packages.canonical_sources`. Appliance commands may be run from any host
+directory. URL-only registration records catalog metadata but grants no
+workspace-release authority. Configure controller-wide managed shelves
+separately when their children should be discovered on every `vm packages up`:
 
 ```bash
 vm config set packages.source_roots \
@@ -324,9 +337,9 @@ local source.
 The appliance clones the registered Git origins into its private `source-mirrors`
 Docker volume when package work requires them.
 
-The host path is intentionally not stored in project configuration or mounted
-into the appliance. It is retained controller-side as the discovery and
-canonical-workspace attestation boundary. Configured shelves may start empty;
+Host paths are stored only in controller-global configuration and are never
+mounted into the appliance. Managed shelves and exact canonical roots have
+separate reconciliation policies. Configured shelves may start empty;
 the next `vm packages up` discovers repositories after they are added. Manual
 `vm packages register <path> --recursive` remains strict and reports an error
 when it finds no Git repositories. Registration is idempotent.
@@ -529,8 +542,10 @@ your infrastructure backup system to protect against physical disk loss.
   Docker Desktop does not consistently enforce Compose secret modes; repository
   commands cannot traverse that boundary or read any release, publish, or Git
   credential.
-- Only credential-isolated appliance jobs can read canonical sources or publish
-  private artifacts; project agents can only advance assigned checkouts.
+- Canonical host paths never enter the appliance. Authorized project agents can
+  submit their clean committed workspace as an immutable bundle; only
+  credential-isolated appliance jobs can process that bundle or publish private
+  artifacts.
 - Receipts contain identities, commits, digests, outcomes, and timestamps—not
   secrets.
 

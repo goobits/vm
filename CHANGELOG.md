@@ -22,6 +22,7 @@
 - 🚀 Targeted status reports include writable-layer size, volume and tmpfs usage, memory and PID peaks, mounts, logging, and lifecycle settings.
 - 🚀 Explicit pnpm-store pruning is available through `vm doctor --prune-pnpm-store`.
 - 📦 `vm config render [--instance <name>]` previews redacted generated configuration without contacting the provider.
+- 📦 Successful local `vm packages register <path>` calls remember exact read-only canonical workspaces, enabling repository-bound private releases without placing projects in managed source shelves.
 - 📦 Private package publication automatically prepares tested review branches for every drifted registered consumer.
 - 📦 Binary tools use a durable, no-egress build stage whose unprivileged source commands cannot access release, publish, Git, or queue credentials.
 - 📦 Docker binary builders place their queue credential beneath a root-only mount boundary instead of relying on Compose secret modes that Docker Desktop does not enforce consistently.
@@ -45,6 +46,7 @@
 - 🚀 Linux-first `vibe-tart` routing uses the versioned Tart base and Docker Engine directly; macOS/Colima remains an explicit fallback.
 - 🚀 macOS Tart environments use the Sequoia base and run Docker through Colima with QEMU software emulation instead of unsupported nested virtualization.
 - 📦 ⚠️ Bare `vm packages release` infers a managed checkout or registered canonical workspace from the current directory; the retired host `packages work` launcher and public checkout-ID lifecycle commands are removed.
+- 📦 Managed source shelves and exact canonical project roots now have separate policies: only shelves are recursively discovered or quarantined, while canonical roots remain read-only and require a repository-bound v2 guest capability.
 
 ### 🐛 Fixed
 
