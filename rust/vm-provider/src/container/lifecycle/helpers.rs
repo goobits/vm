@@ -256,24 +256,23 @@ impl<'a> LifecycleOperations<'a> {
         fuzzy_match_instances(partial_name, &instances)
     }
 
-    /// Regenerate docker-compose file with the latest context and return compose ops.
+    /// Regenerate docker-compose file with the latest context.
     pub(super) fn regenerate_compose_with_context(
         &self,
         container: Option<&str>,
         context: &ProviderContext,
-    ) -> Result<ComposeOperations<'a>> {
+    ) -> Result<()> {
         let build_ops = BuildOperations::new(self.config, self.generated_dir, self.executable);
         let build_context = build_ops.prepare_compose_build_context()?;
         let target_container = self.resolve_probe_target(container)?;
         let image_tag =
             ContainerOps::container_image_reference(Some(self.executable), &target_container)?;
 
-        let compose_ops = ComposeOperations::with_runtime(
+        let compose_ops = ComposeOperations::new(
             self.config,
             self.generated_dir,
             self.project_dir,
             self.executable,
-            self.compose_runtime,
         );
         if let Some(instance_name) = self.resolve_instance_name_for_target(container)? {
             compose_ops.write_docker_compose_with_instance_and_image_tag(
@@ -285,7 +284,7 @@ impl<'a> LifecycleOperations<'a> {
         } else {
             compose_ops.write_docker_compose_with_image_tag(&build_context, context, &image_tag)?;
         }
-        Ok(compose_ops)
+        Ok(())
     }
 }
 

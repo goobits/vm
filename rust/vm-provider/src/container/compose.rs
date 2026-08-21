@@ -12,9 +12,8 @@ use super::compose_context::{
     process_dotfiles,
 };
 use super::compose_model::{RenderedResources, RenderedStorage};
-use super::engine::ComposeRuntime;
 use super::preview::redact_compose;
-use super::{ContainerOps, UserConfig};
+use super::UserConfig;
 use crate::guest_cache::GuestCachePolicy;
 use crate::user_home::resolve_home_dir;
 use crate::{Mount, ProviderContext, TempVmState};
@@ -25,7 +24,6 @@ pub struct ComposeOperations<'a> {
     pub generated_dir: &'a Path,
     pub project_dir: &'a Path,
     pub executable: &'a str,
-    compose_runtime: ComposeRuntime,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -46,23 +44,6 @@ impl<'a> ComposeOperations<'a> {
             generated_dir,
             project_dir,
             executable,
-            compose_runtime: ComposeRuntime::BuiltIn,
-        }
-    }
-
-    pub(crate) fn with_runtime(
-        config: &'a VmConfig,
-        generated_dir: &'a Path,
-        project_dir: &'a Path,
-        executable: &'a str,
-        compose_runtime: ComposeRuntime,
-    ) -> Self {
-        Self {
-            config,
-            generated_dir,
-            project_dir,
-            executable,
-            compose_runtime,
         }
     }
 
@@ -461,112 +442,6 @@ impl<'a> ComposeOperations<'a> {
             RenderMode::Runtime,
         )
     }
-
-    pub fn start_named_with_compose(&self, container_name: &str) -> Result<()> {
-        let instance_name = self.instance_name_from_container(container_name);
-        let compose_path = compose_path(self.generated_dir, instance_name.as_deref());
-        let container_exists =
-            ContainerOps::container_exists(Some(self.executable), container_name).unwrap_or(false);
-
-        if !container_exists {
-            return Err(VmError::NotFound(format!(
-                "Container '{container_name}' does not exist"
-            )));
-        }
-
-        // The package edge is runtime infrastructure rather than part of the
-        // derived image, so a restart can add or refresh it without rebuilding
-        // the worker.
-        self.reconcile_package_edge(container_name)?;
-
-        // Start existing services directly to avoid Compose name conflicts.
-        let expected_services =
-            ContainerOps::list_managed_service_containers(Some(self.executable), container_name)?;
-        for service in expected_services {
-            if !ContainerOps::container_exists(Some(self.executable), &service).unwrap_or(false) {
-                continue;
-            }
-            let running = ContainerOps::is_container_running(Some(self.executable), &service)
-                .unwrap_or(false);
-            if running {
-                continue;
-            }
-            ContainerOps::start_container(Some(self.executable), &service)?;
-        }
-
-        if !compose_path.exists() {
-            tracing::debug!(
-                "Generated Compose file is unavailable; starting only '{}'",
-                container_name
-            );
-        }
-
-        ContainerOps::start_container(Some(self.executable), container_name)
-    }
-
-    pub fn reconcile_package_edge(&self, container_name: &str) -> Result<()> {
-        let Some(edge) = self.config.package_edge.as_ref() else {
-            return Ok(());
-        };
-        let instance_name = self.instance_name_from_container(container_name);
-        let compose_path = compose_path(self.generated_dir, instance_name.as_deref());
-        if !compose_path.exists() {
-            return Err(VmError::Internal(format!(
-                "Generated Compose file is unavailable for package-edge reconciliation: {}",
-                compose_path.display()
-            )));
-        }
-        let edge_container = container_name.strip_suffix("-dev").map_or_else(
-            || format!("{container_name}-package-edge"),
-            |name| format!("{name}-package-edge"),
-        );
-        if package_edge_is_current(self.executable, &edge_container, &edge.revision) {
-            return Ok(());
-        }
-
-        self.compose_runtime
-            .command(
-                self.executable,
-                &compose_path,
-                "up",
-                &["--detach", "package-edge"],
-            )?
-            .stream()
-    }
-
-    pub(super) fn instance_name_from_container(&self, container_name: &str) -> Option<String> {
-        let project_name = self
-            .config
-            .project
-            .as_ref()
-            .and_then(|p| p.name.as_deref())
-            .unwrap_or("vm-project");
-        super::compose_model::instance_name_from_container(project_name, container_name)
-    }
-}
-
-fn package_edge_is_current(executable: &str, container: &str, revision: &str) -> bool {
-    let Ok(output) = std::process::Command::new(executable)
-        .args([
-            "inspect",
-            "--type",
-            "container",
-            "--format",
-            "{{.State.Status}}\t{{index .Config.Labels \"com.vm.package-edge.revision\"}}",
-            container,
-        ])
-        .output()
-    else {
-        return false;
-    };
-    if !output.status.success() {
-        return false;
-    }
-    let value = String::from_utf8_lossy(&output.stdout);
-    let Some((state, installed_revision)) = value.trim().split_once('\t') else {
-        return false;
-    };
-    state == "running" && installed_revision == revision
 }
 
 #[cfg(test)]

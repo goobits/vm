@@ -107,12 +107,11 @@ impl<'a> LifecycleOperations<'a> {
             }
         }
 
-        let compose_ops = ComposeOperations::with_runtime(
+        let compose_ops = ComposeOperations::new(
             &modified_config,
             self.generated_dir,
             self.project_dir,
             self.executable,
-            self.compose_runtime,
         );
         let build_args = build_ops.gather_build_args(&base_image);
         let base_image_identity = build_ops.image_identity(&base_image)?;

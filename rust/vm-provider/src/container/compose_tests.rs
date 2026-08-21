@@ -386,12 +386,20 @@ fn renders_stable_scoped_storage_and_runtime_policy() {
         "project-scoped volumes remain shared across named instances"
     );
     assert_eq!(
-        compose
-            .instance_name_from_container("sketch-api-feature-dev")
-            .as_deref(),
+        crate::container::compose_model::instance_name_from_container(
+            "sketch-api",
+            "sketch-api-feature-dev"
+        )
+        .as_deref(),
         Some("feature")
     );
-    assert_eq!(compose.instance_name_from_container("sketch-api-dev"), None);
+    assert_eq!(
+        crate::container::compose_model::instance_name_from_container(
+            "sketch-api",
+            "sketch-api-dev"
+        ),
+        None
+    );
 }
 
 #[test]
@@ -451,30 +459,6 @@ fn renders_read_only_package_edge_without_blocking_the_worker() {
         .render_docker_compose_preview(&project_dir, None, &ProviderContext::default())
         .unwrap();
     assert!(!preview.contains("read-token"));
-}
-
-#[test]
-#[cfg(unix)]
-fn package_edge_probe_requires_matching_running_revision() {
-    use std::os::unix::fs::PermissionsExt;
-
-    let directory = tempfile::tempdir().unwrap();
-    let runtime = directory.path().join("runtime");
-    std::fs::write(&runtime, "#!/bin/sh\nprintf 'running\\trevision-1\\n'\n").unwrap();
-    let mut permissions = std::fs::metadata(&runtime).unwrap().permissions();
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(&runtime, permissions).unwrap();
-
-    assert!(package_edge_is_current(
-        runtime.to_str().unwrap(),
-        "demo-package-edge",
-        "revision-1"
-    ));
-    assert!(!package_edge_is_current(
-        runtime.to_str().unwrap(),
-        "demo-package-edge",
-        "revision-2"
-    ));
 }
 
 #[test]

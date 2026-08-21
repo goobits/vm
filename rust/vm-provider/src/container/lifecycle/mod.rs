@@ -9,7 +9,8 @@ pub mod execution;
 pub mod health;
 pub mod helpers;
 pub mod interaction;
-pub mod packages;
+mod package_edge;
+mod pipx;
 pub mod provisioning;
 pub mod status;
 
@@ -120,12 +121,11 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
 
         let temp_config = self.prepare_temp_config()?;
         mountpoints::prepare(&temp_config, self.project_dir, Some(&state.mounts))?;
-        let compose_ops = ComposeOperations::with_runtime(
+        let compose_ops = ComposeOperations::new(
             &temp_config,
             self.generated_dir,
             self.project_dir,
             self.executable,
-            self.compose_runtime,
         );
         let content = compose_ops.render_docker_compose_with_mounts(state)?;
         let compose_path = compose_path(self.generated_dir, None);

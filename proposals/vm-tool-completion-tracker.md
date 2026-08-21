@@ -204,7 +204,9 @@ current image. No real package release or publication was performed.
 - [x] Reuse `ProviderName` for persisted appliance engines instead of maintaining a second engine enum.
 - [x] Keep container inventory/config ownership in one module and provider status types outside the trait root.
 - [x] Remove the unused provider-level snapshot API; `vm-snapshot` remains the sole snapshot implementation.
-- [x] Split Compose behavior from its test suite and base-image acquisition from build-context generation.
+- [x] Keep Compose focused on rendering/writing, with runtime execution,
+  package-edge reconciliation, pipx classification, tests, and base-image
+  acquisition in their conceptual owners.
 - [x] Keep one package-infrastructure client API while separating its private
   transport and endpoint-domain implementations.
 - [x] Consolidate package and tool release source/workflow ownership, keeping

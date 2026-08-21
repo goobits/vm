@@ -2,7 +2,7 @@
 use super::LifecycleOperations;
 use crate::{
     audio::MacOSAudioManager,
-    container::{mountpoints, ContainerOps},
+    container::{artifacts::compose_path, mountpoints, ContainerOps},
     context::ProviderContext,
     InstanceState,
 };
@@ -31,8 +31,8 @@ impl<'a> LifecycleOperations<'a> {
         if self.config.package_edge.is_none() {
             return Ok(());
         }
-        let compose_ops = self.regenerate_compose_with_context(container, context)?;
-        compose_ops.reconcile_package_edge(&target_container)
+        self.regenerate_compose_with_context(container, context)?;
+        self.reconcile_package_edge(&target_container)
     }
 
     #[must_use = "container start results should be handled"]
@@ -61,8 +61,8 @@ impl<'a> LifecycleOperations<'a> {
             return ContainerOps::start_container(Some(self.executable), &target_container);
         }
 
-        let compose_ops = self.regenerate_compose_with_context(container, context)?;
-        compose_ops.start_named_with_compose(&target_container)
+        self.regenerate_compose_with_context(container, context)?;
+        self.start_named_with_compose(&target_container)
     }
 
     #[must_use = "container stop results should be handled"]
@@ -143,6 +143,46 @@ impl<'a> LifecycleOperations<'a> {
     ) -> Result<()> {
         self.stop_container(container)?;
         self.start_container(container, context)
+    }
+
+    fn start_named_with_compose(&self, container_name: &str) -> Result<()> {
+        if !ContainerOps::container_exists(Some(self.executable), container_name).unwrap_or(false) {
+            return Err(VmError::NotFound(format!(
+                "Container '{container_name}' does not exist"
+            )));
+        }
+
+        self.reconcile_package_edge(container_name)?;
+        let expected_services =
+            ContainerOps::list_managed_service_containers(Some(self.executable), container_name)?;
+        for service in expected_services {
+            if !ContainerOps::container_exists(Some(self.executable), &service).unwrap_or(false)
+                || ContainerOps::is_container_running(Some(self.executable), &service)
+                    .unwrap_or(false)
+            {
+                continue;
+            }
+            ContainerOps::start_container(Some(self.executable), &service)?;
+        }
+
+        let project_name = self
+            .config
+            .project
+            .as_ref()
+            .and_then(|project| project.name.as_deref())
+            .unwrap_or("vm-project");
+        let instance_name = crate::container::compose_model::instance_name_from_container(
+            project_name,
+            container_name,
+        );
+        let path = compose_path(self.generated_dir, instance_name.as_deref());
+        if !path.exists() {
+            tracing::debug!(
+                "Generated Compose file is unavailable; starting only '{}'",
+                container_name
+            );
+        }
+        ContainerOps::start_container(Some(self.executable), container_name)
     }
 }
 
