@@ -403,7 +403,7 @@ fn stop_relay_container(executable: &str, container_id: &str) -> VmResult<()> {
 }
 
 /// Handle tunnel command (create a new tunnel)
-pub fn handle_tunnel(
+fn handle_tunnel(
     provider: Box<dyn Provider>,
     mapping: &str,
     container: Option<&str>,
@@ -447,7 +447,7 @@ pub fn handle_tunnel(
 }
 
 /// Handle tunnel list command
-pub fn handle_tunnel_list(
+fn handle_tunnel_list(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     _config: VmConfig,
@@ -489,7 +489,7 @@ pub fn handle_tunnel_list(
 }
 
 /// Handle tunnel stop command
-pub fn handle_tunnel_stop(
+fn handle_tunnel_stop(
     provider: Box<dyn Provider>,
     port: Option<u16>,
     container: Option<&str>,

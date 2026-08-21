@@ -219,6 +219,8 @@ current image. No real package release or publication was performed.
   acquisition in their conceptual owners.
 - [x] Separate Tart package-edge infrastructure from project runtime provisioning
   while reusing the existing provider-neutral project plan and scripts.
+- [x] Consolidate snapshot archive staging and validation, image lifecycle, volume
+  lifecycle, and Dockerfile-derived base images behind focused private owners.
 - [x] Keep one package-infrastructure client API while separating its private
   transport and endpoint-domain implementations.
 - [x] Consolidate package and tool release source/workflow ownership, keeping
@@ -230,6 +232,12 @@ current image. No real package release or publication was performed.
   canonical source-identity resolution.
 - [x] Give preset initialization one loader/base-config path and isolate box
   materialization from the general config-init workflow.
+- [x] Keep preset command IO separate from declared-preset resolution and minimal
+  project-config materialization.
+- [x] Split plugin validation into metadata, preset-content, and service-content
+  owners while sharing one environment rule.
+- [x] Keep one exhaustive CLI dispatcher while command modules own preparation
+  and one private module owns dry-run wording.
 - [x] Split temporary-VM lifecycle orchestration from status reporting and
   mount parsing/mutation while preserving the `TempVmOps` API.
 - [x] Split provider command execution, named-instance management, and optional

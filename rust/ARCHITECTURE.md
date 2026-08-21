@@ -81,6 +81,16 @@ to `vm-core`; the executable renders each fatal error once.
 
 **Key Exports**: `VmConfig`, `AppConfig`, `GlobalConfig`, project detectors, CLI commands
 
+Preset command validation and file IO stay in `config_ops::preset`; declared-preset
+resolution and minimal project-config materialization live in its private
+`materialize` module.
+
+#### vm-plugin
+**Role**: Plugin discovery, loading, and validation.
+
+The validation facade owns result types and cross-variant rules. Metadata,
+preset-content, and service-content validation are separate private owners.
+
 ### Provider Layer
 
 #### vm-provider
@@ -98,6 +108,11 @@ to `vm-core`; the executable renders each fatal error once.
 
 **Key Exports**: Provider capability traits, `get_provider()` factory, provider
 implementations
+
+Container Compose code owns rendering and secure writes only. Lifecycle execution
+owns start/stop behavior; package-edge reconciliation and pipx classification have
+separate lifecycle owners. Tart provisioning combines package infrastructure and
+project-runtime command batches without duplicating the shared `ProjectPlan`.
 
 #### vm-temp
 **Role**: Temporary VM management for ephemeral development environments.
@@ -121,6 +136,9 @@ checkpoints and for global base-image snapshots.
   before extraction
 - Parallel Docker image save/load for large multi-service snapshots
 
+Archive safety/staging, image operations, volume operations, and Dockerfile base
+images are separate private owners behind these entry points.
+
 **Key Exports**: `SnapshotManager`, `SnapshotScope`, `SnapshotMetadata`,
 import/export entry points
 
@@ -138,6 +156,10 @@ import/export entry points
 
 **Key Exports**: Main binary, command handlers, service orchestration
 
+The root command module retains one exhaustive dispatcher. Command-specific
+preparation stays with each command module, and dry-run descriptions have one
+private policy owner.
+
 ### Service Layer
 
 #### vm-packages
@@ -148,6 +170,10 @@ import/export entry points
 - Validated package, tool, consumer, and release identities
 - Docker Compose appliance definition and guest client environment
 - Authenticated controller client
+
+`PackageInfrastructureClient` remains one public type and API. Its private
+implementation is grouped by endpoint domain around one transport/authentication
+owner.
 
 **Key Exports**: `PackageInfrastructureClient`, `RegistryEndpoints`, workflow
 records, appliance resources
@@ -183,7 +209,8 @@ store, source manager, and persistence records remain service-internal.
 - Persistent private release publication
 - Persistent isolated consumer upgrades
 - Ephemeral tool publication
-- Separate release workflow, source, artifact, manifest, build, and archive ownership
+- Separate release workflow, source, archive, artifact, isolated-build, and
+  publication ownership
 
 **Key Exports**: Review, release, and rollout binaries
 

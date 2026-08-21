@@ -34,7 +34,7 @@ pub(super) fn handle_command(command: &PluginSubcommand) -> VmResult<()> {
     }
 }
 
-pub fn handle_plugin_list() -> Result<()> {
+fn handle_plugin_list() -> Result<()> {
     let plugins = discover_plugins()?;
 
     if plugins.is_empty() {
@@ -104,7 +104,7 @@ pub fn handle_plugin_list() -> Result<()> {
     Ok(())
 }
 
-pub fn handle_plugin_info(plugin_name: &str) -> Result<()> {
+fn handle_plugin_info(plugin_name: &str) -> Result<()> {
     let plugins = discover_plugins()?;
 
     let plugin = plugins
@@ -229,7 +229,7 @@ pub fn handle_plugin_info(plugin_name: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn handle_plugin_install(source_path: &str) -> Result<()> {
+fn handle_plugin_install(source_path: &str) -> Result<()> {
     let source = PathBuf::from(source_path);
 
     if !source.exists() {
@@ -362,7 +362,7 @@ pub fn handle_plugin_install(source_path: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn handle_plugin_remove(plugin_name: &str) -> Result<()> {
+fn handle_plugin_remove(plugin_name: &str) -> Result<()> {
     if !is_valid_plugin_name(plugin_name) {
         anyhow::bail!(
             "Invalid plugin name '{plugin_name}': use only letters, numbers, hyphens, and underscores"
@@ -396,7 +396,7 @@ pub fn handle_plugin_remove(plugin_name: &str) -> Result<()> {
     }
 }
 
-pub fn handle_plugin_validate(plugin_name: &str) -> Result<()> {
+fn handle_plugin_validate(plugin_name: &str) -> Result<()> {
     let plugins = discover_plugins()?;
 
     let plugin = plugins

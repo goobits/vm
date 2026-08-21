@@ -35,15 +35,15 @@ pub(super) struct ToolArtifactContext<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ToolReleaseManifest {
-    pub(crate) name: String,
-    pub(crate) version: String,
-    pub(crate) target: String,
-    pub(crate) links: BTreeMap<String, String>,
-    pub(crate) source_commit: String,
-    pub(crate) tag: String,
-    pub(crate) actor: String,
-    pub(crate) idempotency_key: String,
+pub(super) struct ToolReleaseManifest {
+    pub(super) name: String,
+    pub(super) version: String,
+    pub(super) target: String,
+    pub(super) links: BTreeMap<String, String>,
+    pub(super) source_commit: String,
+    pub(super) tag: String,
+    pub(super) actor: String,
+    pub(super) idempotency_key: String,
 }
 
 pub(super) fn build_collection_artifact(

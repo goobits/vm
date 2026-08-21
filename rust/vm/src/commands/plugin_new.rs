@@ -5,7 +5,7 @@ use vm_core::msg;
 use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
 
-pub fn handle_plugin_new(plugin_name: &str, plugin_type: &str) -> Result<()> {
+pub(super) fn handle_plugin_new(plugin_name: &str, plugin_type: &str) -> Result<()> {
     // Validate plugin name
     if plugin_name.is_empty() {
         anyhow::bail!("Plugin name cannot be empty");

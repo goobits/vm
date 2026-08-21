@@ -18,19 +18,26 @@ vm/
 ## Ownership Boundaries
 
 - `rust/vm/src/cli/` owns command parsing and the public command shape.
-- `rust/vm/src/commands/` owns application orchestration.
+- `rust/vm/src/commands/` owns one exhaustive command dispatcher. Individual
+  command modules own their preparation, and `dry_run` owns dry-run wording.
 - `rust/vm-config/` owns configuration loading, validation, profiles, schema
-  behavior, and the single preset-to-project initialization path.
+  behavior, and the single preset-to-project initialization path. Preset command
+  IO is separate from private preset resolution/materialization.
+- `rust/vm-plugin/` owns plugin discovery and the validation facade; metadata,
+  preset-content, and service-content rules remain separate private concerns.
 - `rust/vm-provider/` owns Docker, Podman, and Tart lifecycle implementation.
   The core provider contract composes command-execution and named-instance
   capabilities; temporary-VM behavior is an explicit optional capability.
 - `rust/vm-temp/` owns temporary lifecycle orchestration, state, status, and
   mount mutation behind the `TempVmOps` facade.
 - `rust/vm-snapshot/` owns snapshot creation, restoration, import, and export.
+  Archive safety/staging, images, volumes, and Dockerfile base images have one
+  private owner each.
 - `rust/vm-core/` owns shared filesystem, command, prompt, and message-format
   utilities.
 - `rust/vm-packages/` owns package identities, resolver policy, client
-  environment, and shared workflow contracts.
+  environment, and shared workflow contracts. One public infrastructure client
+  delegates privately to endpoint-domain implementations and one transport.
 - `rust/vm-package-server/` owns native npm, Cargo, and Python protocol adapters
   plus the worker-local read-only cache/proxy edge. Protocol modules own their
   validation; server setup and routing remain separate internal concerns.
@@ -41,7 +48,7 @@ vm/
 - `rust/vm-package-jobs/` owns persistent review, credential-separated binary
   build, release, and rollout workers plus isolated tool publication inside
   infrastructure containers. Release source/workflow coordination is separate
-  from artifact manifests, package builds, and tool archives.
+  from tool archives, artifact assembly, isolated builds, and publication.
 - `configs/` owns embedded configuration; `examples/` must not be treated as
   runtime defaults.
 
@@ -75,6 +82,10 @@ executable renders each fatal error once.
 Docker and Podman implement container mounts, named volumes, tmpfs, resource
 limits, and logging. Tart owns macOS/Linux guest provisioning and does not
 accept container-only storage settings.
+
+Compose rendering/writing is separate from container execution and package-edge
+reconciliation. Tart combines a package-infrastructure batch with a project-runtime
+batch rather than splitting provisioning by language.
 
 Host-side project detection produces one provider-neutral install plan. Docker
 Ansible provisioning and Tart guest provisioning consume that plan and the

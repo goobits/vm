@@ -25,7 +25,7 @@ pub(super) async fn handle_command(
 }
 
 /// Handle secrets commands
-pub async fn handle_secrets_command(
+async fn handle_secrets_command(
     command: &SecretSubcommand,
     global_config: GlobalConfig,
 ) -> VmResult<()> {
