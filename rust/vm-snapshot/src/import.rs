@@ -1,10 +1,9 @@
 //! Snapshot import functionality
 
-use crate::docker::execute_docker_streaming;
-use crate::manager::{snapshot_file_path, SnapshotManager, SnapshotScope};
+use crate::archive::{copy_directory, extract_gzip_archive, validate_snapshot_files};
+use crate::images::load_service_images;
+use crate::manager::{SnapshotManager, SnapshotScope};
 use crate::metadata::SnapshotMetadata;
-use crate::optimal_concurrency;
-use futures::stream::{self, StreamExt};
 use std::path::Path;
 use vm_core::error::{Result, VmError};
 use vm_core::{vm_println, vm_success, vm_warning};
@@ -37,63 +36,7 @@ pub async fn handle_import(
 
     vm_println!("  Extracting archive...");
 
-    // Extract tarball
-    let tar_gz = std::fs::File::open(file_path)
-        .map_err(|e| VmError::filesystem(e, file_path.display().to_string(), "open"))?;
-
-    let tar = flate2::read::GzDecoder::new(tar_gz);
-    let mut archive = tar::Archive::new(tar);
-    // Refuse traversal/absolute paths and symlink/hardlink entries so a hostile
-    // snapshot can't overwrite files outside the extraction directory.
-    archive.set_overwrite(false);
-    archive.set_preserve_permissions(false);
-
-    let entries = archive
-        .entries()
-        .map_err(|e| VmError::general(e, "Failed to read tar archive entries"))?;
-    for entry in entries {
-        let mut entry =
-            entry.map_err(|e| VmError::general(e, "Failed to read tar archive entry"))?;
-        let entry_path = entry
-            .path()
-            .map_err(|e| VmError::general(e, "Failed to decode tar entry path"))?
-            .into_owned();
-        if entry_path.is_absolute()
-            || entry_path
-                .components()
-                .any(|c| matches!(c, std::path::Component::ParentDir))
-        {
-            return Err(VmError::validation(
-                format!(
-                    "Snapshot contains unsafe path '{}'; refusing to extract",
-                    entry_path.display()
-                ),
-                None::<String>,
-            ));
-        }
-        let entry_type = entry.header().entry_type();
-        if entry_type.is_symlink() || entry_type.is_hard_link() {
-            return Err(VmError::validation(
-                format!(
-                    "Snapshot contains symlink or hardlink entry '{}'; refusing to extract",
-                    entry_path.display()
-                ),
-                None::<String>,
-            ));
-        }
-        if !entry_type.is_file() && !entry_type.is_dir() {
-            return Err(VmError::validation(
-                format!(
-                    "Snapshot contains unsupported archive entry '{}'; only files and directories are allowed",
-                    entry_path.display()
-                ),
-                None::<String>,
-            ));
-        }
-        entry
-            .unpack_in(&extract_dir)
-            .map_err(|e| VmError::general(e, "Failed to extract tar archive"))?;
-    }
+    extract_gzip_archive(file_path, &extract_dir)?;
 
     // Load manifest
     let manifest_path = extract_dir.join("manifest.json");
@@ -188,56 +131,15 @@ pub async fn handle_import(
 
     vm_println!("  Loading Docker images...");
 
-    // Load Docker images
     let images_dir = extract_dir.join("images");
     if images_dir.exists() {
-        // Parallelize image loading for 2-5x faster import
         vm_println!("Loading service images in parallel...");
-        let load_futures = metadata.services.iter().map(|service| {
-            let service_name = service.name.clone();
-            let image_file = service.image_file.clone();
-            let images_dir = images_dir.clone();
-
-            async move {
-                let image_path = snapshot_file_path(&images_dir, &image_file, "image file")?;
-
-                if !image_path.is_file() {
-                    vm_warning!("Image file '{}' not found, skipping", image_file);
-                    return Ok::<(), VmError>(());
-                }
-
-                vm_println!("    Loading image for service '{}'...", service_name);
-
-                let image_path_str = image_path.to_str().ok_or_else(|| {
-                    VmError::general(
-                        std::io::Error::new(
-                            std::io::ErrorKind::InvalidInput,
-                            "Invalid UTF-8 in path",
-                        ),
-                        format!(
-                            "Snapshot path contains invalid UTF-8 characters: {}",
-                            image_path.display()
-                        ),
-                    )
-                })?;
-                // Stream output so users see "Loaded image: ..." progress
-                execute_docker_streaming(executable, &["load", "-i", image_path_str]).await?;
-                Ok(())
-            }
-        });
-
-        // Load images concurrently (CPU-adaptive concurrency)
-        stream::iter(load_futures)
-            .buffer_unordered(optimal_concurrency())
-            .collect::<Vec<_>>()
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>>>()?;
+        load_service_images(executable, &images_dir, &metadata.services).await?;
     }
 
     vm_println!("  Installing snapshot...");
     let staging = manager.create_staging_dir(scope, &snapshot_name)?;
-    copy_dir_all(&extract_dir, staging.path()).await?;
+    copy_directory(&extract_dir, staging.path()).await?;
     manager.install_staged_snapshot(staging, scope, &snapshot_name, force)?;
 
     vm_success!("Snapshot '{}' imported successfully!", snapshot_name);
@@ -319,70 +221,7 @@ fn validate_import_contents(
         ));
     }
 
-    let images_dir = extract_dir.join("images");
-    for service in &metadata.services {
-        let image_path = snapshot_file_path(&images_dir, &service.image_file, "image file")?;
-        if !image_path.is_file() {
-            return Err(VmError::validation(
-                format!("Snapshot image file is missing: {}", image_path.display()),
-                None::<String>,
-            ));
-        }
-    }
-
-    let volumes_dir = extract_dir.join("volumes");
-    for volume in &metadata.volumes {
-        let archive_path =
-            snapshot_file_path(&volumes_dir, &volume.archive_file, "volume archive")?;
-        if !archive_path.is_file() {
-            return Err(VmError::validation(
-                format!(
-                    "Snapshot volume archive is missing: {}",
-                    archive_path.display()
-                ),
-                None::<String>,
-            ));
-        }
-    }
-
-    Ok(())
-}
-
-/// Recursively copy a directory
-async fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
-    tokio::fs::create_dir_all(dst)
-        .await
-        .map_err(|e| VmError::filesystem(e, dst.display().to_string(), "create_dir_all"))?;
-
-    let mut entries = tokio::fs::read_dir(src)
-        .await
-        .map_err(|e| VmError::filesystem(e, src.display().to_string(), "read_dir"))?;
-
-    while let Some(entry) = entries
-        .next_entry()
-        .await
-        .map_err(|e| VmError::general(e, "Failed to read directory entry"))?
-    {
-        let path = entry.path();
-        let file_name = entry.file_name();
-
-        // Skip the root directory itself
-        if file_name == "snapshot" {
-            continue;
-        }
-
-        let dest_path = dst.join(&file_name);
-
-        if path.is_dir() {
-            Box::pin(copy_dir_all(&path, &dest_path)).await?;
-        } else {
-            tokio::fs::copy(&path, &dest_path)
-                .await
-                .map_err(|e| VmError::filesystem(e, dest_path.display().to_string(), "copy"))?;
-        }
-    }
-
-    Ok(())
+    validate_snapshot_files(extract_dir, metadata)
 }
 
 #[cfg(test)]

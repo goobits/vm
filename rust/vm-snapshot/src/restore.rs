@@ -1,10 +1,11 @@
 //! Snapshot restoration functionality
 
-use crate::docker::{execute_docker, execute_docker_compose_status, execute_docker_streaming};
+use crate::archive::validate_snapshot_files;
+use crate::docker::execute_docker_compose_status;
+use crate::images::load_service_images;
 use crate::manager::{snapshot_file_path, SnapshotManager, SnapshotScope};
 use crate::metadata::SnapshotMetadata;
-use crate::optimal_concurrency;
-use futures::stream::{self, StreamExt};
+use crate::volumes::restore_volumes;
 use vm_config::AppConfig;
 use vm_core::error::{Result, VmError};
 
@@ -50,7 +51,7 @@ pub async fn handle_restore(
     }
 
     let metadata = SnapshotMetadata::load(&metadata_file)?;
-    validate_snapshot_contents(&snapshot_dir, &metadata)?;
+    validate_snapshot_files(&snapshot_dir, &metadata)?;
 
     // Verify project matches (skip for global snapshots)
     if !matches!(scope, SnapshotScope::Global) && metadata.project_name != project_name && !force {
@@ -83,66 +84,14 @@ pub async fn handle_restore(
         vm_core::vm_println!("Restoring volumes in parallel...");
         let volumes_dir = snapshot_dir.join("volumes");
 
-        // Parallelize volume restoration for 2-4x faster restore
-        let volume_futures = metadata.volumes.iter().map(|volume| {
-            let volume_name = volume.name.clone();
-            let archive_file = volume.archive_file.clone();
-            let project_name = project_name.clone();
-            let volumes_dir = volumes_dir.clone();
-
-            async move {
-                vm_core::vm_println!("  Restoring volume: {}", volume_name);
-
-                let full_volume_name = format!("{}_{}", project_name, volume_name);
-
-                // Remove existing volume if force is set
-                if force {
-                    // Try to remove volume, but don't fail if it doesn't exist or is in use
-                    // If in use, we'll try to restore anyway (will overwrite contents)
-                    let _ = execute_docker(executable, &["volume", "rm", &full_volume_name]).await;
-                }
-
-                // Create volume - ignore "already exists" error since we'll restore over it
-                // This handles both the case where rm failed (volume in use) and force=false
-                let _ = execute_docker(executable, &["volume", "create", &full_volume_name]).await;
-
-                // Restore volume data with zstd decompression (3-5x faster than gzip)
-                // Support both .tar.zst (new) and .tar.gz (legacy) formats
-                let restore_cmd = if archive_file.ends_with(".tar.zst") {
-                    "zstd -d -c \"/backup/$1\" | tar -x -C /data"
-                } else {
-                    // Legacy .tar.gz format
-                    "tar -xzf \"/backup/$1\" -C /data"
-                };
-
-                let run_args = [
-                    "run",
-                    "--rm",
-                    "-v",
-                    &format!("{}:/data", full_volume_name),
-                    "-v",
-                    &format!("{}:/backup", volumes_dir.to_string_lossy()),
-                    "alpine:latest",
-                    "sh",
-                    "-c",
-                    restore_cmd,
-                    "snapshot-restore",
-                    &archive_file,
-                ];
-
-                // Stream output so users see decompression progress
-                execute_docker_streaming(executable, &run_args).await?;
-                Ok::<_, VmError>(())
-            }
-        });
-
-        // Restore volumes concurrently (CPU-adaptive concurrency)
-        stream::iter(volume_futures)
-            .buffer_unordered(optimal_concurrency())
-            .collect::<Vec<_>>()
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>>>()?;
+        restore_volumes(
+            executable,
+            &project_name,
+            &volumes_dir,
+            &metadata.volumes,
+            force,
+        )
+        .await?;
     }
 
     // Load images
@@ -150,41 +99,7 @@ pub async fn handle_restore(
         vm_core::vm_println!("Loading service images in parallel...");
         let images_dir = snapshot_dir.join("images");
 
-        // Parallelize image loading for 2-5x faster restoration
-        let load_futures = metadata.services.iter().map(|service| {
-            let service_name = service.name.clone();
-            let image_file = service.image_file.clone();
-            let images_dir = images_dir.clone();
-
-            async move {
-                vm_core::vm_println!("  Loading image: {}", service_name);
-
-                let image_path = snapshot_file_path(&images_dir, &image_file, "image file")?;
-                let image_path_str = image_path.to_str().ok_or_else(|| {
-                    VmError::general(
-                        std::io::Error::new(
-                            std::io::ErrorKind::InvalidInput,
-                            "Invalid UTF-8 in path",
-                        ),
-                        format!(
-                            "Snapshot path contains invalid UTF-8 characters: {}",
-                            image_path.display()
-                        ),
-                    )
-                })?;
-                // Stream output so users see "Loaded image: ..." progress
-                execute_docker_streaming(executable, &["load", "-i", image_path_str]).await?;
-                Ok::<_, VmError>(())
-            }
-        });
-
-        // Load images concurrently (CPU-adaptive concurrency)
-        stream::iter(load_futures)
-            .buffer_unordered(optimal_concurrency())
-            .collect::<Vec<_>>()
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>>>()?;
+        load_service_images(executable, &images_dir, &metadata.services).await?;
     }
 
     // Restore configuration files
@@ -235,39 +150,6 @@ pub async fn handle_restore(
             metadata.git_commit.as_deref().unwrap_or("unknown"),
             dirty
         );
-    }
-
-    Ok(())
-}
-
-fn validate_snapshot_contents(
-    snapshot_dir: &std::path::Path,
-    metadata: &SnapshotMetadata,
-) -> Result<()> {
-    let images_dir = snapshot_dir.join("images");
-    for service in &metadata.services {
-        let image_path = snapshot_file_path(&images_dir, &service.image_file, "image file")?;
-        if !image_path.is_file() {
-            return Err(VmError::validation(
-                format!("Snapshot image file is missing: {}", image_path.display()),
-                None::<String>,
-            ));
-        }
-    }
-
-    let volumes_dir = snapshot_dir.join("volumes");
-    for volume in &metadata.volumes {
-        let archive_path =
-            snapshot_file_path(&volumes_dir, &volume.archive_file, "volume archive")?;
-        if !archive_path.is_file() {
-            return Err(VmError::validation(
-                format!(
-                    "Snapshot volume archive is missing: {}",
-                    archive_path.display()
-                ),
-                None::<String>,
-            ));
-        }
     }
 
     Ok(())

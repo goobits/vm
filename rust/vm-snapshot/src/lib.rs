@@ -2,13 +2,17 @@
 //!
 //! Provides snapshot creation, restoration, export, and import functionality.
 
+mod archive;
+mod base_image;
 pub mod create;
 pub mod docker;
 pub mod export;
+mod images;
 pub mod import;
 pub mod manager;
 pub mod metadata;
 pub mod restore;
+mod volumes;
 
 // Re-export key types
 pub use manager::{SnapshotManager, SnapshotScope};

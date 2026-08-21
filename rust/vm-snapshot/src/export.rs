@@ -1,13 +1,12 @@
 //! Snapshot export functionality
 
-use crate::docker::execute_docker_with_output;
+use crate::archive::{copy_directory, create_gzip_archive};
+use crate::images::export_service_images;
 use crate::manager::{SnapshotManager, SnapshotScope};
 use crate::metadata::SnapshotMetadata;
-use crate::optimal_concurrency;
-use futures::stream::{self, StreamExt};
 use std::path::Path;
 use vm_core::error::{Result, VmError};
-use vm_core::{vm_error, vm_println, vm_success};
+use vm_core::{vm_println, vm_success};
 
 /// Handle snapshot export
 pub async fn handle_export(
@@ -114,70 +113,8 @@ pub async fn handle_export(
         .await
         .map_err(|e| VmError::filesystem(e, images_dir.display().to_string(), "create_dir_all"))?;
 
-    // Parallelize image exports for 2-4x faster operation
     vm_println!("Exporting service images in parallel...");
-    let export_futures = metadata.services.iter().map(|service| {
-        let service_name = service.name.clone();
-        let image_tag = service.image_tag.clone();
-        let image_file = service.image_file.clone();
-        let image_digest = service.image_digest.clone();
-        let images_dir = images_dir.clone();
-
-        async move {
-            vm_println!("  Exporting image for service '{}'...", service_name);
-
-            // Check if image exists
-            let current_digest =
-                execute_docker_with_output(executable, &["image", "inspect", "--format={{.Id}}", &image_tag])
-                    .await
-                    .ok();
-
-            if current_digest.is_none() {
-                vm_error!(
-                    "Image '{}' not found, skipping. You may need to recreate this snapshot.",
-                    image_tag
-                );
-                return Ok::<(), VmError>(());
-            }
-
-            // Check if export already exists with same digest (deduplication)
-            let image_export_path = images_dir.join(&image_file);
-            if image_export_path.exists()
-                && matches!((&image_digest, &current_digest), (Some(stored), Some(current)) if stored == current)
-            {
-                vm_println!(
-                    "  Image '{}' unchanged (digest matches), skipping export",
-                    service_name
-                );
-                return Ok::<(), VmError>(());
-            }
-
-            // Export image
-            let image_path_str = image_export_path.to_str()
-                .ok_or_else(|| VmError::general(
-                    std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid path"),
-                    format!("Image export path contains invalid UTF-8: {}", image_export_path.display())
-                ))?;
-
-            let save_args = [
-                "save",
-                &image_tag,
-                "-o",
-                image_path_str,
-            ];
-
-            execute_docker_with_output(executable, &save_args).await?;
-            Ok(())
-        }
-    });
-
-    // Export images concurrently (CPU-adaptive concurrency)
-    stream::iter(export_futures)
-        .buffer_unordered(optimal_concurrency())
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>>>()?;
+    export_service_images(executable, &images_dir, &metadata.services).await?;
 
     // Copy metadata.json
     let metadata_dest = export_build_dir.join("metadata.json");
@@ -189,64 +126,19 @@ pub async fn handle_export(
     let volumes_src = snapshot_dir.join("volumes");
     if volumes_src.exists() {
         let volumes_dest = export_build_dir.join("volumes");
-        copy_dir_all(&volumes_src, &volumes_dest).await?;
+        copy_directory(&volumes_src, &volumes_dest).await?;
     }
 
     // Copy compose files if they exist
     let compose_src = snapshot_dir.join("compose");
     if compose_src.exists() {
         let compose_dest = export_build_dir.join("compose");
-        copy_dir_all(&compose_src, &compose_dest).await?;
+        copy_directory(&compose_src, &compose_dest).await?;
     }
 
     vm_println!("  Compressing snapshot...");
 
-    // Stream the tarball into a sibling `.tmp` file first and rename into
-    // place once the archive is fully written. A crash, full disk, or
-    // ctrl-c partway through would otherwise leave a truncated `.tar.gz`
-    // at the user's destination that looks valid but fails to extract.
-    let tmp_output = {
-        let mut name = output_file
-            .file_name()
-            .map(|n| n.to_os_string())
-            .ok_or_else(|| {
-                VmError::filesystem(
-                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing file name"),
-                    output_file.display().to_string(),
-                    "tempname",
-                )
-            })?;
-        name.push(".tmp");
-        output_file.with_file_name(name)
-    };
-
-    let tar_gz = std::fs::File::create(&tmp_output)
-        .map_err(|e| VmError::filesystem(e, tmp_output.display().to_string(), "create"))?;
-
-    let enc =
-        flate2::write::GzEncoder::new(tar_gz, flate2::Compression::new(compress_level as u32));
-
-    let mut tar = tar::Builder::new(enc);
-
-    if let Err(e) = tar.append_dir_all(".", &export_build_dir) {
-        let _ = std::fs::remove_file(&tmp_output);
-        return Err(VmError::general(e, "Failed to create tar archive"));
-    }
-
-    if let Err(e) = tar.finish() {
-        let _ = std::fs::remove_file(&tmp_output);
-        return Err(VmError::general(e, "Failed to finish tar archive"));
-    }
-    drop(tar);
-
-    if let Err(e) = std::fs::rename(&tmp_output, &output_file) {
-        let _ = std::fs::remove_file(&tmp_output);
-        return Err(VmError::filesystem(
-            e,
-            output_file.display().to_string(),
-            "rename",
-        ));
-    }
+    create_gzip_archive(&export_build_dir, &output_file, compress_level)?;
 
     // Get final file size
     let file_size = std::fs::metadata(&output_file)
@@ -264,37 +156,6 @@ pub async fn handle_export(
     } else {
         vm_println!("\nTo import on another machine:");
         vm_println!("  vm snapshot import {}", output_file.display());
-    }
-
-    Ok(())
-}
-
-/// Recursively copy a directory
-async fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
-    tokio::fs::create_dir_all(dst)
-        .await
-        .map_err(|e| VmError::filesystem(e, dst.display().to_string(), "create_dir_all"))?;
-
-    let mut entries = tokio::fs::read_dir(src)
-        .await
-        .map_err(|e| VmError::filesystem(e, src.display().to_string(), "read_dir"))?;
-
-    while let Some(entry) = entries
-        .next_entry()
-        .await
-        .map_err(|e| VmError::general(e, "Failed to read directory entry"))?
-    {
-        let path = entry.path();
-        let file_name = entry.file_name();
-        let dest_path = dst.join(&file_name);
-
-        if path.is_dir() {
-            Box::pin(copy_dir_all(&path, &dest_path)).await?;
-        } else {
-            tokio::fs::copy(&path, &dest_path)
-                .await
-                .map_err(|e| VmError::filesystem(e, dest_path.display().to_string(), "copy"))?;
-        }
     }
 
     Ok(())

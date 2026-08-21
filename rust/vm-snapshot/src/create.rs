@@ -1,15 +1,17 @@
 //! Snapshot creation functionality
 
-use crate::docker::{execute_docker_compose, execute_docker_streaming, execute_docker_with_output};
+use crate::archive::directory_size;
+use crate::base_image::create_from_dockerfile;
+use crate::docker::{execute_docker_compose, execute_docker_with_output};
+use crate::images::snapshot_container;
 use crate::manager::{SnapshotManager, SnapshotScope};
-use crate::metadata::{ServiceSnapshot, SnapshotMetadata, VolumeSnapshot};
+use crate::metadata::{ServiceSnapshot, SnapshotMetadata};
 use crate::optimal_concurrency;
+use crate::volumes::backup_volumes;
 use chrono::Utc;
 use futures::stream::{self, StreamExt};
-use rayon::prelude::*;
 use vm_config::AppConfig;
 use vm_core::error::{Result, VmError};
-use walkdir::WalkDir;
 
 /// Get git repository information
 /// Optimized to use a single git command instead of 3 separate spawns (3x faster)
@@ -87,7 +89,7 @@ pub async fn handle_create(
     // Handle --from-dockerfile mode
     if let Some(dockerfile_path) = from_dockerfile {
         let ctx = build_context.unwrap_or_else(|| std::path::Path::new("."));
-        return handle_create_from_dockerfile(
+        return create_from_dockerfile(
             executable,
             name,
             description,
@@ -231,52 +233,9 @@ pub async fn handle_create(
             .map(|s| s.to_string())
             .collect();
 
-        // Parallelize volume backups for 2-4x faster creation
         vm_core::vm_println!("Backing up volumes in parallel...");
-        let volume_futures = volume_names.iter().map(|volume| {
-            let volume = volume.clone();
-            let project_name = project_name.clone();
-            let volumes_dir = volumes_dir.clone();
-
-            async move {
-                vm_core::vm_println!("  Backing up volume: {}", volume);
-
-                let archive_file = format!("{}.tar.zst", volume);
-                let archive_path = volumes_dir.join(&archive_file);
-                let full_volume_name = format!("{}_{}", project_name, volume);
-                let run_args = [
-                    "run",
-                    "--rm",
-                    "-v",
-                    &format!("{}:/data", full_volume_name),
-                    "-v",
-                    &format!("{}:/backup", volumes_dir.to_string_lossy()),
-                    "alpine:latest",
-                    "sh",
-                    "-c",
-                    &format!("tar -c -C /data . | zstd -3 -T0 > /backup/{}", archive_file),
-                ];
-
-                execute_docker_with_output(executable, &run_args).await?;
-
-                let metadata = tokio::fs::metadata(&archive_path).await.map_err(|e| {
-                    VmError::filesystem(e, archive_path.to_string_lossy(), "metadata")
-                })?;
-
-                Ok::<VolumeSnapshot, VmError>(VolumeSnapshot {
-                    name: volume.clone(),
-                    archive_file,
-                    size_bytes: metadata.len(),
-                })
-            }
-        });
-
-        let volumes: Vec<VolumeSnapshot> = stream::iter(volume_futures)
-            .buffer_unordered(optimal_concurrency())
-            .collect::<Vec<_>>()
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>>>()?;
+        let volumes =
+            backup_volumes(executable, &project_name, &volumes_dir, &volume_names).await?;
 
         (services, volumes)
     } else {
@@ -383,7 +342,7 @@ pub async fn handle_create(
     let (git_commit, git_dirty, git_branch) = get_git_info(&project_dir).await?;
 
     // Calculate total size
-    let total_size_bytes = calculate_directory_size(&snapshot_dir)?;
+    let total_size_bytes = directory_size(&snapshot_dir);
 
     // Build and save metadata
     let metadata = SnapshotMetadata {
@@ -410,248 +369,6 @@ pub async fn handle_create(
         name,
         total_size_bytes as f64 / (1024.0 * 1024.0)
     );
-
-    Ok(())
-}
-
-async fn snapshot_container(
-    executable: &str,
-    project_name: &str,
-    snapshot_name: &str,
-    service_name: &str,
-    container_id: &str,
-    images_dir: &std::path::Path,
-) -> Result<ServiceSnapshot> {
-    vm_core::vm_println!("  Snapshotting container: {}", service_name);
-
-    let image_tag = format!(
-        "vm-snapshot/{}/{}:{}",
-        project_name, service_name, snapshot_name
-    );
-    execute_docker_with_output(executable, &["commit", container_id, &image_tag]).await?;
-
-    let image_file = format!("{}.tar", service_name);
-    let image_path = images_dir.join(&image_file);
-    let image_path_str = image_path.to_str().ok_or_else(|| {
-        VmError::general(
-            std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid UTF-8 in path"),
-            format!(
-                "Snapshot path contains invalid UTF-8 characters: {}",
-                image_path.display()
-            ),
-        )
-    })?;
-    execute_docker_with_output(executable, &["save", &image_tag, "-o", image_path_str]).await?;
-
-    let digest_output = execute_docker_with_output(
-        executable,
-        &["image", "inspect", "--format={{.Id}}", &image_tag],
-    )
-    .await?;
-    let image_digest = if digest_output.is_empty() {
-        None
-    } else {
-        Some(digest_output)
-    };
-
-    Ok(ServiceSnapshot {
-        name: service_name.to_string(),
-        image_tag,
-        image_file,
-        image_digest,
-    })
-}
-
-/// Calculate total size of directory recursively using parallel iteration
-fn calculate_directory_size(path: &std::path::Path) -> Result<u64> {
-    Ok(WalkDir::new(path)
-        .into_iter()
-        .par_bridge() // Parallel iteration with rayon
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .filter_map(|e| e.metadata().ok())
-        .map(|m| m.len())
-        .sum())
-}
-
-/// Handle snapshot creation from a Dockerfile
-async fn handle_create_from_dockerfile(
-    executable: &str,
-    name: &str,
-    description: Option<&str>,
-    dockerfile_path: &std::path::Path,
-    build_context: &std::path::Path,
-    build_args: &[String],
-    force: bool,
-) -> Result<()> {
-    // Validate Dockerfile exists
-    if !dockerfile_path.exists() {
-        return Err(VmError::validation(
-            format!("Dockerfile not found: {}", dockerfile_path.display()),
-            None::<String>,
-        ));
-    }
-
-    // Dockerfile snapshots are always global base images.
-    let snapshot_name = name.trim_start_matches('@');
-    let scope = SnapshotScope::Global;
-
-    // Check if snapshot already exists
-    let manager = SnapshotManager::new()?;
-    if manager.snapshot_exists(scope, snapshot_name)? && !force {
-        return Err(VmError::validation(
-            format!(
-                "Snapshot '{}' already exists globally. Use --force to overwrite.",
-                snapshot_name
-            ),
-            None::<String>,
-        ));
-    }
-
-    // Build the image tag
-    let image_tag = format!("vm-snapshot/global/{}:latest", snapshot_name);
-
-    vm_core::vm_println!("Building snapshot '{}' from Dockerfile...", name);
-    if let Some(desc) = description {
-        vm_core::vm_println!("Description: {}", desc);
-    }
-
-    // Parse build arguments from Vec<String> into HashMap
-    let mut build_args_map = std::collections::HashMap::new();
-    for arg in build_args {
-        if let Some((key, value)) = arg.split_once('=') {
-            build_args_map.insert(key.to_string(), value.to_string());
-        } else {
-            return Err(VmError::validation(
-                format!("Invalid build arg format '{}'. Expected KEY=VALUE", arg),
-                None::<String>,
-            ));
-        }
-    }
-
-    // Use provided build context
-    let context_dir = build_context;
-
-    vm_core::vm_println!("Build context: {}", context_dir.display());
-    vm_core::vm_println!("Dockerfile: {}", dockerfile_path.display());
-    if !build_args_map.is_empty() {
-        vm_core::vm_println!("Build arguments: {:?}", build_args_map);
-    }
-
-    // Build the Docker image using the existing build_custom_image function
-    // We need to import the function from vm-provider
-    use vm_core::command_stream::stream_command_visible;
-
-    let mut args = vec![
-        "build".to_string(),
-        "-f".to_string(),
-        dockerfile_path.to_string_lossy().to_string(),
-        "-t".to_string(),
-        image_tag.clone(),
-    ];
-
-    // Add build arguments
-    for (key, value) in &build_args_map {
-        args.push("--build-arg".to_string());
-        args.push(format!("{}={}", key, value));
-    }
-
-    args.push(context_dir.to_string_lossy().to_string());
-
-    // Stream the build output
-    stream_command_visible(executable, &args).map_err(|e| {
-        VmError::general(
-            e,
-            format!(
-                "Failed to build Docker image from {}",
-                dockerfile_path.display()
-            ),
-        )
-    })?;
-
-    // Create snapshot directory and save metadata
-    // (manager and project_scope already created earlier for duplicate check)
-
-    let staging = manager.create_staging_dir(scope, snapshot_name)?;
-    let snapshot_dir = staging.path().to_path_buf();
-    let images_dir = snapshot_dir.join("images");
-
-    // Create directories
-    tokio::fs::create_dir_all(&snapshot_dir)
-        .await
-        .map_err(|e| VmError::filesystem(e, snapshot_dir.to_string_lossy(), "create_dir_all"))?;
-    tokio::fs::create_dir_all(&images_dir)
-        .await
-        .map_err(|e| VmError::filesystem(e, images_dir.to_string_lossy(), "create_dir_all"))?;
-
-    // Save the image to tar file (streaming output so user sees progress)
-    vm_core::vm_println!("Saving snapshot to disk...");
-    let image_file = "base.tar";
-    let image_path = images_dir.join(image_file);
-    let image_path_str = image_path.to_str().ok_or_else(|| {
-        VmError::general(
-            std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid UTF-8 in path"),
-            format!(
-                "Snapshot path contains invalid UTF-8 characters: {}",
-                image_path.display()
-            ),
-        )
-    })?;
-
-    execute_docker_streaming(executable, &["save", &image_tag, "-o", image_path_str]).await?;
-
-    // Get image digest
-    let digest_output = execute_docker_with_output(
-        executable,
-        &["image", "inspect", "--format={{.Id}}", &image_tag],
-    )
-    .await?;
-    let digest = if digest_output.is_empty() {
-        None
-    } else {
-        Some(digest_output)
-    };
-
-    // Calculate total size
-    let total_size_bytes = calculate_directory_size(&snapshot_dir)?;
-
-    // Build and save metadata
-    let project_dir =
-        std::env::current_dir().map_err(|e| VmError::filesystem(e, "current_dir", "get"))?;
-
-    let metadata = SnapshotMetadata {
-        name: snapshot_name.to_string(),
-        created_at: Utc::now(),
-        description: description.map(|s| s.to_string()),
-        project_name: "global".to_string(),
-        project_dir: project_dir.to_string_lossy().to_string(),
-        git_commit: None,
-        git_dirty: false,
-        git_branch: None,
-        services: vec![ServiceSnapshot {
-            name: "base".to_string(),
-            image_tag: image_tag.clone(),
-            image_file: image_file.to_string(),
-            image_digest: digest,
-        }],
-        volumes: vec![],
-        compose_file: String::new(),
-        vm_config_file: String::new(),
-        total_size_bytes,
-    };
-
-    metadata.save(snapshot_dir.join("metadata.json"))?;
-    manager.install_staged_snapshot(staging, scope, snapshot_name, force)?;
-
-    vm_core::vm_success!(
-        "Snapshot '{}' created successfully ({:.2} MB)",
-        name,
-        total_size_bytes as f64 / (1024.0 * 1024.0)
-    );
-    vm_core::vm_println!("");
-    vm_core::vm_println!("You can now use this snapshot in vm.yaml:");
-    vm_core::vm_println!("  vm:");
-    vm_core::vm_println!("    box: @{}", snapshot_name);
 
     Ok(())
 }
