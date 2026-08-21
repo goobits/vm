@@ -34,11 +34,18 @@ caller-owned fleet configuration, and implicit stopped-environment updates.
 Extend the existing command rather than adding another sync or rollout family:
 
 ```bash
+vm tools enable codeatlas typemill
 vm tools update
 vm tools update agent-skills
 vm tools update agent-skills another-tool
 vm tools update agent-skills --to typemill-dev --to zoop-io-dev
 ```
+
+`vm tools enable <tool>...` records controller-global defaults and immediately
+reuses the existing updater across every running managed Docker environment.
+Future environments inherit those selections, while same-name project entries
+retain version and update-policy precedence. `vm tools disable <tool>...`
+removes only the global selection and retains existing managed files.
 
 The no-argument form updates each running managed Docker environment's own
 configured tools. Positional tool names restrict the update to projects that
@@ -120,6 +127,9 @@ vm packages release
   private no-egress builder, then activate and execute that exact version in a
   second existing Docker environment without replacing either environment or
   any named volume.
+- [x] Add persistent global managed-tool enrollment so one `vm tools enable`
+  activates CodeAtlas and future binary tools across running Docker environments
+  without editing project repositories or adding another rollout engine.
 - [ ] Replace Typemill's pinned Git dependencies with registry-backed immutable
   packages before adding its binary manifest; the no-egress builder must not
   gain general Git or source-repository access.

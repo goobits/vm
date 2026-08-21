@@ -153,6 +153,16 @@ pub enum ToolsSubcommand {
     },
     /// Show registered, published, installed, and consumable tool state
     Status { environment: Option<String> },
+    /// Select tools globally and activate them in running managed Docker environments
+    Enable {
+        #[arg(required = true, value_name = "TOOL")]
+        tools: Vec<String>,
+    },
+    /// Stop selecting tools globally; existing managed files are retained
+    Disable {
+        #[arg(required = true, value_name = "TOOL")]
+        tools: Vec<String>,
+    },
     /// Update configured tools across running managed environments
     Update {
         /// Tool names to filter; omit to update every configured tool

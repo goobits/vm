@@ -10,6 +10,7 @@ fn test_default_global_config() {
     assert!(config.worktrees.is_default());
     assert!(config.backups.is_default());
     assert!(config.packages.is_default());
+    assert!(config.tools.is_empty());
 }
 
 #[test]
@@ -99,6 +100,9 @@ fn test_serialization_deserialization_cycle() {
     config.defaults.cpus = Some(4);
     config.packages.source_roots = vec!["/srv/packages".to_string()];
     config.packages.canonical_sources = vec!["/srv/projects/typemill".to_string()];
+    config
+        .tools
+        .insert("codeatlas".into(), crate::config::ToolConfig::default());
 
     let yaml = serde_yaml_ng::to_string(&config).unwrap();
     let deserialized: GlobalConfig = serde_yaml_ng::from_str(&yaml).unwrap();
@@ -110,6 +114,7 @@ fn test_serialization_deserialization_cycle() {
         deserialized.packages.canonical_sources,
         ["/srv/projects/typemill"]
     );
+    assert!(deserialized.tools.contains_key("codeatlas"));
 }
 
 #[test]

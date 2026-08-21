@@ -145,6 +145,15 @@ impl AppConfig {
             vm.provider = Some(provider_name.into());
         }
 
+        let global_tools = config::ToolsConfig {
+            entries: global.tools.clone(),
+            ..Default::default()
+        };
+        global_tools.validate()?;
+        for (name, tool) in global_tools.entries {
+            vm.tools.entries.entry(name).or_insert(tool);
+        }
+
         // Handle host integrations
         let should_copy_git = vm
             .host_sync
@@ -170,6 +179,7 @@ impl AppConfig {
 #[cfg(test)]
 mod app_config_tests {
     use super::AppConfig;
+    use crate::{config::ToolConfig, GlobalConfig};
     use serial_test::serial;
     use vm_core::error::Result;
 
@@ -184,6 +194,39 @@ mod app_config_tests {
             std::env::remove_var("HOME");
         }
         result
+    }
+
+    #[test]
+    #[serial]
+    fn global_tools_apply_to_projects_and_project_settings_win() -> Result<()> {
+        with_temp_home(|temp_dir| {
+            let mut global = GlobalConfig::default();
+            global.tools.insert(
+                "codeatlas".into(),
+                ToolConfig {
+                    version: Some("0.10.0".into()),
+                    ..Default::default()
+                },
+            );
+            global
+                .tools
+                .insert("typemill".into(), ToolConfig::default());
+            global.save()?;
+
+            let config_path = temp_dir.path().join("vm.yaml");
+            std::fs::write(
+                &config_path,
+                "provider: docker\ntools:\n  codeatlas:\n    version: 0.11.0\n",
+            )?;
+
+            let app = AppConfig::load(Some(config_path), None, None)?;
+            assert_eq!(
+                app.vm.tools.entries["codeatlas"].version.as_deref(),
+                Some("0.11.0")
+            );
+            assert!(app.vm.tools.entries.contains_key("typemill"));
+            Ok(())
+        })
     }
 
     #[test]

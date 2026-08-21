@@ -409,25 +409,27 @@ activate inside an already-running environment and do not require a base
 rebuild. Read credentials travel to the guest over standard input rather than
 command arguments. Collection activation merges individual skills into an
 existing agent skill directory, preserving unmanaged personal and system
-skills. Published binary tools and collections become eligible only in projects
-that configure them. Reconciliation selects the guest OS/architecture artifact,
+skills. Published binary tools and collections become eligible through
+controller-global defaults or a project's own configuration. Reconciliation selects the guest OS/architecture artifact,
 verifies its digest before extraction, installs one immutable release, and
 atomically updates its configured links. Normal shell reconciliation adopts an
 automatic update without approval; an already-running agent session is not
 hot-reloaded.
 
 ```bash
+vm tools enable codeatlas typemill
 vm tools update
 vm tools update agent-skills another-tool
 vm tools update agent-skills --to projects-dev --to typemill-dev
 ```
 
-These are the common all-tools, selected-tools, and selected-environments
-forms. See the [CLI reference](cli-reference.md#managed-tools) for every update
-option.
+`enable` selects tools for every running managed Docker environment and future
+environments, then activates them immediately. The remaining examples are the
+common all-tools, selected-tools, and selected-environments update forms. See
+the [CLI reference](cli-reference.md#managed-tools) for every option.
 
-With no names, `update` uses every running managed Docker environment's own
-configured tool selection. Positional names filter those selections and never
+With no names, `update` uses every running managed Docker environment's effective
+global-plus-project tool selection. Positional names filter those selections and never
 make an unconfigured tool eligible. Each `--to` accepts one exact Docker,
 Podman, or Tart environment name. Stopped environments are ignored unless
 `--include-stopped` is explicit; then VM starts selected stopped environments in

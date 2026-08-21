@@ -500,6 +500,19 @@ fn tool_refresh_status_and_batch_update_commands_parse() {
         } if environment == "backend"
     ));
     assert!(matches!(
+        Args::parse_from(["vm", "tools", "enable", "codeatlas", "typemill"]).command,
+        Command::Tools {
+            command: ToolsSubcommand::Enable { tools }
+        } if tools == ["codeatlas", "typemill"]
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "tools", "disable", "typemill"]).command,
+        Command::Tools {
+            command: ToolsSubcommand::Disable { tools }
+        } if tools == ["typemill"]
+    ));
+    assert!(Args::try_parse_from(["vm", "tools", "enable"]).is_err());
+    assert!(matches!(
         Args::parse_from(["vm", "tools", "update", "agent-skills", "--background"]).command,
         Command::Tools {
             command: ToolsSubcommand::Update {

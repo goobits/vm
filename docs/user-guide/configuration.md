@@ -288,6 +288,22 @@ Vibe bases ship Antigravity, Claude Code, and Codex. Package infrastructure is
 reserved for explicitly managed artifacts such as the shared agent-skills
 collection:
 
+```bash
+vm tools enable codeatlas typemill
+```
+
+That command stores controller-wide defaults in `~/.vm/config.yaml` and activates
+them in every running managed Docker environment. Equivalent global configuration:
+
+```yaml
+tools:
+  codeatlas: {}
+  typemill: {}
+```
+
+Projects can add tools or override a global tool's version and update policy in
+their own `vm.yaml`:
+
 ```yaml
 tools:
   updates: prompt

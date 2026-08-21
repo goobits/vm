@@ -37,5 +37,7 @@ terminal:
 host_sync:
   git_config: true
   ai_tools: true
+tools:
+  codeatlas: {}
 preset: vibe
 networking: {}

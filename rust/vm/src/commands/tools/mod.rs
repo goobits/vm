@@ -8,7 +8,10 @@ use std::{
     path::PathBuf,
 };
 
-use vm_config::config::VmConfig;
+use vm_config::{
+    config::{ToolConfig, ToolsConfig, VmConfig},
+    GlobalConfig,
+};
 use vm_core::{vm_hint, vm_println, vm_success};
 use vm_packages::{RegisterTool, ToolKind};
 use vm_provider::{Provider, ProviderContext};
@@ -108,6 +111,28 @@ pub(super) async fn handle(
             let subject = load_runtime_subject(config_path, profile, environment)?;
             status::show(&subject).await
         }
+        ToolsSubcommand::Enable { tools } => {
+            set_global_selection(&tools, true)?;
+            vm_success!("Enabled globally: {}", tools.join(", "));
+            updates::run(
+                config_path,
+                profile,
+                tools,
+                Vec::new(),
+                false,
+                Default::default(),
+                InstallMode::Wait,
+            )
+            .await
+        }
+        ToolsSubcommand::Disable { tools } => {
+            set_global_selection(&tools, false)?;
+            vm_success!("Disabled globally: {}", tools.join(", "));
+            vm_hint!(
+                "Existing managed installations are retained but no longer receive global updates"
+            );
+            Ok(())
+        }
         ToolsSubcommand::Update {
             tools,
             to,
@@ -132,6 +157,38 @@ pub(super) async fn handle(
             .await
         }
     }
+}
+
+fn set_global_selection(names: &[String], enabled: bool) -> VmResult<()> {
+    let mut global = GlobalConfig::load().map_err(VmError::from)?;
+    apply_global_selection(&mut global, names, enabled)?;
+    global.save().map_err(VmError::from)
+}
+
+fn apply_global_selection(
+    global: &mut GlobalConfig,
+    names: &[String],
+    enabled: bool,
+) -> VmResult<()> {
+    let proposed = names
+        .iter()
+        .map(|name| (name.clone(), ToolConfig::default()))
+        .collect();
+    ToolsConfig {
+        entries: proposed,
+        ..Default::default()
+    }
+    .validate()
+    .map_err(VmError::from)?;
+
+    for name in names {
+        if enabled {
+            global.tools.entry(name.clone()).or_default();
+        } else {
+            global.tools.shift_remove(name);
+        }
+    }
+    Ok(())
 }
 
 async fn reconcile_subject(subject: &RuntimeSubject) -> VmResult<()> {
@@ -356,8 +413,9 @@ fn report_project_overrides(overrides: &BTreeMap<String, BTreeSet<String>>) {
 
 #[cfg(test)]
 mod tests {
-    use super::project_workspace;
+    use super::{apply_global_selection, project_workspace};
     use vm_config::config::VmConfig;
+    use vm_config::GlobalConfig;
 
     #[test]
     fn project_workspace_defaults_to_the_guest_mount() {
@@ -368,5 +426,18 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(project_workspace(&config), "/source");
+    }
+
+    #[test]
+    fn global_selection_is_idempotent_and_reversible() {
+        let mut global = GlobalConfig::default();
+        let names = vec!["codeatlas".to_string(), "typemill".to_string()];
+        apply_global_selection(&mut global, &names, true).unwrap();
+        apply_global_selection(&mut global, &names, true).unwrap();
+        assert_eq!(global.tools.len(), 2);
+
+        apply_global_selection(&mut global, &["typemill".into()], false).unwrap();
+        assert!(global.tools.contains_key("codeatlas"));
+        assert!(!global.tools.contains_key("typemill"));
     }
 }

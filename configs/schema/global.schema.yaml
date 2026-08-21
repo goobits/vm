@@ -118,6 +118,21 @@ properties:
         uniqueItems: true
     additionalProperties: false
 
+  tools:
+    type: object
+    description: "Managed tools selected by default for every environment"
+    additionalProperties:
+      type: object
+      properties:
+        version:
+          type: string
+          description: "Semantic version to pin; omitted or latest tracks the newest release"
+        updates:
+          type: string
+          enum: ["prompt", "auto", "off"]
+          description: "Per-tool update-policy override"
+      additionalProperties: false
+
 additionalProperties: true
 
 definitions:

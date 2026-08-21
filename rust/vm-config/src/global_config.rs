@@ -6,6 +6,8 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
+use crate::config::ToolConfig;
+
 /// Root structure for global VM tool configuration
 ///
 /// This configuration is stored in ~/.vm/config.yaml and contains
@@ -46,6 +48,10 @@ pub struct GlobalConfig {
         skip_serializing_if = "PackageInfrastructureSettings::is_default"
     )]
     pub packages: PackageInfrastructureSettings,
+
+    /// Managed tools selected by default for every environment.
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub tools: IndexMap<String, ToolConfig>,
 
     /// Extra configuration for extensions
     #[serde(flatten)]

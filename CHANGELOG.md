@@ -34,6 +34,7 @@
 - 📦 Catalog reconciliation treats GitHub HTTPS and SSH forms as one canonical repository instead of degrading after a local transport change.
 - 📦 Explicit cross-project Docker targets load their owning project configuration before managed-tool and package-edge reconciliation.
 - 📦 `vm tools update [<tool>...]` filters each running managed Docker environment's configured tools by default, supports repeated exact `--to` targeting across providers, and excludes stopped environments unless explicitly included; compatibility `--fleet` retains its all-state behavior.
+- 📦 `vm tools enable <tool>...` persists global tool enrollment and immediately activates selected tools across running managed Docker environments; future environments inherit the same baseline.
 
 ### 🔧 Changed
 

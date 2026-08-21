@@ -128,11 +128,19 @@ release, security, recovery, and consumer workflow details.
 | `vm tools show <name>` | Show one tool and its releases |
 | `vm tools refresh` | Refresh the controller tool catalog |
 | `vm tools status [environment]` | Combine controller, installed, and consumable state |
+| `vm tools enable <tool>...` | Select tools globally and activate them in every running managed Docker environment |
+| `vm tools disable <tool>...` | Remove tools from the global selection while retaining existing managed files |
 | `vm tools update [<tool>...] [--to <environment>]... [--include-stopped] [--background]` | Update configured tools across selected environments |
 
+`enable` persists controller-global defaults, then activates each tool in every
+running managed Docker environment. Future environments inherit those defaults.
+Project entries with the same name override global version and update-policy
+settings. `disable` stops global enrollment without deleting existing managed
+files or a project-owned selection.
+
 With no tool names, `update` loads every running managed Docker environment's
-own tool selection. Tool names filter those configured selections; they never
-install an unconfigured tool. Repeat `--to` to restrict exact environments,
+effective global-plus-project tool selection. Tool names filter those configured
+selections; they never install an unconfigured tool. Repeat `--to` to restrict exact environments,
 including Podman or Tart targets. Stopped environments remain untouched unless
 `--include-stopped` is explicit. A selected tool that is not configured in any
 successfully loaded target is rejected. The compatibility `--fleet` form uses
