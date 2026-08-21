@@ -267,14 +267,14 @@ fn ensure_clean(subject: &GuestRuntime, source: &str) -> VmResult<()> {
     let status = git_output(
         subject,
         source,
-        ["status", "--porcelain", "--untracked-files=all"],
+        ["status", "--porcelain", "--untracked-files=no"],
     )?;
     if status.trim().is_empty() {
         Ok(())
     } else {
         Err(VmError::validation(
-            format!("Canonical workspace has uncommitted changes:\n{status}"),
-            Some("Commit or remove the listed changes, then run `vm packages release`"),
+            format!("Canonical workspace has uncommitted tracked changes:\n{status}"),
+            Some("Commit the listed tracked changes, then run `vm packages release`"),
         ))
     }
 }

@@ -2,7 +2,7 @@
 use super::LifecycleOperations;
 use crate::common::instance::{fuzzy_match_instances, InstanceInfo};
 use crate::{
-    container::{build::BuildOperations, compose::ComposeOperations},
+    container::{build::BuildOperations, compose::ComposeOperations, ContainerOps},
     context::ProviderContext,
 };
 use vm_core::error::{Result, VmError};
@@ -264,6 +264,9 @@ impl<'a> LifecycleOperations<'a> {
     ) -> Result<ComposeOperations<'a>> {
         let build_ops = BuildOperations::new(self.config, self.generated_dir, self.executable);
         let build_context = build_ops.prepare_compose_build_context()?;
+        let target_container = self.resolve_probe_target(container)?;
+        let image_tag =
+            ContainerOps::container_image_reference(Some(self.executable), &target_container)?;
 
         let compose_ops = ComposeOperations::with_runtime(
             self.config,
@@ -273,13 +276,14 @@ impl<'a> LifecycleOperations<'a> {
             self.compose_runtime,
         );
         if let Some(instance_name) = self.resolve_instance_name_for_target(container)? {
-            compose_ops.write_docker_compose_with_instance(
+            compose_ops.write_docker_compose_with_instance_and_image_tag(
                 &build_context,
                 &instance_name,
                 context,
+                &image_tag,
             )?;
         } else {
-            compose_ops.write_docker_compose(&build_context, context)?;
+            compose_ops.write_docker_compose_with_image_tag(&build_context, context, &image_tag)?;
         }
         Ok(compose_ops)
     }

@@ -54,6 +54,7 @@ flate2 = { workspace = true }
 tar = { workspace = true }
 fs2 = { workspace = true }
 url = { workspace = true }
+git2 = { workspace = true }
 
 # Release and source-installed macOS binaries always include the native Tart
 # provider. The explicit feature remains available for cross-platform checks.
@@ -70,6 +71,5 @@ ignored = []
 
 [dev-dependencies]
 assert_cmd = "2.2"
-git2 = { workspace = true }
 predicates = "3.1"
 vm-provider = { path = "../vm-provider", features = ["test-helpers"] }

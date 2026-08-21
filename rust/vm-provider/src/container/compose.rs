@@ -529,7 +529,7 @@ impl<'a> ComposeOperations<'a> {
                 self.executable,
                 &compose_path,
                 "up",
-                &["--detach", "--no-deps", "package-edge"],
+                &["--detach", "package-edge"],
             )?
             .stream()
     }

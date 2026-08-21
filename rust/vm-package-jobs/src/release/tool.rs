@@ -470,6 +470,13 @@ pub(super) fn run_isolated(
     let package_gateway = std::env::var("PKG_BUILD_PACKAGE_GATEWAY")
         .unwrap_or_else(|_| "http://build-edge:3080".into());
     let package_gateway = package_gateway.trim_end_matches('/');
+    let cargo_home = sandbox_home.join("cargo-home");
+    std::fs::create_dir_all(&cargo_home).context("create isolated Cargo home")?;
+    let cargo_config = cargo_home.join("config.toml");
+    if !cargo_config.is_file() {
+        std::fs::write(&cargo_config, cargo_source_config(package_gateway)?)
+            .context("write isolated Cargo source configuration")?;
+    }
     command
         .args(["--signal=TERM", "--kill-after=10s", "30m"])
         .arg(program)
@@ -479,7 +486,7 @@ pub(super) fn run_isolated(
         .env("HOME", sandbox_home)
         .env("TMPDIR", sandbox_home)
         .env("XDG_CACHE_HOME", sandbox_home.join("xdg-cache"))
-        .env("CARGO_HOME", sandbox_home.join("cargo-home"))
+        .env("CARGO_HOME", cargo_home)
         .env("CARGO_TARGET_DIR", sandbox_home.join("cargo-target"))
         .env("npm_config_cache", sandbox_home.join("npm-cache"))
         .env("PIP_CACHE_DIR", sandbox_home.join("pip-cache"))
@@ -518,7 +525,34 @@ pub(super) fn run_isolated(
     Ok(())
 }
 
-fn native_target() -> Option<&'static str> {
+pub(super) fn prepare_isolated_package_configuration(release_root: &Path) -> Result<()> {
+    let package_gateway = std::env::var("PKG_BUILD_PACKAGE_GATEWAY")
+        .unwrap_or_else(|_| "http://build-edge:3080".into());
+    let cargo_home = release_root.join("untrusted/cargo-home");
+    std::fs::create_dir_all(&cargo_home).context("create isolated Cargo home")?;
+    std::fs::write(
+        cargo_home.join("config.toml"),
+        cargo_source_config(package_gateway.trim_end_matches('/'))?,
+    )
+    .context("write isolated Cargo source configuration")?;
+    Ok(())
+}
+
+fn cargo_source_config(package_gateway: &str) -> Result<String> {
+    let gateway = url::Url::parse(package_gateway).context("parse package build gateway")?;
+    if !matches!(gateway.scheme(), "http" | "https") {
+        bail!("package build gateway must use HTTP(S)");
+    }
+    let registry = format!(
+        "sparse+{}/cargo/index/",
+        gateway.as_str().trim_end_matches('/')
+    );
+    Ok(format!(
+        "[source.crates-io]\nreplace-with = \"vm\"\n\n[source.vm]\nregistry = \"{registry}\"\n"
+    ))
+}
+
+pub(super) fn native_target() -> Option<&'static str> {
     match (std::env::consts::OS, std::env::consts::ARCH) {
         ("linux", "x86_64") => Some("linux-amd64"),
         ("linux", "aarch64") => Some("linux-arm64"),
@@ -818,6 +852,23 @@ mod tests {
         assert_eq!(artifacts[0].request.version, "1.2.3");
         assert!(artifacts[0].request.size_bytes > 0);
         assert_eq!(artifacts[0].request.artifact_digest.len(), 64);
+    }
+
+    #[test]
+    fn isolated_cargo_configuration_replaces_public_crates_io() {
+        let config = cargo_source_config("http://build-edge:3080").unwrap();
+        assert!(config.contains("[source.crates-io]"));
+        assert!(config.contains("replace-with = \"vm\""));
+        assert!(config.contains("registry = \"sparse+http://build-edge:3080/cargo/index/\""));
+        assert!(cargo_source_config("file:///tmp/registry").is_err());
+
+        let release_root = tempfile::tempdir().unwrap();
+        prepare_isolated_package_configuration(release_root.path()).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(release_root.path().join("untrusted/cargo-home/config.toml"))
+                .unwrap(),
+            config
+        );
     }
 
     #[test]

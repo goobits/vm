@@ -232,6 +232,22 @@ pub async fn download_tarball(
     AxumPath((package, filename)): AxumPath<(String, String)>,
     State(state): State<Arc<AppState>>,
 ) -> AppResult<Vec<u8>> {
+    download_tarball_inner(package, filename, state).await
+}
+
+/// Downloads a scoped NPM tarball when clients normalize the encoded scope separator.
+pub async fn download_scoped_tarball(
+    AxumPath((scope, package, filename)): AxumPath<(String, String, String)>,
+    State(state): State<Arc<AppState>>,
+) -> AppResult<Vec<u8>> {
+    download_tarball_inner(format!("{scope}/{package}"), filename, state).await
+}
+
+async fn download_tarball_inner(
+    package: String,
+    filename: String,
+    state: Arc<AppState>,
+) -> AppResult<Vec<u8>> {
     let package = validate_package(&package)?;
     // Validate filename to prevent path traversal
     validate_filename(&filename)?;
@@ -781,6 +797,29 @@ mod tests {
         let server = TestServer::new(app);
         let response = server
             .get("/npm/test-package/-/test-package-1.0.0.tgz")
+            .await;
+
+        assert_eq!(response.status_code(), StatusCode::OK);
+        assert_eq!(response.as_bytes().to_vec(), content.to_vec());
+    }
+
+    #[tokio::test]
+    async fn test_download_scoped_tarball_with_decoded_separator() {
+        let (state, _temp_dir) = create_npm_test_state();
+        let content = b"scoped tarball content";
+        let filename = "fs-minipass-4.0.1.tgz";
+        let tarball_path = state.data_dir.join("npm/tarballs").join(filename);
+        std::fs::write(&tarball_path, content).expect("should write test tarball");
+
+        let app = axum::Router::new()
+            .route(
+                "/npm/{scope}/{package}/-/{filename}",
+                axum::routing::get(download_scoped_tarball),
+            )
+            .with_state(state);
+
+        let response = TestServer::new(app)
+            .get("/npm/@isaacs/fs-minipass/-/fs-minipass-4.0.1.tgz")
             .await;
 
         assert_eq!(response.status_code(), StatusCode::OK);

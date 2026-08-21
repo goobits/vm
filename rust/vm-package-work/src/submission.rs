@@ -33,9 +33,21 @@ impl Store {
         if let Some(existing) = existing_id
             .as_ref()
             .and_then(|id| current.submissions.get(id))
+            .cloned()
         {
-            if existing.diff_digest == imported.diff_digest {
-                return Ok(existing.clone());
+            let retry_failed_tool_build = existing.state == WorkflowState::NeedsChanges
+                && existing
+                    .review
+                    .as_ref()
+                    .is_some_and(|review| review.reviewer == "tool-build-service");
+            if existing.diff_digest == imported.diff_digest && !retry_failed_tool_build {
+                if existing.state == WorkflowState::Submitted && existing.validation.is_none() {
+                    let mut next = current.clone();
+                    next.idempotency
+                        .retain(|_, record| record.target_id != existing.submission_id);
+                    self.commit(&mut current, next).await?;
+                }
+                return Ok(existing);
             }
             if existing.state != WorkflowState::NeedsChanges {
                 return Err(WorkError::Conflict(
@@ -88,6 +100,8 @@ impl Store {
             record.release_id = None;
             record.updated_at = now;
             next.tool_builds.remove(&submission_id);
+            next.idempotency
+                .retain(|_, record| record.target_id != submission_id);
         } else {
             let record = SubmissionRecord {
                 submission_id: submission_id.clone(),
@@ -177,15 +191,26 @@ impl Store {
         let fingerprint =
             operation_fingerprint("validate_submission", Some(submission_id), &request)?;
         let mut current = self.database.lock().await;
+        let mut retry_stale_generation = false;
         if let Some(existing) = current.idempotency.get(&request.idempotency_key) {
             ensure_fingerprint(existing, &fingerprint)?;
-            return current
+            let recorded = current
                 .submissions
                 .get(&existing.target_id)
                 .cloned()
                 .ok_or_else(|| WorkError::Internal("idempotency target is missing".into()));
+            if !recorded.as_ref().is_ok_and(|submission| {
+                submission.state == WorkflowState::Submitted && submission.validation.is_none()
+            }) {
+                return recorded;
+            }
+            retry_stale_generation = true;
         }
         let mut next = current.clone();
+        if retry_stale_generation {
+            next.idempotency
+                .retain(|_, record| record.target_id != submission_id);
+        }
         let checkout_id = next
             .submissions
             .get(submission_id)
@@ -272,15 +297,26 @@ impl Store {
         validate_review(&request)?;
         let fingerprint = operation_fingerprint("review", Some(submission_id), &request)?;
         let mut current = self.database.lock().await;
+        let mut retry_stale_generation = false;
         if let Some(existing) = current.idempotency.get(&request.idempotency_key) {
             ensure_fingerprint(existing, &fingerprint)?;
-            return current
+            let recorded = current
                 .submissions
                 .get(&existing.target_id)
                 .cloned()
                 .ok_or_else(|| WorkError::Internal("idempotency target is missing".into()));
+            if !recorded.as_ref().is_ok_and(|submission| {
+                submission.state == WorkflowState::Reviewing && submission.review.is_none()
+            }) {
+                return recorded;
+            }
+            retry_stale_generation = true;
         }
         let mut next = current.clone();
+        if retry_stale_generation {
+            next.idempotency
+                .retain(|_, record| record.target_id != submission_id);
+        }
         let review = IntegrationReview {
             decision: request.decision,
             recommended_version: request.recommended_version,
@@ -858,16 +894,26 @@ mod tests {
             )
             .await
             .unwrap();
+        let validation_request = ValidationRequest {
+            package: CheckOutcome::Passed,
+            consumers: BTreeMap::from([("project-a".into(), CheckOutcome::Passed)]),
+            actor: "controller".into(),
+            idempotency_key: "validate".into(),
+        };
+        store.database.lock().await.idempotency.insert(
+            "validate".into(),
+            IdempotencyRecord {
+                fingerprint: operation_fingerprint(
+                    "validate_submission",
+                    Some(&submission.submission_id),
+                    &validation_request,
+                )
+                .unwrap(),
+                target_id: submission.submission_id.clone(),
+            },
+        );
         let validated = store
-            .validate_submission(
-                &submission.submission_id,
-                ValidationRequest {
-                    package: CheckOutcome::Passed,
-                    consumers: BTreeMap::from([("project-a".into(), CheckOutcome::Passed)]),
-                    actor: "controller".into(),
-                    idempotency_key: "validate".into(),
-                },
-            )
+            .validate_submission(&submission.submission_id, validation_request)
             .await
             .unwrap();
         assert_eq!(validated.state, WorkflowState::Reviewing);
@@ -875,23 +921,33 @@ mod tests {
             store.next_review().await.unwrap().submission_id,
             submission.submission_id
         );
+        let review_request = ReviewRequest {
+            decision: ReviewDecision::NeedsChanges,
+            recommended_version: vm_packages::VersionRecommendation::Patch,
+            api_diff: vm_packages::PublicApiDiff {
+                changed_paths: vec![],
+                potentially_breaking: false,
+            },
+            reason: "add a regression test".into(),
+            required_followups: vec!["cover refresh failure".into()],
+            merge_strategy: "rebase".into(),
+            reviewer: "integration-agent".into(),
+            idempotency_key: "review-needs-changes".into(),
+        };
+        store.database.lock().await.idempotency.insert(
+            review_request.idempotency_key.clone(),
+            IdempotencyRecord {
+                fingerprint: operation_fingerprint(
+                    "review",
+                    Some(&submission.submission_id),
+                    &review_request,
+                )
+                .unwrap(),
+                target_id: submission.submission_id.clone(),
+            },
+        );
         let changes_requested = store
-            .record_review(
-                &submission.submission_id,
-                ReviewRequest {
-                    decision: ReviewDecision::NeedsChanges,
-                    recommended_version: vm_packages::VersionRecommendation::Patch,
-                    api_diff: vm_packages::PublicApiDiff {
-                        changed_paths: vec![],
-                        potentially_breaking: false,
-                    },
-                    reason: "add a regression test".into(),
-                    required_followups: vec!["cover refresh failure".into()],
-                    merge_strategy: "rebase".into(),
-                    reviewer: "integration-agent".into(),
-                    idempotency_key: "review-needs-changes".into(),
-                },
-            )
+            .record_review(&submission.submission_id, review_request)
             .await
             .unwrap();
         assert_eq!(changes_requested.state, WorkflowState::NeedsChanges);

@@ -289,6 +289,24 @@ services:
     {%- endif %}
 
   {% if package_edge %}
+  package-edge-init:
+    image: "{{ package_edge.image }}"
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-ec"]
+    command: ["chown 10001:10001 /data && chmod 0755 /data"]
+    volumes:
+      - type: volume
+        source: package_edge_cache
+        target: /data
+        volume:
+          nocopy: true
+    restart: "no"
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN", "FOWNER"]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    network_mode: "none"
+
   package-edge:
     image: "{{ package_edge.image }}"
     container_name: {{ package_edge_container_name | json_encode }}
@@ -308,6 +326,9 @@ services:
         volume:
           nocopy: true
     expose: ["3080"]
+    depends_on:
+      package-edge-init:
+        condition: service_completed_successfully
     restart: unless-stopped
     init: true
     cap_drop: ["ALL"]

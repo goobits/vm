@@ -189,6 +189,27 @@ impl ContainerOps {
         Ok(output.lines().any(|line| line.trim() == container_name))
     }
 
+    /// Return the immutable image reference recorded on an existing container.
+    pub fn container_image_reference(
+        executable: Option<&str>,
+        container_name: &str,
+    ) -> Result<String> {
+        let image = ContainerCommand::new(executable)
+            .subcommand("inspect")
+            .arg("--format")
+            .arg("{{.Config.Image}}")
+            .arg(container_name)
+            .execute_with_output()?
+            .trim()
+            .to_string();
+        if image.is_empty() {
+            return Err(VmError::Internal(format!(
+                "Container '{container_name}' has no image reference"
+            )));
+        }
+        Ok(image)
+    }
+
     /// Copy files to/from a container.
     ///
     /// # Arguments

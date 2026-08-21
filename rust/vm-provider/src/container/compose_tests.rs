@@ -418,6 +418,7 @@ fn renders_read_only_package_edge_without_blocking_the_worker() {
     let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(&rendered).unwrap();
     let services = yaml_mapping(&yaml, "services");
     let dev = services["edge-test-dev"].as_mapping().unwrap();
+    let edge_init = services["package-edge-init"].as_mapping().unwrap();
     let edge = services["package-edge"].as_mapping().unwrap();
 
     assert!(!dev.contains_key("depends_on"));
@@ -428,6 +429,14 @@ fn renders_read_only_package_edge_without_blocking_the_worker() {
         .any(|value| value.as_str() == Some("VM_MANAGED_GUEST=1")));
     assert_eq!(edge["read_only"].as_bool(), Some(true));
     assert_eq!(edge["restart"].as_str(), Some("unless-stopped"));
+    assert_eq!(edge_init["user"].as_str(), Some("0:0"));
+    assert_eq!(edge_init["network_mode"].as_str(), Some("none"));
+    assert_eq!(edge_init["read_only"].as_bool(), Some(true));
+    assert_eq!(edge_init["restart"].as_str(), Some("no"));
+    assert_eq!(
+        edge["depends_on"]["package-edge-init"]["condition"].as_str(),
+        Some("service_completed_successfully")
+    );
     assert!(edge["environment"]
         .as_mapping()
         .unwrap()

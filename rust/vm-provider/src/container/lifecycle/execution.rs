@@ -167,10 +167,14 @@ mod tests {
             || "echo 'Error: No such object' >&2; exit 1".to_string(),
             |state| {
                 edge_revision.map_or_else(
-                    || format!("echo '{state}'; exit 0"),
+                    || {
+                        format!(
+                            "case \"$*\" in *Config.Image*) echo 'vm-derived:test' ;; *) echo '{state}' ;; esac; exit 0"
+                        )
+                    },
                     |revision| {
                         format!(
-                            "case \"$*\" in *package-edge.revision*) printf 'running\\t{revision}\\n' ;; *) echo '{state}' ;; esac; exit 0"
+                            "case \"$*\" in *Config.Image*) echo 'vm-derived:test' ;; *package-edge.revision*) printf 'running\\t{revision}\\n' ;; *) echo '{state}' ;; esac; exit 0"
                         )
                     },
                 )
@@ -322,10 +326,12 @@ mod tests {
 
         let commands = fs::read_to_string(log).unwrap();
         assert!(commands.contains("compose"));
-        assert!(commands.contains("up --detach --no-deps package-edge"));
+        assert!(commands.contains("up --detach package-edge"));
         assert!(!commands.contains(" build"));
         assert!(!commands.contains(" rm"));
         assert!(!commands.contains(" down"));
+        let compose = fs::read_to_string(generated_dir.join("docker-compose.yml")).unwrap();
+        assert!(compose.contains("image: vm-derived:test"));
     }
 
     #[test]

@@ -44,7 +44,7 @@ pub(super) async fn handle_workspace(
             Some("Rerun `vm packages release` after repairing package infrastructure"),
         ));
     }
-    ensure_clean(subject, source, "Canonical workspace")?;
+    ensure_tracked_clean(subject, source, "Canonical workspace")?;
     let commit = exec_output(subject, ["git", "-C", source, "rev-parse", "HEAD"])?;
     submit_workspace_commit(subject, checkout, source, commit.trim(), true).await
 }
@@ -223,6 +223,25 @@ fn ensure_clean(subject: &GuestRuntime, source: &str, label: &str) -> VmResult<(
         VmError::validation(
             format!("{label} has uncommitted changes: {error}"),
             Some("Commit intended files and remove unintended files before submitting"),
+        )
+    })
+}
+
+fn ensure_tracked_clean(subject: &GuestRuntime, source: &str, label: &str) -> VmResult<()> {
+    exec(
+        subject,
+        [
+            "/bin/sh",
+            "-c",
+            "git -C \"$1\" diff --quiet -- && git -C \"$1\" diff --cached --quiet --",
+            "vm-package-clean",
+            source,
+        ],
+    )
+    .map_err(|error| {
+        VmError::validation(
+            format!("{label} has uncommitted tracked changes: {error}"),
+            Some("Commit intended tracked files before submitting"),
         )
     })
 }

@@ -9,7 +9,7 @@ use super::{appliance, files::ApplianceFiles, state::ApplianceState};
 
 // Bump when edge labels, environment, mounts, or lifecycle policy change
 // without requiring a new registry image.
-const PACKAGE_EDGE_POLICY_REVISION: &str = "2";
+const PACKAGE_EDGE_POLICY_REVISION: &str = "3";
 
 pub(super) fn configured_client_environment(
     config: &VmConfig,
@@ -118,7 +118,7 @@ fn client_environment(
     }
     let internal_gateway = gateway_for_provider(state, provider)?;
     let client_gateway = match provider {
-        "docker" | "podman" => "http://package-edge:3080".to_string(),
+        "docker" | "podman" => format!("http://{consumer}-package-edge:3080"),
         "tart" => "http://127.0.0.1:3080".to_string(),
         _ => {
             return Err(VmError::validation(
@@ -238,12 +238,15 @@ mod tests {
             .variables()
             .into_iter()
             .collect::<std::collections::BTreeMap<_, _>>();
-        assert!(docker_variables["NPM_CONFIG_REGISTRY"].contains("package-edge"));
+        assert!(docker_variables["NPM_CONFIG_REGISTRY"].contains("project-a-package-edge"));
         assert!(tart_variables["NPM_CONFIG_REGISTRY"].contains("127.0.0.1"));
         assert!(docker_variables["VM_OCI_MIRROR"].ends_with(":3080"));
         assert_eq!(docker_variables["VM_PACKAGES_CONSUMER"], "project-a");
         assert_eq!(tart_variables["VM_OCI_MIRROR"], "http://192.168.64.1:3080");
-        assert_eq!(docker_edge.client_gateway, "http://package-edge:3080");
+        assert_eq!(
+            docker_edge.client_gateway,
+            "http://project-a-package-edge:3080"
+        );
         assert_eq!(tart_edge.client_gateway, "http://127.0.0.1:3080");
         assert!(docker_edge.internal_gateway.ends_with(":3080"));
         assert_eq!(tart_edge.internal_gateway, "http://192.168.64.1:3080");

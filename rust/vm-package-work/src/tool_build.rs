@@ -421,5 +421,32 @@ mod tests {
         );
         assert!(store.next_tool_build().await.is_none());
         assert!(store.next_release().await.is_none());
+
+        let retried = store
+            .record_submission(
+                &submission.checkout_id,
+                ImportedSubmission {
+                    submitted_commit: submission.submitted_commit.clone(),
+                    diff_digest: submission.diff_digest.clone(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(retried.state, WorkflowState::Submitted);
+        assert!(retried.review.is_none());
+        assert!(store.tool_build(&retried.submission_id).await.is_err());
+        let revalidated = store
+            .validate_submission(
+                &retried.submission_id,
+                ValidationRequest {
+                    package: CheckOutcome::Passed,
+                    consumers: BTreeMap::new(),
+                    actor: "controller".into(),
+                    idempotency_key: "validate-binary-build".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(revalidated.state, WorkflowState::Reviewing);
     }
 }

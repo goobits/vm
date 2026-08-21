@@ -49,6 +49,7 @@
 - 📦 ⚠️ `vm tools update` positional values are tool filters only; exact environment selection now uses repeated `--to <environment>` options.
 - 📦 Managed source shelves and exact canonical project roots now have separate policies: only shelves are recursively discovered or quarantined, while canonical roots remain read-only and require a repository-bound v2 guest capability.
 - 📦 Package infrastructure uses one Docker-or-Podman control plane shared by container and Linux Tart environments instead of maintaining a second appliance inside Tart.
+- 📦 Source-installed package appliances fingerprint server and job inputs independently, skip unchanged image builds, and use the faster optimized source-install profile for changed local images.
 - 🚀 macOS builds always include the Tart provider through target-specific dependency wiring, including packaged releases and source installs.
 
 ### 🐛 Fixed
@@ -84,6 +85,8 @@
 - 🌐 Review workers download immutable submission bundles instead of mounting workflow checkout storage, and transient appliance import trees are compacted after bundling.
 - 🌐 Invalid nested built-in commands remain with their owning CLI parser instead of falling through to remote-command namespace resolution.
 - 🌐 Resubmitted package generations now receive distinct validation, review, and integration operations, and `vm packages release` resumes a durable submitted generation instead of waiting indefinitely.
+- 🌐 Canonical binary releases ignore untracked runtime files, retry infrastructure-caused build failures at the same source commit, clear stale phase receipts, and route isolated Cargo dependencies through the private registry.
+- 🌐 Docker package edges initialize cache ownership before dropping privileges, preserve running environment image identity during reconciliation, use project-specific gateway names, and accept decoded scoped npm tarball routes.
 - 🌐 Canonical workspace releases review the full tree initially and every commit since the last internal publication thereafter, while deterministic binary-build failures return actionable rework instead of hot-looping.
 - 🌐 Docker image pulls retry transient transport failures while permanent authentication and image errors fail immediately.
 - 🌐 Single-port ranges and explicit create-time port mappings now validate correctly.

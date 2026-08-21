@@ -27,6 +27,10 @@ pub(super) fn app_router(state: AppState) -> Router {
         .route("/vm-client.sha256", get(guest_client_digest_handler))
         .route("/api/packages", get(list_packages_handler))
         .route("/npm/{package}/-/{filename}", get(npm::download_tarball))
+        .route(
+            "/npm/{scope}/{package}/-/{filename}",
+            get(npm::download_scoped_tarball),
+        )
         .route("/npm/{package}", get(npm::package_metadata))
         .route("/pypi/simple/", get(pypi::simple_index))
         .route("/pypi/simple/{package}/", get(pypi::package_index))

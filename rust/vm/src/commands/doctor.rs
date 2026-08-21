@@ -403,7 +403,7 @@ fn try_start_docker() -> bool {
             if out.status.success() {
                 // Wait for Docker to start
                 std::thread::sleep(std::time::Duration::from_secs(5));
-                return validate_docker_environment("docker").is_ok();
+                return validate_provider_environment("docker").is_ok();
             }
         }
         false

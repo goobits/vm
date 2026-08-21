@@ -10,8 +10,8 @@ use vm_packages::{
 use crate::runtime::{download_bundle, operation_key, run_command};
 
 use super::{
-    binary_identity, build_binary_artifacts, publication_request, BuiltToolArtifact,
-    ToolArtifactContext,
+    binary_identity, build_binary_artifacts, prepare_isolated_package_configuration,
+    publication_request, BuiltToolArtifact, ToolArtifactContext,
 };
 use crate::release::{git_text, source::clone_at};
 
@@ -86,6 +86,7 @@ pub async fn build_submission(
             return Ok(());
         }
     };
+    prepare_isolated_package_configuration(release_root.path())?;
     prepare_unprivileged_build(release_root.path(), &source)?;
     let tag = format!("v{version}");
     let context = ToolArtifactContext {
