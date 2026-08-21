@@ -9,6 +9,31 @@ use vm_plugin::{
     validate_plugin_with_context, PluginType,
 };
 
+use crate::cli::PluginSubcommand;
+use crate::error::{VmError, VmResult};
+
+pub(super) fn handle_command(command: &PluginSubcommand) -> VmResult<()> {
+    match command {
+        PluginSubcommand::Ls => handle_plugin_list().map_err(VmError::from),
+        PluginSubcommand::Info { plugin_name } => {
+            handle_plugin_info(plugin_name).map_err(VmError::from)
+        }
+        PluginSubcommand::Install { source_path } => {
+            handle_plugin_install(source_path).map_err(VmError::from)
+        }
+        PluginSubcommand::Rm { plugin_name } => {
+            handle_plugin_remove(plugin_name).map_err(VmError::from)
+        }
+        PluginSubcommand::New {
+            plugin_name,
+            r#type,
+        } => super::plugin_new::handle_plugin_new(plugin_name, r#type).map_err(VmError::from),
+        PluginSubcommand::Validate { plugin_name } => {
+            handle_plugin_validate(plugin_name).map_err(VmError::from)
+        }
+    }
+}
+
 pub fn handle_plugin_list() -> Result<()> {
     let plugins = discover_plugins()?;
 

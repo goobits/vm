@@ -3,6 +3,7 @@
 //! This module provides ephemeral port forwarding using SSH local port forwarding.
 //! Tunnels are created on-demand and can be stopped independently.
 
+use crate::cli::TunnelSubcommand;
 use crate::error::{VmError, VmResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -14,6 +15,42 @@ use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::{vm_hint, vm_println, vm_success, vm_warning};
 use vm_platform::platform;
 use vm_provider::Provider;
+
+pub(super) fn handle_command(
+    command: TunnelSubcommand,
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+) -> VmResult<()> {
+    let (provider, config, global_config) =
+        super::command_context::load_provider_context(config_path, profile, None)?;
+    match command {
+        TunnelSubcommand::Add {
+            mapping,
+            environment,
+        } => handle_tunnel(
+            provider,
+            &mapping,
+            environment.as_deref(),
+            config,
+            global_config,
+        ),
+        TunnelSubcommand::Ls { environment } => {
+            handle_tunnel_list(provider, environment.as_deref(), config, global_config)
+        }
+        TunnelSubcommand::Stop {
+            port,
+            environment,
+            all,
+        } => handle_tunnel_stop(
+            provider,
+            port,
+            environment.as_deref(),
+            all,
+            config,
+            global_config,
+        ),
+    }
+}
 
 /// Information about an active tunnel
 #[derive(Debug, Clone, Serialize, Deserialize)]

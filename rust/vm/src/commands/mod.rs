@@ -1,6 +1,6 @@
 // Command handlers for VM operations
 
-use crate::cli::{Args, Command, PluginSubcommand, SecretSubcommand, TunnelSubcommand};
+use crate::cli::{Args, Command};
 use crate::error::{VmError, VmResult};
 use command_context::{
     load_or_create_runtime_subject, load_provider_context, load_runtime_context,
@@ -9,7 +9,6 @@ use command_context::{
 use environment::resolve_environment;
 use vm_config::validation::{validate_config, ValidationMode};
 use vm_config::AppConfig;
-use vm_core::vm_println;
 
 pub mod base;
 pub mod clean;
@@ -18,6 +17,7 @@ mod completion;
 pub mod config;
 pub mod db;
 pub mod doctor;
+mod dry_run;
 mod environment;
 mod maintenance;
 mod managed_guest;
@@ -41,7 +41,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
     command_context::ensure_controller_host(&args.command)?;
 
     if args.dry_run {
-        print_dry_run_summary(&args);
+        dry_run::print_summary(&args);
         return Ok(());
     }
 
@@ -84,10 +84,10 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         Command::Config { command } => {
             config::handle_config_command(&command, args.profile, args.config)
         }
-        Command::Plugin { command } => handle_plugin_command(&command),
+        Command::Plugin { command } => plugin::handle_command(&command),
         Command::Db { command } => db::handle_db(command).await,
         Command::Secret { command } => {
-            handle_secret_command(&command, args.config, args.profile).await
+            secrets::handle_command(&command, args.config, args.profile).await
         }
         Command::System { command } => system::handle(&command, args.config, args.profile).await,
         Command::InternalCompletion { shell } => completion::handle(&shell),
@@ -340,187 +340,11 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         }
         Command::Packages { command } => packages::handle(command, args.config, args.profile).await,
         Command::Tools { command } => tools::handle(command, args.config, args.profile).await,
-        Command::Tunnel { command } => handle_tunnel_command(command, args.config, args.profile),
+        Command::Tunnel { command } => tunnel::handle_command(command, args.config, args.profile),
         Command::GetSyncDirectory => {
             let (provider, _, _) = load_provider_context(args.config, args.profile, None)?;
             vm_ops::handle_get_sync_directory(provider);
             Ok(())
-        }
-    }
-}
-
-fn handle_tunnel_command(
-    command: TunnelSubcommand,
-    config_path: Option<std::path::PathBuf>,
-    profile: Option<String>,
-) -> VmResult<()> {
-    let (provider, config, global_config) = load_provider_context(config_path, profile, None)?;
-    match command {
-        TunnelSubcommand::Add {
-            mapping,
-            environment,
-        } => tunnel::handle_tunnel(
-            provider,
-            &mapping,
-            environment.as_deref(),
-            config,
-            global_config,
-        ),
-        TunnelSubcommand::Ls { environment } => {
-            tunnel::handle_tunnel_list(provider, environment.as_deref(), config, global_config)
-        }
-        TunnelSubcommand::Stop {
-            port,
-            environment,
-            all,
-        } => tunnel::handle_tunnel_stop(
-            provider,
-            port,
-            environment.as_deref(),
-            all,
-            config,
-            global_config,
-        ),
-    }
-}
-
-async fn handle_secret_command(
-    command: &SecretSubcommand,
-    config_path: Option<std::path::PathBuf>,
-    profile: Option<String>,
-) -> VmResult<()> {
-    let global_config = AppConfig::load(config_path, profile, None)
-        .map(|config| config.global)
-        .unwrap_or_default();
-    secrets::handle_secrets_command(command, global_config).await
-}
-
-fn print_dry_run_summary(args: &Args) {
-    vm_println!("Dry run: would {}", dry_run_description(&args.command));
-    if let Some(config) = &args.config {
-        vm_println!("Config: {}", config.display());
-    }
-    vm_println!("No changes made.");
-}
-
-fn dry_run_description(command: &Command) -> String {
-    let target = |environment: &Option<String>| {
-        environment
-            .as_deref()
-            .unwrap_or("the default environment")
-            .to_string()
-    };
-
-    match command {
-        Command::Create { environment, force } => format!(
-            "{} {}",
-            if *force { "recreate" } else { "create" },
-            target(environment)
-        ),
-        Command::Start {
-            environment, fleet, ..
-        } => {
-            if fleet.fleet {
-                "start matching managed environments".to_string()
-            } else {
-                format!("start {}", target(environment))
-            }
-        }
-        Command::Run { kind, words, .. } => {
-            let name = words
-                .last()
-                .filter(|_| words.len() == 2)
-                .map_or(String::new(), |name| format!(" as {name}"));
-            format!("run {}{name}", format!("{kind:?}").to_ascii_lowercase())
-        }
-        Command::List { all, .. } => {
-            format!("list {} environments", if *all { "all" } else { "project" })
-        }
-        Command::Shell {
-            environment,
-            command,
-            ..
-        } => format!(
-            "{} {}",
-            if command.is_some() {
-                "run a shell command in"
-            } else {
-                "open a shell in"
-            },
-            target(environment)
-        ),
-        Command::Exec {
-            environment, fleet, ..
-        } => {
-            if fleet.fleet {
-                "execute a command in matching managed environments".to_string()
-            } else {
-                format!("execute a command in {}", target(environment))
-            }
-        }
-        Command::Logs { environment, .. } => format!("read logs from {}", target(environment)),
-        Command::Copy { fleet, .. } => {
-            if fleet.fleet {
-                "copy files across matching managed environments".to_string()
-            } else {
-                "copy files without changing lifecycle state".to_string()
-            }
-        }
-        Command::Stop {
-            environment, fleet, ..
-        } => {
-            if fleet.fleet {
-                "stop matching managed environments".to_string()
-            } else {
-                format!("stop {}", target(environment))
-            }
-        }
-        Command::Status { environment } => format!("inspect {}", target(environment)),
-        Command::Restart {
-            environment, fleet, ..
-        } => {
-            if fleet.fleet {
-                "restart matching managed environments".to_string()
-            } else {
-                format!("restart {}", target(environment))
-            }
-        }
-        Command::Remove { environment, .. } => format!("remove {}", target(environment)),
-        Command::Save { .. } => "save an environment snapshot".to_string(),
-        Command::Revert { .. } => "restore an environment snapshot".to_string(),
-        Command::Package { environment, .. } => format!("package {}", target(environment)),
-        Command::Packages { .. } => "manage package infrastructure".to_string(),
-        Command::Tools { .. } => "manage guest tools".to_string(),
-        Command::Config { .. } => "run a configuration operation".to_string(),
-        Command::Tunnel { .. } => "run a tunnel operation".to_string(),
-        Command::Doctor { .. } => "run diagnostics or requested maintenance".to_string(),
-        Command::Plugin { .. } => "run a plugin operation".to_string(),
-        Command::System { .. } => "run a system operation".to_string(),
-        Command::Db { .. } => "run a database operation".to_string(),
-        Command::Secret { .. } => "run a secret operation (values redacted)".to_string(),
-        Command::InternalCompletion { .. } => "generate shell completions".to_string(),
-        Command::GetSyncDirectory => "print the workspace directory".to_string(),
-    }
-}
-
-fn handle_plugin_command(command: &PluginSubcommand) -> VmResult<()> {
-    match command {
-        PluginSubcommand::Ls => plugin::handle_plugin_list().map_err(VmError::from),
-        PluginSubcommand::Info { plugin_name } => {
-            plugin::handle_plugin_info(plugin_name).map_err(VmError::from)
-        }
-        PluginSubcommand::Install { source_path } => {
-            plugin::handle_plugin_install(source_path).map_err(VmError::from)
-        }
-        PluginSubcommand::Rm { plugin_name } => {
-            plugin::handle_plugin_remove(plugin_name).map_err(VmError::from)
-        }
-        PluginSubcommand::New {
-            plugin_name,
-            r#type,
-        } => plugin_new::handle_plugin_new(plugin_name, r#type).map_err(VmError::from),
-        PluginSubcommand::Validate { plugin_name } => {
-            plugin::handle_plugin_validate(plugin_name).map_err(VmError::from)
         }
     }
 }

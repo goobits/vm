@@ -8,10 +8,21 @@ use crate::cli::SecretSubcommand;
 use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
 use crate::service_registry::get_service_registry;
-use vm_config::GlobalConfig;
+use vm_config::{AppConfig, GlobalConfig};
 use vm_core::{vm_println, vm_progress, vm_success};
 
 use vm_auth_proxy::{self, check_server_running, start_server_if_needed};
+
+pub(super) async fn handle_command(
+    command: &SecretSubcommand,
+    config_path: Option<std::path::PathBuf>,
+    profile: Option<String>,
+) -> VmResult<()> {
+    let global_config = AppConfig::load(config_path, profile, None)
+        .map(|config| config.global)
+        .unwrap_or_default();
+    handle_secrets_command(command, global_config).await
+}
 
 /// Handle secrets commands
 pub async fn handle_secrets_command(
