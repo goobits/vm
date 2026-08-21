@@ -11,7 +11,7 @@ use vm_packages::ToolBuild;
 
 use crate::runtime::run_command;
 
-use super::{native_target, run_isolated};
+use super::build::{native_target, run_isolated};
 use crate::release::{git, git_text};
 
 pub(super) struct BuiltCollection {

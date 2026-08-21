@@ -1,18 +1,13 @@
-use std::collections::BTreeMap;
-use std::io::BufReader;
-use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
 use semver::Version;
-use tokio_util::io::ReaderStream;
 use vm_packages::{
-    sha256_hex, sha256_reader, tool_artifact_path, validate_tool_name, BeginReleaseRequest,
-    PackageInfrastructureClient, PublicationRequest, PublicationTarget, PublishToolArtifact,
-    SubmissionRecord, ToolArtifactRecord, ToolBuildRecord, ToolKind, ToolSourceManifest,
+    sha256_hex, BeginReleaseRequest, PackageInfrastructureClient, PublicationRequest,
+    PublicationTarget, SubmissionRecord, ToolKind,
 };
 
-use crate::runtime::{download_bundle, operation_key, run_command};
+use crate::runtime::{download_bundle, operation_key};
 
 use super::{
     git_text,
@@ -26,44 +21,17 @@ const TOOL_TARGET: &str = "any";
 const RELEASE_ACTOR: &str = "tool-release-service";
 
 mod archive;
+mod artifact;
 mod build;
+mod publication;
 
 pub use build::build_submission;
 
-use archive::{
-    build_collection, collection_identity, collection_links, confined_build_archive,
-    verify_binary_archive, verify_binary_command,
+use archive::collection_identity;
+use artifact::{
+    binary_identity, build_collection_artifact, staged_binary_artifacts, ToolArtifactContext,
 };
-
-pub(crate) struct BuiltToolArtifact {
-    pub(crate) archive: PathBuf,
-    pub(crate) manifest: ToolReleaseManifest,
-    pub(crate) request: PublishToolArtifact,
-    pub(crate) registry: String,
-}
-
-pub(super) struct ToolArtifactContext<'a> {
-    pub(super) source: &'a Path,
-    pub(super) release_root: &'a Path,
-    pub(super) name: &'a str,
-    pub(super) source_commit: &'a str,
-    pub(super) tag: &'a str,
-    pub(super) submission_id: &'a str,
-    pub(super) gateway: &'a str,
-}
-
-/// Inputs shared by tool publishers regardless of how their source archive was built.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ToolReleaseManifest {
-    pub name: String,
-    pub version: String,
-    pub target: String,
-    pub links: BTreeMap<String, String>,
-    pub source_commit: String,
-    pub tag: String,
-    pub actor: String,
-    pub idempotency_key: String,
-}
+use publication::{upload_archive, verify_record};
 
 /// Release one approved managed tool through the durable package workflow.
 pub(super) async fn release_submission(
@@ -269,396 +237,24 @@ pub(super) async fn release_submission(
     Ok(())
 }
 
-fn build_collection_artifact(context: &ToolArtifactContext<'_>) -> Result<BuiltToolArtifact> {
-    let built = build_collection(context.source, &context.release_root.join("tool.tar.gz"))?;
-    if built.source_commit != context.source_commit {
-        bail!("collection archive source commit changed while building");
-    }
-    finish_artifact(
-        built.archive,
-        ToolReleaseManifest {
-            name: context.name.into(),
-            version: built.version,
-            target: TOOL_TARGET.into(),
-            links: collection_links(),
-            source_commit: context.source_commit.into(),
-            tag: context.tag.into(),
-            actor: RELEASE_ACTOR.into(),
-            idempotency_key: operation_key("tool-workflow", context.submission_id),
-        },
-        context.gateway,
-    )
-}
-
-pub(super) fn build_binary_artifacts(
-    context: &ToolArtifactContext<'_>,
-    manifest: &ToolSourceManifest,
-) -> Result<Vec<BuiltToolArtifact>> {
-    let version = manifest
-        .version
-        .as_deref()
-        .context("binary tool manifest has no version")?;
-    let artifact_root = context.release_root.join("artifacts");
-    std::fs::create_dir(&artifact_root)?;
-    manifest
-        .builds
-        .iter()
-        .map(|build| {
-            run_isolated(
-                &build.command,
-                context.source,
-                context.release_root,
-                &format!("build binary tool target {}", build.target),
-            )?;
-            let archive = confined_build_archive(context.source, &build.archive)?;
-            verify_binary_archive(&archive, build)?;
-            verify_binary_command(&archive, context.release_root, build)?;
-            let retained = artifact_root.join(format!("{}.tar.gz", build.target));
-            std::fs::copy(&archive, &retained)?;
-            finish_artifact(
-                retained,
-                ToolReleaseManifest {
-                    name: context.name.into(),
-                    version: version.into(),
-                    target: build.target.clone(),
-                    links: build.links.clone(),
-                    source_commit: context.source_commit.into(),
-                    tag: context.tag.into(),
-                    actor: RELEASE_ACTOR.into(),
-                    idempotency_key: operation_key(
-                        "tool-workflow",
-                        &format!("{}:{}", context.submission_id, build.target),
-                    ),
-                },
-                context.gateway,
-            )
-        })
-        .collect()
-}
-
-fn staged_binary_artifacts(
-    context: &ToolArtifactContext<'_>,
-    manifest: &ToolSourceManifest,
-    build: &ToolBuildRecord,
-    staging_root: &Path,
-) -> Result<Vec<BuiltToolArtifact>> {
-    let version = manifest
-        .version
-        .as_deref()
-        .context("binary tool manifest has no version")?;
-    let manifest_digest = sha256_hex(std::fs::read(context.source.join("vm-tool.yaml"))?);
-    if !build.succeeded()
-        || build.submission_id != context.submission_id
-        || build.source_commit != context.source_commit
-        || build.version != version
-        || build.manifest_digest != manifest_digest
-    {
-        bail!("staged binary build does not match the validated source");
-    }
-    if build.artifacts.len() != manifest.builds.len() {
-        bail!("staged binary build target count changed");
-    }
-    let staging_root =
-        std::fs::canonicalize(staging_root).context("resolve managed binary build staging root")?;
-    manifest
-        .builds
-        .iter()
-        .map(|expected| {
-            let artifact = build
-                .artifacts
-                .iter()
-                .find(|artifact| artifact.target == expected.target)
-                .context("staged binary build target is missing")?;
-            if artifact.links != expected.links {
-                bail!("staged binary build activation links changed");
-            }
-            let archive = staging_root
-                .join(context.submission_id)
-                .join(format!("{}.tar.gz", artifact.artifact_digest));
-            let metadata = std::fs::symlink_metadata(&archive)
-                .context("staged binary build archive is missing")?;
-            if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
-                bail!("staged binary build archive is not a regular file");
-            }
-            let canonical = std::fs::canonicalize(&archive)?;
-            if !canonical.starts_with(&staging_root) {
-                bail!("staged binary build archive escaped managed storage");
-            }
-            verify_binary_archive(&canonical, expected)?;
-            let built = finish_artifact(
-                canonical,
-                ToolReleaseManifest {
-                    name: context.name.into(),
-                    version: version.into(),
-                    target: expected.target.clone(),
-                    links: expected.links.clone(),
-                    source_commit: context.source_commit.into(),
-                    tag: context.tag.into(),
-                    actor: RELEASE_ACTOR.into(),
-                    idempotency_key: operation_key(
-                        "tool-workflow",
-                        &format!("{}:{}", context.submission_id, expected.target),
-                    ),
-                },
-                context.gateway,
-            )?;
-            if built.request.artifact_digest != artifact.artifact_digest
-                || built.request.size_bytes != artifact.size_bytes
-            {
-                bail!("staged binary build bytes changed");
-            }
-            Ok(built)
-        })
-        .collect()
-}
-
-fn finish_artifact(
-    archive: PathBuf,
-    manifest: ToolReleaseManifest,
-    gateway: &str,
-) -> Result<BuiltToolArtifact> {
-    let request = publication_request(&archive, manifest.clone())?;
-    let registry = format!(
-        "{}{}",
-        gateway.trim_end_matches('/'),
-        tool_artifact_path(
-            &manifest.name,
-            &request.version,
-            &request.target,
-            &request.artifact_digest,
-        )
-    );
-    Ok(BuiltToolArtifact {
-        archive,
-        manifest,
-        request,
-        registry,
-    })
-}
-
-pub(super) fn binary_identity(source: &Path) -> Result<ToolSourceManifest> {
-    let content = git_text(
-        source,
-        &["show", "HEAD:vm-tool.yaml"],
-        "read binary tool release manifest",
-    )?;
-    let manifest: ToolSourceManifest =
-        serde_yaml_ng::from_str(&content).context("vm-tool.yaml is invalid")?;
-    manifest.validate()?;
-    if manifest.kind != ToolKind::Binary {
-        bail!("registered binary tool has a non-binary vm-tool.yaml");
-    }
-    Ok(manifest)
-}
-
-pub(super) fn run_isolated(
-    arguments: &[String],
-    directory: &Path,
-    release_root: &Path,
-    operation: &str,
-) -> Result<()> {
-    let (program, arguments) = arguments
-        .split_first()
-        .context("isolated command cannot be empty")?;
-    let mut command = std::process::Command::new("timeout");
-    let sandbox_home = release_root.join("untrusted");
-    let sandbox_home = if sandbox_home.is_dir() {
-        sandbox_home.as_path()
-    } else {
-        release_root
-    };
-    let package_gateway = std::env::var("PKG_BUILD_PACKAGE_GATEWAY")
-        .unwrap_or_else(|_| "http://build-edge:3080".into());
-    let package_gateway = package_gateway.trim_end_matches('/');
-    let cargo_home = sandbox_home.join("cargo-home");
-    std::fs::create_dir_all(&cargo_home).context("create isolated Cargo home")?;
-    let cargo_config = cargo_home.join("config.toml");
-    if !cargo_config.is_file() {
-        std::fs::write(&cargo_config, cargo_source_config(package_gateway)?)
-            .context("write isolated Cargo source configuration")?;
-    }
-    command
-        .args(["--signal=TERM", "--kill-after=10s", "30m"])
-        .arg(program)
-        .args(arguments)
-        .current_dir(directory)
-        .env_clear()
-        .env("HOME", sandbox_home)
-        .env("TMPDIR", sandbox_home)
-        .env("XDG_CACHE_HOME", sandbox_home.join("xdg-cache"))
-        .env("CARGO_HOME", cargo_home)
-        .env("CARGO_TARGET_DIR", sandbox_home.join("cargo-target"))
-        .env("npm_config_cache", sandbox_home.join("npm-cache"))
-        .env("PIP_CACHE_DIR", sandbox_home.join("pip-cache"))
-        .env("NPM_CONFIG_REGISTRY", format!("{package_gateway}/npm/"))
-        .env("PIP_INDEX_URL", format!("{package_gateway}/pypi/simple/"))
-        .env("UV_INDEX_URL", format!("{package_gateway}/pypi/simple/"))
-        .env(
-            "CARGO_REGISTRIES_VM_INDEX",
-            format!("sparse+{package_gateway}/cargo/index/"),
-        )
-        .env("CARGO_SOURCE_CRATES_IO_REPLACE_WITH", "vm")
-        .env(
-            "CARGO_SOURCE_VM_REGISTRY",
-            format!("sparse+{package_gateway}/cargo/index/"),
-        );
-    for variable in ["PATH", "RUSTUP_HOME"] {
-        if let Some(value) = std::env::var_os(variable) {
-            command.env(variable, value);
-        }
-    }
-    #[cfg(unix)]
-    if let Some(uid) = std::env::var_os("PKG_BUILD_UID") {
-        use std::os::unix::process::CommandExt;
-
-        let uid = uid
-            .to_string_lossy()
-            .parse::<u32>()
-            .context("PKG_BUILD_UID must be a numeric user ID")?;
-        let gid = std::env::var("PKG_BUILD_GID")
-            .context("PKG_BUILD_GID is required")?
-            .parse::<u32>()
-            .context("PKG_BUILD_GID must be a numeric group ID")?;
-        command.uid(uid).gid(gid);
-    }
-    run_command(&mut command, operation)?;
-    Ok(())
-}
-
-pub(super) fn prepare_isolated_package_configuration(release_root: &Path) -> Result<()> {
-    let package_gateway = std::env::var("PKG_BUILD_PACKAGE_GATEWAY")
-        .unwrap_or_else(|_| "http://build-edge:3080".into());
-    let cargo_home = release_root.join("untrusted/cargo-home");
-    std::fs::create_dir_all(&cargo_home).context("create isolated Cargo home")?;
-    std::fs::write(
-        cargo_home.join("config.toml"),
-        cargo_source_config(package_gateway.trim_end_matches('/'))?,
-    )
-    .context("write isolated Cargo source configuration")?;
-    Ok(())
-}
-
-fn cargo_source_config(package_gateway: &str) -> Result<String> {
-    let gateway = url::Url::parse(package_gateway).context("parse package build gateway")?;
-    if !matches!(gateway.scheme(), "http" | "https") {
-        bail!("package build gateway must use HTTP(S)");
-    }
-    let registry = format!(
-        "sparse+{}/cargo/index/",
-        gateway.as_str().trim_end_matches('/')
-    );
-    Ok(format!(
-        "[source.crates-io]\nreplace-with = \"vm\"\n\n[source.vm]\nregistry = \"{registry}\"\n"
-    ))
-}
-
-pub(super) fn native_target() -> Option<&'static str> {
-    match (std::env::consts::OS, std::env::consts::ARCH) {
-        ("linux", "x86_64") => Some("linux-amd64"),
-        ("linux", "aarch64") => Some("linux-arm64"),
-        _ => None,
-    }
-}
-
-async fn upload_archive(
-    gateway: &str,
-    publish_token: &str,
-    archive: &Path,
-    name: &str,
-    request: &PublishToolArtifact,
-) -> Result<()> {
-    let artifact_path = tool_artifact_path(
-        name,
-        &request.version,
-        &request.target,
-        &request.artifact_digest,
-    );
-    let url = format!("{}{}", gateway.trim_end_matches('/'), artifact_path);
-    let file = tokio::fs::File::open(archive)
-        .await
-        .with_context(|| format!("open tool artifact {}", archive.display()))?;
-    let response = reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(5))
-        .timeout(Duration::from_secs(600))
-        .build()?
-        .put(&url)
-        .bearer_auth(publish_token)
-        .header(reqwest::header::CONTENT_LENGTH, request.size_bytes)
-        .body(reqwest::Body::wrap_stream(ReaderStream::new(file)))
-        .send()
-        .await
-        .with_context(|| format!("upload tool artifact to {url}"))?;
-    response
-        .error_for_status_ref()
-        .with_context(|| format!("tool registry rejected PUT {url}"))?;
-    let received = response
-        .headers()
-        .get("x-checksum-sha256")
-        .context("tool registry omitted its checksum")?
-        .to_str()
-        .context("tool registry returned an invalid checksum")?;
-    if received != request.artifact_digest {
-        bail!("tool registry checksum does not match the uploaded artifact");
-    }
-    Ok(())
-}
-
-/// Verify an archive once and derive the exact workflow metadata from its bytes.
-pub fn publication_request(
-    archive: &Path,
-    manifest: ToolReleaseManifest,
-) -> Result<PublishToolArtifact> {
-    validate_tool_name(&manifest.name)?;
-    let metadata = std::fs::metadata(archive)
-        .with_context(|| format!("read tool archive metadata from {}", archive.display()))?;
-    if !metadata.is_file() || metadata.len() == 0 {
-        bail!("tool archive must be a non-empty regular file");
-    }
-    let file = std::fs::File::open(archive)
-        .with_context(|| format!("read tool archive {}", archive.display()))?;
-    let (artifact_digest, size_bytes) = sha256_reader(BufReader::new(file))?;
-    let request = PublishToolArtifact {
-        version: manifest.version,
-        target: manifest.target,
-        artifact_digest,
-        size_bytes,
-        links: manifest.links,
-        source_commit: manifest.source_commit,
-        tag: manifest.tag,
-        actor: manifest.actor,
-        idempotency_key: manifest.idempotency_key,
-    };
-    request.validate()?;
-    Ok(request)
-}
-
-pub fn verify_record(
-    record: &ToolArtifactRecord,
-    manifest: &ToolReleaseManifest,
-    request: &PublishToolArtifact,
-) -> Result<()> {
-    if record.tool != manifest.name
-        || record.version != request.version
-        || record.target != request.target
-        || record.artifact_digest != request.artifact_digest
-        || record.size_bytes != request.size_bytes
-        || record.links != request.links
-        || record.source_commit != request.source_commit
-        || record.tag != request.tag
-    {
-        bail!("existing tool publication does not match this release attempt");
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
+    use super::archive::{build_collection, collection_links, verify_binary_archive};
+    use super::artifact::{
+        binary_identity, build_binary_artifacts, ToolArtifactContext, ToolReleaseManifest,
+    };
+    use super::build::{
+        cargo_source_config, native_target, prepare_isolated_package_configuration,
+    };
+    use super::publication::publication_request;
     use super::*;
+    use crate::runtime::run_command;
     use flate2::{Compression, GzBuilder};
+    use std::collections::BTreeMap;
     use std::fs::File;
     use std::io;
     use std::process::Command;
-    use vm_packages::ToolBuild;
+    use vm_packages::{ToolBuild, ToolSourceManifest};
 
     fn collection_repository() -> tempfile::TempDir {
         let directory = tempfile::tempdir().unwrap();

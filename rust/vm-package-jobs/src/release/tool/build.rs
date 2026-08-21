@@ -9,10 +9,10 @@ use vm_packages::{
 
 use crate::runtime::{download_bundle, operation_key, run_command};
 
-use super::{
-    binary_identity, build_binary_artifacts, prepare_isolated_package_configuration,
-    publication_request, BuiltToolArtifact, ToolArtifactContext,
+use super::artifact::{
+    binary_identity, build_binary_artifacts, BuiltToolArtifact, ToolArtifactContext,
 };
+use super::publication::publication_request;
 use crate::release::{git_text, source::clone_at};
 
 /// Build an approved binary tool in the credential-separated builder and
@@ -254,4 +254,113 @@ fn prepare_unprivileged_build(root: &Path, source: &Path) -> Result<()> {
         "prepare unprivileged binary build workspace",
     )?;
     Ok(())
+}
+
+pub(super) fn run_isolated(
+    arguments: &[String],
+    directory: &Path,
+    release_root: &Path,
+    operation: &str,
+) -> Result<()> {
+    let (program, arguments) = arguments
+        .split_first()
+        .context("isolated command cannot be empty")?;
+    let mut command = Command::new("timeout");
+    let sandbox_home = release_root.join("untrusted");
+    let sandbox_home = if sandbox_home.is_dir() {
+        sandbox_home.as_path()
+    } else {
+        release_root
+    };
+    let package_gateway = std::env::var("PKG_BUILD_PACKAGE_GATEWAY")
+        .unwrap_or_else(|_| "http://build-edge:3080".into());
+    let package_gateway = package_gateway.trim_end_matches('/');
+    let cargo_home = sandbox_home.join("cargo-home");
+    std::fs::create_dir_all(&cargo_home).context("create isolated Cargo home")?;
+    let cargo_config = cargo_home.join("config.toml");
+    if !cargo_config.is_file() {
+        std::fs::write(&cargo_config, cargo_source_config(package_gateway)?)
+            .context("write isolated Cargo source configuration")?;
+    }
+    command
+        .args(["--signal=TERM", "--kill-after=10s", "30m"])
+        .arg(program)
+        .args(arguments)
+        .current_dir(directory)
+        .env_clear()
+        .env("HOME", sandbox_home)
+        .env("TMPDIR", sandbox_home)
+        .env("XDG_CACHE_HOME", sandbox_home.join("xdg-cache"))
+        .env("CARGO_HOME", cargo_home)
+        .env("CARGO_TARGET_DIR", sandbox_home.join("cargo-target"))
+        .env("npm_config_cache", sandbox_home.join("npm-cache"))
+        .env("PIP_CACHE_DIR", sandbox_home.join("pip-cache"))
+        .env("NPM_CONFIG_REGISTRY", format!("{package_gateway}/npm/"))
+        .env("PIP_INDEX_URL", format!("{package_gateway}/pypi/simple/"))
+        .env("UV_INDEX_URL", format!("{package_gateway}/pypi/simple/"))
+        .env(
+            "CARGO_REGISTRIES_VM_INDEX",
+            format!("sparse+{package_gateway}/cargo/index/"),
+        )
+        .env("CARGO_SOURCE_CRATES_IO_REPLACE_WITH", "vm")
+        .env(
+            "CARGO_SOURCE_VM_REGISTRY",
+            format!("sparse+{package_gateway}/cargo/index/"),
+        );
+    for variable in ["PATH", "RUSTUP_HOME"] {
+        if let Some(value) = std::env::var_os(variable) {
+            command.env(variable, value);
+        }
+    }
+    #[cfg(unix)]
+    if let Some(uid) = std::env::var_os("PKG_BUILD_UID") {
+        use std::os::unix::process::CommandExt;
+
+        let uid = uid
+            .to_string_lossy()
+            .parse::<u32>()
+            .context("PKG_BUILD_UID must be a numeric user ID")?;
+        let gid = std::env::var("PKG_BUILD_GID")
+            .context("PKG_BUILD_GID is required")?
+            .parse::<u32>()
+            .context("PKG_BUILD_GID must be a numeric group ID")?;
+        command.uid(uid).gid(gid);
+    }
+    run_command(&mut command, operation)?;
+    Ok(())
+}
+
+pub(super) fn prepare_isolated_package_configuration(release_root: &Path) -> Result<()> {
+    let package_gateway = std::env::var("PKG_BUILD_PACKAGE_GATEWAY")
+        .unwrap_or_else(|_| "http://build-edge:3080".into());
+    let cargo_home = release_root.join("untrusted/cargo-home");
+    std::fs::create_dir_all(&cargo_home).context("create isolated Cargo home")?;
+    std::fs::write(
+        cargo_home.join("config.toml"),
+        cargo_source_config(package_gateway.trim_end_matches('/'))?,
+    )
+    .context("write isolated Cargo source configuration")?;
+    Ok(())
+}
+
+pub(super) fn cargo_source_config(package_gateway: &str) -> Result<String> {
+    let gateway = url::Url::parse(package_gateway).context("parse package build gateway")?;
+    if !matches!(gateway.scheme(), "http" | "https") {
+        bail!("package build gateway must use HTTP(S)");
+    }
+    let registry = format!(
+        "sparse+{}/cargo/index/",
+        gateway.as_str().trim_end_matches('/')
+    );
+    Ok(format!(
+        "[source.crates-io]\nreplace-with = \"vm\"\n\n[source.vm]\nregistry = \"{registry}\"\n"
+    ))
+}
+
+pub(super) fn native_target() -> Option<&'static str> {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("linux", "x86_64") => Some("linux-amd64"),
+        ("linux", "aarch64") => Some("linux-arm64"),
+        _ => None,
+    }
 }
