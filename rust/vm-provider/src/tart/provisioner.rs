@@ -12,7 +12,8 @@ use vm_core::error::{Result, VmError};
 mod ai_tools;
 mod home_state;
 mod host;
-mod packages;
+mod package_edge;
+mod project_runtime;
 mod services;
 mod shell_config;
 
@@ -61,7 +62,8 @@ impl TartProvisioner {
 
         // 4. Apply runtime configuration and install software in one SSH batch.
         let mut setup = self.guest_configuration_commands(config)?;
-        setup.extend(self.guest_software_commands(config, project_plan));
+        setup.extend(self.package_infrastructure_commands(config));
+        setup.extend(self.project_runtime_commands(config, project_plan));
         self.ssh_exec_batch(setup)?;
         self.sync_codex_runtime_config(config)?;
         // Mount AI config after CLI installation so installers do not write into
@@ -470,7 +472,8 @@ mod tests {
         let plan = ProjectPlan::detect(project.path(), &config);
 
         let mut commands = provisioner.guest_configuration_commands(&config).unwrap();
-        commands.extend(provisioner.guest_software_commands(&config, &plan));
+        commands.extend(provisioner.package_infrastructure_commands(&config));
+        commands.extend(provisioner.project_runtime_commands(&config, &plan));
         let labels = commands.iter().map(|(label, _)| *label).collect::<Vec<_>>();
 
         assert_eq!(
@@ -495,7 +498,8 @@ mod tests {
 
             config.os = Some("macos".to_string());
             let mut macos_commands = provisioner.guest_configuration_commands(&config).unwrap();
-            macos_commands.extend(provisioner.guest_software_commands(&config, &plan));
+            macos_commands.extend(provisioner.package_infrastructure_commands(&config));
+            macos_commands.extend(provisioner.project_runtime_commands(&config, &plan));
             let macos_batch = TartProvisioner::render_command_batch(&macos_commands).unwrap();
             assert!(Command::new("/bin/bash")
                 .args(["-n", "-c", &macos_batch])

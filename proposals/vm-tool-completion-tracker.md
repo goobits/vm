@@ -207,6 +207,8 @@ current image. No real package release or publication was performed.
 - [x] Keep Compose focused on rendering/writing, with runtime execution,
   package-edge reconciliation, pipx classification, tests, and base-image
   acquisition in their conceptual owners.
+- [x] Separate Tart package-edge infrastructure from project runtime provisioning
+  while reusing the existing provider-neutral project plan and scripts.
 - [x] Keep one package-infrastructure client API while separating its private
   transport and endpoint-domain implementations.
 - [x] Consolidate package and tool release source/workflow ownership, keeping
