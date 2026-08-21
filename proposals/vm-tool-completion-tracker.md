@@ -1,6 +1,6 @@
 ---
-Status: Read-only workspace release implemented; host acceptance blocked
-Date: 2026-08-19
+Status: Docker workspace release accepted; remaining matrix blocked
+Date: 2026-08-20
 Depends: docs/user-guide/package-infrastructure.md, docs/development/architecture.md
 ---
 
@@ -116,6 +116,10 @@ vm packages release
   check infrastructure mounts, and retain container/volume identity checks.
 - [x] Add and verify the CodeAtlas binary manifest and canonical-packager build
   adapter in its separate project repository.
+- [x] Release CodeAtlas 0.10.0 from its existing Docker workspace through the
+  private no-egress builder, then activate and execute that exact version in a
+  second existing Docker environment without replacing either environment or
+  any named volume.
 - [ ] Replace Typemill's pinned Git dependencies with registry-backed immutable
   packages before adding its binary manifest; the no-egress builder must not
   gain general Git or source-repository access.
@@ -128,6 +132,15 @@ preservation. Duplicate detection was invoked but `jscpd` is not installed;
 Docker acceptance and the external project integrations remain assigned to an
 equipped host with those repositories. Tart is outside this Docker-only
 completion gate.
+
+Live Docker acceptance on 2026-08-20 released `codeatlas@0.10.0` from canonical
+commit `f29a86e47ad20602d6d0ef770a450a81fe541294` through the isolated private
+builder and activated it in the existing `vm-dev` consumer. The consumer ran
+`codeatlas 0.10.0`; both project environments and all named volumes remained
+intact. After migrating local appliance images to independent source
+fingerprints, a second unchanged `vm packages up` completed in 2.0 seconds,
+invoked no Docker builds, and retained all 10 package-service container IDs and
+all 18 appliance volume names.
 
 ## Remaining Acceptance
 
@@ -308,6 +321,10 @@ current image. No real package release or publication was performed.
   installs when matching unreleased images are not pullable.
 - [x] Recheck source-built appliance images through Docker's content-addressed
   build cache so service- or job-only edits cannot leave stale local images.
+- [x] Fingerprint server and job inputs independently, skip unchanged local
+  images before invoking Docker, build changed source images with the optimized
+  source-install profile, and isolate the Git askpass helper so workflow-server
+  edits do not rebuild the jobs image.
 - [x] Mark source-built appliance images with stable metadata rather than the
   changing controller binary hash, while recognizing legacy images once.
 - [x] Resolve source-installed CLI symlinks and initialize package-volume roots

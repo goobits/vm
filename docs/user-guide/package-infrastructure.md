@@ -78,12 +78,13 @@ Explicit appliance image overrides are also reused by later runs of the same
 controller version; upgrading the CLI selects that release's matching images.
 When a source-installed CLI cannot pull unreleased matching images, it discovers
 its checkout and builds those infrastructure images with the selected engine.
-Local source images re-enter the engine's content-addressed build cache on each
-appliance start, so service- or job-only edits cannot be hidden behind a stale
-image. They carry a stable source-build marker instead of the changing controller
-binary hash, so an unrelated CLI rebuild does not by itself change the effective
-service image identity or force Compose recreation. Released installs remain
-pull-only and never depend on a source tree.
+Local source images carry separate content fingerprints for server and job
+inputs. `vm packages up` skips an unchanged image entirely, and a workflow-only
+edit does not rebuild the credential-separated job image. Changed local images
+use the optimized source-install Cargo profile and the engine's shared build
+cache. An unrelated CLI rebuild therefore does not change image identity or
+force Compose recreation. Released installs remain pull-only and never depend
+on a source tree.
 Before the non-root registry and workflow services start, a networkless init
 step repairs only their named-volume roots to the package-service UID/GID. This
 keeps both fresh volumes and volumes added during an upgrade writable without

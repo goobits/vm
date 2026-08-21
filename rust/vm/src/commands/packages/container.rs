@@ -14,6 +14,9 @@ use super::appliance::MaintenanceTask;
 use super::{files::ApplianceFiles, process};
 
 const SOURCE_BUILD_LABEL: &str = "org.goobits.vm.source-build";
+const SOURCE_FINGERPRINT_LABEL: &str = "org.goobits.vm.source-fingerprint";
+const SOURCE_FINGERPRINT_REVISION: &str = "1";
+const SOURCE_BUILD_PROFILE: &str = "source-install";
 const LEGACY_SOURCE_FINGERPRINT_LABEL: &str = "org.goobits.vm.controller-binary-sha256";
 
 #[derive(Deserialize)]
@@ -191,14 +194,26 @@ fn ensure_image(
     allow_source_fallback: bool,
     dockerfile: &str,
 ) -> VmResult<()> {
+    let source_fingerprint = source
+        .map(|source| source_fingerprint(source, dockerfile))
+        .transpose()?;
     if let Some(inspect) = image_inspect(engine, image)? {
         let source_built = is_source_built(&inspect);
         if let Some(source) = source.filter(|_| source_built || is_local_source_image(image)) {
+            if source_fingerprint.as_deref() == image_source_fingerprint(&inspect) {
+                return Ok(());
+            }
             vm_progress!(
                 "Refreshing local package image {image} through {}'s build cache...",
                 engine.name()
             );
-            return build_source_image(engine, source, dockerfile, image);
+            return build_source_image(
+                engine,
+                source,
+                dockerfile,
+                image,
+                source_fingerprint.as_deref(),
+            );
         }
         return Ok(());
     }
@@ -216,7 +231,13 @@ fn ensure_image(
                 return Err(pull_error);
             };
             vm_warning!("Release image {image} is unavailable; building it from source");
-            build_source_image(engine, source, dockerfile, image)
+            build_source_image(
+                engine,
+                source,
+                dockerfile,
+                image,
+                source_fingerprint.as_deref(),
+            )
         }
     }
 }
@@ -233,8 +254,9 @@ fn build_source_image(
     source: &Path,
     dockerfile: &str,
     image: &str,
+    source_fingerprint: Option<&str>,
 ) -> VmResult<()> {
-    let mut build = source_build_command(engine, source, dockerfile, image);
+    let mut build = source_build_command(engine, source, dockerfile, image, source_fingerprint);
     process::run(
         &mut build,
         &format!("build package appliance image {image}"),
@@ -272,11 +294,99 @@ fn is_source_built(inspect: &ImageInspect) -> bool {
         })
 }
 
+fn image_source_fingerprint(inspect: &ImageInspect) -> Option<&str> {
+    inspect
+        .config
+        .as_ref()?
+        .labels
+        .as_ref()?
+        .get(SOURCE_FINGERPRINT_LABEL)
+        .map(String::as_str)
+}
+
+fn source_fingerprint(workspace: &Path, dockerfile: &str) -> VmResult<String> {
+    let inputs = if dockerfile == "vm-package-jobs/Dockerfile" {
+        let mut inputs = vec![
+            workspace.join("Cargo.toml"),
+            workspace.join("Cargo.lock"),
+            workspace.join(".cargo"),
+            workspace.join("vm-package-jobs"),
+            workspace.join("vm-package-git-askpass"),
+            workspace.join("vm-packages"),
+        ];
+        if let Some(root) = workspace.parent() {
+            inputs.push(root.join(".dockerignore"));
+        }
+        inputs
+    } else {
+        let mut inputs = vec![workspace.to_path_buf()];
+        if let Some(root) = workspace.parent() {
+            inputs.push(root.join("configs"));
+            inputs.push(root.join(".dockerignore"));
+        }
+        inputs
+    };
+    let base = workspace.parent().unwrap_or(workspace);
+    let mut files = Vec::new();
+    for input in inputs {
+        if !input.exists() {
+            continue;
+        }
+        if input.is_file() {
+            files.push(input);
+            continue;
+        }
+        for entry in walkdir::WalkDir::new(&input)
+            .follow_links(false)
+            .into_iter()
+            .filter_entry(|entry| {
+                entry.depth() == 0 || !matches!(entry.file_name().to_str(), Some("target" | ".git"))
+            })
+        {
+            let entry = entry.map_err(|error| {
+                crate::error::VmError::validation(
+                    format!("Failed to fingerprint {}: {error}", input.display()),
+                    None::<String>,
+                )
+            })?;
+            if entry.file_type().is_file() || entry.file_type().is_symlink() {
+                files.push(entry.into_path());
+            }
+        }
+    }
+    files.sort();
+    files.dedup();
+    let mut material = format!(
+        "revision={SOURCE_FINGERPRINT_REVISION}\0profile={SOURCE_BUILD_PROFILE}\0dockerfile={dockerfile}\0"
+    )
+    .into_bytes();
+    for file in files {
+        let relative = file.strip_prefix(base).unwrap_or(&file).to_string_lossy();
+        let metadata = fs::symlink_metadata(&file)?;
+        let content = if metadata.file_type().is_symlink() {
+            fs::read_link(&file)?
+                .to_string_lossy()
+                .into_owned()
+                .into_bytes()
+        } else {
+            fs::read(&file)?
+        };
+        material.extend_from_slice(relative.as_bytes());
+        material.push(0);
+        material.extend_from_slice(content.len().to_string().as_bytes());
+        material.push(0);
+        material.extend_from_slice(&content);
+        material.push(0xff);
+    }
+    Ok(vm_packages::sha256_hex(material))
+}
+
 fn source_build_command(
     engine: ContainerEngine,
     workspace: &Path,
     dockerfile: &str,
     image: &str,
+    source_fingerprint: Option<&str>,
 ) -> Command {
     let (context, dockerfile) = workspace
         .parent()
@@ -289,6 +399,7 @@ fn source_build_command(
             |root| (root.to_path_buf(), format!("rust/{dockerfile}")),
         );
     let mut command = Command::new(engine.executable());
+    let build_profile = format!("VM_PACKAGE_BUILD_PROFILE={SOURCE_BUILD_PROFILE}");
     command.current_dir(context).arg("build");
     if matches!(engine, ContainerEngine::Docker) {
         command.arg("--provenance=false");
@@ -296,7 +407,13 @@ fn source_build_command(
     command
         .arg("--label")
         .arg(format!("{SOURCE_BUILD_LABEL}=true"))
-        .args(["--tag", image, "--file", dockerfile.as_str(), "."]);
+        .args(["--build-arg", build_profile.as_str()]);
+    if let Some(fingerprint) = source_fingerprint {
+        command
+            .arg("--label")
+            .arg(format!("{SOURCE_FINGERPRINT_LABEL}={fingerprint}"));
+    }
+    command.args(["--tag", image, "--file", dockerfile.as_str(), "."]);
     command
 }
 
@@ -340,9 +457,10 @@ fn source_workspace_at(path: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_local_source_image, is_source_built, source_build_command,
-        source_workspace_for_executable, source_workspace_from, up_command, ImageConfig,
-        ImageInspect, LEGACY_SOURCE_FINGERPRINT_LABEL, SOURCE_BUILD_LABEL,
+        image_source_fingerprint, is_local_source_image, is_source_built, source_build_command,
+        source_fingerprint, source_workspace_for_executable, source_workspace_from, up_command,
+        ImageConfig, ImageInspect, LEGACY_SOURCE_FINGERPRINT_LABEL, SOURCE_BUILD_LABEL,
+        SOURCE_FINGERPRINT_LABEL,
     };
     use crate::commands::packages::files::ApplianceFiles;
     use std::collections::BTreeMap;
@@ -452,6 +570,7 @@ mod tests {
             workspace,
             "vm-package-jobs/Dockerfile",
             "registry.example/jobs:1",
+            Some("abc123"),
         );
         let arguments = command
             .get_args()
@@ -466,6 +585,10 @@ mod tests {
                 "--provenance=false",
                 "--label",
                 "org.goobits.vm.source-build=true",
+                "--build-arg",
+                "VM_PACKAGE_BUILD_PROFILE=source-install",
+                "--label",
+                "org.goobits.vm.source-fingerprint=abc123",
                 "--tag",
                 "registry.example/jobs:1",
                 "--file",
@@ -489,6 +612,7 @@ mod tests {
             &workspace,
             "vm-package-server/docker/server/Dockerfile",
             "registry.example/server:1",
+            None,
         );
         let arguments = command
             .get_args()
@@ -499,6 +623,51 @@ mod tests {
         assert!(arguments.windows(2).any(|arguments| {
             arguments == ["--file", "rust/vm-package-server/docker/server/Dockerfile"]
         }));
+        assert!(arguments.windows(2).any(|arguments| {
+            arguments == ["--build-arg", "VM_PACKAGE_BUILD_PROFILE=source-install"]
+        }));
+    }
+
+    #[test]
+    fn job_fingerprint_ignores_unrelated_workflow_server_changes() {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace = directory.path().join("rust");
+        for path in [
+            "vm-package-jobs/src",
+            "vm-package-git-askpass/src",
+            "vm-packages/src",
+            "vm-package-work/src",
+        ] {
+            fs::create_dir_all(workspace.join(path)).unwrap();
+        }
+        for path in [
+            "Cargo.toml",
+            "Cargo.lock",
+            "vm-package-jobs/Dockerfile",
+            "vm-package-jobs/src/lib.rs",
+            "vm-package-git-askpass/Cargo.toml",
+            "vm-package-git-askpass/src/main.rs",
+            "vm-packages/Cargo.toml",
+            "vm-packages/src/lib.rs",
+            "vm-package-work/src/submission.rs",
+        ] {
+            fs::write(workspace.join(path), path).unwrap();
+        }
+
+        let before = source_fingerprint(&workspace, "vm-package-jobs/Dockerfile").unwrap();
+        fs::write(
+            workspace.join("vm-package-work/src/submission.rs"),
+            "workflow-only change",
+        )
+        .unwrap();
+        let after = source_fingerprint(&workspace, "vm-package-jobs/Dockerfile").unwrap();
+        assert_eq!(before, after);
+
+        fs::write(workspace.join("vm-package-jobs/src/lib.rs"), "job change").unwrap();
+        assert_ne!(
+            after,
+            source_fingerprint(&workspace, "vm-package-jobs/Dockerfile").unwrap()
+        );
     }
 
     #[test]
@@ -514,6 +683,11 @@ mod tests {
             SOURCE_BUILD_LABEL.into(),
             "true".into(),
         )]))));
+        let fingerprint = inspect(BTreeMap::from([
+            (SOURCE_BUILD_LABEL.into(), "true".into()),
+            (SOURCE_FINGERPRINT_LABEL.into(), "abc123".into()),
+        ]));
+        assert_eq!(image_source_fingerprint(&fingerprint), Some("abc123"));
         assert!(is_source_built(&inspect(BTreeMap::from([(
             LEGACY_SOURCE_FINGERPRINT_LABEL.into(),
             "abc123".into(),

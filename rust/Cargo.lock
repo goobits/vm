@@ -3750,6 +3750,10 @@ name = "vm-messages"
 version = "5.0.1"
 
 [[package]]
+name = "vm-package-git-askpass"
+version = "5.0.1"
+
+[[package]]
 name = "vm-package-jobs"
 version = "5.0.1"
 dependencies = [

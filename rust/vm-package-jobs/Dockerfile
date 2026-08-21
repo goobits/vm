@@ -3,19 +3,21 @@
 # docker build -f rust/vm-package-jobs/Dockerfile .
 FROM rust:1.97-bookworm AS builder
 
+ARG VM_PACKAGE_BUILD_PROFILE=release
 WORKDIR /source
 ENV CARGO_TARGET_DIR=/tmp/vm-rust-target
 COPY rust/ .
 RUN --mount=type=cache,id=vm-packages-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=vm-packages-cargo-git,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,id=vm-packages-rust-target,target=/tmp/vm-rust-target,sharing=locked \
-    cargo build --locked --release --package vm-package-jobs --bins \
-      --package vm-package-work --bin pkg-git-askpass && \
-    install -m 0755 "$CARGO_TARGET_DIR/release/pkg-review" /usr/local/bin/pkg-review && \
-    install -m 0755 "$CARGO_TARGET_DIR/release/pkg-build" /usr/local/bin/pkg-build && \
-    install -m 0755 "$CARGO_TARGET_DIR/release/pkg-release" /usr/local/bin/pkg-release && \
-    install -m 0755 "$CARGO_TARGET_DIR/release/pkg-rollout" /usr/local/bin/pkg-rollout && \
-    install -m 0755 "$CARGO_TARGET_DIR/release/pkg-git-askpass" /usr/local/bin/pkg-git-askpass
+    cargo build --locked --profile "$VM_PACKAGE_BUILD_PROFILE" \
+      --package vm-package-jobs --bins \
+      --package vm-package-git-askpass --bin pkg-git-askpass && \
+    install -m 0755 "$CARGO_TARGET_DIR/$VM_PACKAGE_BUILD_PROFILE/pkg-review" /usr/local/bin/pkg-review && \
+    install -m 0755 "$CARGO_TARGET_DIR/$VM_PACKAGE_BUILD_PROFILE/pkg-build" /usr/local/bin/pkg-build && \
+    install -m 0755 "$CARGO_TARGET_DIR/$VM_PACKAGE_BUILD_PROFILE/pkg-release" /usr/local/bin/pkg-release && \
+    install -m 0755 "$CARGO_TARGET_DIR/$VM_PACKAGE_BUILD_PROFILE/pkg-rollout" /usr/local/bin/pkg-rollout && \
+    install -m 0755 "$CARGO_TARGET_DIR/$VM_PACKAGE_BUILD_PROFILE/pkg-git-askpass" /usr/local/bin/pkg-git-askpass
 
 FROM node:22-bookworm
 

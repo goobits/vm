@@ -13,10 +13,6 @@ path = "src/lib.rs"
 name = "pkg-work"
 path = "src/main.rs"
 
-[[bin]]
-name = "pkg-git-askpass"
-path = "src/git_askpass.rs"
-
 [dependencies]
 axum = { workspace = true }
 chrono = { workspace = true }

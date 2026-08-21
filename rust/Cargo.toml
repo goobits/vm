@@ -25,6 +25,7 @@ members = [
     # Service Layer
     "vm-package-server",
     "vm-package-work",
+    "vm-package-git-askpass",
     "vm-package-jobs",
     "vm-auth-proxy",
 
