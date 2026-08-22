@@ -6,7 +6,9 @@ root="${XDG_DATA_HOME:-$HOME/.local/share}/vm-tools"
 releases="$root/releases"
 states="$root/state"
 temporary="$root/tmp"
-mkdir -p "$releases" "$states" "$temporary"
+migrations="$root/migrations"
+backups="$root/backups"
+mkdir -p "$releases" "$states" "$temporary" "$migrations" "$backups"
 mode=${1:-}
 case "$mode" in
   background-if-idle|background|wait) shift ;;
@@ -107,6 +109,18 @@ verify_digest() {
   elif command -v shasum >/dev/null 2>&1; then
     actual=$(shasum -a 256 "$archive" | awk '{print $1}')
     test "$actual" = "$expected"
+  else
+    echo "No SHA-256 verifier is installed" >&2
+    return 1
+  fi
+}
+
+sha256_text() {
+  value=$1
+  if command -v sha256sum >/dev/null 2>&1; then
+    printf '%s' "$value" | sha256sum | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    printf '%s' "$value" | shasum -a 256 | awk '{print $1}'
   else
     echo "No SHA-256 verifier is installed" >&2
     return 1
@@ -249,22 +263,137 @@ install_tool() (
   : > "$new_links"
   sequence=0
 
+  write_migration_receipt() {
+    receipt=$1
+    receipt_state=$2
+    receipt_mode=$3
+    receipt_destination=$4
+    receipt_backup=$5
+    receipt_source=$6
+    receipt_temp="$receipt.$$.tmp"
+    printf '%s\t%s\t%s\t%s\t%s\n' \
+      "$receipt_state" "$receipt_mode" "$receipt_destination" \
+      "$receipt_backup" "$receipt_source" > "$receipt_temp"
+    mv -f "$receipt_temp" "$receipt"
+  }
+
+  prepare_adoption() {
+    link_source=$1
+    link_destination=$2
+    destination_id=$(sha256_text "$link_destination")
+    receipt="$migrations/$name-$destination_id-$digest.receipt"
+    receipt_mode=
+    backup=-
+
+    if test -f "$receipt"; then
+      IFS="$tab" read -r receipt_state receipt_mode receipt_destination backup receipt_source < "$receipt"
+      test "$receipt_destination" = "$link_destination" \
+        && test "$receipt_source" = "$link_source" || {
+          echo "Tool migration receipt does not match its destination: $receipt" >&2
+          exit 1
+        }
+      if test "$receipt_state" = complete && managed_link "$releases/$name" "$link_destination"; then
+        printf '%s\n' "$receipt"
+        return 0
+      fi
+      test "$receipt_state" = pending || {
+        echo "Tool migration receipt is incomplete or stale: $receipt" >&2
+        exit 1
+      }
+    else
+      test -f "$link_destination" && test -x "$link_destination" || {
+        echo "Refusing to replace unmanaged non-executable path: $link_destination" >&2
+        exit 1
+      }
+      if cmp -s "$link_destination" "$link_source"; then
+        receipt_mode=matched
+      else
+        receipt_mode=backed_up
+        backup_dir="$backups/$name/$destination_id-$(date +%s)-$$"
+        backup="$backup_dir/$(basename "$link_destination")"
+      fi
+      write_migration_receipt \
+        "$receipt" pending "$receipt_mode" "$link_destination" "$backup" "$link_source"
+    fi
+
+    if managed_link "$releases/$name" "$link_destination"; then
+      printf '%s\n' "$receipt"
+      return 0
+    fi
+    case "$receipt_mode" in
+      matched)
+        if test -e "$link_destination" || test -L "$link_destination"; then
+          cmp -s "$link_destination" "$link_source" || {
+            echo "Unmanaged executable changed during matching adoption: $link_destination" >&2
+            exit 1
+          }
+        fi
+        ;;
+      backed_up)
+        if test -e "$link_destination" || test -L "$link_destination"; then
+          test ! -e "$backup" && test ! -L "$backup" || {
+            echo "Tool migration backup already exists: $backup" >&2
+            exit 1
+          }
+          mkdir -p "$(dirname "$backup")"
+          mv "$link_destination" "$backup"
+        elif test ! -e "$backup" && test ! -L "$backup"; then
+          echo "Interrupted tool migration lost both source and backup: $link_destination" >&2
+          exit 1
+        fi
+        ;;
+      *)
+        echo "Tool migration receipt has an invalid mode: $receipt" >&2
+        exit 1
+        ;;
+    esac
+    printf '%s\n' "$receipt"
+  }
+
+  complete_adoption() {
+    receipt=$1
+    IFS="$tab" read -r _state receipt_mode receipt_destination backup receipt_source < "$receipt"
+    write_migration_receipt \
+      "$receipt" complete "$receipt_mode" "$receipt_destination" "$backup" "$receipt_source"
+  }
+
   prepare_link() {
     link_source=$1
     link_destination=$2
+    receipt=
+    destination_exists=no
     if test -e "$link_destination" || test -L "$link_destination"; then
-      if ! managed_link "$releases/$name" "$link_destination"; then
-        echo "Refusing to replace unmanaged path: $link_destination" >&2
-        exit 1
-      fi
+      destination_exists=yes
     fi
+    case "$kind:$link_destination" in
+      binary:"$HOME"/.local/bin/*)
+        destination_id=$(sha256_text "$link_destination")
+        existing_receipt="$migrations/$name-$destination_id-$digest.receipt"
+        if test -f "$existing_receipt" \
+          || { test "$destination_exists" = yes \
+            && ! managed_link "$releases/$name" "$link_destination"; }; then
+          test -f "$link_source" && test -x "$link_source" || {
+            echo "$name activation source is not executable: $link_source" >&2
+            exit 1
+          }
+          receipt=$(prepare_adoption "$link_source" "$link_destination")
+        fi
+        ;;
+      *)
+        if test "$destination_exists" = yes \
+          && ! managed_link "$releases/$name" "$link_destination"; then
+          echo "Refusing to replace unmanaged path: $link_destination" >&2
+          exit 1
+        fi
+        ;;
+    esac
     link_parent=$(dirname "$link_destination")
     mkdir -p "$link_parent"
     sequence=$((sequence + 1))
     pending="$link_parent/.vm-tool-$name-$$-$sequence"
     rm -f "$pending"
     ln -s "$link_source" "$pending"
-    printf '%s\t%s\n' "$pending" "$link_destination" >> "$prepared"
+    printf '%s\t%s\t%s\n' "$pending" "$link_destination" "$receipt" >> "$prepared"
     printf '%s\n' "$link_destination" >> "$new_links"
   }
 
@@ -303,8 +432,9 @@ install_tool() (
     prepare_link "$release/$source" "$destination_path"
   done < "$links"
 
-  while IFS="$tab" read -r pending destination_path; do
+  while IFS="$tab" read -r pending destination_path receipt; do
     replace_link "$pending" "$destination_path"
+    test -z "$receipt" || complete_adoption "$receipt"
   done < "$prepared"
   : > "$prepared"
 

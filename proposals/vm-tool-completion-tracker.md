@@ -179,7 +179,7 @@ language-package consumer rollout.
 
 - [x] Let an enrolled canonical tool workspace register only the exact source
   embedded in its controller-signed guest capability.
-- [ ] Adopt unmanaged executable paths with durable receipts and recoverable
+- [x] Adopt unmanaged executable paths with durable receipts and recoverable
   guest-local backups.
 - [ ] Persist one resumable tool-activation plan per immutable release.
 - [ ] Activate running environments in place, defer stopped environments, and

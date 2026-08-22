@@ -959,11 +959,25 @@ mod tests {
         let data = directory.path().join("data");
         let binary = directory.path().join("contents/bin/release-tool");
         fs::create_dir_all(binary.parent().unwrap()).unwrap();
-        fs::create_dir_all(&home).unwrap();
+        fs::create_dir_all(home.join(".local/bin")).unwrap();
         fs::write(&binary, "#!/bin/sh\nprintf '%s\\n' '1.2.3'\n").unwrap();
         let mut permissions = fs::metadata(&binary).unwrap().permissions();
         permissions.set_mode(0o755);
         fs::set_permissions(&binary, permissions).unwrap();
+        fs::copy(&binary, home.join(".local/bin/release-tool")).unwrap();
+        fs::write(
+            home.join(".local/bin/release-helper"),
+            "#!/bin/sh\nprintf '%s\\n' 'legacy'\n",
+        )
+        .unwrap();
+        for path in [
+            home.join(".local/bin/release-tool"),
+            home.join(".local/bin/release-helper"),
+        ] {
+            let mut permissions = fs::metadata(&path).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(path, permissions).unwrap();
+        }
 
         let archive = directory.path().join("release-tool.tar.gz");
         assert!(Command::new("tar")
@@ -977,7 +991,7 @@ mod tests {
             .success());
         let digest = vm_packages::sha256_hex(fs::read(&archive).unwrap());
         let manifest = format!(
-            "release-tool\t1.2.3\tlinux-amd64\tbinary\t{digest}\tfile://{}\n.local/bin/release-tool\tbin/release-tool",
+            "release-tool\t1.2.3\tlinux-amd64\tbinary\t{digest}\tfile://{}\n.local/bin/release-helper\tbin/release-tool\n.local/bin/release-tool\tbin/release-tool",
             archive.display()
         );
         let run = || {
@@ -991,15 +1005,16 @@ mod tests {
                 .unwrap()
         };
 
-        for output in [run(), run()] {
-            assert!(
-                output.status.success(),
-                "{}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-        }
+        let first = run();
+        assert!(
+            first.status.success(),
+            "{}",
+            String::from_utf8_lossy(&first.stderr)
+        );
         let installed = home.join(".local/bin/release-tool");
+        let helper = home.join(".local/bin/release-helper");
         assert!(installed.is_symlink());
+        assert!(helper.is_symlink());
         let output = Command::new(&installed).output().unwrap();
         assert!(output.status.success());
         assert_eq!(String::from_utf8(output.stdout).unwrap(), "1.2.3\n");
@@ -1020,5 +1035,50 @@ mod tests {
             fs::metadata(&release).unwrap().permissions().mode() & 0o222,
             0
         );
+
+        let migrations = data.join("vm-tools/migrations");
+        let receipts = fs::read_dir(&migrations)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect::<Vec<_>>();
+        assert_eq!(receipts.len(), 2);
+        let receipt_contents = receipts
+            .iter()
+            .map(|receipt| fs::read_to_string(receipt).unwrap())
+            .collect::<Vec<_>>();
+        assert!(receipt_contents
+            .iter()
+            .any(|receipt| receipt.starts_with("complete\tmatched\t")));
+        assert!(receipt_contents
+            .iter()
+            .any(|receipt| receipt.starts_with("complete\tbacked_up\t")));
+
+        let backup_root = data.join("vm-tools/backups/release-tool");
+        let backup_dirs = fs::read_dir(&backup_root)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect::<Vec<_>>();
+        assert_eq!(backup_dirs.len(), 1);
+        assert!(fs::read_to_string(backup_dirs[0].join("release-helper"))
+            .unwrap()
+            .contains("legacy"));
+
+        fs::remove_file(&installed).unwrap();
+        fs::remove_file(&helper).unwrap();
+        for (path, content) in receipts.iter().zip(receipt_contents) {
+            fs::write(path, content.replacen("complete\t", "pending\t", 1)).unwrap();
+        }
+        let resumed = run();
+        assert!(
+            resumed.status.success(),
+            "{}",
+            String::from_utf8_lossy(&resumed.stderr)
+        );
+        assert!(installed.is_symlink());
+        assert!(helper.is_symlink());
+        assert_eq!(fs::read_dir(&backup_root).unwrap().count(), 1);
+        assert!(receipts.iter().all(|receipt| fs::read_to_string(receipt)
+            .unwrap()
+            .starts_with("complete\t")));
     }
 }
