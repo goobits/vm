@@ -22,17 +22,23 @@ edge_name=$project_name-package-edge
 consumer_name=package-consumer-acceptance-$run_id
 consumer_environment=$consumer_name-dev
 consumer_edge=$consumer_name-package-edge
+stopped_name=package-stopped-acceptance-$run_id
+stopped_environment=$stopped_name-dev
+stopped_edge=$stopped_name-package-edge
 acceptance_root=$(mktemp -d "${TMPDIR:-/tmp}/vm-package-acceptance.XXXXXX")
 acceptance_home=$acceptance_root/home
 source_shelf=$acceptance_root/sources
 project_root=$acceptance_root/projects/release-tool
 consumer_root=$acceptance_root/consumer
+stopped_root=$acceptance_root/stopped
 fixture_root=$acceptance_root/agent-skills
 language_root=$acceptance_root/language-package
 fake_bin=$acceptance_root/bin
 checkout_log=$acceptance_root/checkout.log
 language_log=$acceptance_root/language.log
 workspace_log=$acceptance_root/workspace.log
+activation_log=$acceptance_root/activation.log
+docker_restart_command=${VM_ACCEPTANCE_DOCKER_RESTART_COMMAND:-}
 before_ids=$acceptance_root/before.ids
 after_ids=$acceptance_root/after.ids
 before_volumes=$acceptance_root/before.volumes
@@ -51,8 +57,10 @@ cleanup() {
   set +e
   run_vm --config "$project_root/vm.yaml" remove "$environment_name" --force >/dev/null 2>&1
   run_vm --config "$consumer_root/vm.yaml" remove "$consumer_environment" --force >/dev/null 2>&1
+  run_vm --config "$stopped_root/vm.yaml" remove "$stopped_environment" --force >/dev/null 2>&1
   docker rm --force "$environment_name" "$edge_name" \
-    "$consumer_environment" "$consumer_edge" >/dev/null 2>&1
+    "$consumer_environment" "$consumer_edge" \
+    "$stopped_environment" "$stopped_edge" >/dev/null 2>&1
   package_compose=$acceptance_home/.vm/infrastructure/packages/compose.yaml
   package_environment=$acceptance_home/.vm/infrastructure/packages/environment.env
   if test -f "$package_compose" && test -f "$package_environment"; then
@@ -106,6 +114,104 @@ checkout_source_from_log() {
       ;;
   esac
   printf '%s\n' "$source"
+}
+
+workflow_state() {
+  docker exec "$compose_project-work-1" cat /data/state/workflows.json
+}
+
+assert_release_published_once() {
+  local release_version=$1
+  workflow_state | python3 -c '
+import json, sys
+
+version = sys.argv[1]
+state = json.load(sys.stdin)
+releases = [item for item in state["releases"].values()
+            if item["package"] == "release-tool" and item["version"] == version]
+artifacts = [item for item in state["tool_artifacts"].values()
+             if item["tool"] == "release-tool" and item["version"] == version]
+activations = [item for item in state["tool_activations"].values()
+               if item["tool"] == "release-tool" and item["version"] == version]
+if (len(releases), len(artifacts), len(activations)) != (1, 2, 1):
+    raise SystemExit(
+        f"expected one release, two artifacts, and one activation for {version}; "
+        f"found {len(releases)}, {len(artifacts)}, {len(activations)}"
+    )
+' "$release_version"
+}
+
+activation_worker_pid() {
+  local pid_file=$acceptance_home/.vm/infrastructure/packages/activation-worker.pid
+  local attempt pid
+  for attempt in $(seq 1 100); do
+    if test -s "$pid_file"; then
+      pid=$(tr -d '[:space:]' < "$pid_file")
+      if test -n "$pid" && kill -0 "$pid" 2>/dev/null; then
+        printf '%s\n' "$pid"
+        return 0
+      fi
+    fi
+    sleep 0.1
+  done
+  echo 'Tool activation worker did not start' >&2
+  return 1
+}
+
+wait_for_queued_activation() {
+  local attempt
+  for attempt in $(seq 1 400); do
+    if workflow_state 2>/dev/null | python3 -c '
+import json, sys
+
+state = json.load(sys.stdin)
+queued = [item for item in state["tool_activations"].values()
+          if item["tool"] == "release-tool"
+          and item["version"] == "1.0.1"
+          and not item["targets"]]
+raise SystemExit(0 if queued else 1)
+'; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo 'Tool activation was not persisted before rollout' >&2
+  return 1
+}
+
+wait_for_pending_activation_plan() {
+  local attempt
+  for attempt in $(seq 1 200); do
+    if workflow_state 2>/dev/null | python3 -c '
+import json, sys
+
+state = json.load(sys.stdin)
+planned = [item for item in state["tool_activations"].values()
+           if item["tool"] == "release-tool"
+           and item["version"] == "1.0.1"
+           and any(target["state"] == "pending" for target in item["targets"])]
+raise SystemExit(0 if planned else 1)
+'; then
+      return 0
+    fi
+    sleep 0.05
+  done
+  echo 'Tool activation plan was not persisted before execution' >&2
+  return 1
+}
+
+wait_for_package_controller() {
+  local attempt
+  for attempt in $(seq 1 120); do
+    if docker info >/dev/null 2>&1 \
+      && test "$(docker container inspect --format '{{.State.Status}}' \
+        "$compose_project-work-1" 2>/dev/null)" = running; then
+      return 0
+    fi
+    sleep 0.5
+  done
+  echo 'Docker package controller did not recover after restart' >&2
+  return 1
 }
 
 release_source_only_language_package() {
@@ -210,7 +316,7 @@ command -v docker >/dev/null 2>&1 || {
 }
 
 mkdir -p "$acceptance_home" "$project_root" "$consumer_root" \
-  "$fixture_root/skills/initial" "$language_root" "$fake_bin"
+  "$stopped_root" "$fixture_root/skills/initial" "$language_root" "$fake_bin"
 
 version=$("$vm_binary" --version | awk '{print $2}')
 server_image=vm-package-server-acceptance:$version-$run_id
@@ -270,7 +376,6 @@ bootstrap:
   dependencies: false
 tools:
   updates: auto
-  release-tool: {}
 YAML
 
 cp "$project_root/Dockerfile.acceptance" "$consumer_root/Dockerfile.acceptance"
@@ -297,7 +402,31 @@ bootstrap:
 tools:
   updates: auto
   agent-skills: {}
-  release-tool: {}
+YAML
+
+cp "$project_root/Dockerfile.acceptance" "$stopped_root/Dockerfile.acceptance"
+cat > "$stopped_root/vm.yaml" <<YAML
+version: '2.0'
+provider: docker
+project:
+  name: $stopped_name
+  workspace_path: /workspace
+vm:
+  user: acceptance
+  uid: 11000
+  gid: 11000
+  box:
+    dockerfile: Dockerfile.acceptance
+    context: .
+terminal:
+  shell: bash
+host_sync:
+  git_config: false
+  ai_tools: false
+bootstrap:
+  dependencies: false
+tools:
+  updates: auto
 YAML
 
 cat > "$project_root/vm-tool.yaml" <<'YAML'
@@ -417,11 +546,20 @@ git -C "$language_root" commit -m 'feat: initial language package'
     --registry-image "$server_image" \
     --job-image "$jobs_image"
 )
-run_vm packages register "$project_root"
+cat > "$acceptance_home/.vm/config.yaml" <<YAML
+packages:
+  source_roots:
+    - $source_shelf
+  canonical_sources:
+    - $project_root
+YAML
 test "$(run_vm packages status)" = 'Package infrastructure: healthy'
 
 run_vm --config "$project_root/vm.yaml" create
 run_vm --config "$consumer_root/vm.yaml" create
+run_vm --config "$stopped_root/vm.yaml" create
+run_vm --config "$stopped_root/vm.yaml" stop
+run_vm tools enable release-tool
 
 docker run --rm --user 0:0 \
   --volume "${compose_project}_source-mirrors:/data/sources" \
@@ -450,6 +588,8 @@ stable_containers=(
   "$edge_name"
   "$consumer_environment"
   "$consumer_edge"
+  "$stopped_environment"
+  "$stopped_edge"
 )
 capture_runtime_state "$before_ids" "$before_volumes"
 project_manifest_digest=$(git -C "$project_root" hash-object package.json)
@@ -598,6 +738,25 @@ if ! docker exec --user acceptance "$environment_name" sh -ec '
   test "$(git rev-parse HEAD)" = "$initial"
   test -z "$(git status --porcelain --untracked-files=all)"
   test -z "$(git tag --list)"
+' >"$workspace_log" 2>&1; then
+  cat "$workspace_log" >&2
+  echo "Automatic canonical workspace release failed" >&2
+  echo "Repair: rerun this acceptance script and inspect the package releaser logs" >&2
+  exit 4
+fi
+grep -F 'Released release-tool@1.0.0' "$workspace_log" >/dev/null
+grep -F 'Activated in 2 of 2 running environments' "$workspace_log" >/dev/null
+grep -F '1 stopped environment will update when started' "$workspace_log" >/dev/null
+grep -F 'No environments or volumes recreated' "$workspace_log" >/dev/null
+assert_release_published_once 1.0.0
+test "$(docker exec --user acceptance "$environment_name" \
+  /home/acceptance/.local/bin/release-tool --version)" = 1.0.0
+test "$(docker exec --user acceptance "$consumer_environment" \
+  /home/acceptance/.local/bin/release-tool --version)" = 1.0.0
+test "$(docker container inspect --format '{{.State.Status}}' "$stopped_environment")" = exited
+
+if ! docker exec --user acceptance "$environment_name" sh -ec '
+  cd /workspace
   printf "%s\n" "workspace release change" >> README.md
   git add README.md
   git commit -m "feat: update binary behavior"
@@ -612,16 +771,12 @@ if ! docker exec --user acceptance "$environment_name" sh -ec '
   sed -i "s/version: 1.0.0/version: 1.0.1/" vm-tool.yaml
   git add vm-tool.yaml
   git commit -m "fix: apply requested binary version bump"
-  released=$(git rev-parse HEAD)
-  vm packages release
-  test "$(git rev-parse HEAD)" = "$released"
   test -z "$(git status --porcelain --untracked-files=all)"
   test -z "$(git tag --list)"
   test "$(git remote get-url origin)" = "https://127.0.0.1:1/release-tool.git"
-' >"$workspace_log" 2>&1; then
+' >>"$workspace_log" 2>&1; then
   cat "$workspace_log" >&2
-  echo "Canonical workspace release failed" >&2
-  echo "Repair: rerun this acceptance script and inspect the package releaser logs" >&2
+  echo "Canonical workspace version rework failed" >&2
   exit 4
 fi
 grep -Eq 'Package (review|release) requested changes' "$workspace_log"
@@ -633,11 +788,81 @@ if GIT_TERMINAL_PROMPT=0 git -C "$project_root" ls-remote origin >/dev/null 2>&1
   exit 5
 fi
 
+docker exec --user acceptance "$environment_name" sh -ec '
+  destination=/home/acceptance/.local/bin/release-tool
+  rm -f "$destination"
+  printf "%s\n" "#!/bin/sh" "printf '\''%s\\n'\'' '\''1.0.1'\''" > "$destination"
+  chmod 0755 "$destination"
+'
+docker exec --user acceptance "$consumer_environment" sh -ec '
+  destination=/home/acceptance/.local/bin/release-tool
+  rm -f "$destination"
+  printf "%s\n" "#!/bin/sh" "printf '\''%s\\n'\'' '\''unmanaged'\''" > "$destination"
+  chmod 0755 "$destination"
+'
+
+worker_pid=$(activation_worker_pid)
+kill -STOP "$worker_pid"
+docker exec --user acceptance "$environment_name" sh -ec \
+  'cd /workspace && vm packages release' >"$activation_log" 2>&1 &
+release_process=$!
+if ! wait_for_queued_activation; then
+  kill -CONT "$worker_pid" 2>/dev/null || true
+  wait "$release_process" || true
+  cat "$activation_log" >&2
+  exit 4
+fi
+kill -CONT "$worker_pid"
+if ! wait_for_pending_activation_plan; then
+  wait "$release_process" || true
+  cat "$activation_log" >&2
+  exit 4
+fi
+kill -STOP "$worker_pid"
+
+if test -n "$docker_restart_command"; then
+  bash -lc "$docker_restart_command"
+  restart_scope='Docker daemon'
+else
+  docker restart "$compose_project-work-1" >/dev/null
+  restart_scope='package controller (set VM_ACCEPTANCE_DOCKER_RESTART_COMMAND for a daemon restart)'
+fi
+kill -KILL "$worker_pid" 2>/dev/null || true
+wait_for_package_controller
+run_vm packages doctor --fix >>"$activation_log" 2>&1
+set +e
+wait "$release_process"
+interrupted_release_status=$?
+set -e
+docker exec --user acceptance "$environment_name" sh -ec \
+  'cd /workspace && vm packages release' >>"$activation_log" 2>&1
+printf 'Resumable activation restart scope: %s; interrupted release status: %s\n' \
+  "$restart_scope" "$interrupted_release_status"
+
 tool_inventory=$(run_vm tools show release-tool)
 grep -F '1.0.1 linux-arm64' <<< "$tool_inventory" >/dev/null
 test "$(grep -c '  1.0.1 linux-' <<< "$tool_inventory")" = 2
-run_vm --config "$consumer_root/vm.yaml" tools update --to "$consumer_environment"
+assert_release_published_once 1.0.1
+test "$(docker exec --user acceptance "$environment_name" \
+  /home/acceptance/.local/bin/release-tool --version)" = '1.0.1'
 test "$(docker exec --user acceptance "$consumer_environment" \
+  /home/acceptance/.local/bin/release-tool --version)" = '1.0.1'
+docker exec --user acceptance "$environment_name" sh -ec '
+  receipt=$(grep -l "^complete$(printf "\t")matched$(printf "\t")" \
+    /home/acceptance/.local/share/vm-tools/migrations/release-tool-*.receipt)
+  test -n "$receipt"
+'
+docker exec --user acceptance "$consumer_environment" sh -ec '
+  receipt=$(grep -l "^complete$(printf "\t")backed_up$(printf "\t")" \
+    /home/acceptance/.local/share/vm-tools/migrations/release-tool-*.receipt)
+  backup=$(cut -f4 "$receipt")
+  test -x "$backup"
+  test "$("$backup")" = unmanaged
+'
+
+test "$(docker container inspect --format '{{.State.Status}}' "$stopped_environment")" = exited
+run_vm --config "$stopped_root/vm.yaml" start
+test "$(docker exec --user acceptance "$stopped_environment" \
   /home/acceptance/.local/bin/release-tool --version)" = '1.0.1'
 
 installed_state=$(docker exec --user acceptance "$consumer_environment" \
@@ -654,10 +879,15 @@ catalog_digest=$(python3 -c \
 test "$installed_digest" = "$catalog_digest"
 
 inventory_before=$(run_vm tools show release-tool)
+repeat_started=$(date +%s)
 docker exec --user acceptance "$environment_name" sh -ec \
-  'cd /workspace && vm packages release && vm packages release'
-run_vm --config "$consumer_root/vm.yaml" tools update --to "$consumer_environment"
-run_vm --config "$consumer_root/vm.yaml" tools update --to "$consumer_environment"
+  'cd /workspace && vm packages release'
+repeat_elapsed=$(($(date +%s) - repeat_started))
+test "$repeat_elapsed" -le 10 || {
+  echo "Repeated release was not an immediate no-op (${repeat_elapsed}s)" >&2
+  exit 4
+}
+assert_release_published_once 1.0.1
 test "$(run_vm tools show release-tool)" = "$inventory_before"
 test "$(docker exec --user acceptance "$consumer_environment" \
   cat /home/acceptance/.local/share/vm-tools/state/release-tool.state)" = "$installed_state"

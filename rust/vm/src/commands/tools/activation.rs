@@ -31,7 +31,12 @@ pub(in crate::commands) fn ensure_worker() -> VmResult<()> {
     }
     let paths = WorkerPaths::discover()?;
     let executable = std::env::current_exe().map_err(VmError::from)?;
-    if install_user_service(&executable)? {
+    // A compose-project override identifies an isolated controller. Keep its
+    // worker in the invoking environment instead of leaking that test/dev
+    // override into the user's persistent service manager.
+    if std::env::var_os("VM_PACKAGES_COMPOSE_PROJECT").is_none()
+        && install_user_service(&executable)?
+    {
         return Ok(());
     }
     let lock = paths.open_lock()?;
