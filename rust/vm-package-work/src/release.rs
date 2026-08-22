@@ -456,6 +456,7 @@ impl Store {
             .expect("release remains present");
         release.state = WorkflowState::Published;
         release.updated_at = Utc::now();
+        crate::tool_activation::enqueue(&mut next, release_id)?;
         next.idempotency.insert(
             request.idempotency_key,
             IdempotencyRecord {

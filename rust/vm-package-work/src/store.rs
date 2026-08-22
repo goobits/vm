@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use vm_packages::{
     CheckoutRecord, ConsumerRecord, PackageDefinition, ReleaseRecord, RolloutRecord, SourceKind,
-    SubmissionRecord, ToolArtifactRecord, ToolBuildRecord, ToolDefinition, ToolPublicationReceipt,
-    WorkflowReceipt,
+    SubmissionRecord, ToolActivationRecord, ToolArtifactRecord, ToolBuildRecord, ToolDefinition,
+    ToolPublicationReceipt, WorkflowReceipt,
 };
 
 use crate::{io::atomic_write, WorkResult};
@@ -57,6 +57,8 @@ pub(crate) struct Database {
     pub(crate) tool_receipts: BTreeMap<String, ToolPublicationReceipt>,
     #[serde(default)]
     pub(crate) tool_builds: BTreeMap<String, ToolBuildRecord>,
+    #[serde(default)]
+    pub(crate) tool_activations: BTreeMap<String, ToolActivationRecord>,
 }
 
 pub(crate) struct Store {

@@ -195,7 +195,7 @@ pub(super) fn checkout_is_visible(
     })
 }
 
-pub(super) fn ensure_checkout_is_visible(
+pub(crate) fn ensure_checkout_is_visible(
     access: &AgentAccess,
     checkout: &vm_packages::CheckoutRecord,
 ) -> WorkResult<()> {

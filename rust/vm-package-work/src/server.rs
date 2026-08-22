@@ -10,7 +10,7 @@ use tokio::net::TcpListener;
 use crate::{SourceManager, Store, WorkError, WorkResult};
 
 mod agent;
-mod auth;
+pub(crate) mod auth;
 mod bundles;
 mod controller;
 mod jobs;
@@ -129,12 +129,14 @@ pub(crate) fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router 
             get(read::get_checkout_submission),
         )
         .merge(crate::tools::read_routes())
+        .merge(crate::tool_activation::read_routes())
         .route_layer(middleware::from_fn_with_state(state.clone(), auth::read));
     let writes = Router::new()
         .route("/v1/packages", post(controller::register_package))
         .route("/v1/consumers", post(controller::register_consumer))
         .route("/v1/rollouts", post(controller::create_rollout))
         .merge(crate::tools::controller_routes())
+        .merge(crate::tool_activation::controller_routes())
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth::controller,

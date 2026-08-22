@@ -181,7 +181,7 @@ language-package consumer rollout.
   embedded in its controller-signed guest capability.
 - [x] Adopt unmanaged executable paths with durable receipts and recoverable
   guest-local backups.
-- [ ] Persist one resumable tool-activation plan per immutable release.
+- [x] Persist one resumable tool-activation plan per immutable release.
 - [ ] Activate running environments in place, defer stopped environments, and
   report bounded-wait pending or failed targets honestly.
 - [ ] Repair worker, sidecar, registration, and interrupted-receipt drift.

@@ -3,6 +3,7 @@ mod checkouts;
 mod releases;
 mod rollouts;
 mod submissions;
+mod tool_activations;
 mod tools;
 mod transport;
 

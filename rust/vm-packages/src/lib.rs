@@ -16,6 +16,7 @@ mod environment;
 mod release;
 mod resolver;
 mod submission;
+mod tool_activation;
 mod tools;
 mod validation;
 mod workflow;
@@ -49,6 +50,11 @@ pub use submission::{
     CheckOutcome, IntegrationRecord, IntegrationRequest, IntegrationReview, PublicApiDiff,
     ReviewDecision, ReviewRequest, SubmissionRecord, ValidationRequest, ValidationResult,
     VersionRecommendation,
+};
+pub use tool_activation::{
+    ClaimToolActivationRequest, FinishToolActivationRequest, PlanToolActivationRequest,
+    ToolActivationLease, ToolActivationRecord, ToolActivationState, ToolActivationTarget,
+    ToolActivationTargetPlan, ToolActivationTargetState, UpdateToolActivationTargetRequest,
 };
 pub use tools::{
     artifact_key as tool_artifact_key, tool_artifact_path, validate_sha256, validate_tool_name,

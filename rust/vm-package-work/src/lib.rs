@@ -9,6 +9,7 @@ mod server;
 mod source;
 mod store;
 mod submission;
+mod tool_activation;
 mod tool_build;
 mod tools;
 
