@@ -130,9 +130,9 @@ vm packages release
 - [x] Add persistent global managed-tool enrollment so one `vm tools enable`
   activates CodeAtlas and future binary tools across running Docker environments
   without editing project repositories or adding another rollout engine.
-- [ ] Replace Typemill's pinned Git dependencies with registry-backed immutable
-  packages before adding its binary manifest; the no-egress builder must not
-  gain general Git or source-repository access.
+- [x] Make TypeMill's base pair self-contained, remove every Git-source and
+  `typemill-langs` dependency, and release its two-binary archive through the
+  private no-egress builder without registering an external language package.
 
 Static acceptance on 2026-08-19 passed formatting, the all-target workspace
 check, all workspace library and compiled integration tests, strict workspace
@@ -151,6 +151,15 @@ intact. After migrating local appliance images to independent source
 fingerprints, a second unchanged `vm packages up` completed in 2.0 seconds,
 invoked no Docker builds, and retained all 10 package-service container IDs and
 all 18 appliance volume names.
+
+Live Docker acceptance on 2026-08-21 released `typemill@1.1.0` from canonical
+commit `73ebf32c1168b795f9f5ec13a7de1f8bce2c1e60`. The no-egress build contained
+exactly `mill` and `typemill-mcp`. Global enrollment then activated CodeAtlas
+0.10.0 and TypeMill 1.1.0 in all eight running managed Docker environments.
+Every command resolved through managed release links, and every primary
+container retained its existing ID. Two legacy unmanaged TypeMill installations
+were preserved under their guest-local managed-tool backup directories before
+activation.
 
 ## Remaining Acceptance
 
