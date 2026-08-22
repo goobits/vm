@@ -117,7 +117,7 @@ pub(super) async fn handle(
             updates::run(
                 config_path,
                 profile,
-                tools,
+                Vec::new(),
                 Vec::new(),
                 false,
                 Default::default(),

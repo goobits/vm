@@ -13,9 +13,9 @@ mod source_identity;
 
 #[cfg(test)]
 use source_identity::TOOL_MANIFEST;
-use source_identity::{discover_package, discover_tool, exact_repository, is_tool_repository};
+use source_identity::{discover_package, exact_repository, is_tool_repository};
 pub(super) use source_identity::{
-    normalize_repository_url, package_name, source_identity, tool_manifest,
+    discover_tool, normalize_repository_url, package_name, source_identity, tool_manifest,
 };
 
 #[derive(Default)]

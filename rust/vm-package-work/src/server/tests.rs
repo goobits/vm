@@ -214,6 +214,75 @@ async fn health_is_public_and_workflow_access_is_scoped() {
 }
 
 #[tokio::test]
+async fn guest_can_register_only_its_signed_tool_attestation() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::open(directory.path()).await.unwrap());
+    let server = TestServer::new(router(
+        store.clone(),
+        WorkCredentials::new(
+            "read",
+            "controller",
+            "reviewer",
+            "build",
+            "release",
+            "rollout",
+            "agent-signing-key-012345678901234567890123456789",
+        ),
+    ));
+    let untrusted = vm_packages::issue_agent_capability(
+        "agent-signing-key-012345678901234567890123456789",
+        "project-a",
+    )
+    .unwrap();
+    assert_eq!(
+        server
+            .post("/v1/tools/attested")
+            .add_header(header::AUTHORIZATION, format!("Bearer {untrusted}"))
+            .await
+            .status_code(),
+        StatusCode::UNAUTHORIZED
+    );
+
+    let source = vm_packages::ToolSourceAttestation::new(vm_packages::RegisterTool {
+        name: "typemill".into(),
+        kind: vm_packages::ToolKind::Binary,
+        repository: "https://example.com/tools/typemill.git".into(),
+        default_branch: "main".into(),
+        workspace_release: true,
+    })
+    .unwrap();
+    let claims = vm_packages::AgentCapabilityClaims::new(
+        "project-a",
+        Some("https://example.com/tools/typemill.git".into()),
+    )
+    .unwrap()
+    .with_tool_source(source)
+    .unwrap();
+    let attested = vm_packages::issue_agent_capability_v2(
+        "agent-signing-key-012345678901234567890123456789",
+        &claims,
+    )
+    .unwrap();
+    let response = server
+        .post("/v1/tools/attested")
+        .add_header(header::AUTHORIZATION, format!("Bearer {attested}"))
+        .json(&serde_json::json!({
+            "name": "other",
+            "repository": "https://attacker.example/other.git"
+        }))
+        .await;
+    assert_eq!(response.status_code(), StatusCode::CREATED);
+    let registered: vm_packages::ToolDefinition = response.json();
+    assert_eq!(registered.name, "typemill");
+    assert_eq!(
+        registered.repository,
+        "https://example.com/tools/typemill.git"
+    );
+    assert!(registered.workspace_release);
+    assert_eq!(store.tools().await, vec![registered]);
+}
+
+#[tokio::test]
 async fn guest_checkout_identity_is_derived_from_its_capability() {
     let directory = tempfile::tempdir().unwrap();
     let store = Arc::new(Store::open(directory.path()).await.unwrap());

@@ -13,6 +13,11 @@ impl PackageInfrastructureClient {
         self.post_work("v1/tools", request).await
     }
 
+    /// Register the exact tool source embedded in this client's signed capability.
+    pub async fn register_attested_tool(&self) -> Result<ToolDefinition> {
+        self.post_work("v1/tools/attested", &()).await
+    }
+
     pub async fn tools(&self) -> Result<Vec<ToolDefinition>> {
         self.get_work("v1/tools").await
     }

@@ -87,7 +87,7 @@ pub(super) fn discover_package(
     Ok(request)
 }
 
-pub(super) fn discover_tool(
+pub(in crate::commands::packages) fn discover_tool(
     root: &Path,
     branch: Option<&str>,
     workspace_release: bool,

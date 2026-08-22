@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Extension, Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -14,7 +14,7 @@ use vm_packages::{
     ToolArtifactRecord, ToolDefinition, ToolIndex, ToolInventory, ToolPublicationReceipt,
 };
 
-use crate::server::AppState;
+use crate::server::{AgentAccess, AppState};
 use crate::store::{
     ensure_fingerprint, next_id, operation_fingerprint, validate_idempotency_key, IdempotencyRecord,
 };
@@ -31,6 +31,10 @@ pub(crate) fn read_routes() -> Router<AppState> {
 
 pub(crate) fn controller_routes() -> Router<AppState> {
     Router::new().route("/v1/tools", post(register_tool))
+}
+
+pub(crate) fn agent_routes() -> Router<AppState> {
+    Router::new().route("/v1/tools/attested", post(register_attested_tool))
 }
 
 pub(crate) fn release_routes() -> Router<AppState> {
@@ -94,6 +98,19 @@ async fn register_tool(
     Ok((
         StatusCode::CREATED,
         Json(state.store.register_tool(request).await?),
+    ))
+}
+
+async fn register_attested_tool(
+    State(state): State<AppState>,
+    Extension(access): Extension<AgentAccess>,
+) -> WorkResult<(StatusCode, Json<ToolDefinition>)> {
+    let source = access.tool_source().ok_or_else(|| {
+        WorkError::Unauthorized("package agent has no attested tool source authority".into())
+    })?;
+    Ok((
+        StatusCode::CREATED,
+        Json(state.store.register_tool(source.registration()).await?),
     ))
 }
 

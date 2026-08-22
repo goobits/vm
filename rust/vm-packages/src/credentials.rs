@@ -3,7 +3,10 @@ use hmac::{Hmac, KeyInit, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-use crate::{normalize_remote_repository_url, validate_label, PackageValidationError};
+use crate::{
+    normalize_remote_repository_url, repository_urls_equivalent, validate_label,
+    PackageValidationError, RegisterTool, ToolKind,
+};
 
 const AGENT_CAPABILITY_V1: &str = "v1";
 const AGENT_CAPABILITY_V2: &str = "v2";
@@ -19,6 +22,39 @@ pub struct AgentCapabilityClaims {
     pub consumer: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub canonical_repository: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_source: Option<ToolSourceAttestation>,
+}
+
+/// Exact controller-issued authority to register one trusted tool source.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolSourceAttestation {
+    pub name: String,
+    pub kind: ToolKind,
+    pub repository: String,
+    pub default_branch: String,
+}
+
+impl ToolSourceAttestation {
+    pub fn new(request: RegisterTool) -> Result<Self, PackageValidationError> {
+        request.validate()?;
+        Ok(Self {
+            name: request.name,
+            kind: request.kind,
+            repository: normalize_remote_repository_url(&request.repository)?,
+            default_branch: request.default_branch,
+        })
+    }
+
+    pub fn registration(&self) -> RegisterTool {
+        RegisterTool {
+            name: self.name.clone(),
+            kind: self.kind,
+            repository: self.repository.clone(),
+            default_branch: self.default_branch.clone(),
+            workspace_release: true,
+        }
+    }
 }
 
 impl AgentCapabilityClaims {
@@ -34,7 +70,35 @@ impl AgentCapabilityClaims {
         Ok(Self {
             consumer,
             canonical_repository,
+            tool_source: None,
         })
+    }
+
+    pub fn with_tool_source(
+        mut self,
+        source: ToolSourceAttestation,
+    ) -> Result<Self, PackageValidationError> {
+        let repository = self.canonical_repository.as_deref().ok_or_else(|| {
+            PackageValidationError::new(
+                "tool source attestation requires a canonical repository binding",
+            )
+        })?;
+        if !repository_urls_equivalent(repository, &source.repository) {
+            return Err(PackageValidationError::new(
+                "tool source attestation must match the canonical repository binding",
+            ));
+        }
+        source.registration().validate()?;
+        self.tool_source = Some(source);
+        Ok(self)
+    }
+
+    fn validated(self) -> Result<Self, PackageValidationError> {
+        let claims = Self::new(self.consumer, self.canonical_repository)?;
+        match self.tool_source {
+            Some(source) => claims.with_tool_source(source),
+            None => Ok(claims),
+        }
     }
 }
 
@@ -78,8 +142,7 @@ pub fn issue_agent_capability_v2(
     claims: &AgentCapabilityClaims,
 ) -> Result<String, PackageValidationError> {
     validate_signing_key(signing_key)?;
-    let claims =
-        AgentCapabilityClaims::new(claims.consumer.clone(), claims.canonical_repository.clone())?;
+    let claims = claims.clone().validated()?;
     let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(
         serde_json::to_vec(&claims)
             .map_err(|_| PackageValidationError::new("invalid package agent capability"))?,
@@ -128,7 +191,7 @@ pub fn verify_agent_capability(
     }
     let claims: AgentCapabilityClaims = serde_json::from_slice(&decoded)
         .map_err(|_| PackageValidationError::new("invalid package agent capability"))?;
-    AgentCapabilityClaims::new(claims.consumer, claims.canonical_repository)
+    claims.validated()
 }
 
 fn verify_signature(
@@ -164,8 +227,9 @@ fn validate_signing_key(signing_key: &str) -> Result<(), PackageValidationError>
 mod tests {
     use super::{
         authorization_token, issue_agent_capability, issue_agent_capability_v2,
-        verify_agent_capability, AgentCapabilityClaims,
+        verify_agent_capability, AgentCapabilityClaims, ToolSourceAttestation,
     };
+    use crate::{RegisterTool, ToolKind};
 
     #[test]
     fn parses_package_manager_authorization_forms() {
@@ -217,5 +281,33 @@ mod tests {
         tampered[3] ^= 1;
         assert!(verify_agent_capability(key, &String::from_utf8(tampered).unwrap()).is_err());
         assert!(verify_agent_capability(key, &capability.replace("v2.", "v1.")).is_err());
+    }
+
+    #[test]
+    fn v2_capabilities_bind_one_exact_tool_source() {
+        let key = "signing-key-012345678901234567890123456789";
+        let source = ToolSourceAttestation::new(RegisterTool {
+            name: "typemill".into(),
+            kind: ToolKind::Binary,
+            repository: "ssh://git@github.com/team/typemill.git".into(),
+            default_branch: "main".into(),
+            workspace_release: true,
+        })
+        .unwrap();
+        let claims = AgentCapabilityClaims::new(
+            "project-a",
+            Some("https://github.com/team/typemill.git".into()),
+        )
+        .unwrap()
+        .with_tool_source(source.clone())
+        .unwrap();
+
+        let capability = issue_agent_capability_v2(key, &claims).unwrap();
+        assert_eq!(
+            verify_agent_capability(key, &capability)
+                .unwrap()
+                .tool_source,
+            Some(source)
+        );
     }
 }

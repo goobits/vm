@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use vm_config::config::{PackageEdgeConfig, VmConfig};
-use vm_packages::{ClientEnvironment, RegistryEndpoints};
+use vm_packages::{
+    AgentCapabilityClaims, ClientEnvironment, RegistryEndpoints, ToolSourceAttestation,
+};
 
 use crate::error::{VmError, VmResult};
 
@@ -38,21 +40,30 @@ pub(super) fn configured_client_environment(
         .as_ref()
         .and_then(|project| project.name.as_deref())
         .unwrap_or("vm-project");
-    let canonical_repository = canonical_repository(config)?;
+    let global = vm_config::GlobalConfig::load()?;
+    let canonical_source = canonical_source(config, &global)?;
     let (client, edge) = client_environment(
         &state,
         files.read_token()?,
         &files.agent_signing_key()?,
         consumer,
-        canonical_repository.as_deref(),
+        canonical_source.as_ref(),
         provider,
         workspace_path(config),
     )?;
     Ok(Some((client, edge)))
 }
 
-fn canonical_repository(config: &VmConfig) -> VmResult<Option<String>> {
-    let global = vm_config::GlobalConfig::load()?;
+#[derive(Debug, Clone)]
+struct CanonicalSource {
+    repository: String,
+    tool: Option<ToolSourceAttestation>,
+}
+
+fn canonical_source(
+    config: &VmConfig,
+    global: &vm_config::GlobalConfig,
+) -> VmResult<Option<CanonicalSource>> {
     let Some(project) = canonical_project_root(config, &global.packages.canonical_sources)? else {
         return Ok(None);
     };
@@ -64,9 +75,19 @@ fn canonical_repository(config: &VmConfig) -> VmResult<Option<String>> {
             Some("Re-register the exact repository with `vm packages register <local-path>`"),
         ));
     }
-    vm_packages::normalize_remote_repository_url(&repository.origin_url)
-        .map(Some)
-        .map_err(VmError::from)
+    let repository = vm_packages::normalize_remote_repository_url(&repository.origin_url)
+        .map_err(VmError::from)?;
+    let tool = if project.join("vm-tool.yaml").is_file() {
+        let request = super::discovery::discover_tool(&project, None, true)?;
+        global
+            .tools
+            .contains_key(&request.name)
+            .then(|| ToolSourceAttestation::new(request).map_err(VmError::from))
+            .transpose()?
+    } else {
+        None
+    };
+    Ok(Some(CanonicalSource { repository, tool }))
 }
 
 fn canonical_project_root(
@@ -106,7 +127,7 @@ fn client_environment(
     read_token: String,
     agent_signing_key: &str,
     consumer: &str,
-    canonical_repository: Option<&str>,
+    canonical_source: Option<&CanonicalSource>,
     provider: &str,
     canonical_workspace: &str,
 ) -> VmResult<(ClientEnvironment, PackageEdgeConfig)> {
@@ -135,10 +156,15 @@ fn client_environment(
         read_token: read_token.clone(),
         revision,
     };
-    let claims =
-        vm_packages::AgentCapabilityClaims::new(consumer, canonical_repository.map(str::to_string))
-            .map_err(VmError::from)?;
-    let agent_token = if canonical_repository.is_some() {
+    let mut claims = AgentCapabilityClaims::new(
+        consumer,
+        canonical_source.map(|source| source.repository.clone()),
+    )
+    .map_err(VmError::from)?;
+    if let Some(tool) = canonical_source.and_then(|source| source.tool.clone()) {
+        claims = claims.with_tool_source(tool).map_err(VmError::from)?;
+    }
+    let agent_token = if canonical_source.is_some() {
         vm_packages::issue_agent_capability_v2(agent_signing_key, &claims)
     } else {
         vm_packages::issue_agent_capability(agent_signing_key, consumer)
@@ -260,7 +286,10 @@ mod tests {
             "read-token".into(),
             signing_key,
             "project-a",
-            Some("https://github.com/team/project.git"),
+            Some(&CanonicalSource {
+                repository: "https://github.com/team/project.git".into(),
+                tool: None,
+            }),
             "docker",
             "/workspace",
         )

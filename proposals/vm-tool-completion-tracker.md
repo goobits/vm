@@ -170,6 +170,29 @@ the replacement workflow service, proving dynamic Docker DNS rollover. A
 second unchanged `vm packages up` completed in 2.0 seconds and retained both
 gateway and workflow IDs; all eight primary environment IDs remained intact.
 
+## One-Command Private Tool Releases
+
+Active implementation keeps package publication in the unprivileged appliance
+and moves provider-authorized fleet activation into a durable host worker. It
+does not grant the appliance Docker-socket access or merge tool activation with
+language-package consumer rollout.
+
+- [x] Let an enrolled canonical tool workspace register only the exact source
+  embedded in its controller-signed guest capability.
+- [ ] Adopt unmanaged executable paths with durable receipts and recoverable
+  guest-local backups.
+- [ ] Persist one resumable tool-activation plan per immutable release.
+- [ ] Activate running environments in place, defer stopped environments, and
+  report bounded-wait pending or failed targets honestly.
+- [ ] Repair worker, sidecar, registration, and interrupted-receipt drift.
+- [ ] Pass the real TypeMill Docker interruption, adoption, stable-ID, and
+  repeat-release acceptance gate.
+- [ ] Reduce the primary guide to global enrollment followed by bare release.
+
+HIF, HQA, and HVR still require a self-contained or coordinated
+multi-repository build artifact; that producer-build work is outside this
+release-activation scope.
+
 ## Remaining Acceptance
 
 Implementation is not release-ready. After the remediation checklist above is

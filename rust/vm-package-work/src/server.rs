@@ -16,6 +16,8 @@ mod controller;
 mod jobs;
 mod read;
 
+pub(crate) use auth::AgentAccess;
+
 #[derive(Clone)]
 pub struct WorkCredentials {
     read_token: String,
@@ -167,6 +169,7 @@ pub(crate) fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router 
             "/v1/submissions/{submission_id}/integration/complete",
             post(agent::complete_integration),
         )
+        .merge(crate::tools::agent_routes())
         .route_layer(middleware::from_fn_with_state(state.clone(), auth::agent));
     let reviews = Router::new()
         .route("/v1/jobs/review/next", get(jobs::next_review))

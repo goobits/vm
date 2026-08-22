@@ -10,7 +10,7 @@ use super::AppState;
 use crate::{Store, WorkError, WorkResult};
 
 #[derive(Debug, Clone)]
-pub(super) struct AgentAccess(Option<AgentCapabilityClaims>);
+pub(crate) struct AgentAccess(Option<AgentCapabilityClaims>);
 
 impl AgentAccess {
     pub(super) fn consumer(&self) -> Option<&str> {
@@ -21,6 +21,12 @@ impl AgentAccess {
         self.0
             .as_ref()
             .and_then(|claims| claims.canonical_repository.as_deref())
+    }
+
+    pub(crate) fn tool_source(&self) -> Option<&vm_packages::ToolSourceAttestation> {
+        self.0
+            .as_ref()
+            .and_then(|claims| claims.tool_source.as_ref())
     }
 
     pub(super) fn is_agent(&self) -> bool {

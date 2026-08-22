@@ -58,7 +58,18 @@ pub(super) async fn prepare(subject: &GuestRuntime) -> VmResult<WorkspaceRelease
     let origin = git_output(subject, &source, ["remote", "get-url", "origin"])?;
     let repository = normalize_repository_url(origin.trim())?;
     let client = subject.client()?;
-    let (packages, tools) = tokio::try_join!(client.package_definitions(), client.tools())?;
+    let (packages, mut tools) = tokio::try_join!(client.package_definitions(), client.tools())?;
+    if packages
+        .iter()
+        .all(|package| !repository_urls_equivalent(&package.repository, &repository))
+        && tools
+            .iter()
+            .all(|tool| !repository_urls_equivalent(&tool.repository, &repository))
+        && Path::new(&source).join("vm-tool.yaml").is_file()
+    {
+        tool_manifest(Path::new(&source))?;
+        tools.push(client.register_attested_tool().await?);
+    }
     let registered = resolve_registered_source(&source, &repository, &packages, &tools)?;
     let key = format!(
         "workspace-release-{}",
