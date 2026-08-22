@@ -20,7 +20,12 @@ impl PackageInfrastructureClient {
     }
 
     pub async fn tool_activations(&self) -> Result<Vec<ToolActivationRecord>> {
-        self.get_work("v1/tool-activations").await
+        self.get_authenticated(
+            "v1/tool-activations",
+            self.controller_token.as_deref(),
+            "controller",
+        )
+        .await
     }
 
     pub async fn claim_next_tool_activation(

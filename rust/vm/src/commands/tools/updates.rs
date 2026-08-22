@@ -84,6 +84,18 @@ async fn update_subject(
     )
 }
 
+pub(super) async fn activate_tool(subject: &mut RuntimeSubject, tool: &str) -> VmResult<()> {
+    subject.config.tools.entries.retain(|name, _| name == tool);
+    if subject.config.tools.entries.is_empty() {
+        return Err(VmError::validation(
+            format!("Tool '{tool}' is no longer enabled for this environment"),
+            Some("Enable it globally or in the owning vm.yaml, then repair the rollout"),
+        ));
+    }
+    catalog::prepare(std::slice::from_ref(&subject.config)).await?;
+    update_subject(subject, InstallMode::Wait, true).await
+}
+
 fn resolve_request(
     tools: &[String],
     environments: &[String],

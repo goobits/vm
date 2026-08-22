@@ -132,6 +132,11 @@ pub enum PackagesSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum ToolsSubcommand {
+    #[command(hide = true)]
+    ActivationWorker {
+        #[arg(long)]
+        once: bool,
+    },
     /// Register one trusted tool source with package infrastructure
     Register {
         name: String,

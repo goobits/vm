@@ -138,7 +138,7 @@ pub(crate) fn enqueue(database: &mut Database, release_id: &str) -> WorkResult<(
     if checkout.source_kind == SourceKind::Package {
         return Ok(());
     }
-    let activation_id = format!("activate-{release_id}");
+    let activation_id = format!("activate-{}", &vm_packages::sha256_hex(release_id)[..32]);
     if database.tool_activations.contains_key(&activation_id) {
         return Ok(());
     }
@@ -575,7 +575,10 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(activation.activation_id, "activate-rel-1");
+        assert_eq!(
+            activation.activation_id,
+            format!("activate-{}", &vm_packages::sha256_hex("rel-1")[..32])
+        );
         let plan = PlanToolActivationRequest {
             worker: "worker-1".into(),
             targets: vec![

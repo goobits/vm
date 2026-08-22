@@ -240,6 +240,10 @@ pub async fn handle_start(
         StartOutcome::AlreadyRunning => vm_success!("'{display_name}' is already running"),
         StartOutcome::Started => print_vm_runtime_details(&config, false),
     }
+    if !no_wait {
+        crate::commands::tools::activation::activate_deferred(provider.name(), &display_name)
+            .await?;
+    }
     vm_hint!("Connect with: vm shell {display_name}");
     Ok(())
 }

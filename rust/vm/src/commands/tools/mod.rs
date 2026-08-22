@@ -1,3 +1,4 @@
+pub(in crate::commands) mod activation;
 mod catalog;
 mod guest;
 mod status;
@@ -113,6 +114,7 @@ pub(super) async fn handle(
         }
         ToolsSubcommand::Enable { tools } => {
             set_global_selection(&tools, true)?;
+            activation::ensure_worker()?;
             vm_success!("Enabled globally: {}", tools.join(", "));
             updates::run(
                 config_path,
@@ -125,8 +127,12 @@ pub(super) async fn handle(
             )
             .await
         }
+        ToolsSubcommand::ActivationWorker { once } => activation::run_worker(once).await,
         ToolsSubcommand::Disable { tools } => {
             set_global_selection(&tools, false)?;
+            if GlobalConfig::load()?.tools.is_empty() {
+                activation::remove_worker()?;
+            }
             vm_success!("Disabled globally: {}", tools.join(", "));
             vm_hint!(
                 "Existing managed installations are retained but no longer receive global updates"

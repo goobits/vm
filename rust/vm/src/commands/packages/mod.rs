@@ -77,6 +77,9 @@ async fn doctor(files: &ApplianceFiles, fix: bool) -> VmResult<()> {
             appliance::repair_client_access(files, state)?;
         }
         let _ = credentials::repair_github(files)?;
+        if files.read_state()?.is_some() {
+            let _ = crate::commands::tools::activation::repair().await?;
+        }
     }
     appliance::doctor(files).await?;
 
@@ -154,6 +157,7 @@ async fn up(
     if let Ok(config) = vm_config::AppConfig::load(config_path, profile, None) {
         let _ = tooling::refresh(&config.vm).await;
     }
+    crate::commands::tools::activation::ensure_worker()?;
     Ok(())
 }
 

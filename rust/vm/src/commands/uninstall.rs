@@ -67,6 +67,10 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
 
     vm_progress!("Removing vm configuration...");
 
+    if let Err(error) = crate::commands::tools::activation::remove_worker() {
+        vm_warning!("Failed to stop the tool activation worker: {error}");
+    }
+
     // Remove configuration files if requested
     if !keep_config {
         for path in &config_files {

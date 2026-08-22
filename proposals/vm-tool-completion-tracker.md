@@ -182,9 +182,9 @@ language-package consumer rollout.
 - [x] Adopt unmanaged executable paths with durable receipts and recoverable
   guest-local backups.
 - [x] Persist one resumable tool-activation plan per immutable release.
-- [ ] Activate running environments in place, defer stopped environments, and
+- [x] Activate running environments in place, defer stopped environments, and
   report bounded-wait pending or failed targets honestly.
-- [ ] Repair worker, sidecar, registration, and interrupted-receipt drift.
+- [x] Repair worker, sidecar, registration, and interrupted-receipt drift.
 - [ ] Pass the real TypeMill Docker interruption, adoption, stable-ID, and
   repeat-release acceptance gate.
 - [ ] Reduce the primary guide to global enrollment followed by bare release.

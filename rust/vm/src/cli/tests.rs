@@ -458,6 +458,12 @@ fn package_inventory_commands_parse() {
 #[test]
 fn tool_refresh_status_and_batch_update_commands_parse() {
     assert!(matches!(
+        Args::parse_from(["vm", "tools", "activation-worker", "--once"]).command,
+        Command::Tools {
+            command: ToolsSubcommand::ActivationWorker { once: true }
+        }
+    ));
+    assert!(matches!(
         Args::parse_from([
             "vm",
             "tools",

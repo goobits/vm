@@ -1,5 +1,7 @@
-use vm_core::{vm_hint, vm_success};
-use vm_packages::{LeaseRequest, WorkflowState};
+use vm_core::{vm_hint, vm_success, vm_warning};
+use vm_packages::{
+    LeaseRequest, SourceKind, ToolActivationState, ToolActivationTargetState, WorkflowState,
+};
 
 use crate::error::{VmError, VmResult};
 
@@ -10,6 +12,7 @@ use super::{
 };
 
 const RELEASE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+const ACTIVATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2 * 60);
 const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
 
 pub(super) async fn handle_guest() -> VmResult<()> {
@@ -94,12 +97,98 @@ pub(super) async fn handle_guest() -> VmResult<()> {
             vm_hint!("Published successfully; local checkout cleanup was skipped: {error}");
         }
     }
+    vm_success!("Released {}@{}", release.package, release.version);
+    if checkout.source_kind != SourceKind::Package {
+        wait_for_tool_activation(&client, release_id).await?;
+    }
+    Ok(())
+}
+
+async fn wait_for_tool_activation(
+    client: &vm_packages::PackageInfrastructureClient,
+    release_id: &str,
+) -> VmResult<()> {
+    let deadline = tokio::time::Instant::now() + ACTIVATION_TIMEOUT;
+    loop {
+        let activation = client.tool_activation_for_release(release_id).await?;
+        let pending = activation
+            .targets
+            .iter()
+            .filter(|target| {
+                target.initially_running && target.state == ToolActivationTargetState::Pending
+            })
+            .count();
+        let planned = !activation.targets.is_empty()
+            || matches!(
+                activation.state,
+                ToolActivationState::Waiting | ToolActivationState::Complete
+            );
+        if planned && pending == 0 {
+            return activation_result(&activation, false);
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return activation_result(&activation, true);
+        }
+        tokio::time::sleep(POLL_INTERVAL).await;
+    }
+}
+
+fn activation_result(
+    activation: &vm_packages::ToolActivationRecord,
+    timed_out: bool,
+) -> VmResult<()> {
+    let running_total = activation
+        .targets
+        .iter()
+        .filter(|target| target.initially_running)
+        .count();
+    let active = activation
+        .targets
+        .iter()
+        .filter(|target| {
+            target.initially_running && target.state == ToolActivationTargetState::Active
+        })
+        .count();
+    let pending = activation
+        .targets
+        .iter()
+        .filter(|target| {
+            target.initially_running && target.state == ToolActivationTargetState::Pending
+        })
+        .count();
+    let failed = activation
+        .targets
+        .iter()
+        .filter(|target| {
+            target.initially_running && target.state == ToolActivationTargetState::Failed
+        })
+        .count();
+    let deferred = activation
+        .targets
+        .iter()
+        .filter(|target| {
+            !target.initially_running && target.state == ToolActivationTargetState::Deferred
+        })
+        .count();
+
+    if pending == 0 && failed == 0 && !timed_out {
+        vm_success!("Activated in {active} of {running_total} running environments");
+    } else {
+        vm_warning!("Activated in {active} of {running_total} running environments");
+    }
     vm_success!(
-        "Released {}@{} from {}",
-        release.package,
-        release.version,
-        release.source_commit
+        "{deferred} stopped environment{} will update when started",
+        if deferred == 1 { "" } else { "s" }
     );
+    vm_success!("No environments or volumes recreated");
+    if failed > 0 || pending > 0 || timed_out {
+        return Err(VmError::validation(
+            format!(
+                "Tool activation remains incomplete: {pending} pending, {failed} failed"
+            ),
+            Some("Rerun `vm packages release` to resume, or run `vm packages doctor --fix` on the controller"),
+        ));
+    }
     Ok(())
 }
 
@@ -221,5 +310,73 @@ async fn wait_for_publication(
             format!("Package release stopped in {state:?}"),
             Some("Inspect package infrastructure logs and rerun when repaired"),
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+
+    use super::*;
+
+    fn activation(
+        states: &[(bool, ToolActivationTargetState)],
+    ) -> vm_packages::ToolActivationRecord {
+        let now = Utc::now();
+        vm_packages::ToolActivationRecord {
+            activation_id: "activate-rel-1".into(),
+            release_id: "rel-1".into(),
+            checkout_id: "checkout-1".into(),
+            tool: "typemill".into(),
+            version: "1.2.0".into(),
+            source_commit: "a".repeat(40),
+            state: ToolActivationState::Waiting,
+            targets: states
+                .iter()
+                .enumerate()
+                .map(
+                    |(index, (running, state))| vm_packages::ToolActivationTarget {
+                        target_id: format!("target-{index}"),
+                        environment: format!("project-{index}"),
+                        provider: "docker".into(),
+                        initially_running: *running,
+                        state: *state,
+                        attempts: 1,
+                        error: (*state == ToolActivationTargetState::Failed)
+                            .then(|| "activation failed".into()),
+                        updated_at: now,
+                    },
+                )
+                .collect(),
+            lease: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn activation_result_accepts_active_and_deferred_targets() {
+        assert!(activation_result(
+            &activation(&[
+                (true, ToolActivationTargetState::Active),
+                (false, ToolActivationTargetState::Deferred),
+            ]),
+            false,
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn activation_result_rejects_failed_or_timed_out_targets() {
+        assert!(activation_result(
+            &activation(&[(true, ToolActivationTargetState::Failed)]),
+            false,
+        )
+        .is_err());
+        assert!(activation_result(
+            &activation(&[(true, ToolActivationTargetState::Pending)]),
+            true,
+        )
+        .is_err());
     }
 }
