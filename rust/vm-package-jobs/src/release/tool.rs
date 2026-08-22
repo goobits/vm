@@ -303,7 +303,7 @@ mod tests {
         )
         .unwrap();
         let manifest = ToolSourceManifest {
-            schema: Some(1),
+            schema: 1,
             kind: ToolKind::Binary,
             version: Some("1.2.3".into()),
             builds: vec![ToolBuild {

@@ -487,7 +487,7 @@ mod tests {
             "package.json",
             r#"{"name":"@shared/agent-skills"}"#,
         );
-        fs::write(tool.join(TOOL_MANIFEST), "kind: collection\n").unwrap();
+        fs::write(tool.join(TOOL_MANIFEST), "schema: 1\nkind: collection\n").unwrap();
 
         let discovery = discover(
             &[directory.path().to_string_lossy().into_owned()],
@@ -571,7 +571,7 @@ mod tests {
         );
         let nested = source.join("packages/codeatlas");
         fs::create_dir_all(&nested).unwrap();
-        fs::write(nested.join(TOOL_MANIFEST), "kind: collection\n").unwrap();
+        fs::write(nested.join(TOOL_MANIFEST), "schema: 1\nkind: collection\n").unwrap();
 
         let error = discover_local(&[nested.to_string_lossy().into_owned()], false, None, None)
             .err()

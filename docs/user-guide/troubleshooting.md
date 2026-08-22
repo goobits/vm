@@ -175,7 +175,10 @@ vm packages doctor --fix
 
 `status` prints one classification: `healthy`, `degraded`, or `action required`.
 `doctor --fix` repairs only deterministic state and prints one repair command
-for anything that still needs an operator.
+for anything that still needs an operator. For managed tools it also restarts a
+missing activation worker, repairs stale package sidecars and trusted-source
+registration drift, requeues interrupted activations, and resumes pending
+executable-adoption receipts through normal reconciliation.
 
 The central appliance and each worker edge have separate failure behavior. If
 the appliance is down, a warmed edge can serve cached locked internal artifacts
@@ -192,12 +195,12 @@ reconciliation. An unhealthy child Git repository is moved intact under
 remains valid.
 
 Canonical project workspaces use a different, read-only policy. If bare `vm
-packages release` reports missing attestation, run `vm packages register
-<local-path>` on the host, then reconcile the environment. The registered path
-must be the physical Git root containing its `vm.yaml`; another clone with the
-same origin is intentionally rejected. Missing paths, invalid manifests, and
-origin mismatches report degraded health but are never moved or repaired by
-`doctor --fix`.
+packages release` reports missing attestation, first run `vm packages doctor
+--fix` on the host to repair registration drift. If the physical repository is
+not yet a trusted canonical source, enroll it with `vm packages register
+<local-path>`, then reconcile the environment. Another clone with the same
+origin is intentionally rejected. Missing paths, invalid manifests, and origin
+mismatches report degraded health but are never moved or repaired.
 
 Release also requires a clean committed worktree. Commit or discard local and
 untracked changes yourself, and correct an origin mismatch explicitly before
@@ -242,11 +245,10 @@ such as `Run on the host: vm packages up`; run that command in the host terminal
 A built-in tool can be registered but not published on a fresh controller. From
 an existing managed guest, run `vm packages checkout agent-skills`, continue in
 the printed source path, commit the intended versioned change, and run bare `vm
-packages release`. Normal reconciliation or `vm tools update agent-skills`
-activates the result across running managed Docker environments that configure
-it; use `--to` to limit it. See
-[Package Infrastructure](package-infrastructure.md#register-and-consume-tools)
-for normal update, locking, fleet, and package-state behavior.
+packages release`. A globally enabled collection activates automatically across
+running environments; use `vm tools update --to <environment>` only for targeted
+repair. See [Package Infrastructure](package-infrastructure.md#advanced-tool-manifests-and-targeting)
+for registration, targeting, locking, and package-state behavior.
 
 If `vm packages cancel` reports that dependency restoration failed, do not
 delete the checkout directory manually. Fix the reported local package-manager

@@ -60,6 +60,7 @@ pub struct GlobalConfig {
 
 /// Controller-wide package source discovery settings.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct PackageInfrastructureSettings {
     /// Absolute host directories scanned recursively by `vm packages up`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

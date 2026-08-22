@@ -1,6 +1,6 @@
 ---
-Status: Docker workspace release accepted; remaining matrix blocked
-Date: 2026-08-20
+Status: One-command implementation complete; real Docker interruption gate blocked
+Date: 2026-08-21
 Depends: docs/user-guide/package-infrastructure.md, docs/development/architecture.md
 ---
 
@@ -28,17 +28,14 @@ never treated as source.
 
 ## Scoped Proposal: Brainless Managed-Tool Updates
 
-Audit on 2026-08-18 identified overlapping tool and environment positionals,
-caller-owned fleet configuration, and implicit stopped-environment updates.
-
-Extend the existing command rather than adding another sync or rollout family:
+The primary workflow is now:
 
 ```bash
+# Once, on the controller host
 vm tools enable codeatlas typemill
-vm tools update
-vm tools update agent-skills
-vm tools update agent-skills another-tool
-vm tools update agent-skills --to typemill-dev --to zoop-io-dev
+
+# Daily, inside the producer workspace
+vm packages release
 ```
 
 `vm tools enable <tool>...` records controller-global defaults and immediately
@@ -47,17 +44,13 @@ Future environments inherit those selections, while same-name project entries
 retain version and update-policy precedence. `vm tools disable <tool>...`
 removes only the global selection and retains existing managed files.
 
-The no-argument form updates each running managed Docker environment's own
-configured tools. Positional tool names restrict the update to projects that
-configure those tools. Repeated `--to` options limit the environments. Stopped
-environments remain untouched unless `--include-stopped` is explicit. Each
-target must load its own persisted `vm.yaml` ownership instead of inheriting
-the invoking project's services or tool policy. Positional values are tools
-only; exact environment selection uses `--to`. The compatibility `--fleet`
-form shares the same owner-configured path while retaining all-state selection.
-Language-package consumer rollout remains separate and authoritative.
+Each immutable binary or collection release queues a durable host-owned
+activation plan. Running globally enrolled environments update in place;
+stopped environments update on their next start. Registration, inspection,
+targeted updates, and recovery remain advanced controls. Language-package
+consumer rollout remains separate and authoritative.
 
-Acceptance requires parser and selection tests, Docker Desktop legacy-mount
+Acceptance requires parser and selection tests, Docker Desktop mount
 ownership recovery, truthful per-environment summaries, current help/reference/
 troubleshooting documentation, and focused format/check/test/Clippy coverage.
 
@@ -160,8 +153,8 @@ commit `73ebf32c1168b795f9f5ec13a7de1f8bce2c1e60`. The no-egress build contained
 exactly `mill` and `typemill-mcp`. Global enrollment then activated CodeAtlas
 0.10.0 and TypeMill 1.1.0 in all eight running managed Docker environments.
 Every command resolved through managed release links, and every primary
-container retained its existing ID. Two legacy unmanaged TypeMill installations
-were preserved under their guest-local managed-tool backup directories before
+container retained its existing ID. Two unmanaged TypeMill installations were
+preserved under their guest-local managed-tool backup directories before
 activation.
 
 The same 2026-08-21 acceptance replaced `vm-packages-work-1` while retaining
@@ -185,9 +178,12 @@ language-package consumer rollout.
 - [x] Activate running environments in place, defer stopped environments, and
   report bounded-wait pending or failed targets honestly.
 - [x] Repair worker, sidecar, registration, and interrupted-receipt drift.
+- [x] Extend the sole Docker acceptance owner with exactly-once publication,
+  persisted-plan interruption, adoption receipts, deferred startup, and stable
+  container/volume identity assertions.
 - [ ] Pass the real TypeMill Docker interruption, adoption, stable-ID, and
   repeat-release acceptance gate.
-- [ ] Reduce the primary guide to global enrollment followed by bare release.
+- [x] Reduce the primary guide to global enrollment followed by bare release.
 
 HIF, HQA, and HVR still require a self-contained or coordinated
 multi-repository build artifact; that producer-build work is outside this
@@ -214,12 +210,12 @@ current image. No real package release or publication was performed.
 - [ ] Run the extended Docker package-workflow acceptance test on an equipped
   host and confirm no container or volume is recreated.
 - [ ] Host-accept steady-state package startup, concurrent shell
-  reconciliation, targeted and fleet tool updates, read-only workspace restart,
+  reconciliation, targeted tool updates, read-only workspace restart,
   and first-shell `codex-code-mode-host` availability.
 - [ ] On an equipped macOS host, run the Tart path in
   `validate-vibe-providers.sh`; verify managed inventory, shell recovery,
-  worktree mounts, package-edge repair, exact `--to`, and all-state `--fleet`
-  updates from the same `vm.yaml` without replacing the VM or its Tart storage.
+  worktree mounts, package-edge repair, and exact `--to` updates from the same
+  `vm.yaml` without replacing the VM or its Tart storage.
 - [ ] From a second Docker worker, verify resumable guest-owned npm, Cargo, and
   Python release/rollout, private immutable artifacts, per-worker overrides,
   public fallback, persistent caches, and fail-closed internal misses during an
@@ -392,7 +388,7 @@ current image. No real package release or publication was performed.
   source-install profile, and isolate the Git askpass helper so workflow-server
   edits do not rebuild the jobs image.
 - [x] Mark source-built appliance images with stable metadata rather than the
-  changing controller binary hash, while recognizing legacy images once.
+  changing controller binary hash; old marker formats are not retained.
 - [x] Resolve source-installed CLI symlinks and initialize package-volume roots
   before non-root services start, including volumes introduced by upgrades.
 - [x] Publish registered collections through a credential-isolated ephemeral
@@ -634,9 +630,8 @@ not make model choice part of idempotency or authorization.
 - [x] Stop persisting the retired package-work target keys.
   `vm packages init <source-root>` should configure the controller source shelf
   and appliance only; it must not select a project in which to launch work.
-- [x] Tolerate old global configuration once and omit the retired keys on the
-  next managed save. Do not retain permanent compatibility behavior that can
-  still launch host-selected work.
+- [x] Reject retired package-work configuration keys instead of retaining a
+  compatibility parser.
 - [x] Remove host-side checkout preparation, provider copy/exec adapters, and
   runtime-subject abstractions only after reference checks prove they have no
   remaining package callers. Preserve shared provider interaction used by
@@ -899,23 +894,15 @@ and managed tools. Successful shell-triggered work is reused for 60 seconds;
 explicit refresh/update commands bypass that recent-success window. This is
 implemented but awaiting host acceptance.
 
-Live Zoop acceptance on 2026-08-12 detected its legacy `.agents/skills` and
-`.claude/skills` repository copies, then reported `PROJECT_COPY=no` after their
-scoped Git removal. In-place legacy `vm tools update zoop-io-dev` changed Codex
-from installed/non-consumable to installed/consumable without recreating the
-Docker worker, while managed `agent-skills` remained consumable at 0.6.1.
-
 Bulk reconciliation is exposed through ordinary command ownership rather than
 a duplicate top-level workflow. `vm tools update [<tool>...]` now applies each
 running managed Docker target's own configuration, with positional names acting
 only as a filter over configured tools. Repeated `--to` options limit exact
 environments and `--include-stopped` is required before starting stopped
-targets. Reconciliation respects persisted `off` policy for upgrades,
-continues on per-target failures, and reports a summary. The compatibility
-`--fleet` form retains provider and pattern selection plus stopped matches
-while using the same owner-configured execution path. Neither form projects
-application services onto unrelated targets. The former `vm fleet` and tool
-`--all` surfaces remain removed. This is implemented but awaiting host
+targets. Reconciliation respects persisted `off` policy for upgrades, continues
+on per-target failures, and reports a summary. It never projects application
+services onto unrelated targets. The former `vm fleet`, tool `--fleet`, and
+tool `--all` surfaces remain removed. This is implemented but awaiting host
 acceptance.
 With no managed tools selected, base-owned Codex reconciliation no longer
 requires a tool catalog or package-appliance connection.

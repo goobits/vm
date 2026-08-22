@@ -20,11 +20,9 @@ pub(super) async fn run(
     tools: Vec<String>,
     environments: Vec<String>,
     include_stopped: bool,
-    fleet: FleetArgs,
     mode: InstallMode,
 ) -> VmResult<()> {
-    let (instances, requested_tools) =
-        resolve_request(&tools, &environments, include_stopped, &fleet)?;
+    let (instances, requested_tools) = resolve_request(&tools, &environments, include_stopped)?;
     if instances.is_empty() {
         vm_println!("No managed environments found");
         return Ok(());
@@ -100,13 +98,11 @@ fn resolve_request(
     tools: &[String],
     environments: &[String],
     include_stopped: bool,
-    fleet: &FleetArgs,
 ) -> VmResult<(Vec<InstanceInfo>, Vec<String>)> {
     resolve_request_with(
         tools,
         environments,
         include_stopped,
-        fleet,
         vm_ops::resolve_fleet_targets,
     )
 }
@@ -115,19 +111,8 @@ fn resolve_request_with(
     tools: &[String],
     environments: &[String],
     include_stopped: bool,
-    fleet: &FleetArgs,
     mut resolve: impl FnMut(&FleetArgs, InstanceStateFilter) -> VmResult<Vec<InstanceInfo>>,
 ) -> VmResult<(Vec<InstanceInfo>, Vec<String>)> {
-    if fleet.fleet {
-        if !tools.is_empty() || !environments.is_empty() || include_stopped {
-            return Err(VmError::validation(
-                "Compatibility --fleet targeting cannot be combined with selectors",
-                Some("Use repeated `--to <environment>` selectors instead"),
-            ));
-        }
-        return Ok((resolve(fleet, InstanceStateFilter::Any)?, Vec::new()));
-    }
-
     let state = if include_stopped {
         InstanceStateFilter::Any
     } else {
@@ -554,12 +539,10 @@ mod tests {
 
     #[test]
     fn explicit_targets_query_every_provider_and_positional_names_remain_tools() {
-        let fleet = FleetArgs::default();
         let (targets, tools) = resolve_request_with(
             &["agent-skills".into()],
             &["mac".into()],
             false,
-            &fleet,
             |query, state| {
                 assert_eq!(query.provider, None);
                 assert_eq!(state, InstanceStateFilter::Running);
@@ -578,7 +561,6 @@ mod tests {
             &["agent-skills".into()],
             &["mac".into()],
             true,
-            &fleet,
             |_, state| {
                 assert_eq!(state, InstanceStateFilter::Any);
                 Ok(vec![instance("mac", "tart")])
@@ -586,34 +568,19 @@ mod tests {
         )
         .unwrap();
 
-        let (targets, tools) = resolve_request_with(
-            &["agent-skills".into()],
-            &[],
-            false,
-            &fleet,
-            |query, state| {
+        let (targets, tools) =
+            resolve_request_with(&["agent-skills".into()], &[], false, |query, state| {
                 assert_eq!(query.provider.as_deref(), Some("docker"));
                 assert_eq!(state, InstanceStateFilter::Running);
                 Ok(vec![instance("agent-skills-dev", "docker")])
-            },
-        )
-        .unwrap();
+            })
+            .unwrap();
         assert_eq!(targets[0].name, "agent-skills-dev");
         assert_eq!(tools, ["agent-skills"]);
     }
 
     #[test]
-    fn compatibility_fleet_includes_stopped_targets_and_preserves_load_errors() {
-        let fleet = FleetArgs {
-            fleet: true,
-            ..Default::default()
-        };
-        resolve_request_with(&[], &[], false, &fleet, |_, state| {
-            assert_eq!(state, InstanceStateFilter::Any);
-            Ok(Vec::new())
-        })
-        .unwrap();
-
+    fn load_errors_preserve_selected_tool_validation() {
         let requested = BTreeSet::from(["agent-skills".into()]);
         assert!(validate_configured_selection(&requested, &BTreeSet::new(), true).is_ok());
         assert!(validate_configured_selection(&requested, &BTreeSet::new(), false).is_err());

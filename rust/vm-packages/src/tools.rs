@@ -49,13 +49,11 @@ pub struct ToolDefinition {
 
 pub const TOOL_SOURCE_SCHEMA: u32 = 1;
 
-/// Versioned source contract for managed tools. The legacy collection shape
-/// (`kind: collection`) remains valid; binary tools require schema 1.
+/// Versioned source contract for managed tools.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToolSourceManifest {
-    #[serde(default)]
-    pub schema: Option<u32>,
+    pub schema: u32,
     pub kind: ToolKind,
     #[serde(default)]
     pub version: Option<String>,
@@ -76,10 +74,7 @@ pub struct ToolBuild {
 
 impl ToolSourceManifest {
     pub fn validate(&self) -> Result<(), PackageValidationError> {
-        if self
-            .schema
-            .is_some_and(|schema| schema != TOOL_SOURCE_SCHEMA)
-        {
+        if self.schema != TOOL_SOURCE_SCHEMA {
             return Err(PackageValidationError::new(
                 "unsupported tool manifest schema",
             ));
@@ -93,11 +88,6 @@ impl ToolSourceManifest {
                 }
             }
             ToolKind::Binary => {
-                if self.schema != Some(TOOL_SOURCE_SCHEMA) {
-                    return Err(PackageValidationError::new(
-                        "binary tool manifests require schema 1",
-                    ));
-                }
                 let version = self.version.as_deref().ok_or_else(|| {
                     PackageValidationError::new("binary tool manifest requires a version")
                 })?;
@@ -585,7 +575,7 @@ builds:
     #[test]
     fn binary_source_manifest_rejects_unsafe_or_ambiguous_artifacts() {
         let mut manifest = ToolSourceManifest {
-            schema: Some(TOOL_SOURCE_SCHEMA),
+            schema: TOOL_SOURCE_SCHEMA,
             kind: ToolKind::Binary,
             version: Some("1.0.0".into()),
             builds: vec![ToolBuild {
@@ -604,9 +594,10 @@ builds:
     }
 
     #[test]
-    fn legacy_collection_manifest_remains_valid() {
-        let manifest: ToolSourceManifest = serde_yaml_ng::from_str("kind: collection\n").unwrap();
+    fn collection_source_manifest_requires_the_current_schema() {
+        assert!(serde_yaml_ng::from_str::<ToolSourceManifest>("kind: collection\n").is_err());
+        let manifest: ToolSourceManifest =
+            serde_yaml_ng::from_str("schema: 1\nkind: collection\n").unwrap();
         manifest.validate().unwrap();
-        assert_eq!(manifest.schema, None);
     }
 }

@@ -94,6 +94,42 @@ step repairs only their named-volume roots to the package-service UID/GID. This
 keeps both fresh volumes and volumes added during an upgrade writable without
 granting the long-running services root access.
 
+## Private Tool Releases
+
+Use one controller-wide enrollment, then one command for every binary or
+collection release:
+
+```bash
+# Once, on the controller host
+vm tools enable typemill codeatlas
+
+# Daily, inside an attested producer workspace
+vm packages release
+```
+
+The release command registers a valid `vm-tool.yaml` automatically when the
+controller has already attested that exact physical Git workspace. The guest
+cannot nominate or register another repository. Publication atomically queues
+a durable fleet activation before reporting success.
+
+The host worker updates every running environment where the tool is globally
+enabled. It records stopped environments for activation on their next start,
+resumes interrupted work after controller or Docker recovery, and never
+recreates an environment or named volume. The release command waits for at most
+two minutes and reports completed, deferred, pending, and failed work honestly;
+rerunning it resumes the same release instead of publishing again.
+
+```text
+✓ Released typemill@1.2.0
+✓ Activated in 8 of 8 running environments
+✓ 3 stopped environments will update when started
+✓ No environments or volumes recreated
+```
+
+Language-package dependency updates remain a separate consumer rollout. Tools
+whose release needs several repositories, including HIF, HQA, and HVR, must
+first produce one self-contained or coordinated build artifact.
+
 VM injects the gateway and a read-only token through npm, Cargo, and pip
 environment settings whenever it creates or starts a project environment. It
 also exports `VM_OCI_MIRROR`; Linux Tart guests with managed Docker activate
@@ -137,9 +173,12 @@ there, bumps the source's stable semantic version when required, tests, and
 commits the intended changes. The reviewer consumes a durable bundle rather
 than a shared checkout-volume mount.
 Never edit an installed release under `~/.local/share/vm-tools/releases`; those
-directories are read-only immutable activation output. Reconciliation replaces
-older writable installations from the private artifact rather than trusting
-their contents.
+directories are read-only immutable activation output. If a binary release path
+contains an unmanaged executable, activation compares it with the published
+binary. Matching bytes are replaced by the managed link; different bytes move
+into the guest-local managed backup directory first. A durable migration
+receipt records either result, and activation never silently deletes the
+existing executable.
 
 Inside that checkout, the agent finishes with:
 
@@ -170,11 +209,10 @@ credential; the release worker consumes only its durable digest-addressed
 archives. No host checkout, host approval, npmjs.org, crates.io, or PyPI
 publication participates.
 
-After a configured tool is published, normal managed-tool reconciliation or an
-explicit `vm tools update <tool>` activates it in running managed Docker
-environments that configure it. Repeat `--to <environment>` to limit activation. Language packages
-are not installed directly; their existing consumer rollout workers remain
-authoritative.
+After a binary or collection is published, the durable host worker activates it
+in every running environment where it is globally enabled. Stopped environments
+activate the release on their next start. Language packages are not installed
+directly; their existing consumer rollout workers remain authoritative.
 
 For a language package, the unpublished checkout is attached only to the
 assigned consumer; other consumers stay on their published versions. Every
@@ -193,7 +231,7 @@ touching the registered repository or its persistent canonical mirror.
 ## Release From A Canonical Workspace
 
 Use `vm packages checkout <source>` when an agent needs an isolated shared-source
-checkout. When an agent already owns a registered repository mounted as its
+checkout. When an agent already owns an attested repository mounted as its
 ordinary workspace, release the committed workspace directly:
 
 ```bash
@@ -201,14 +239,7 @@ cd /workspace
 vm packages release
 ```
 
-Register the exact host repository once before creating or reconciling its
-environment:
-
-```bash
-vm packages register ~/projects/typemill
-```
-
-The environment's physical project root must exactly match that remembered
+The environment's physical project root must exactly match a controller-trusted
 canonical source and its origin and package or tool identity must match the
 catalog. A different clone with the same origin receives no release authority.
 The command requires a
@@ -252,7 +283,7 @@ rewrites the Mac Docker daemon. Docker-hosted projects may opt their external
 daemon into the exported mirror, while Tart's nested Linux daemon is configured
 inside the guest.
 
-## Register Sources and Consumers
+## Advanced: Register Sources and Consumers
 
 Store the canonical-source Git token as a controller secret:
 
@@ -284,7 +315,7 @@ environment container.
 Explicit cross-project environment names resolve their owning `vm.yaml` from
 managed Docker metadata before reconciliation, so running `vm tools update
 --to projects-dev` from another repository updates `projects-package-edge`, not
-the caller's package edge. Legacy Docker Desktop bind paths are translated back
+the caller's package edge. Docker Desktop bind paths are translated back
 to native host paths without recreating the container.
 
 Register exact read-only project workspaces, managed-shelf repositories, and
@@ -328,7 +359,7 @@ Keep that source shelf flat and make each child an independent Git repository:
 ```
 
 The shelf itself should not be a Git repository. A repository with a valid
-root `vm-tool.yaml` (`kind: binary` or `kind: collection`) is registered as a
+root schema-1 `vm-tool.yaml` (`kind: binary` or `kind: collection`) is registered as a
 tool source and skipped by language-package registration. This lets managed
 tools live beside npm, Cargo, and Python sources without being misclassified by
 their metadata files. Both tool kinds can use the managed checkout or
@@ -353,7 +384,7 @@ when it finds no Git repositories. Registration is idempotent.
 Supported ecosystems are `npm`, `cargo`, and `python`. A package has one
 canonical repository and immutable published versions.
 
-## Register And Consume Tools
+## Advanced: Tool Manifests and Targeting
 
 Tool definitions use the same private appliance but remain separate from
 language-package protocols:
@@ -407,11 +438,9 @@ failures remain retryable.
 
 The Vibe base owns Antigravity, Claude Code, and Codex executables. They do not
 require this appliance; `agent-skills` remains an intentionally managed tool.
-For the built-in `agent-skills` selection, `vm tools update` automatically
-registers the canonical Goobits repository when it is missing. Tool updates
-activate inside an already-running environment and do not require a base
-rebuild. Read credentials travel to the guest over standard input rather than
-command arguments. Collection activation merges individual skills into an
+Tool updates activate inside an already-running environment and do not require
+a base rebuild. Read credentials travel to the guest over standard input rather
+than command arguments. Collection activation merges individual skills into an
 existing agent skill directory, preserving unmanaged personal and system
 skills. Published binary tools and collections become eligible through
 controller-global defaults or a project's own configuration. Reconciliation selects the guest OS/architecture artifact,
@@ -421,16 +450,14 @@ automatic update without approval; an already-running agent session is not
 hot-reloaded.
 
 ```bash
-vm tools enable codeatlas typemill
-vm tools update
+vm tools status [environment]
 vm tools update agent-skills another-tool
 vm tools update agent-skills --to projects-dev --to typemill-dev
 ```
 
-`enable` selects tools for every running managed Docker environment and future
-environments, then activates them immediately. The remaining examples are the
-common all-tools, selected-tools, and selected-environments update forms. See
-the [CLI reference](cli-reference.md#managed-tools) for every option.
+These status and targeted-update commands are diagnostic and recovery controls,
+not daily release steps. See the
+[CLI reference](cli-reference.md#managed-tools) for every option.
 
 With no names, `update` uses every running managed Docker environment's effective
 global-plus-project tool selection. Positional names filter those selections and never
@@ -438,9 +465,7 @@ make an unconfigured tool eligible. Each `--to` accepts one exact Docker,
 Podman, or Tart environment name. Stopped environments are ignored unless
 `--include-stopped` is explicit; then VM starts selected stopped environments in
 place. A tool absent from every successfully loaded target is rejected instead
-of being installed outside configuration. The compatibility `--fleet` form
-uses the same execution path while retaining all-state selection, including
-starting stopped matches; `--to` is the exact-target syntax.
+of being installed outside configuration.
 
 Omitted versions track the latest release. Explicit semantic versions remain
 pinned. An explicit `update` installs every eligible selected change without a
@@ -497,8 +522,7 @@ The default update discovers running managed Docker environments and loads each
 target's owning configuration before reconciling its shared package routing,
 base-owned Codex runtime, and managed-tool selection. It does not project the
 invoking project's application services or tool policy onto unrelated
-environments. The compatibility `--fleet` form retains its former provider and
-pattern behavior and includes stopped matches for existing automation.
+environments.
 
 Administrative package/tool commands are host-only. Checkout, show, and release
 are intentionally guest-safe. Other commands invoked inside a managed guest

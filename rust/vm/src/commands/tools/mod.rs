@@ -122,7 +122,6 @@ pub(super) async fn handle(
                 Vec::new(),
                 Vec::new(),
                 false,
-                Default::default(),
                 InstallMode::Wait,
             )
             .await
@@ -143,7 +142,6 @@ pub(super) async fn handle(
             tools,
             to,
             include_stopped,
-            fleet,
             background,
         } => {
             let mode = if background {
@@ -151,16 +149,7 @@ pub(super) async fn handle(
             } else {
                 InstallMode::Wait
             };
-            updates::run(
-                config_path,
-                profile,
-                tools,
-                to,
-                include_stopped,
-                fleet,
-                mode,
-            )
-            .await
+            updates::run(config_path, profile, tools, to, include_stopped, mode).await
         }
     }
 }

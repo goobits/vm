@@ -118,16 +118,13 @@ fn test_serialization_deserialization_cycle() {
 }
 
 #[test]
-fn retired_package_work_target_is_accepted_once_and_omitted_on_save() {
-    let config: GlobalConfig = serde_yaml_ng::from_str(
+fn retired_package_work_target_is_rejected() {
+    let error = serde_yaml_ng::from_str::<GlobalConfig>(
         "packages:\n  source_roots: [/srv/packages]\n  work_config: /srv/project/vm.yaml\n  work_profile: development\n",
     )
-    .unwrap();
+    .unwrap_err();
 
-    let yaml = serde_yaml_ng::to_string(&config).unwrap();
-    assert!(yaml.contains("/srv/packages"));
-    assert!(!yaml.contains("work_config"));
-    assert!(!yaml.contains("work_profile"));
+    assert!(error.to_string().contains("unknown field `work_config`"));
 }
 
 #[test]

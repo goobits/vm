@@ -323,7 +323,7 @@ it. Supported values are:
 Omitted versions track the latest release; explicit semantic versions remain
 pinned. Registration, publication, activation, locking, and fleet behavior are
 documented in
-[Package Infrastructure](package-infrastructure.md#register-and-consume-tools).
+[Package Infrastructure](package-infrastructure.md#advanced-tool-manifests-and-targeting).
 
 Host sync is separate: it retains supported CLI state and credentials but does
 not install executables:

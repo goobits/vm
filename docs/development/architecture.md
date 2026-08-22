@@ -70,6 +70,13 @@ consumer usage, so submission and integration enforce the same validation
 scope. Guest cancellation is two-phase: restore local dependency state first,
 then use the consumer-bound capability to close durable checkout state.
 
+Binary and collection publication persists one immutable activation plan in
+the workflow service. A provider-authorized host worker claims that plan and
+updates globally enrolled running environments in place; stopped environments
+remain deferred until their normal start path. The package appliance never
+receives a Docker socket. Worker leases, target receipts, and idempotency keys
+make controller or Docker interruption resumable without republishing.
+
 ## CLI Output
 
 `rust/vm-core/src/output_macros.rs` owns shared output primitives. Requested

@@ -174,13 +174,11 @@ pub enum ToolsSubcommand {
         #[arg(value_name = "TOOL")]
         tools: Vec<String>,
         /// Update only these managed environments
-        #[arg(long, value_name = "ENVIRONMENT", action = clap::ArgAction::Append, conflicts_with_all = ["fleet", "pattern"])]
+        #[arg(long, value_name = "ENVIRONMENT", action = clap::ArgAction::Append)]
         to: Vec<String>,
         /// Include stopped environments and start them in place
         #[arg(long)]
         include_stopped: bool,
-        #[command(flatten)]
-        fleet: FleetArgs,
         /// Reconcile prerequisites, then return after launching managed-tool downloads
         #[arg(long)]
         background: bool,

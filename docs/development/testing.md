@@ -53,11 +53,14 @@ contains uncheckpointed work or unique writable-layer data.
 
 The Docker package-workflow acceptance test uses an isolated temporary home,
 local appliance images, an appliance-volume Git remote, and a purpose-built
-project environment. CI runs it on every main-branch push and pull request. It
-forces checkout rework before publication, verifies managed-tool activation,
-and compares the stable appliance, project, and edge container IDs before and
-after the release. Run it only on a disposable Docker host; its cleanup removes
-the exact acceptance containers and volumes it creates.
+producer, consumer, and stopped project environment. CI runs it on every
+main-branch push and pull request. It proves automatic workspace registration,
+exactly-once publication, fleet activation, executable adoption with backups,
+restart/resume, deferred activation on start, and stable container and volume
+identities. CI restarts the package controller. On a disposable host, set
+`VM_ACCEPTANCE_DOCKER_RESTART_COMMAND` to a command that restarts Docker itself
+to run the full daemon-interruption gate. The script removes only its unique
+acceptance resources.
 
 The supported integration target enables the package server's
 `standalone-binary` feature so its CLI fixtures compile and run with the rest of

@@ -508,7 +508,7 @@ cat > "$fixture_root/package.json" <<'JSON'
   }
 }
 JSON
-printf '%s\n' 'kind: collection' > "$fixture_root/vm-tool.yaml"
+printf '%s\n' 'schema: 1' 'kind: collection' > "$fixture_root/vm-tool.yaml"
 printf '%s\n' '# Initial skill' > "$fixture_root/skills/initial/SKILL.md"
 git -C "$fixture_root" init --initial-branch main
 git -C "$fixture_root" config user.name 'VM Acceptance'

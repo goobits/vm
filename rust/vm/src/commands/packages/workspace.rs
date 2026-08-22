@@ -386,7 +386,7 @@ mod tests {
     fn binary_tool_identity_comes_from_catalog_remote_not_mount_name() {
         let directory = tempfile::tempdir().unwrap();
         let manifest = ToolSourceManifest {
-            schema: Some(1),
+            schema: 1,
             kind: ToolKind::Binary,
             version: Some("1.0.0".into()),
             builds: vec![vm_packages::ToolBuild {

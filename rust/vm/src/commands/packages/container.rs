@@ -17,7 +17,6 @@ const SOURCE_BUILD_LABEL: &str = "org.goobits.vm.source-build";
 const SOURCE_FINGERPRINT_LABEL: &str = "org.goobits.vm.source-fingerprint";
 const SOURCE_FINGERPRINT_REVISION: &str = "1";
 const SOURCE_BUILD_PROFILE: &str = "source-install";
-const LEGACY_SOURCE_FINGERPRINT_LABEL: &str = "org.goobits.vm.controller-binary-sha256";
 
 #[derive(Deserialize)]
 struct ImageInspect {
@@ -288,10 +287,7 @@ fn is_source_built(inspect: &ImageInspect) -> bool {
         .config
         .as_ref()
         .and_then(|config| config.labels.as_ref())
-        .is_some_and(|labels| {
-            labels.get(SOURCE_BUILD_LABEL).map(String::as_str) == Some("true")
-                || labels.contains_key(LEGACY_SOURCE_FINGERPRINT_LABEL)
-        })
+        .is_some_and(|labels| labels.get(SOURCE_BUILD_LABEL).map(String::as_str) == Some("true"))
 }
 
 fn image_source_fingerprint(inspect: &ImageInspect) -> Option<&str> {
@@ -459,8 +455,7 @@ mod tests {
     use super::{
         image_source_fingerprint, is_local_source_image, is_source_built, source_build_command,
         source_fingerprint, source_workspace_for_executable, source_workspace_from, up_command,
-        ImageConfig, ImageInspect, LEGACY_SOURCE_FINGERPRINT_LABEL, SOURCE_BUILD_LABEL,
-        SOURCE_FINGERPRINT_LABEL,
+        ImageConfig, ImageInspect, SOURCE_BUILD_LABEL, SOURCE_FINGERPRINT_LABEL,
     };
     use crate::commands::packages::files::ApplianceFiles;
     use std::collections::BTreeMap;
@@ -671,7 +666,7 @@ mod tests {
     }
 
     #[test]
-    fn source_image_marker_is_stable_and_recognizes_legacy_builds() {
+    fn source_image_marker_is_stable() {
         let inspect = |labels| ImageInspect {
             id: None,
             config: Some(ImageConfig {
@@ -688,10 +683,6 @@ mod tests {
             (SOURCE_FINGERPRINT_LABEL.into(), "abc123".into()),
         ]));
         assert_eq!(image_source_fingerprint(&fingerprint), Some("abc123"));
-        assert!(is_source_built(&inspect(BTreeMap::from([(
-            LEGACY_SOURCE_FINGERPRINT_LABEL.into(),
-            "abc123".into(),
-        )]))));
         assert!(!is_source_built(&inspect(BTreeMap::from([(
             SOURCE_BUILD_LABEL.into(),
             "false".into(),

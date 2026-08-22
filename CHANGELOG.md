@@ -1,6 +1,6 @@
 # Changelog
 
-<!-- CHANGELOG audit cutoff: 2026-08-13. commit 9c5f24f2 on main. -->
+<!-- CHANGELOG audit cutoff: 2026-08-21. commit 856cd08f on main. -->
 
 ## [Unreleased]
 
@@ -13,7 +13,7 @@
 - 🚀 `vibe-tart` defaults to a Linux guest with Docker Engine while retaining an explicit macOS/Colima fallback.
 - 🚀 Environment creation builds a missing standard Tart vibe base automatically at the configured storage location.
 - 📦 Redacted `vm config render` output previews the exact generated provider configuration.
-- 📦 Agents already running in managed guests own resumable private package checkouts and releases without a host launcher or workflow handoff.
+- 📦 One-command private tool releases auto-register attested producers and activate globally enrolled fleets without recreating environments or volumes.
 
 ### ✨ Added
 
@@ -33,9 +33,11 @@
 - 📦 Same-version source builds refresh Docker package edges by immutable image identity, delivering updated managed clients without recreating environments.
 - 📦 Catalog reconciliation treats GitHub HTTPS and SSH forms as one canonical repository instead of degrading after a local transport change.
 - 📦 Explicit cross-project Docker targets load their owning project configuration before managed-tool and package-edge reconciliation.
-- 📦 `vm tools update [<tool>...]` filters each running managed Docker environment's configured tools by default, supports repeated exact `--to` targeting across providers, and excludes stopped environments unless explicitly included; compatibility `--fleet` retains its all-state behavior.
+- 📦 `vm tools update [<tool>...]` filters each running managed Docker environment's configured tools by default, supports repeated exact `--to` targeting across providers, and excludes stopped environments unless explicitly included.
 - 📦 `vm tools enable <tool>...` persists global tool enrollment and immediately activates selected tools across running managed Docker environments; future environments inherit the same baseline.
 - 📦 Package gateway upstreams now follow Docker DNS changes after appliance service replacement instead of retaining stale container addresses.
+- 📦 `vm packages release` queues one durable activation for each binary or collection release, resumes after interruption, and defers stopped environments until startup.
+- 📦 Attested canonical tool workspaces register their exact signed source automatically during release without granting repository choice to guests.
 
 ### 🔧 Changed
 
@@ -49,6 +51,7 @@
 - 🚀 macOS Tart environments use the Sequoia base and run Docker through Colima with QEMU software emulation instead of unsupported nested virtualization.
 - 📦 ⚠️ Bare `vm packages release` infers a managed checkout or registered canonical workspace from the current directory; the retired host `packages work` launcher and public checkout-ID lifecycle commands are removed.
 - 📦 ⚠️ `vm tools update` positional values are tool filters only; exact environment selection now uses repeated `--to <environment>` options.
+- 📦 ⚠️ Tool manifests now require schema 1; retired package-work keys and the tool-specific `vm tools update --fleet` flag are rejected instead of silently retained.
 - 📦 Managed source shelves and exact canonical project roots now have separate policies: only shelves are recursively discovered or quarantined, while canonical roots remain read-only and require a repository-bound v2 guest capability.
 - 📦 Package infrastructure uses one Docker-or-Podman control plane shared by container and Linux Tart environments instead of maintaining a second appliance inside Tart.
 - 📦 Source-installed package appliances fingerprint server and job inputs independently, skip unchanged image builds, and use the faster optimized source-install profile for changed local images.
@@ -90,6 +93,8 @@
 - 🌐 Canonical binary releases ignore untracked runtime files, retry infrastructure-caused build failures at the same source commit, clear stale phase receipts, and route isolated Cargo dependencies through the private registry.
 - 🌐 Docker package edges initialize cache ownership before dropping privileges, preserve running environment image identity during reconciliation, use project-specific gateway names, and accept decoded scoped npm tarball routes.
 - 🌐 Canonical workspace releases review the full tree initially and every commit since the last internal publication thereafter, while deterministic binary-build failures return actionable rework instead of hot-looping.
+- 🌐 Managed binary activation replaces matching unmanaged executables and moves different bytes into a receipted guest-local backup before linking the release.
+- 🌐 `vm packages doctor --fix` repairs the activation worker, sidecars, trusted-source registration drift, and interrupted rollout state.
 - 🌐 Docker image pulls retry transient transport failures while permanent authentication and image errors fail immediately.
 - 🌐 Single-port ranges and explicit create-time port mappings now validate correctly.
 - 🚀 Tart stop operations are idempotent, and resolved stopped guests start reliably before shell connections.

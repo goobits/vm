@@ -153,6 +153,7 @@ import/export entry points
 - Command validation and execution
 - Integration of all lower-level components
 - Service registration and management
+- Provider-authorized host worker for durable managed-tool activation plans
 
 **Key Exports**: Main binary, command handlers, service orchestration
 
@@ -197,6 +198,7 @@ records, appliance resources
 - Checkout leases and state transitions
 - Durable source bundles and transient internal processing trees
 - Submission, integration, release, rollout, and recovery receipts
+- Durable tool activation plans, leases, target results, and repair state
 
 **Key Exports**: `run`, `WorkCredentials`, workflow error contract. The router,
 store, source manager, and persistence records remain service-internal.
