@@ -4,7 +4,7 @@ pub const COMPOSE_PROJECT: &str = "vm-packages";
 pub const COMPOSE_YAML: &str = include_str!("resources/compose.yaml");
 pub const GATEWAY_CONFIG: &str = include_str!("resources/Caddyfile");
 /// Bump when running appliance services must be rebuilt or recreated.
-pub const APPLIANCE_DEFINITION_REVISION: u32 = 2;
+pub const APPLIANCE_DEFINITION_REVISION: u32 = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplianceConfig {
@@ -48,12 +48,13 @@ impl ApplianceConfig {
 
     pub fn environment(&self) -> String {
         format!(
-            "VM_PACKAGES_BIND={}\nVM_PACKAGES_PORT={}\nVM_PACKAGES_REGISTRY_IMAGE={}\nVM_PACKAGES_JOB_IMAGE={}\nVM_PACKAGES_VERSION={}\n",
+            "VM_PACKAGES_BIND={}\nVM_PACKAGES_PORT={}\nVM_PACKAGES_REGISTRY_IMAGE={}\nVM_PACKAGES_JOB_IMAGE={}\nVM_PACKAGES_VERSION={}\nVM_PACKAGES_DEFINITION_REVISION={}\n",
             self.bind_address,
             self.gateway_port,
             self.registry_image,
             self.job_image,
-            env!("CARGO_PKG_VERSION")
+            env!("CARGO_PKG_VERSION"),
+            APPLIANCE_DEFINITION_REVISION
         )
     }
 }
@@ -69,7 +70,7 @@ fn checked_image(value: String) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ApplianceConfig, COMPOSE_YAML, GATEWAY_CONFIG};
+    use super::{ApplianceConfig, APPLIANCE_DEFINITION_REVISION, COMPOSE_YAML, GATEWAY_CONFIG};
 
     #[test]
     fn compose_keeps_private_data_in_named_volumes() {
@@ -130,8 +131,11 @@ mod tests {
         assert!(COMPOSE_YAML.contains("exec pkg-rollout"));
         assert!(COMPOSE_YAML.contains("build-edge:"));
         assert!(COMPOSE_YAML.contains("profiles: [maintenance]"));
-        assert!(GATEWAY_CONFIG.contains("reverse_proxy work:3091"));
-        assert!(GATEWAY_CONFIG.contains("reverse_proxy oci-cache:5000"));
+        assert!(GATEWAY_CONFIG.contains("dynamic a work 3091"));
+        assert!(GATEWAY_CONFIG.contains("dynamic a oci-cache 5000"));
+        assert!(GATEWAY_CONFIG.contains("dynamic a registry 3080"));
+        assert!(GATEWAY_CONFIG.contains("refresh 2s"));
+        assert!(COMPOSE_YAML.contains("VM_PACKAGES_DEFINITION_REVISION"));
         assert!(!COMPOSE_YAML.contains("/var/run/docker.sock"));
         assert!(!COMPOSE_YAML.contains("/workspace"));
         assert!(!COMPOSE_YAML.contains("${HOME}"));
@@ -166,5 +170,15 @@ mod tests {
     #[test]
     fn environment_rejects_line_injection() {
         assert!(ApplianceConfig::new("127.0.0.1", 3080, "image\nBAD=value", "review:1").is_err());
+    }
+
+    #[test]
+    fn environment_versions_the_materialized_definition() {
+        let environment = ApplianceConfig::new("127.0.0.1", 3080, "registry:1", "jobs:1")
+            .unwrap()
+            .environment();
+        assert!(environment.contains(&format!(
+            "VM_PACKAGES_DEFINITION_REVISION={APPLIANCE_DEFINITION_REVISION}\n"
+        )));
     }
 }

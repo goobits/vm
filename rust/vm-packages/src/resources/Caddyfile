@@ -1,14 +1,29 @@
 :8080 {
 	handle_path /work/* {
-		reverse_proxy work:3091
+		reverse_proxy {
+			dynamic a work 3091 {
+				refresh 2s
+				versions ipv4
+			}
+		}
 	}
 
 	@oci path /v2 /v2/*
 	handle @oci {
-		reverse_proxy oci-cache:5000
+		reverse_proxy {
+			dynamic a oci-cache 5000 {
+				refresh 2s
+				versions ipv4
+			}
+		}
 	}
 
 	handle {
-		reverse_proxy registry:3080
+		reverse_proxy {
+			dynamic a registry 3080 {
+				refresh 2s
+				versions ipv4
+			}
+		}
 	}
 }

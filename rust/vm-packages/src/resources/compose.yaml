@@ -5,6 +5,8 @@ services:
     image: caddy:2.10.2-alpine
     restart: unless-stopped
     command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]
+    labels:
+      org.goobits.vm.gateway-definition: "${VM_PACKAGES_DEFINITION_REVISION:?required}"
     ports:
       - "${VM_PACKAGES_BIND:?required}:${VM_PACKAGES_PORT:?required}:8080"
     depends_on:

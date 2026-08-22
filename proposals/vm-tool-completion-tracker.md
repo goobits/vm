@@ -130,6 +130,9 @@ vm packages release
 - [x] Add persistent global managed-tool enrollment so one `vm tools enable`
   activates CodeAtlas and future binary tools across running Docker environments
   without editing project repositories or adding another rollout engine.
+- [x] Make the package gateway resolve replaceable appliance upstreams
+  dynamically so image refreshes cannot leave it pinned to stale container
+  addresses; version the gateway definition for a one-time safe reconciliation.
 - [x] Make TypeMill's base pair self-contained, remove every Git-source and
   `typemill-langs` dependency, and release its two-binary archive through the
   private no-egress builder without registering an external language package.
@@ -160,6 +163,12 @@ Every command resolved through managed release links, and every primary
 container retained its existing ID. Two legacy unmanaged TypeMill installations
 were preserved under their guest-local managed-tool backup directories before
 activation.
+
+The same 2026-08-21 acceptance replaced `vm-packages-work-1` while retaining
+gateway ID `e5bf72873dc2`. The gateway immediately served `vm tools list` through
+the replacement workflow service, proving dynamic Docker DNS rollover. A
+second unchanged `vm packages up` completed in 2.0 seconds and retained both
+gateway and workflow IDs; all eight primary environment IDs remained intact.
 
 ## Remaining Acceptance
 

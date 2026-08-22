@@ -85,6 +85,10 @@ use the optimized source-install Cargo profile and the engine's shared build
 cache. An unrelated CLI rebuild therefore does not change image identity or
 force Compose recreation. Released installs remain pull-only and never depend
 on a source tree.
+The gateway resolves its internal registry, workflow, and OCI-cache services
+through Docker DNS on each short refresh window. Replacing one of those
+services therefore needs no manual gateway restart; an unchanged subsequent
+`vm packages up` retains both service identities.
 Before the non-root registry and workflow services start, a networkless init
 step repairs only their named-volume roots to the package-service UID/GID. This
 keeps both fresh volumes and volumes added during an upgrade writable without
