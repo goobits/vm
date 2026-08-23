@@ -17,7 +17,7 @@ struct BuiltinTool {
 const BUILTIN_TOOLS: &[BuiltinTool] = &[BuiltinTool {
     name: "agent-skills",
     kind: ToolKind::Collection,
-    repository: "https://github.com/goobits/agent-skills.git",
+    repository: "ssh://git@github.com/goobits/agent-skills.git",
     branch: "main",
     requires_git_auth: true,
 }];

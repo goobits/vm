@@ -51,13 +51,17 @@
 - 🚀 macOS Tart environments use the Sequoia base and run Docker through Colima with QEMU software emulation instead of unsupported nested virtualization.
 - 📦 ⚠️ Bare `vm packages release` infers a managed checkout or registered canonical workspace from the current directory; the retired host `packages work` launcher and public checkout-ID lifecycle commands are removed.
 - 📦 ⚠️ `vm tools update` positional values are tool filters only; exact environment selection now uses repeated `--to <environment>` options.
-- 📦 ⚠️ Tool manifests now require schema 1; retired package-work keys and the tool-specific `vm tools update --fleet` flag are rejected instead of silently retained.
+- 📦 ⚠️ New tool manifests use schema 1; legacy collection manifests remain readable during migration, while retired package-work keys and the tool-specific `vm tools update --fleet` flag are rejected.
 - 📦 Managed source shelves and exact canonical project roots now have separate policies: only shelves are recursively discovered or quarantined, while canonical roots remain read-only and require a repository-bound v2 guest capability.
 - 📦 Package infrastructure uses one Docker-or-Podman control plane shared by container and Linux Tart environments instead of maintaining a second appliance inside Tart.
 - 📦 Source-installed package appliances fingerprint server and job inputs independently, skip unchanged image builds, and use the faster optimized source-install profile for changed local images.
 - 🚀 macOS builds always include the Tart provider through target-specific dependency wiring, including packaged releases and source installs.
 
 ### 🐛 Fixed
+
+- 📦 macOS source builds now compile and start the launchd tool-activation worker correctly.
+- 📦 Legacy managed collections remain discoverable during schema migration, and quarantine repair preserves equivalent GitHub SSH origins instead of requiring HTTPS.
+- 📦 The built-in `agent-skills` source and equivalent catalog migrations now retain SSH as their canonical Git transport.
 
 - 🗂️ Cross-platform home and log discovery now resolves host package paths, Tart logs, and uninstall targets without Unix-only fallbacks.
 - ☁️ AI tool state directories remain writable by the environment user across Docker and Tart provisioning.

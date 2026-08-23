@@ -140,13 +140,16 @@ impl Store {
                 && repository_urls_equivalent(&existing.repository, &request.repository)
                 && existing.default_branch == request.default_branch
             {
-                if request.workspace_release && !existing.workspace_release {
+                if existing.repository != request.repository
+                    || (request.workspace_release && !existing.workspace_release)
+                {
                     let mut next = current.clone();
                     let definition = next
                         .tools
                         .get_mut(&request.name)
                         .expect("tool remains registered");
-                    definition.workspace_release = true;
+                    definition.repository = request.repository;
+                    definition.workspace_release |= request.workspace_release;
                     let definition = definition.clone();
                     self.commit(&mut current, next).await?;
                     return Ok(definition);
@@ -518,9 +521,11 @@ mod tests {
         https.repository = "https://github.com/goobits/agent-skills.git".into();
         let github_directory = tempfile::tempdir().unwrap();
         let github_store = Store::open(github_directory.path()).await.unwrap();
+        github_store.register_tool(https).await.unwrap();
+        let migrated = github_store.register_tool(ssh).await.unwrap();
         assert_eq!(
-            github_store.register_tool(https).await.unwrap(),
-            github_store.register_tool(ssh).await.unwrap()
+            migrated.repository,
+            "ssh://git@github.com/goobits/agent-skills.git"
         );
         assert_eq!(registered.name, "agent-skills");
         let mut release = publication("3.0.0", "any", "skills-3");

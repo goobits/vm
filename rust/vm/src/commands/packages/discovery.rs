@@ -580,7 +580,7 @@ mod tests {
         assert!(error.to_string().contains("not a Git repository root"));
         assert_eq!(
             error.hint().unwrap(),
-            format!("Use {} instead", source.display())
+            format!("Use {} instead", source.canonicalize().unwrap().display())
         );
     }
 

@@ -49,10 +49,15 @@ pub struct ToolDefinition {
 
 pub const TOOL_SOURCE_SCHEMA: u32 = 1;
 
+const fn default_tool_source_schema() -> u32 {
+    TOOL_SOURCE_SCHEMA
+}
+
 /// Versioned source contract for managed tools.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToolSourceManifest {
+    #[serde(default = "default_tool_source_schema")]
     pub schema: u32,
     pub kind: ToolKind,
     #[serde(default)]
@@ -594,8 +599,11 @@ builds:
     }
 
     #[test]
-    fn collection_source_manifest_requires_the_current_schema() {
-        assert!(serde_yaml_ng::from_str::<ToolSourceManifest>("kind: collection\n").is_err());
+    fn collection_source_manifest_accepts_the_legacy_implicit_schema() {
+        let legacy: ToolSourceManifest = serde_yaml_ng::from_str("kind: collection\n").unwrap();
+        assert_eq!(legacy.schema, TOOL_SOURCE_SCHEMA);
+        legacy.validate().unwrap();
+
         let manifest: ToolSourceManifest =
             serde_yaml_ng::from_str("schema: 1\nkind: collection\n").unwrap();
         manifest.validate().unwrap();

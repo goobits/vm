@@ -5,7 +5,7 @@ use std::{
 };
 
 use vm_core::{vm_println, vm_success, vm_warning};
-use vm_packages::{SourceKind, ToolKind};
+use vm_packages::{repository_urls_equivalent, SourceKind, ToolKind};
 
 use crate::error::{VmError, VmResult};
 
@@ -368,7 +368,9 @@ fn repair_repository_git(repository: &Path, expected_remote: &str) -> VmResult<(
         .map_err(|error| VmError::general(error, "Failed to inspect package source remote"))?;
     if current.status.success() {
         let current = String::from_utf8_lossy(&current.stdout).trim().to_string();
-        if current != expected_remote {
+        let normalized_current = discovery::normalize_repository_url(&current)?;
+        let normalized_expected = discovery::normalize_repository_url(expected_remote)?;
+        if !repository_urls_equivalent(&normalized_current, &normalized_expected) {
             return Err(VmError::validation(
                 format!(
                     "Repository {} has origin '{current}', expected '{expected_remote}'",
@@ -589,6 +591,23 @@ mod tests {
         assert_eq!(
             repository.find_remote("origin").unwrap().url(),
             Ok("git@example.com:team/other.git")
+        );
+    }
+
+    #[test]
+    fn deterministic_git_repair_accepts_equivalent_github_transports() {
+        let directory = tempfile::tempdir().unwrap();
+        let repository = git2::Repository::init(directory.path()).unwrap();
+        fs::write(directory.path().join("package.json"), r#"{"name":"demo"}"#).unwrap();
+        repository
+            .remote("origin", "git@github.com:goobits/demo.git")
+            .unwrap();
+
+        repair_repository_git(directory.path(), "https://github.com/goobits/demo.git").unwrap();
+
+        assert_eq!(
+            repository.find_remote("origin").unwrap().url(),
+            Ok("git@github.com:goobits/demo.git")
         );
     }
 }

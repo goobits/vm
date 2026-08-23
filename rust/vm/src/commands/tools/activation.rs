@@ -233,8 +233,11 @@ fn launchd_domain() -> VmResult<String> {
         .arg("-u")
         .output()
         .map_err(VmError::from)?;
-    let uid = String::from_utf8(output.stdout).map_err(VmError::from)?;
-    let uid = uid.trim();
+    let uid = std::str::from_utf8(&output.stdout)
+        .map_err(|_| {
+            VmError::validation("Could not resolve the launchd user domain", None::<String>)
+        })?
+        .trim();
     if !output.status.success()
         || uid.is_empty()
         || !uid.chars().all(|character| character.is_ascii_digit())

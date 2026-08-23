@@ -183,11 +183,29 @@ language-package consumer rollout.
   container/volume identity assertions.
 - [ ] Pass the real TypeMill Docker interruption, adoption, stable-ID, and
   repeat-release acceptance gate.
+- [ ] Reject a newer source commit that retains an already-published version
+  before starting its isolated binary build.
 - [x] Reduce the primary guide to global enrollment followed by bare release.
 
 HIF, HQA, and HVR still require a self-contained or coordinated
 multi-repository build artifact; that producer-build work is outside this
 release-activation scope.
+
+Live Docker acceptance on 2026-08-22 fixed three blockers found only on the
+equipped macOS host: a launchd-only compile error, quarantine of the legacy
+schema-less `agent-skills` collection, and SSH/HTTPS identity mismatch during
+quarantine repair. `agent-skills` was restored intact and its catalog migrated
+to SSH. The launchd worker remained running from the installed CLI. All eight
+running project containers retained their exact IDs and named volumes while
+their authenticated guest clients updated in place; CodeAtlas 0.10.0 and
+TypeMill 1.1.0 remained consumable in every environment.
+
+The TypeMill release attempt stopped without publication because current HEAD
+`114b046f` is newer than the published source while still declaring 1.1.0. The
+immutable-version decision was correct, but happened after a four-minute
+binary build; the early version check above remains open. A new authorized
+version is still required to prove publication-created activation and complete
+the interruption/restart gate.
 
 ## Remaining Acceptance
 

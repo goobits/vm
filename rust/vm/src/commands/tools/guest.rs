@@ -1022,7 +1022,9 @@ mod tests {
         let release = data
             .join("vm-tools/releases/release-tool")
             .join(format!("1.2.3-{digest}"));
-        assert!(fs::canonicalize(&installed).unwrap().starts_with(&release));
+        assert!(fs::canonicalize(&installed)
+            .unwrap()
+            .starts_with(fs::canonicalize(&release).unwrap()));
         assert_ne!(
             fs::metadata(release.join("bin/release-tool"))
                 .unwrap()
