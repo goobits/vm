@@ -12,7 +12,7 @@ Prerequisites:
 - `cargo-deny`, nightly Rust, and `cargo-udeps` for the full quality gate
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/goobits/vm.git
 cd vm
 git config core.hooksPath .githooks
 make build-no-bump

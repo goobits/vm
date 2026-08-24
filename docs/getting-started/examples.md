@@ -1,9 +1,14 @@
 # Common Examples
 
-Real-world configurations for different project types. All examples assume `os: ubuntu` and `provider: docker` unless noted.
+Real-world configurations for different project types. All examples assume
+`os: ubuntu` and `provider: docker` unless noted.
 
-**Resource Format Options**: `memory: 4096` (MB), `"4gb"`, `"50%"`, `"unlimited"` - same for cpus, swap, disk_size.
-**See Full Reference**: [Configuration Guide](../user-guide/configuration.md) for all available options
+Resource formats vary by field: `vm.memory` and `vm.swap` accept integer MB,
+sizes, percentages, or `unlimited`; `vm.cpus` accepts a count, percentage, or
+`unlimited`; `tart.disk_size` accepts integer GB, sizes, or percentages.
+
+See the [Configuration Guide](../user-guide/configuration.md) for available
+options.
 
 ## Frontend Projects
 
@@ -27,28 +32,30 @@ aliases:
 
 ## Backend Projects
 
-### Python (Django / Flask) or Ruby (Rails)
+### Python (Django / Flask)
+
 ```yaml
 # vm.yaml
 project:
-  name: django-api  # or rails-app
+  name: django-api
 ports:
-  api: 8000         # Django, or 3000 for Rails
+  api: 8000
 services:
   postgresql:
     enabled: true
     database: myapp_dev
   redis:
     enabled: true
-pip_packages:       # or gem_packages for Rails
+pip_packages:
   - django-debug-toolbar
   - django-extensions
-environment:
-  RAILS_ENV: development  # Rails only
 aliases:
-  migrate: "python manage.py migrate"  # or "rails db:migrate"
-  shell: "python manage.py shell_plus"   # or "rails console"
+  migrate: "python manage.py migrate"
+  shell: "python manage.py shell_plus"
 ```
+
+Rails dependencies stay in the project's `Gemfile`; VM detects Ruby and Rails
+projects without a `gem_packages` configuration field.
 
 ## Full-Stack Projects
 
@@ -149,8 +156,8 @@ a per-project or global-config service. See [Package Infrastructure](../user-gui
 - **Percentage-based**: Adapts to host machine capabilities
 
 ### Network Access
-- **Local only** (default): `port_binding: 127.0.0.1` - secure, single-user
-- **Team sharing**: `port_binding: "0.0.0.0"` - accessible from other machines/devices
+- **Local only** (default): `vm.port_binding: 127.0.0.1` - secure, single-user
+- **Team sharing**: `vm.port_binding: "0.0.0.0"` - accessible from other machines/devices
 
 ### Port Organization
 Organize team projects with port ranges: project-1 uses 3000-3009, project-2 uses 3010-3019, etc.
