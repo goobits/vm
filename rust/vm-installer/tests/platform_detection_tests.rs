@@ -1,10 +1,10 @@
 #[cfg(feature = "integration")]
-use vm_installer::platform;
+use vm_installer::detect_platform_string;
 
 #[test]
 #[cfg(feature = "integration")]
 fn test_detect_platform_string_integration() {
-    let platform = platform::detect_platform_string();
+    let platform = detect_platform_string();
     assert!(!platform.is_empty(), "Platform string should not be empty");
 
     let os = std::env::consts::OS;

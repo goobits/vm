@@ -1,17 +1,13 @@
 use clap::Parser;
 use vm_core::error::Result;
 use vm_core::{vm_error, vm_println, vm_success};
+use vm_installer::{check_dependencies, install};
 use vm_logging::init_subscriber;
 use vm_messages::messages::MESSAGES;
 
 mod cli;
-mod dependencies;
-mod installer;
-mod platform;
-mod prompt;
 
 use cli::Args;
-use installer::install;
 
 fn main() {
     if let Err(e) = run() {
@@ -29,7 +25,7 @@ fn run() -> Result<()> {
     vm_println!("{}", MESSAGES.service.installer_installing);
 
     // 1. Check dependencies (like cargo)
-    dependencies::check()?;
+    check_dependencies()?;
 
     // 2. Run the installation
     install(args.clean)?;

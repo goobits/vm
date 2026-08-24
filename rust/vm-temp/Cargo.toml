@@ -7,7 +7,6 @@ license.workspace = true
 
 [dependencies]
 tracing = { workspace = true }
-serde = { workspace = true }
 serde_yaml_ng = { workspace = true }
 vm-provider = { path = "../vm-provider" }
 vm-platform = { path = "../vm-platform" }
@@ -15,14 +14,8 @@ vm-core = { path = "../vm-core" }
 vm-messages = { path = "../vm-messages" }
 
 thiserror = { workspace = true }
-clap = { workspace = true }
 vm-config = { path = "../vm-config" }
 fs2 = { workspace = true }
 tempfile = { workspace = true }
-
-[package.metadata.cargo-machete]
-ignored = [
-    "serde"        # Used transitively via serde_yaml_ng and state serialization
-]
 
 [dev-dependencies]

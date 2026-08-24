@@ -11,7 +11,8 @@ use tempfile::TempDir;
 use vm_config::{config::VmConfig, ConfigOps, PresetDetector};
 use vm_config::detector::{detect_project_type, format_detected_types};
 use vm_config::ports::{PortRegistry, PortRange};
-use vm_temp::{StateManager, TempVmState};
+use vm_provider::TempVmState;
+use vm_temp::StateManager;
 
 static TEST_MUTEX: Mutex<()> = Mutex::new(());
 

@@ -3,7 +3,6 @@
 //! This module provides functionality for persisting and managing the state of temporary VMs,
 //! including state file operations, locking mechanisms, and validation.
 
-use crate::TempVmState;
 use fs2::FileExt;
 use serde_yaml_ng as serde_yaml;
 use std::fs::{self, File, OpenOptions};
@@ -11,6 +10,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 use vm_core::error::{Result, VmError};
+use vm_provider::TempVmState;
 
 /// Errors that can occur during state management operations.
 #[derive(Error, Debug)]

@@ -9,9 +9,9 @@ use vm_messages::messages::MESSAGES;
 
 // Internal imports
 use crate::mount_ops::parse_mount_strings;
-use crate::{StateManager, TempVmState};
+use crate::StateManager;
 use vm_config::config::VmConfig;
-use vm_provider::{Provider, ProviderContext};
+use vm_provider::{Provider, ProviderContext, TempVmState};
 
 /// Core temporary VM operations
 pub struct TempVmOps;

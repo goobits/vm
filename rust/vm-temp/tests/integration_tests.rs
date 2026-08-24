@@ -5,7 +5,8 @@ use std::thread;
 use std::time::Duration;
 use tempfile::TempDir;
 use vm_core::error::Result;
-use vm_temp::{MountPermission, StateManager, TempVmState};
+use vm_provider::{MountPermission, TempVmState};
+use vm_temp::StateManager;
 
 /// Test fixture for integration testing with real filesystem operations
 struct IntegrationTestFixture {

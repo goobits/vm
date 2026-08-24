@@ -3,11 +3,11 @@
 //! This library provides installation functionality for the VM tool,
 //! including platform detection, binary building, and PATH management.
 
-pub mod dependencies;
-pub mod installer;
-pub mod platform;
-pub mod prompt;
+mod dependencies;
+mod installer;
+mod platform;
+mod prompt;
 
-// Re-export key functions for testing and external use
+pub use dependencies::check as check_dependencies;
 pub use installer::install;
 pub use platform::{detect_platform_string, ensure_path};
