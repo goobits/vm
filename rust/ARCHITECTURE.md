@@ -163,6 +163,10 @@ import/export entry points
 - Service registration and management
 - Provider-authorized host worker for durable managed-tool activation plans
 
+Guest shell programs live as adjacent `.sh` resources and are embedded with
+`include_str!`; Rust modules own orchestration and typed parsing, not large
+inline program bodies.
+
 **Key Exports**: Main binary, command handlers, service orchestration
 
 The root command module retains one exhaustive dispatcher. Command-specific
