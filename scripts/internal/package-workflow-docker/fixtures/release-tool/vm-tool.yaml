@@ -1,0 +1,15 @@
+schema: 1
+kind: binary
+version: 1.0.0
+builds:
+  - target: linux-amd64
+    command: ["node", "build.mjs", "linux-amd64"]
+    archive: dist/release-tool-linux-amd64.tar.gz
+    links:
+      .local/bin/release-tool: bin/release-tool
+    verify: ["bin/release-tool", "--version"]
+  - target: linux-arm64
+    command: ["node", "build.mjs", "linux-arm64"]
+    archive: dist/release-tool-linux-arm64.tar.gz
+    links:
+      .local/bin/release-tool: bin/release-tool

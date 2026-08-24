@@ -17,6 +17,10 @@ The root `Makefile` owns the supported test and quality commands. It uses
 | Full local gate | `make quality-gates` |
 | Docker package workflow | `scripts/internal/test-package-workflow-docker.sh` |
 
+The Docker workflow entrypoint sources its assertions and scenarios from
+`scripts/internal/package-workflow-docker/`; static fixture files live under
+that directory instead of being embedded in the runner.
+
 `make quality-gates` also requires `cargo-deny`, nightly Rust with
 `cargo-udeps`, and any provider dependencies used by integration tests.
 

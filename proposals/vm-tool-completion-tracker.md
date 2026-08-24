@@ -181,6 +181,8 @@ language-package consumer rollout.
 - [x] Extend the sole Docker acceptance owner with exactly-once publication,
   persisted-plan interruption, adoption receipts, deferred startup, and stable
   container/volume identity assertions.
+- [x] Keep that acceptance owner as one small runner with adjacent fixture,
+  assertion, and scenario owners instead of an embedded monolith.
 - [ ] Pass the real TypeMill Docker interruption, adoption, stable-ID, and
   repeat-release acceptance gate.
 - [x] Reject a newer source commit that retains an already-published version

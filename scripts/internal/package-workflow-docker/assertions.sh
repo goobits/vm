@@ -1,0 +1,142 @@
+capture_runtime_state() {
+  local ids=$1
+  local volumes=$2
+  local volume_names=$acceptance_root/volume-names
+  : > "$volume_names"
+  for container in "${stable_containers[@]}"; do
+    docker container inspect --format '{{.Name}} {{.Id}}' "$container"
+    docker container inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{println .Name}}{{end}}{{end}}' \
+      "$container" >> "$volume_names"
+  done | sort > "$ids"
+  : > "$volumes"
+  sort -u "$volume_names" | while IFS= read -r volume; do
+    test -z "$volume" || docker volume inspect \
+      --format '{{.Name}} {{.CreatedAt}} {{.Mountpoint}}' "$volume"
+  done | sort > "$volumes"
+}
+checkout_source_from_log() {
+  local log=$1
+  local source
+  source=$(sed -n 's/^Source: //p' "$log")
+  if test "$(printf '%s\n' "$source" | sed '/^$/d' | wc -l | tr -d ' ')" != 1; then
+    cat "$log" >&2
+    echo "Package checkout did not report exactly one source" >&2
+    exit 3
+  fi
+  case "$source" in
+    /home/acceptance/.local/share/vm/package-checkouts/*/source) ;;
+    *)
+      cat "$log" >&2
+      echo "Managed checkout escaped guest storage: $source" >&2
+      exit 3
+      ;;
+  esac
+  printf '%s\n' "$source"
+}
+
+workflow_state() {
+  docker exec "$compose_project-work-1" cat /data/state/workflows.json
+}
+
+assert_release_published_once() {
+  local release_version=$1
+  workflow_state | python3 -c '
+import json, sys
+
+version = sys.argv[1]
+state = json.load(sys.stdin)
+releases = [item for item in state["releases"].values()
+            if item["package"] == "release-tool" and item["version"] == version]
+artifacts = [item for item in state["tool_artifacts"].values()
+             if item["tool"] == "release-tool" and item["version"] == version]
+activations = [item for item in state["tool_activations"].values()
+               if item["tool"] == "release-tool" and item["version"] == version]
+if (len(releases), len(artifacts), len(activations)) != (1, 2, 1):
+    raise SystemExit(
+        f"expected one release, two artifacts, and one activation for {version}; "
+        f"found {len(releases)}, {len(artifacts)}, {len(activations)}"
+    )
+' "$release_version"
+}
+
+activation_worker_pid() {
+  local pid_file=$acceptance_home/.vm/infrastructure/packages/activation-worker.pid
+  local attempt pid
+  for attempt in $(seq 1 100); do
+    if test -s "$pid_file"; then
+      pid=$(tr -d '[:space:]' < "$pid_file")
+      if test -n "$pid" && kill -0 "$pid" 2>/dev/null; then
+        printf '%s\n' "$pid"
+        return 0
+      fi
+    fi
+    sleep 0.1
+  done
+  echo 'Tool activation worker did not start' >&2
+  return 1
+}
+
+wait_for_queued_activation() {
+  local attempt
+  for attempt in $(seq 1 400); do
+    if workflow_state 2>/dev/null | python3 -c '
+import json, sys
+
+state = json.load(sys.stdin)
+queued = [item for item in state["tool_activations"].values()
+          if item["tool"] == "release-tool"
+          and item["version"] == "1.0.1"
+          and not item["targets"]]
+raise SystemExit(0 if queued else 1)
+'; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo 'Tool activation was not persisted before rollout' >&2
+  return 1
+}
+
+wait_for_pending_activation_plan() {
+  local attempt
+  for attempt in $(seq 1 200); do
+    if workflow_state 2>/dev/null | python3 -c '
+import json, sys
+
+state = json.load(sys.stdin)
+planned = [item for item in state["tool_activations"].values()
+           if item["tool"] == "release-tool"
+           and item["version"] == "1.0.1"
+           and any(target["state"] == "pending" for target in item["targets"])]
+raise SystemExit(0 if planned else 1)
+'; then
+      return 0
+    fi
+    sleep 0.05
+  done
+  echo 'Tool activation plan was not persisted before execution' >&2
+  return 1
+}
+
+wait_for_package_controller() {
+  local attempt
+  for attempt in $(seq 1 120); do
+    if docker info >/dev/null 2>&1 \
+      && test "$(docker container inspect --format '{{.State.Status}}' \
+        "$compose_project-work-1" 2>/dev/null)" = running; then
+      return 0
+    fi
+    sleep 0.5
+  done
+  echo 'Docker package controller did not recover after restart' >&2
+  return 1
+}
+
+assert_guest_only_checkout() {
+  local container
+  for container in "${workflow_containers[@]}"; do
+    docker exec "$container" sh -ec \
+      'test ! -e "$1" && test ! -e "$2"' sh \
+      "$checkout_source" "/data/agents/$checkout_id/source"
+  done
+}
