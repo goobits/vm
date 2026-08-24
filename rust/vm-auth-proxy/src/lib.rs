@@ -12,42 +12,15 @@
 //! - **Bearer token auth**: Secure communication between VMs and host
 //! - **Audit logging**: Track secret access and modifications
 //!
-//! ## Usage
-//!
-//! ```rust,no_run
-//! use vm_auth_proxy::server;
-//! use std::path::PathBuf;
-//!
-//! # async fn example() -> anyhow::Result<()> {
-//! // Start auth proxy server
-//! server::run_server("127.0.0.1".to_string(), 3090, PathBuf::from("~/.vm/auth")).await?;
-//! # Ok(())
-//! # }
-//! ```
+mod client_ops;
+mod crypto;
+mod server;
+mod storage;
+mod types;
 
-pub mod client_ops;
-pub mod crypto;
-pub mod server;
-pub mod storage;
-pub mod types;
-
-// Re-export main types
-pub use types::{Secret, SecretScope, SecretStorage};
-
-// Re-export server functions
-pub use server::{run_server, run_server_background, run_server_with_shutdown};
-
-// Re-export client operations for CLI
 pub use client_ops::{
-    add_secret, check_server_running, get_secret_for_vm, list_secrets, remove_secret,
-    start_server_if_needed,
+    add_secret, get_secret_for_vm, get_secret_value, list_secrets, remove_secret,
 };
-
-/// Default port for the auth proxy service
-pub const DEFAULT_PORT: u16 = 3090;
-
-/// Default host for the auth proxy service
-pub const DEFAULT_HOST: &str = "127.0.0.1";
-
-/// Auth proxy service name for logging and process management
-pub const SERVICE_NAME: &str = "vm-auth-proxy";
+pub use server::{check_server_running, run_server_with_shutdown};
+pub use storage::get_auth_data_dir;
+pub use types::{SecretListResponse, SecretScope, SecretSummary};

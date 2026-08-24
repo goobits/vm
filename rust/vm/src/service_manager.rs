@@ -273,6 +273,41 @@ impl ServiceManager {
             .and_then(|guard| guard.get(service_name).cloned())
     }
 
+    /// Ensure an infrastructure service is available without changing VM references.
+    pub async fn ensure_service_running(
+        &self,
+        service_name: &str,
+        global_config: &GlobalConfig,
+    ) -> Result<()> {
+        let is_healthy = self.check_service_health(service_name, global_config).await;
+        let port = self.get_service_port(service_name, global_config);
+
+        {
+            let mut state = self.state.lock().map_err(|error| {
+                VmError::general(
+                    std::io::Error::new(std::io::ErrorKind::Other, error.to_string()),
+                    "State mutex was poisoned",
+                )
+            })?;
+            let service_state =
+                state
+                    .entry(service_name.to_string())
+                    .or_insert_with(|| ServiceState {
+                        port,
+                        ..Default::default()
+                    });
+            service_state.is_running = is_healthy;
+            service_state.port = port;
+        }
+
+        if is_healthy {
+            return self.save_state();
+        }
+
+        self.start_service(service_name, global_config).await?;
+        self.save_state()
+    }
+
     /// Start a service
     async fn start_service(&self, service_name: &str, global_config: &GlobalConfig) -> Result<()> {
         info!("Starting service: {}", service_name);
@@ -608,5 +643,28 @@ mod tests {
             .unwrap();
         assert!(manager.get_service_status("postgresql").unwrap().is_running);
         assert_eq!(service.starts.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn healthy_direct_service_use_does_not_create_a_vm_reference() {
+        let directory = tempfile::tempdir().unwrap();
+        let service = Arc::new(TestService {
+            fail_start: AtomicBool::new(false),
+            healthy: AtomicBool::new(true),
+            starts: AtomicUsize::new(0),
+            stops: AtomicUsize::new(0),
+        });
+        let manager = manager(service.clone(), directory.path().join("services.json"));
+        let global = GlobalConfig::default();
+
+        manager
+            .ensure_service_running("postgresql", &global)
+            .await
+            .unwrap();
+
+        let state = manager.get_service_status("postgresql").unwrap();
+        assert!(state.is_running);
+        assert_eq!(state.reference_count, 0);
+        assert_eq!(service.starts.load(Ordering::SeqCst), 0);
     }
 }

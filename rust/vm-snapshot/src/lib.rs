@@ -9,7 +9,7 @@ pub mod docker;
 pub mod export;
 mod images;
 pub mod import;
-pub mod manager;
+mod manager;
 pub mod metadata;
 pub mod restore;
 mod volumes;

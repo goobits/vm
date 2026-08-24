@@ -8,10 +8,10 @@ use crate::cli::SecretSubcommand;
 use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
 use crate::service_registry::get_service_registry;
+use dialoguer::{Confirm, Input, Password, Select};
+use vm_auth_proxy::{self, check_server_running, SecretScope};
 use vm_config::{AppConfig, GlobalConfig};
-use vm_core::{vm_println, vm_progress, vm_success};
-
-use vm_auth_proxy::{self, check_server_running, start_server_if_needed};
+use vm_core::{vm_println, vm_progress, vm_success, vm_warning};
 
 pub(super) async fn handle_command(
     command: &SecretSubcommand,
@@ -52,6 +52,24 @@ async fn handle_secrets_command(
     }
 }
 
+fn server_url(global_config: &GlobalConfig) -> String {
+    format!(
+        "http://127.0.0.1:{}",
+        global_config.services.auth_proxy.port
+    )
+}
+
+async fn ensure_server(global_config: &GlobalConfig) -> VmResult<()> {
+    let port = global_config.services.auth_proxy.port;
+    if check_server_running(port).await {
+        return Ok(());
+    }
+    get_service_manager()?
+        .ensure_service_running("auth_proxy", global_config)
+        .await
+        .map_err(VmError::from)
+}
+
 /// Show secrets proxy status with service manager information
 async fn handle_status(global_config: &GlobalConfig) -> VmResult<()> {
     let registry = get_service_registry();
@@ -84,10 +102,7 @@ async fn handle_status(global_config: &GlobalConfig) -> VmResult<()> {
     }
 
     // Check actual server status for verification
-    let server_url = format!(
-        "http://127.0.0.1:{}",
-        global_config.services.auth_proxy.port
-    );
+    let server_url = server_url(global_config);
     vm_println!("  Server: {server_url}");
 
     if check_server_running(global_config.services.auth_proxy.port).await {
@@ -109,15 +124,8 @@ async fn handle_add(
     description: Option<&str>,
     global_config: &GlobalConfig,
 ) -> VmResult<()> {
-    let server_url = format!(
-        "http://127.0.0.1:{}",
-        global_config.services.auth_proxy.port
-    );
-
-    // Ensure server is running before attempting to add secret
-    start_server_if_needed(global_config.services.auth_proxy.port)
-        .await
-        .map_err(VmError::from)?;
+    let server_url = server_url(global_config);
+    ensure_server(global_config).await?;
 
     vm_progress!("Adding secret '{name}'...");
 
@@ -131,38 +139,72 @@ async fn handle_add(
 
 /// List secrets
 async fn handle_list(show_values: bool, global_config: &GlobalConfig) -> VmResult<()> {
-    let server_url = format!(
-        "http://127.0.0.1:{}",
-        global_config.services.auth_proxy.port
-    );
-
-    // Ensure server is running
-    start_server_if_needed(global_config.services.auth_proxy.port)
+    let server_url = server_url(global_config);
+    ensure_server(global_config).await?;
+    let list = vm_auth_proxy::list_secrets(&server_url)
         .await
         .map_err(VmError::from)?;
 
-    vm_auth_proxy::list_secrets(&server_url, show_values)
-        .await
-        .map_err(VmError::from)?;
+    if list.secrets.is_empty() {
+        vm_println!("No secrets found.");
+        return Ok(());
+    }
+
+    vm_println!("Secrets ({})", list.total);
+    for secret in list.secrets {
+        let scope = match secret.scope {
+            SecretScope::Global => "global".to_string(),
+            SecretScope::Project(project) => format!("project:{project}"),
+            SecretScope::Instance(instance) => format!("instance:{instance}"),
+        };
+        let value = if show_values {
+            match vm_auth_proxy::get_secret_value(&server_url, &secret.name).await {
+                Ok(value) => format!(" = {}", masked_secret(&value)),
+                Err(error) => {
+                    vm_warning!("Could not read secret '{}': {}", secret.name, error);
+                    " = <error>".to_string()
+                }
+            }
+        } else {
+            String::new()
+        };
+        let description = secret
+            .description
+            .map(|value| format!(" - {value}"))
+            .unwrap_or_default();
+        vm_println!("  {} [{}]{}{}", secret.name, scope, value, description);
+    }
 
     Ok(())
 }
 
+fn masked_secret(value: &str) -> String {
+    if value.chars().count() > 20 {
+        format!("{}...", value.chars().take(17).collect::<String>())
+    } else {
+        value.to_string()
+    }
+}
+
 /// Remove a secret
 async fn handle_remove(name: &str, force: bool, global_config: &GlobalConfig) -> VmResult<()> {
-    let server_url = format!(
-        "http://127.0.0.1:{}",
-        global_config.services.auth_proxy.port
-    );
+    let server_url = server_url(global_config);
+    ensure_server(global_config).await?;
 
-    // Ensure server is running
-    start_server_if_needed(global_config.services.auth_proxy.port)
-        .await
-        .map_err(VmError::from)?;
+    if !force
+        && !Confirm::new()
+            .with_prompt(format!("Remove secret '{name}'?"))
+            .default(false)
+            .interact()
+            .map_err(|error| VmError::general(error, "Failed to confirm secret removal"))?
+    {
+        vm_println!("Secret removal cancelled.");
+        return Ok(());
+    }
 
     vm_progress!("Removing secret '{name}'...");
 
-    vm_auth_proxy::remove_secret(&server_url, name, force)
+    vm_auth_proxy::remove_secret(&server_url, name)
         .await
         .map_err(VmError::from)?;
 
@@ -172,19 +214,10 @@ async fn handle_remove(name: &str, force: bool, global_config: &GlobalConfig) ->
 
 /// Interactive secret addition
 async fn handle_interactive(global_config: &GlobalConfig) -> VmResult<()> {
-    let server_url = format!(
-        "http://127.0.0.1:{}",
-        global_config.services.auth_proxy.port
-    );
-
-    // Ensure server is running before attempting interactive session
-    start_server_if_needed(global_config.services.auth_proxy.port)
-        .await
-        .map_err(VmError::from)?;
+    let server_url = server_url(global_config);
+    ensure_server(global_config).await?;
 
     vm_println!("Add a secret");
-
-    use dialoguer::{Input, Password, Select};
 
     // Get secret name
     let name: String = Input::new()
@@ -248,4 +281,18 @@ async fn handle_interactive(global_config: &GlobalConfig) -> VmResult<()> {
 
     vm_success!("Added secret '{name}'");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::masked_secret;
+
+    #[test]
+    fn masking_is_unicode_safe() {
+        assert_eq!(masked_secret("short"), "short");
+        assert_eq!(
+            masked_secret("🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐"),
+            "🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐..."
+        );
+    }
 }

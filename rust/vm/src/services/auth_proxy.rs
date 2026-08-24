@@ -29,10 +29,8 @@ impl ManagedService for AuthProxyService {
     async fn start(&self, global_config: &GlobalConfig) -> Result<()> {
         let port = self.get_port(global_config);
 
-        use vm_auth_proxy;
-
-        let data_dir = vm_auth_proxy::storage::get_auth_data_dir()
-            .context("Failed to get auth data directory")?;
+        let data_dir =
+            vm_auth_proxy::get_auth_data_dir().context("Failed to get auth data directory")?;
 
         // Create shutdown channel
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();

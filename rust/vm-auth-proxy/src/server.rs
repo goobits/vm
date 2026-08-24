@@ -1,6 +1,6 @@
 //! HTTP server for auth proxy service
 
-use crate::storage::{get_auth_data_dir, SecretStore};
+use crate::storage::SecretStore;
 use crate::types::{
     EnvironmentResponse, HealthResponse, SecretListResponse, SecretRequest, SecretResponse,
     SecretSummary,
@@ -92,15 +92,6 @@ pub async fn run_server_with_shutdown(
     }
 
     Ok(())
-}
-
-/// Run the auth proxy server in foreground
-pub async fn run_server(host: String, port: u16, data_dir: PathBuf) -> Result<()> {
-    run_server_with_shutdown(host, port, data_dir, None).await
-}
-
-pub async fn run_server_background(host: String, port: u16, data_dir: PathBuf) -> Result<()> {
-    run_server_with_shutdown(host, port, data_dir, None).await
 }
 
 /// Check if the auth proxy server is running
@@ -345,12 +336,6 @@ fn verify_auth_token(state: &AppState, headers: &HeaderMap) -> bool {
     }
 
     false
-}
-
-/// Use default auth data directory for background server
-pub async fn run_server_with_defaults() -> Result<()> {
-    let data_dir = get_auth_data_dir()?;
-    run_server("127.0.0.1".to_string(), 3090, data_dir).await
 }
 
 #[cfg(test)]

@@ -13,7 +13,6 @@ anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 vm-core = { path = "../vm-core" }
-vm-messages = { path = "../vm-messages" }
 
 # HTTP Server
 axum = { workspace = true }
@@ -29,8 +28,6 @@ subtle = "2"
 
 # System integration
 dirs = { workspace = true }
-dialoguer = { workspace = true }
-colored = { workspace = true }
 
 # Utilities
 tracing = { workspace = true }

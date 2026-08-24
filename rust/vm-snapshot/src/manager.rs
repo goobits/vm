@@ -150,11 +150,11 @@ impl SnapshotManager {
         }
 
         if let Err(error) = std::fs::remove_dir_all(&backup_path) {
-            vm_core::vm_warning!(
-                "Snapshot '{}' was replaced, but its previous copy at '{}' could not be removed: {}",
-                name,
-                backup_path.display(),
-                error
+            tracing::warn!(
+                snapshot = name,
+                path = %backup_path.display(),
+                %error,
+                "snapshot was replaced but its previous copy could not be removed"
             );
         }
 
@@ -211,9 +211,10 @@ impl SnapshotManager {
 
                 match SnapshotMetadata::load(&metadata_file) {
                     Ok(metadata) => snapshots.push(metadata),
-                    Err(_) => vm_core::vm_warning!(
-                        "Failed to load snapshot metadata from {}",
-                        metadata_file.display()
+                    Err(error) => tracing::warn!(
+                        path = %metadata_file.display(),
+                        %error,
+                        "failed to load snapshot metadata"
                     ),
                 }
             }
@@ -248,139 +249,6 @@ impl SnapshotManager {
         let snapshot_dir = self.get_snapshot_dir(scope, name)?;
         Ok(snapshot_dir.exists() && snapshot_dir.join("metadata.json").exists())
     }
-}
-
-/// Handle the list subcommand
-pub async fn handle_list(
-    project: Option<&str>,
-    snapshot_type: Option<&str>,
-    default_global_only: bool,
-) -> Result<()> {
-    let manager = SnapshotManager::new()?;
-    let mut snapshots = manager.list_snapshots(project)?;
-
-    // Filter by type if specified
-    let filter_type = if snapshot_type.is_none() && project.is_none() && default_global_only {
-        Some("base")
-    } else {
-        snapshot_type
-    };
-
-    if let Some(filter_type) = filter_type {
-        snapshots.retain(|snapshot| {
-            let is_base = snapshot.project_name == "global";
-            match filter_type {
-                "base" => is_base,
-                "project" => !is_base,
-                _ => true,
-            }
-        });
-    }
-
-    if snapshots.is_empty() {
-        vm_core::vm_println!("No snapshots found.");
-        return Ok(());
-    }
-
-    vm_core::vm_println!(
-        "{:<9} {:<20} {:<21} {:>10} {:<20}",
-        "TYPE",
-        "NAME",
-        "CREATED",
-        "SIZE",
-        "DESCRIPTION"
-    );
-    vm_core::vm_println!("{}", "─".repeat(84));
-
-    for snapshot in snapshots {
-        // Determine snapshot type (base or project)
-        let snapshot_type = if snapshot.project_name == "global" {
-            "base"
-        } else {
-            "project"
-        };
-
-        let size_mb = snapshot.total_size_bytes as f64 / (1024.0 * 1024.0);
-        let size_display = format!("{:.1} MB", size_mb);
-
-        vm_core::vm_println!(
-            "{:<9} {:<20} {:<21} {:>10} {:<20}",
-            snapshot_type,
-            truncate_string(&snapshot.name, 20),
-            snapshot.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-            size_display,
-            truncate_string(snapshot.description.as_deref().unwrap_or("--"), 20)
-        );
-    }
-
-    vm_core::vm_println!("");
-
-    Ok(())
-}
-
-fn truncate_string(s: &str, max_len: usize) -> String {
-    if s.chars().count() <= max_len {
-        s.to_string()
-    } else {
-        format!(
-            "{}...",
-            s.chars()
-                .take(max_len.saturating_sub(3))
-                .collect::<String>()
-        )
-    }
-}
-
-/// Handle the delete subcommand
-pub async fn handle_delete(name: &str, project: Option<&str>, force: bool) -> Result<()> {
-    let manager = SnapshotManager::new()?;
-
-    let (scope, snapshot_name) = SnapshotScope::from_name(name, project);
-
-    if !manager.snapshot_exists(scope, snapshot_name)? {
-        let scope_desc = if matches!(scope, SnapshotScope::Global) {
-            "global snapshots".to_string()
-        } else if let Some(proj) = project {
-            format!("project '{}'", proj)
-        } else {
-            "current project".to_string()
-        };
-        return Err(VmError::validation(
-            format!("Snapshot '{}' not found in {}", snapshot_name, scope_desc),
-            None::<String>,
-        ));
-    }
-
-    if !force {
-        let scope_desc = if matches!(scope, SnapshotScope::Global) {
-            " (global)".to_string()
-        } else {
-            String::new()
-        };
-        vm_core::vm_println!(
-            "This will permanently delete the snapshot '{}'{}.",
-            snapshot_name,
-            scope_desc
-        );
-        print!("Are you sure you want to continue? (y/N) ");
-        use std::io::{self, Write};
-        io::stdout()
-            .flush()
-            .map_err(|e| VmError::general(e, "Failed to flush stdout"))?;
-        let mut response = String::new();
-        io::stdin()
-            .read_line(&mut response)
-            .map_err(|e| VmError::general(e, "Failed to read user input"))?;
-        if response.trim().to_lowercase() != "y" {
-            vm_core::vm_println!("Snapshot deletion cancelled.");
-            return Ok(());
-        }
-    }
-
-    manager.delete_snapshot(scope, snapshot_name)?;
-    vm_core::vm_success!("Snapshot '{}' deleted successfully", snapshot_name);
-
-    Ok(())
 }
 
 #[cfg(test)]

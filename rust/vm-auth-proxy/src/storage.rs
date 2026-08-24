@@ -115,11 +115,6 @@ impl SecretStore {
         }
     }
 
-    /// Get secret metadata without decrypting
-    pub fn get_secret_metadata(&self, name: &str) -> Option<&Secret> {
-        self.storage.secrets.get(name)
-    }
-
     /// List all secret names and metadata
     pub fn list_secrets(&self) -> &HashMap<String, Secret> {
         &self.storage.secrets
@@ -259,7 +254,8 @@ mod tests {
 
         // Check metadata
         let metadata = store
-            .get_secret_metadata("test_key")
+            .list_secrets()
+            .get("test_key")
             .expect("should get secret metadata");
         assert_eq!(metadata.scope, SecretScope::Global);
         assert_eq!(metadata.description, Some("Test secret".to_string()));
