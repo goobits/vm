@@ -55,7 +55,7 @@ pub enum PackagesSubcommand {
         #[arg(long)]
         registry_image: Option<String>,
         /// Override the immutable package review/release job image
-        #[arg(long, alias = "review-image")]
+        #[arg(long)]
         job_image: Option<String>,
     },
     /// Stop the appliance while preserving all named volumes
@@ -116,11 +116,7 @@ pub enum PackagesSubcommand {
     Cancel,
     /// Install or clear the controller's private Git token
     Auth {
-        #[arg(
-            long,
-            alias = "git-token-file",
-            conflicts_with_all = ["clear", "github"]
-        )]
+        #[arg(long, conflicts_with_all = ["clear", "github"])]
         token_file: Option<PathBuf>,
         /// Import the active GitHub CLI token without printing it
         #[arg(long, conflicts_with = "clear")]

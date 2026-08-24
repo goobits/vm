@@ -283,6 +283,7 @@ impl Default for RateLimitConfig {
 
 /// Security configuration
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct SecurityConfig {
     pub require_authentication: bool,
     #[serde(default)]
@@ -435,5 +436,24 @@ impl Default for Config {
         config.client_config = default_client_config();
 
         config
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SecurityConfig;
+
+    #[test]
+    fn deprecated_api_keys_are_rejected() {
+        let error = serde_json::from_str::<SecurityConfig>(
+            r#"{
+                "require_authentication": true,
+                "api_keys": ["retired"],
+                "allowed_publishers": []
+            }"#,
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("unknown field `api_keys`"));
     }
 }

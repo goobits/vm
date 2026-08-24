@@ -869,6 +869,8 @@ explicit authenticated `POST` command with no obsolete compatibility path.
 The package server now accepts only the canonical read/publish credentials and
 serves Python indexes only from `/pypi/simple`; the deprecated credential field
 and duplicate legacy routes were deleted rather than retained as aliases.
+Package appliance state and CLI parsing now reject retired image, credential,
+and serialized state aliases instead of silently adopting them.
 
 ## Post-Recreation Acceptance
 

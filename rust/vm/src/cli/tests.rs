@@ -372,6 +372,14 @@ fn package_init_parses_the_source_shelf() {
 }
 
 #[test]
+fn retired_package_flags_are_rejected() {
+    assert!(Args::try_parse_from(["vm", "packages", "up", "--review-image", "jobs:test"]).is_err());
+    assert!(
+        Args::try_parse_from(["vm", "packages", "auth", "--git-token-file", "/tmp/token"]).is_err()
+    );
+}
+
+#[test]
 fn package_release_accepts_an_inferred_checkout() {
     assert!(matches!(
         Args::parse_from(["vm", "packages", "release"]).command,
