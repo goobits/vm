@@ -24,6 +24,9 @@ const WORKER_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const TARGET_RETRY_INTERVAL: Duration = Duration::from_secs(2);
 const TARGET_RETRY_TIMEOUT: Duration = Duration::from_secs(2 * 60);
 const WORKER_LEASE_SECONDS: u64 = 5 * 60;
+#[cfg(any(test, target_os = "macos"))]
+const WORKER_COMMAND_PATH: &str =
+    "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 
 pub(in crate::commands) fn ensure_worker() -> VmResult<()> {
     if GlobalConfig::load()?.tools.is_empty() || std::env::var("VM_TEST_MODE").is_ok() {
@@ -133,12 +136,17 @@ fn install_user_service(executable: &std::path::Path) -> VmResult<bool> {
     std::fs::create_dir_all(&directory).map_err(VmError::from)?;
     let path = directory.join("com.goobits.vm-tool-activation.plist");
     let executable = xml_escape(&executable.to_string_lossy());
-    let content = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>\n<key>Label</key><string>com.goobits.vm-tool-activation</string>\n<key>ProgramArguments</key><array><string>{executable}</string><string>tools</string><string>activation-worker</string></array>\n<key>RunAtLoad</key><true/>\n<key>KeepAlive</key><true/>\n<key>ProcessType</key><string>Background</string>\n</dict></plist>\n"
-    );
-    write_if_changed(&path, content.as_bytes())?;
+    let content = launchd_service(&executable);
+    let changed = write_if_changed(&path, content.as_bytes())?;
     let domain = launchd_domain()?;
     let label = format!("{domain}/com.goobits.vm-tool-activation");
+    if changed {
+        let _ = Command::new("launchctl")
+            .args(["bootout", &label])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
     if !Command::new("launchctl")
         .args(["print", &label])
         .stdout(Stdio::null())
@@ -210,13 +218,14 @@ fn remove_user_service() -> VmResult<()> {
     Ok(())
 }
 
-fn write_if_changed(path: &std::path::Path, content: &[u8]) -> VmResult<()> {
+fn write_if_changed(path: &std::path::Path, content: &[u8]) -> VmResult<bool> {
     if std::fs::read(path).is_ok_and(|current| current == content) {
-        return Ok(());
+        return Ok(false);
     }
     let temporary = path.with_extension(format!("tmp-{}", std::process::id()));
     std::fs::write(&temporary, content).map_err(VmError::from)?;
-    std::fs::rename(&temporary, path).map_err(VmError::from)
+    std::fs::rename(&temporary, path).map_err(VmError::from)?;
+    Ok(true)
 }
 
 fn remove_if_present(path: &std::path::Path) -> VmResult<()> {
@@ -258,6 +267,13 @@ fn xml_escape(value: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
+}
+
+#[cfg(any(test, target_os = "macos"))]
+fn launchd_service(executable: &str) -> String {
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>\n<key>Label</key><string>com.goobits.vm-tool-activation</string>\n<key>ProgramArguments</key><array><string>{executable}</string><string>tools</string><string>activation-worker</string></array>\n<key>EnvironmentVariables</key><dict><key>PATH</key><string>{WORKER_COMMAND_PATH}</string></dict>\n<key>RunAtLoad</key><true/>\n<key>KeepAlive</key><true/>\n<key>ProcessType</key><string>Background</string>\n</dict></plist>\n"
+    )
 }
 
 pub(super) async fn run_worker(once: bool) -> VmResult<()> {
@@ -623,5 +639,14 @@ mod tests {
         assert_eq!(target, target_id("docker", "typemill-dev"));
         assert!(vm_packages::validate_managed_id("target", &target).is_ok());
         assert!(vm_packages::validate_managed_id("worker", &worker_id().unwrap()).is_ok());
+    }
+
+    #[test]
+    fn launchd_worker_can_resolve_host_providers() {
+        let service = launchd_service("/Users/example/.local/bin/vm");
+
+        assert!(service.contains("<key>EnvironmentVariables</key>"));
+        assert!(service.contains("/opt/homebrew/bin"));
+        assert!(service.contains("/usr/local/bin"));
     }
 }

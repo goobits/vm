@@ -397,11 +397,48 @@ impl Store {
         let mut current = self.database.lock().await;
         let now = Utc::now();
         let mut next = current.clone();
+        let mut latest_by_tool = std::collections::BTreeMap::new();
+        for activation in next.tool_activations.values() {
+            let candidate = (activation.created_at, activation.activation_id.clone());
+            let latest = latest_by_tool
+                .entry(activation.tool.clone())
+                .or_insert_with(|| candidate.clone());
+            if candidate > *latest {
+                *latest = candidate;
+            }
+        }
+        let latest = latest_by_tool
+            .into_values()
+            .map(|(_, activation_id)| activation_id)
+            .collect::<std::collections::BTreeSet<_>>();
         let mut repaired = 0;
+        let mut reset_plans = Vec::new();
         for activation in next.tool_activations.values_mut() {
-            if repair_activation(activation, now) {
+            let repair_key = format!("repair-empty-plan-{}", activation.activation_id);
+            let reopen_empty = latest.contains(&activation.activation_id)
+                && activation.state == ToolActivationState::Complete
+                && activation.targets.is_empty()
+                && !next.idempotency.contains_key(&repair_key);
+            if repair_activation(activation, now, reopen_empty) {
                 repaired += 1;
             }
+            if reopen_empty {
+                reset_plans.push((
+                    format!("plan-{}", activation.activation_id),
+                    repair_key,
+                    activation.activation_id.clone(),
+                ));
+            }
+        }
+        for (plan_key, repair_key, activation_id) in reset_plans {
+            next.idempotency.remove(&plan_key);
+            next.idempotency.insert(
+                repair_key,
+                IdempotencyRecord {
+                    fingerprint: "repair_empty_activation_plan_v1".into(),
+                    target_id: activation_id,
+                },
+            );
         }
         if repaired > 0 {
             self.commit(&mut current, next).await?;
@@ -410,7 +447,17 @@ impl Store {
     }
 }
 
-fn repair_activation(activation: &mut ToolActivationRecord, now: chrono::DateTime<Utc>) -> bool {
+fn repair_activation(
+    activation: &mut ToolActivationRecord,
+    now: chrono::DateTime<Utc>,
+    reopen_empty: bool,
+) -> bool {
+    if reopen_empty {
+        activation.state = ToolActivationState::Queued;
+        activation.lease = None;
+        activation.updated_at = now;
+        return true;
+    }
     let expired = activation
         .lease
         .as_ref()
@@ -672,5 +719,82 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(complete.state, ToolActivationState::Complete);
+    }
+
+    #[tokio::test]
+    async fn repair_reopens_only_the_latest_empty_activation_plan() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).await.unwrap();
+        let mut database = database_with_release(SourceKind::ToolCollection);
+        enqueue(&mut database, "rel-1").unwrap();
+        let activation_id = database.tool_activations.keys().next().unwrap().clone();
+        let activation = database.tool_activations.get_mut(&activation_id).unwrap();
+        activation.state = ToolActivationState::Complete;
+        let mut older = activation.clone();
+        older.activation_id = "activate-older-empty-plan".into();
+        older.release_id = "rel-older".into();
+        older.created_at -= Duration::seconds(1);
+        database
+            .tool_activations
+            .insert(older.activation_id.clone(), older);
+        database.idempotency.insert(
+            format!("plan-{activation_id}"),
+            IdempotencyRecord {
+                fingerprint: "stale-empty-plan".into(),
+                target_id: activation_id.clone(),
+            },
+        );
+        {
+            let mut current = store.database.lock().await;
+            store.commit(&mut current, database).await.unwrap();
+        }
+
+        assert_eq!(store.repair_tool_activations().await.unwrap(), 1);
+        let activations = store.tool_activations().await;
+        assert_eq!(
+            activations
+                .iter()
+                .find(|activation| activation.activation_id == activation_id)
+                .unwrap()
+                .state,
+            ToolActivationState::Queued
+        );
+        assert_eq!(
+            activations
+                .iter()
+                .find(|activation| activation.activation_id == "activate-older-empty-plan")
+                .unwrap()
+                .state,
+            ToolActivationState::Complete
+        );
+
+        let claimed = store
+            .claim_tool_activation(
+                None,
+                ClaimToolActivationRequest {
+                    worker: "worker-1".into(),
+                    lease_seconds: 120,
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        let replanned = store
+            .plan_tool_activation(
+                &claimed.activation_id,
+                PlanToolActivationRequest {
+                    worker: "worker-1".into(),
+                    targets: vec![vm_packages::ToolActivationTargetPlan {
+                        target_id: "docker-running".into(),
+                        environment: "running-dev".into(),
+                        provider: "docker".into(),
+                        initially_running: true,
+                    }],
+                    idempotency_key: format!("plan-{}", claimed.activation_id),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(replanned.targets.len(), 1);
     }
 }
