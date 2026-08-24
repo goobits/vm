@@ -143,8 +143,8 @@ fn add_to_profile(profile_path: &Path, bin_dir: &Path) -> Result<()> {
 
 /// Detect platform string for use in build target directories
 pub fn detect_platform_string() -> String {
-    let os = env::consts::OS;
-    let arch = env::consts::ARCH;
+    let os = vm_platform::platform::operating_system();
+    let arch = vm_platform::platform::architecture();
     format!("{os}-{arch}")
 }
 

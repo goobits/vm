@@ -109,7 +109,7 @@ impl ConfigLoader {
         }
 
         // Priority 3: Global config
-        if let Some(home_dir) = dirs::home_dir() {
+        if let Ok(home_dir) = vm_platform::platform::home_dir() {
             let global_config = home_dir.join(".vm/config.yaml");
             if global_config.exists() {
                 return Ok(Some(global_config));
@@ -137,7 +137,8 @@ impl ConfigLoader {
         }
 
         // Priority 3: Global config
-        let home_dir = dirs::home_dir().context("Could not find home directory")?;
+        let home_dir =
+            vm_platform::platform::home_dir().context("Could not find home directory")?;
         let global_config = home_dir.join(".vm/config.yaml");
         if global_config.exists() {
             debug!("Loading config from: {}", global_config.display());

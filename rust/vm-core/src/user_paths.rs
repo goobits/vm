@@ -4,7 +4,7 @@
 //! directories like configuration, data, and binary directories. It delegates
 //! to the vm-platform crate for core functionality and adds higher-level paths.
 
-use crate::error::{Result, VmError};
+use crate::error::Result;
 use std::borrow::Cow;
 use std::path::PathBuf;
 
@@ -115,8 +115,7 @@ pub fn home_dir() -> Result<PathBuf> {
 /// - Windows: `%USERPROFILE%\Documents`
 #[must_use = "documents directory path should be used"]
 pub fn documents_dir() -> Result<PathBuf> {
-    dirs::document_dir()
-        .ok_or_else(|| VmError::Filesystem("Could not determine documents directory".to_string()))
+    Ok(vm_platform::platform::documents_dir()?)
 }
 
 /// Check if a path looks like a Windows path (contains backslashes or drive letters).

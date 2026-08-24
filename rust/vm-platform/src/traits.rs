@@ -58,6 +58,9 @@ pub trait PlatformProvider: Send + Sync {
     /// or if the HOME environment variable is not set.
     fn home_dir(&self) -> Result<PathBuf>;
 
+    /// Get the user's documents directory.
+    fn documents_dir(&self) -> Result<PathBuf>;
+
     /// Get the VM tool's state directory (e.g., ~/.vm)
     ///
     /// # Errors
@@ -143,13 +146,13 @@ pub trait PlatformProvider: Send + Sync {
     /// or if system information is not accessible.
     fn cpu_core_count(&self) -> Result<u32>;
 
-    /// Get total system memory in GB
+    /// Get total system memory in bytes
     ///
     /// # Errors
     ///
     /// Returns an error if the system memory information cannot be determined
     /// or if system information is not accessible.
-    fn total_memory_gb(&self) -> Result<u64>;
+    fn total_memory_bytes(&self) -> Result<u64>;
 
     // === Process Operations ===
 

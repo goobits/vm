@@ -10,7 +10,6 @@ description = "Snapshot management for Goobits VM"
 chrono = { workspace = true }
 flate2 = { workspace = true }
 futures = "0.3"
-num_cpus = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -23,3 +22,4 @@ walkdir = { workspace = true }
 
 vm-config = { path = "../vm-config" }
 vm-core = { path = "../vm-core" }
+vm-platform = { path = "../vm-platform" }

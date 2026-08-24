@@ -161,8 +161,8 @@ pub async fn handle_import(
 
 fn validate_manifest_platform(manifest: &serde_json::Value) -> Result<()> {
     vm_println!("  Verifying platform compatibility...");
-    let current_arch = std::env::consts::ARCH;
-    let current_os = std::env::consts::OS;
+    let current_arch = vm_platform::platform::architecture();
+    let current_os = vm_platform::platform::operating_system();
     vm_println!("    Current platform: {}/{}", current_os, current_arch);
 
     let manifest_os = manifest
@@ -233,8 +233,8 @@ mod tests {
     fn validate_manifest_platform_accepts_matching_platform() {
         let manifest = serde_json::json!({
             "platform": {
-                "os": std::env::consts::OS,
-                "arch": std::env::consts::ARCH
+                "os": vm_platform::platform::operating_system(),
+                "arch": vm_platform::platform::architecture()
             }
         });
 

@@ -4,6 +4,7 @@
 //! eliminating the need for scattered `#[cfg]` conditionals throughout the codebase.
 //! All platform differences are encapsulated in trait implementations.
 
+mod host;
 pub mod providers;
 pub mod registry;
 pub mod traits;
@@ -48,6 +49,11 @@ pub mod platform {
         current().home_dir()
     }
 
+    /// Get the user's documents directory
+    pub fn documents_dir() -> Result<PathBuf> {
+        current().documents_dir()
+    }
+
     /// Get the VM tool's state directory
     pub fn vm_state_dir() -> Result<PathBuf> {
         current().vm_state_dir()
@@ -68,9 +74,50 @@ pub mod platform {
         current().cpu_core_count()
     }
 
-    /// Get system total memory in GB
+    /// Get system total memory in bytes
+    pub fn total_memory_bytes() -> Result<u64> {
+        current().total_memory_bytes()
+    }
+
+    /// Get system total memory in megabytes
+    pub fn total_memory_mb() -> Result<u64> {
+        Ok(total_memory_bytes()? / 1024 / 1024)
+    }
+
+    /// Get system total memory in gigabytes
     pub fn total_memory_gb() -> Result<u64> {
-        current().total_memory_gb()
+        Ok(total_memory_bytes()? / 1024 / 1024 / 1024)
+    }
+
+    /// Get the logical parallelism available to this process
+    pub fn available_parallelism() -> usize {
+        std::thread::available_parallelism()
+            .map(|parallelism| parallelism.get())
+            .unwrap_or(1)
+    }
+
+    pub fn operating_system() -> &'static str {
+        crate::host::operating_system()
+    }
+
+    pub fn architecture() -> &'static str {
+        crate::host::architecture()
+    }
+
+    pub fn detect_host_os() -> String {
+        crate::host::detect_host_os()
+    }
+
+    pub fn detect_timezone() -> String {
+        crate::host::detect_timezone()
+    }
+
+    pub fn current_uid() -> u32 {
+        crate::host::current_uid()
+    }
+
+    pub fn current_gid() -> u32 {
+        crate::host::current_gid()
     }
 
     /// Get Docker host gateway address for container-to-host communication
@@ -141,6 +188,7 @@ mod tests {
     #[test]
     fn resource_detection_returns_host_capacity() {
         assert!(platform::cpu_core_count().expect("should detect CPU cores") > 0);
-        assert!(platform::total_memory_gb().expect("should detect memory") > 0);
+        assert!(platform::total_memory_bytes().expect("should detect memory") > 0);
+        assert!(platform::available_parallelism() > 0);
     }
 }

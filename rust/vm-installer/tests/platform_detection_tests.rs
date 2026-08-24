@@ -7,8 +7,8 @@ fn test_detect_platform_string_integration() {
     let platform = detect_platform_string();
     assert!(!platform.is_empty(), "Platform string should not be empty");
 
-    let os = std::env::consts::OS;
-    let arch = std::env::consts::ARCH;
+    let os = vm_platform::platform::operating_system();
+    let arch = vm_platform::platform::architecture();
 
     assert!(
         platform.contains(os),

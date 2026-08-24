@@ -1,9 +1,6 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-#[cfg(unix)]
-use nix::unistd;
-
 /// Helper function to derive tool directory from a target directory path
 fn derive_tool_dir_from_target(target: &Path) -> Option<PathBuf> {
     let parent = target.parent()?;
@@ -71,76 +68,6 @@ pub fn get_tool_dir() -> PathBuf {
 
     // Fallback to current directory - this should always work
     env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-}
-
-/// Get current user's UID
-///
-/// When run with sudo, returns the real user's UID (via SUDO_UID env var)
-/// instead of root's UID (0) to ensure containers are created with proper
-/// permissions for the actual user.
-pub fn get_current_uid() -> u32 {
-    #[cfg(unix)]
-    {
-        // Check if running under sudo and get the real user's UID
-        if let Ok(sudo_uid) = env::var("SUDO_UID") {
-            if let Ok(uid) = sudo_uid.parse::<u32>() {
-                // Ensure we never use UID 0 (root) for container user
-                if uid > 0 {
-                    return uid;
-                }
-            }
-        }
-
-        // Fall back to effective UID
-        let uid = unistd::getuid().as_raw();
-
-        // If effective UID is 0 (running as root without sudo),
-        // use default UID 1000 to avoid container permission issues
-        if uid == 0 {
-            1000
-        } else {
-            uid
-        }
-    }
-    #[cfg(not(unix))]
-    {
-        1000 // Default UID for non-Unix systems
-    }
-}
-
-/// Get current user's GID
-///
-/// When run with sudo, returns the real user's GID (via SUDO_GID env var)
-/// instead of root's GID (0) to ensure containers are created with proper
-/// permissions for the actual user.
-pub fn get_current_gid() -> u32 {
-    #[cfg(unix)]
-    {
-        // Check if running under sudo and get the real user's GID
-        if let Ok(sudo_gid) = env::var("SUDO_GID") {
-            if let Ok(gid) = sudo_gid.parse::<u32>() {
-                // Ensure we never use GID 0 (root) for container user
-                if gid > 0 {
-                    return gid;
-                }
-            }
-        }
-
-        // Fall back to effective GID
-        let gid = unistd::getgid().as_raw();
-
-        // If effective GID is 0 (running as root without sudo),
-        // use default GID 1000 to avoid container permission issues
-        if gid == 0 {
-            1000
-        } else {
-            gid
-        }
-    }
-    #[cfg(not(unix))]
-    {
-        1000 // Default GID for non-Unix systems
-    }
 }
 
 /// Get the config directory

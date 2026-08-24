@@ -52,10 +52,7 @@ mod global_config_tests;
 mod config_tests;
 
 // Re-export commonly needed path utilities
-pub use paths::{
-    get_config_dir, get_current_gid, get_current_uid, get_presets_dir, get_tool_dir,
-    resolve_tool_path,
-};
+pub use paths::{get_config_dir, get_presets_dir, get_tool_dir, resolve_tool_path};
 
 // Re-export config operations for use by main vm binary
 pub use config_ops::{find_local_config, load_global_config, ConfigOps};
@@ -187,7 +184,7 @@ impl AppConfig {
         }
 
         if vm.vm.as_ref().and_then(|v| v.timezone.as_deref()) == Some("auto") {
-            let detected_timezone = detector::os::detect_timezone();
+            let detected_timezone = vm_platform::platform::detect_timezone();
             if let Some(vm_settings) = vm.vm.as_mut() {
                 vm_settings.timezone = Some(detected_timezone);
             }

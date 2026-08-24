@@ -1,4 +1,4 @@
-use crate::detector::{git, os};
+use crate::detector::git;
 use serial_test::serial;
 use std::env;
 use tempfile::TempDir;
@@ -41,6 +41,6 @@ fn test_detect_git_config_no_config() {
 
 #[test]
 fn test_detect_timezone_fallback() {
-    let timezone = os::detect_timezone();
+    let timezone = vm_platform::platform::detect_timezone();
     assert!(!timezone.is_empty());
 }

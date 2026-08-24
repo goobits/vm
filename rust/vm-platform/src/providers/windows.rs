@@ -48,6 +48,10 @@ impl PlatformProvider for WindowsPlatform {
         self.default_home_dir()
     }
 
+    fn documents_dir(&self) -> Result<PathBuf> {
+        self.default_documents_dir()
+    }
+
     fn vm_state_dir(&self) -> Result<PathBuf> {
         self.default_vm_state_dir()
     }
@@ -204,10 +208,10 @@ impl PlatformProvider for WindowsPlatform {
         Ok(sys.physical_core_count().unwrap_or(1) as u32)
     }
 
-    fn total_memory_gb(&self) -> Result<u64> {
+    fn total_memory_bytes(&self) -> Result<u64> {
         let mut sys = sysinfo::System::new();
         sys.refresh_memory();
-        Ok(sys.total_memory() / 1024 / 1024 / 1024)
+        Ok(sys.total_memory())
     }
 
     // === Process Operations ===

@@ -46,6 +46,10 @@ impl PlatformProvider for MacOSPlatform {
         self.default_home_dir()
     }
 
+    fn documents_dir(&self) -> Result<PathBuf> {
+        self.default_documents_dir()
+    }
+
     fn vm_state_dir(&self) -> Result<PathBuf> {
         self.default_vm_state_dir()
     }
@@ -177,7 +181,7 @@ impl PlatformProvider for MacOSPlatform {
         }
     }
 
-    fn total_memory_gb(&self) -> Result<u64> {
+    fn total_memory_bytes(&self) -> Result<u64> {
         // Use sysctl for macOS
         let output = Command::new("sysctl")
             .args(["-n", "hw.memsize"])
@@ -189,12 +193,12 @@ impl PlatformProvider for MacOSPlatform {
                 .trim()
                 .parse()
                 .context("Failed to parse memory size")?;
-            Ok(mem_bytes / 1024 / 1024 / 1024) // Convert bytes to GB
+            Ok(mem_bytes)
         } else {
             // Fallback to sysinfo
             let mut sys = sysinfo::System::new();
             sys.refresh_memory();
-            Ok(sys.total_memory() / 1024 / 1024 / 1024)
+            Ok(sys.total_memory())
         }
     }
 

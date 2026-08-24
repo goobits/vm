@@ -168,11 +168,9 @@ fn build_initial_config(sanitized_name: &str) -> Result<VmConfig> {
     }
 
     // Add platform-aware swap defaults if not already set
-    use crate::detector::os::detect_host_os;
-
     if let Some(ref mut vm) = config.vm {
         if vm.swap.is_none() || vm.swappiness.is_none() {
-            let host_os = detect_host_os();
+            let host_os = vm_platform::platform::detect_host_os();
 
             match host_os.as_str() {
                 "macos" => {

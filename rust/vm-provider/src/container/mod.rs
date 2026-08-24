@@ -52,8 +52,8 @@ pub struct UserConfig {
 impl UserConfig {
     /// Extract user configuration from VM config
     pub fn from_vm_config(config: &VmConfig) -> Self {
-        let current_uid = vm_config::get_current_uid();
-        let current_gid = vm_config::get_current_gid();
+        let current_uid = vm_platform::platform::current_uid();
+        let current_gid = vm_platform::platform::current_gid();
 
         let vm_settings = config.vm.as_ref();
         let project_user = vm_settings

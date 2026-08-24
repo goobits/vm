@@ -25,5 +25,5 @@ pub use metadata::{ServiceSnapshot, SnapshotMetadata, VolumeSnapshot};
 /// - Protection against resource exhaustion (cap at 8)
 /// - Minimal performance on single/dual-core systems (minimum 2)
 pub fn optimal_concurrency() -> usize {
-    num_cpus::get().clamp(2, 8)
+    vm_platform::platform::available_parallelism().clamp(2, 8)
 }

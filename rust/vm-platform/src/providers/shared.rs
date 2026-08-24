@@ -29,6 +29,11 @@ pub trait SharedPlatformOps: PlatformProvider {
         dirs::home_dir().context("Could not determine home directory")
     }
 
+    /// Default implementation for documents_dir
+    fn default_documents_dir(&self) -> Result<PathBuf> {
+        dirs::document_dir().context("Could not determine documents directory")
+    }
+
     /// Default implementation for vm_state_dir
     fn default_vm_state_dir(&self) -> Result<PathBuf> {
         Ok(self.home_dir()?.join(".vm"))

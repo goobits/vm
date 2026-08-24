@@ -43,6 +43,10 @@ impl PlatformProvider for UnixPlatform {
         self.default_home_dir()
     }
 
+    fn documents_dir(&self) -> Result<PathBuf> {
+        self.default_documents_dir()
+    }
+
     fn vm_state_dir(&self) -> Result<PathBuf> {
         self.default_vm_state_dir()
     }
@@ -178,7 +182,7 @@ impl PlatformProvider for UnixPlatform {
         Ok(sys.physical_core_count().unwrap_or(1) as u32)
     }
 
-    fn total_memory_gb(&self) -> Result<u64> {
+    fn total_memory_bytes(&self) -> Result<u64> {
         // Try reading from /proc/meminfo first (Linux)
         if let Some(memory_gb) = parse_memory_from_proc_meminfo() {
             return Ok(memory_gb);
@@ -187,7 +191,7 @@ impl PlatformProvider for UnixPlatform {
         // Fallback to sysinfo
         let mut sys = sysinfo::System::new();
         sys.refresh_memory();
-        Ok(sys.total_memory() / 1024 / 1024 / 1024)
+        Ok(sys.total_memory())
     }
 
     // === Process Operations ===
@@ -227,7 +231,7 @@ impl ProcessProvider for UnixProcessProvider {
     }
 }
 
-/// Parse memory from /proc/meminfo, returning memory in GB
+/// Parse memory from /proc/meminfo, returning memory in bytes.
 fn parse_memory_from_proc_meminfo() -> Option<u64> {
     let meminfo = match std::fs::read_to_string("/proc/meminfo") {
         Ok(content) => content,
@@ -249,7 +253,7 @@ fn parse_memory_from_proc_meminfo() -> Option<u64> {
             Err(_) => continue,
         };
 
-        return Some(mem_kb / 1024 / 1024); // Convert KB to GB
+        return Some(mem_kb * 1024);
     }
 
     None

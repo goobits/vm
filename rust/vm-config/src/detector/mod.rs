@@ -10,13 +10,12 @@
 //! - **Preset Recommendations**: Suggest appropriate VM presets based on detected technologies
 //! - **Multi-Technology Support**: Handle projects using multiple languages/frameworks
 //! - **Tool Detection**: Identify installed development tools and runtimes
-//! - **Host OS Detection**: Determine the host operating system and distribution
 //!
 //! ## Usage Examples
 //!
 //! ```rust
 //! use std::path::Path;
-//! use vm_config::detector::{detect_project_type, get_recommended_preset, detect_host_os};
+//! use vm_config::detector::{detect_project_type, get_recommended_preset};
 //!
 //! // Detect project technologies
 //! let project_dir = Path::new("/path/to/project");
@@ -27,9 +26,6 @@
 //! let preset = get_recommended_preset(project_dir);
 //! println!("Recommended preset: {}", preset);
 //!
-//! // Detect host OS
-//! let os = detect_host_os();
-//! println!("Host OS: {}", os);
 //! ```
 
 use serde_json::Value;
@@ -42,12 +38,10 @@ use vm_core::error::{Result, VmError};
 use vm_core::file_system::has_file_containing;
 
 pub mod git;
-pub mod os;
 pub mod presets;
 mod project;
 pub mod tools;
 
-pub use os::detect_host_os;
 pub use presets::{
     detect_preset_for_project, get_detected_technologies, get_recommended_preset,
     is_multi_tech_project, is_react_project,

@@ -89,8 +89,8 @@ pub async fn handle_export(
         "is_global": is_global,
         "runtime": executable,
         "platform": {
-            "os": std::env::consts::OS,
-            "arch": std::env::consts::ARCH,
+            "os": vm_platform::platform::operating_system(),
+            "arch": vm_platform::platform::architecture(),
         },
         "created_at": metadata.created_at,
         "description": metadata.description,

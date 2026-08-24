@@ -5,8 +5,6 @@ use std::net::TcpListener;
 
 // External crate imports
 use anyhow::Result;
-use sysinfo::System;
-
 // Internal imports
 use crate::config::VmConfig;
 
@@ -82,9 +80,7 @@ impl fmt::Display for ValidationReport {
 }
 
 /// A validator for checking the `VmConfig` against the host system's resources.
-struct HostValidator {
-    system: System,
-}
+struct HostValidator;
 
 pub(super) fn validate(
     config: &VmConfig,
@@ -108,10 +104,7 @@ impl Default for HostValidator {
 impl HostValidator {
     /// Creates a new host validator.
     pub fn new() -> Self {
-        let mut system = System::new();
-        system.refresh_cpu();
-        system.refresh_memory();
-        Self { system }
+        Self
     }
 
     /// Validates that the user is configured.
@@ -134,7 +127,7 @@ impl HostValidator {
     fn validate_cpu(&self, config: &VmConfig, report: &mut ValidationReport) -> Result<()> {
         if let Some(vm_settings) = &config.vm {
             if let Some(cpu_limit) = &vm_settings.cpus {
-                let available_cpus = self.system.cpus().len() as u32;
+                let available_cpus = vm_platform::platform::available_parallelism() as u32;
 
                 // Resolve percentage or get direct value
                 let requested_cpus = match cpu_limit {
@@ -185,7 +178,7 @@ impl HostValidator {
     fn validate_memory(&self, config: &VmConfig, report: &mut ValidationReport) -> Result<()> {
         if let Some(vm_settings) = &config.vm {
             if let Some(memory_limit) = &vm_settings.memory {
-                let total_mb = self.system.total_memory() / 1024 / 1024;
+                let total_mb = vm_platform::platform::total_memory_mb()?;
 
                 // Resolve percentage or get direct value
                 let requested_mb = match memory_limit {

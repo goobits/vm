@@ -31,7 +31,6 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 reqwest = { workspace = true }
 dialoguer = { workspace = true }
-sysinfo = { workspace = true, features = ["serde"] }
 vm-core = { path = "../vm-core" }
 vm-logging = { path = "../vm-logging" }
 vm-messages = { path = "../vm-messages" }
@@ -49,7 +48,6 @@ rand = { workspace = true }
 semver = { workspace = true }
 rayon = { workspace = true }
 walkdir = { workspace = true }
-num_cpus = { workspace = true }
 flate2 = { workspace = true }
 tar = { workspace = true }
 fs2 = { workspace = true }

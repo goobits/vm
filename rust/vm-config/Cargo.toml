@@ -16,8 +16,6 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-dirs = { workspace = true }
-sysinfo = { workspace = true, features = ["serde"] }
 tracing = { workspace = true }
 clap = { workspace = true }
 fs2 = { workspace =true }
@@ -33,12 +31,10 @@ vm-core = { path = "../vm-core" }
 vm-messages = { path = "../vm-messages" }
 vm-plugin = { path = "../vm-plugin" }
 vm-logging = { path = "../vm-logging" }
+vm-platform = { path = "../vm-platform" }
 which = { workspace = true }
 chrono = { workspace = true }
 git2 = { workspace = true }
-
-[target.'cfg(unix)'.dependencies]
-nix = { workspace = true }
 
 [features]
 default = []

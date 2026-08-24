@@ -96,7 +96,6 @@ nix = { version = "0.31", features = ["user"] }
 log = "0.4.33"
 shellexpand = "3.1.2"
 git2 = "0.21.0"
-num_cpus = "1.17"
 
 
 [profile.release]
