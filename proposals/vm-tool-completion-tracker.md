@@ -68,6 +68,9 @@ None.
 - 2026-08-24: Removed the equipped-host Docker, Tart, multi-worker, and final
   matrix acceptance gates from tracked release scope at owner direction. They
   were dropped, not recorded as completed verification.
+- 2026-08-24: Deterministic review accepts a bounded `.env.example` only when
+  every nonblank line is a comment; real environment values and all existing
+  credential/key path classes remain release-blocking.
 - 2026-08-24: Managed tool releases now retain their guest checkout until
   durable fleet activation succeeds and allow the worker's bounded target
   retries to complete, so a partial activation can be resumed from the exact

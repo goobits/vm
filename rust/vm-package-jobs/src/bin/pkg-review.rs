@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Component, Path};
 use std::process::Command;
 
 use anyhow::{bail, Context, Result};
@@ -123,39 +123,39 @@ async fn review(
         potentially_breaking,
     };
 
-    let (decision, reason, required_followups) = if let Some(path) = sensitive_path(&changed_paths)
-    {
-        (
-            ReviewDecision::Reject,
-            format!("sensitive file included: {path}"),
-            vec!["Remove credentials or private files from the submission".into()],
-        )
-    } else if let Some(path) = generated_path(&changed_paths) {
-        (
-            ReviewDecision::NeedsChanges,
-            format!("generated dependency/build output included: {path}"),
-            vec!["Remove generated files from the submission".into()],
-        )
-    } else if !run_required_checks(checkout.source_kind, ecosystem, &source)? {
-        (
-            ReviewDecision::NeedsChanges,
-            "required package checks failed in the isolated reviewer".into(),
-            vec!["Fix package checks and resubmit".into()],
-        )
-    } else {
-        (
-            ReviewDecision::Approve,
-            if api_paths.is_empty() {
-                "checks passed; no public API paths changed".into()
-            } else {
-                format!(
-                    "checks passed; {} public API path(s) changed",
-                    api_paths.len()
-                )
-            },
-            Vec::new(),
-        )
-    };
+    let (decision, reason, required_followups) =
+        if let Some(path) = sensitive_path(&source, &changed_paths) {
+            (
+                ReviewDecision::Reject,
+                format!("sensitive file included: {path}"),
+                vec!["Remove credentials or private files from the submission".into()],
+            )
+        } else if let Some(path) = generated_path(&changed_paths) {
+            (
+                ReviewDecision::NeedsChanges,
+                format!("generated dependency/build output included: {path}"),
+                vec!["Remove generated files from the submission".into()],
+            )
+        } else if !run_required_checks(checkout.source_kind, ecosystem, &source)? {
+            (
+                ReviewDecision::NeedsChanges,
+                "required package checks failed in the isolated reviewer".into(),
+                vec!["Fix package checks and resubmit".into()],
+            )
+        } else {
+            (
+                ReviewDecision::Approve,
+                if api_paths.is_empty() {
+                    "checks passed; no public API paths changed".into()
+                } else {
+                    format!(
+                        "checks passed; {} public API path(s) changed",
+                        api_paths.len()
+                    )
+                },
+                Vec::new(),
+            )
+        };
     let recommended_version = if potentially_breaking {
         VersionRecommendation::Major
     } else if api_paths.is_empty() {
@@ -384,15 +384,36 @@ fn removed_public_surface(diff: &str) -> bool {
     })
 }
 
-fn sensitive_path(paths: &[String]) -> Option<&str> {
+fn sensitive_path<'a>(repository: &Path, paths: &'a [String]) -> Option<&'a str> {
     paths.iter().map(String::as_str).find(|path| {
         let name = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
         name == ".env"
-            || name.starts_with(".env.")
+            || (name.starts_with(".env.")
+                && !(name == ".env.example" && comment_only_environment_example(repository, path)))
             || name == "id_rsa"
             || name.contains("credential")
             || name.ends_with(".pem")
             || name.ends_with(".key")
+    })
+}
+
+fn comment_only_environment_example(repository: &Path, path: &str) -> bool {
+    let path = Path::new(path);
+    if path.is_absolute()
+        || !path
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
+    {
+        return false;
+    }
+    let path = repository.join(path);
+    if std::fs::metadata(&path).map_or(true, |metadata| metadata.len() > 64 * 1024) {
+        return false;
+    }
+    std::fs::read_to_string(path).is_ok_and(|content| {
+        content
+            .lines()
+            .all(|line| line.trim().is_empty() || line.trim_start().starts_with('#'))
     })
 }
 
@@ -425,6 +446,13 @@ mod tests {
 
     #[test]
     fn review_classification_detects_api_security_and_generated_changes() {
+        let repository = tempfile::tempdir().unwrap();
+        std::fs::create_dir(repository.path().join("config")).unwrap();
+        std::fs::write(
+            repository.path().join("config/.env.example"),
+            "# TOKEN=replace-me\n",
+        )
+        .unwrap();
         let paths = vec!["src/lib.rs".into(), "target/debug/output".into()];
         assert_eq!(
             public_api_paths(
@@ -436,7 +464,23 @@ mod tests {
             ["src/lib.rs"]
         );
         assert_eq!(generated_path(&paths), Some("target/debug/output"));
-        assert_eq!(sensitive_path(&["config/.env".into()]), Some("config/.env"));
+        assert_eq!(
+            sensitive_path(repository.path(), &["config/.env".into()]),
+            Some("config/.env")
+        );
+        assert_eq!(
+            sensitive_path(repository.path(), &["config/.env.example".into()]),
+            None
+        );
+        std::fs::write(
+            repository.path().join("config/.env.example"),
+            "TOKEN=replace-me\n",
+        )
+        .unwrap();
+        assert_eq!(
+            sensitive_path(repository.path(), &["config/.env.example".into()]),
+            Some("config/.env.example")
+        );
         assert!(removed_public_surface("-pub fn removed() {}"));
         assert!(public_api_paths(
             SourceKind::ToolCollection,
