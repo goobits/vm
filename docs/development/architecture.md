@@ -59,6 +59,15 @@ vm/
 Command modules should not duplicate provider behavior. Providers should not
 own user interaction or top-level command routing.
 
+The package work-session router resolves one package or tool identity to an
+exact controller-attested Git root and that root's owning writable Docker
+configuration. It then delegates the interactive connection to the existing
+provider shell lifecycle. It exposes no general environment, path, or command
+targeting, creates no checkout or separate lease, and never falls back to the
+isolated workflow. Guest-owned `packages checkout` remains the explicit copied
+source path; both modes converge on the same review, integration, and release
+services.
+
 Package control and data planes remain separate. The central appliance owns
 mutable workflow state and immutable releases. Each worker edge exposes native
 package protocols, delegates all source selection to the shared resolver, and

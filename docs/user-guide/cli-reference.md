@@ -113,15 +113,17 @@ vm packages release
 | `vm packages consumer list` | List registered consumers |
 | `vm packages consumers <package>` | Show consumers and pending upgrades for one package |
 | `vm packages drift` | Show version drift across consumers |
+| `vm packages open <package-or-tool>` | Open the attested original source in its existing writable Docker owner; create no checkout |
 | `vm packages checkout <package-or-tool>` | Create or resume a guest-owned source checkout |
 | `vm packages release` | Release the checkout or canonical workspace containing the current directory |
 | `vm packages cancel` | Cancel and clean the checkout containing the current directory |
 | `vm packages auth (--github\|--token-file <path>\|--clear)` | Import or remove the controller Git token |
 
-Controller commands run on the host. `status`, `checkout`, `release`, and
-`cancel` also have scoped behavior inside managed guests. Language packages are
-published privately and upgraded through registered consumer rollout; they are
-not installed indiscriminately into every environment.
+Controller commands, including `open`, run on the host. `status`, `checkout`,
+`release`, and `cancel` also have scoped behavior inside managed guests.
+Language packages are published privately and upgraded through registered
+consumer rollout; they are not installed indiscriminately into every
+environment.
 
 Local-path registration stores the physical Git root in controller-global
 `packages.canonical_sources`; URL-only registration does not grant workspace

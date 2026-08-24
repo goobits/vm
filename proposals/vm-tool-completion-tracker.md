@@ -14,34 +14,20 @@ minimum shipped context needed to run those checks safely.
 
 One-command publishing, durable fleet activation, unmanaged-path backup,
 restart recovery, stopped-environment deferral, and coordinated sibling-source
-builds are implemented. The remaining release adds an explicit package-only
-route into an attested source's owning Docker workspace without copying its
-repository or build tree. Live TypeMill 1.2.0 acceptance proved exactly-once
-retry behavior and stable container and volume identities, but Docker daemon
-interruption and live unmanaged-binary adoption remain unproven. Final Docker,
-Tart, multi-worker, and full-matrix host gates remain before release readiness.
+builds are implemented. A package-only command now opens an attested source's
+owning Docker workspace without copying its repository or build tree. Live
+TypeMill 1.2.0 acceptance proved exactly-once retry behavior and stable
+container and volume identities, but Docker daemon interruption and live
+unmanaged-binary adoption remain unproven. Final Docker, Tart, multi-worker,
+and full-matrix host gates remain before release readiness.
 
 ## Remaining Tasks In Order
 
-The package workspace route can be implemented and statically verified here.
-The later acceptance phases require an equipped macOS host with Docker, Tart
-2.32.1, the TypeMill workspace, and a second Docker worker. Neither Docker nor
-Tart is available in the current development container.
+The remaining acceptance phases require an equipped macOS host with Docker,
+Tart 2.32.1, the TypeMill workspace, and a second Docker worker. Neither Docker
+nor Tart is available in the current development container.
 
-### Phase 1: Package Workspace Routing
-
-- [ ] Add `vm packages open <source>` as a controller-owned, package-specific
-  route to the attested source's existing `/workspace` in its owning managed
-  Docker environment. Do not create a checkout, copy source, or copy build
-  output.
-- [ ] Keep `vm packages checkout <source>` as the explicit isolated workflow.
-  Share source validation and the existing canonical-workspace release path;
-  never silently fall back between the two modes.
-- [ ] Cover command parsing, source and owner resolution, dry-run output, and a
-  Docker acceptance assertion that opening a workspace creates no managed
-  checkout state.
-
-### Phase 2: Docker Release Acceptance
+### Phase 1: Docker Release Acceptance
 
 - [ ] Pass the real TypeMill Docker daemon-interruption and live
   unmanaged-binary-adoption scenarios. Confirm activation resumes, the prior
@@ -55,7 +41,7 @@ Tart is available in the current development container.
   reconciliation, targeted tool updates, read-only workspace restart, and
   first-shell `codex-code-mode-host` availability.
 
-### Phase 3: Provider And Multi-Worker Acceptance
+### Phase 2: Provider And Multi-Worker Acceptance
 
 - [ ] On an equipped macOS host, run the Tart path in
   `validate-vibe-providers.sh`. Verify managed inventory, shell recovery,
@@ -66,13 +52,16 @@ Tart is available in the current development container.
   overrides, public fallback, persistent caches, and fail-closed internal
   misses during an appliance outage.
 
-### Phase 4: Final Release Gate
+### Phase 3: Final Release Gate
 
 - [ ] Run the complete build, lint, unit, integration, duplicate-detection, and
   Docker matrix after the equipped-host checks pass.
 
 ## Completed Foundations
 
+- [x] Route `vm packages open <source>` only to the attested original source's
+  existing writable Docker owner, with no checkout, copied build tree, hidden
+  fallback, or second release pipeline.
 - [x] Make `vm tools enable typemill codeatlas` the one-time fleet enrollment
   and bare `vm packages release` the daily producer workflow.
 - [x] Auto-register only controller-trusted, attested canonical workspaces and
@@ -108,6 +97,9 @@ Tart is available in the current development container.
 
 ## Verification Log
 
+- 2026-08-24: Package workspace routing gained exact source and Docker-owner
+  validation, explicit dry-run output, and a Docker assertion that the original
+  host bind opens without adding managed checkout state.
 - 2026-08-24: Initial managed-checkout coverage now proceeds through validation,
   approval, restoration, and integration, proving the durable submission ref is
   recovered after the appliance compacts the imported checkout.

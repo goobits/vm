@@ -135,6 +135,31 @@ accept_tool_workflows() {
   grep -F '1 stopped environment will update when started' "$workspace_log" >/dev/null
   grep -F 'No environments or volumes recreated' "$workspace_log" >/dev/null
   assert_release_published_once 1.0.0
+
+  direct_open_log=$acceptance_root/direct-open.log
+  direct_marker=$project_root/.vm-direct-open-acceptance
+  checkout_state_before=$(workflow_state | python3 -c \
+    'import json,sys; print(json.dumps(json.load(sys.stdin)["checkouts"], sort_keys=True))')
+  if ! printf '%s\n' \
+    'test "$PWD" = /workspace || exit 41' \
+    'printf "%s\n" direct-owner > .vm-direct-open-acceptance' \
+    'exit' | run_vm packages open release-tool >"$direct_open_log" 2>&1; then
+    cat "$direct_open_log" >&2
+    echo "Direct package workspace open failed" >&2
+    exit 4
+  fi
+  grep -F "Opening original workspace for release-tool" "$direct_open_log" >/dev/null
+  grep -F "Host source: $project_root" "$direct_open_log" >/dev/null
+  grep -F "Mode: direct workspace (no checkout)" "$direct_open_log" >/dev/null
+  test "$(cat "$direct_marker")" = direct-owner
+  rm "$direct_marker"
+  checkout_state_after=$(workflow_state | python3 -c \
+    'import json,sys; print(json.dumps(json.load(sys.stdin)["checkouts"], sort_keys=True))')
+  test "$checkout_state_after" = "$checkout_state_before" || {
+    echo "Direct package workspace open created managed checkout state" >&2
+    exit 4
+  }
+
   test "$(docker exec --user acceptance "$environment_name" \
     /home/acceptance/.local/bin/release-tool --version)" = 1.0.0
   test "$(docker exec --user acceptance "$consumer_environment" \

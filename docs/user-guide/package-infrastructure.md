@@ -3,7 +3,8 @@
 VM manages one private package appliance for npm, Cargo, Python, and immutable
 guest tools. Packages, binary tools, and collections use the same durable
 review, integration, and release services. Editable isolated checkouts live
-only in the managed guest that requested them.
+only in the managed guest that requested them; direct work stays in the exact
+registered source and its owning Docker environment.
 
 ## Primary Workflow
 
@@ -36,6 +37,36 @@ rerunning it resumes the same release instead of publishing again.
 ✓ 3 stopped environments will update when started
 ✓ No environments or volumes recreated
 ```
+
+## Work on One Registered Source
+
+From the controller host, open the original source in its owning Docker
+environment:
+
+```bash
+vm packages open typemill
+```
+
+`open` accepts only a registered package or tool identity. It resolves the
+controller-attested physical Git root, loads that root's `vm.yaml`, and enters
+its existing writable Docker environment at the configured workspace (normally
+`/workspace`). The host source bind and that environment's existing cache and
+build volumes are reused; VM does not clone the repository or copy its build
+tree. A stopped owner is started in place, while a missing owner is not created.
+
+The direct route requires a local-path registration, an owning `vm.yaml`, and a
+writable Docker workspace. It has no environment, path, or arbitrary-command
+selector and never silently creates an isolated checkout. If those requirements
+are not met, use the separate guest workflow:
+
+```bash
+vm packages checkout typemill
+```
+
+Use `open` for trusted work on the original package. Use `checkout` for parallel
+or experimental work, consumer-specific dependency testing, URL-only sources,
+or work that should not touch the original. Both finish with `vm packages
+release` and use the same review, integration, and publication pipeline.
 
 Language-package dependency updates remain a separate consumer rollout. Tools
 whose release needs several repositories, including HIF, HQA, and HVR, can pin
@@ -230,8 +261,9 @@ touching the registered repository or its persistent canonical mirror.
 ## Advanced: Canonical Workspace Details
 
 Use `vm packages checkout <source>` when an agent needs an isolated shared-source
-checkout. When an agent already owns an attested repository mounted as its
-ordinary workspace, release the committed workspace directly:
+checkout. Use `vm packages open <source>` on the controller to enter an
+attested repository's owning Docker workspace without copying it. From that
+ordinary workspace, release the committed source directly:
 
 ```bash
 cd /workspace
