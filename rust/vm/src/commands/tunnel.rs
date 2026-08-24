@@ -9,12 +9,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command as StdCommand;
-use tracing::{debug, warn};
-use vm_config::{config::VmConfig, GlobalConfig};
+use tracing::warn;
+use vm_config::{config::ProviderName, config::VmConfig, GlobalConfig};
 use vm_core::{vm_hint, vm_println, vm_success, vm_warning};
 use vm_platform::platform;
-use vm_provider::{InstanceProvider, Provider};
+use vm_provider::{container::ContainerEngine, InstanceProvider, Provider};
 
 pub(super) fn handle_command(
     command: TunnelSubcommand,
@@ -66,12 +65,12 @@ pub struct TunnelInfo {
 /// Manages port forwarding tunnels state
 pub struct TunnelManager {
     state_file: PathBuf,
-    executable: String,
+    engine: ContainerEngine,
 }
 
 impl TunnelManager {
     /// Create a new tunnel manager
-    pub fn new(executable: impl Into<String>) -> VmResult<Self> {
+    pub fn new(engine: ContainerEngine) -> VmResult<Self> {
         let config_dir = platform::user_config_dir().map_err(|e| {
             VmError::general(
                 std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
@@ -83,10 +82,7 @@ impl TunnelManager {
             .map_err(|e| VmError::general(e, "Failed to create tunnels directory".to_string()))?;
 
         let state_file = tunnel_dir.join("active.json");
-        Ok(Self {
-            state_file,
-            executable: executable.into(),
-        })
+        Ok(Self { state_file, engine })
     }
 
     /// Load active tunnels from state file
@@ -104,9 +100,7 @@ impl TunnelManager {
         // Filter out tunnels with stopped containers
         let active_tunnels: HashMap<u16, TunnelInfo> = tunnels
             .into_iter()
-            .filter(|(_, tunnel)| {
-                is_container_running(&self.executable, &tunnel.relay_container_id)
-            })
+            .filter(|(_, tunnel)| self.engine.container_is_running(&tunnel.relay_container_id))
             .collect();
 
         Ok(active_tunnels)
@@ -141,13 +135,13 @@ impl TunnelManager {
         }
 
         // Start relay container
-        debug!(
-            "Creating tunnel: localhost:{}->{}:{}",
-            host_port, container_name, container_port
-        );
-
-        let (relay_container_id, relay_container_name) =
-            start_relay_container(&self.executable, host_port, container_port, container_name)?;
+        let relay_container_name = format!("vm-tunnel-{container_name}-{host_port}");
+        let relay_container_id = self.engine.start_tcp_relay(
+            &relay_container_name,
+            host_port,
+            container_name,
+            container_port,
+        )?;
 
         // Store tunnel info
         let tunnel_info = TunnelInfo {
@@ -196,7 +190,7 @@ impl TunnelManager {
         let mut tunnels = self.load_tunnels()?;
 
         if let Some(tunnel) = tunnels.remove(&host_port) {
-            stop_relay_container(&self.executable, &tunnel.relay_container_id)?;
+            self.engine.stop_container(&tunnel.relay_container_id)?;
             self.save_tunnels(&tunnels)?;
             vm_success!(
                 "Stopped tunnel: localhost:{} -> {}:{}",
@@ -232,7 +226,7 @@ impl TunnelManager {
 
         for port in to_remove {
             if let Some(tunnel) = tunnels.remove(&port) {
-                if let Err(e) = stop_relay_container(&self.executable, &tunnel.relay_container_id) {
+                if let Err(e) = self.engine.stop_container(&tunnel.relay_container_id) {
                     warn!(
                         "Failed to stop relay container {}: {}",
                         tunnel.relay_container_id, e
@@ -253,152 +247,6 @@ impl TunnelManager {
         self.save_tunnels(&tunnels)?;
         Ok(stopped_count)
     }
-}
-
-/// Start a port forwarding relay using a sidecar container
-fn start_relay_container(
-    executable: &str,
-    host_port: u16,
-    container_port: u16,
-    container_name: &str,
-) -> VmResult<(String, String)> {
-    let (network_name, target_address) = inspect_container_network(executable, container_name)?;
-    let relay_name = format!("vm-tunnel-{}-{}", container_name, host_port);
-    let network_arg = format!("--network={network_name}");
-    let port_arg = format!("{}:{}", host_port, host_port);
-    let listen_arg = format!("tcp-listen:{},fork,reuseaddr", host_port);
-    let connect_arg = format!("tcp-connect:{}:{}", target_address, container_port);
-
-    let output = StdCommand::new(executable)
-        .args([
-            "run",
-            "-d",
-            "--rm",
-            "--name",
-            &relay_name,
-            &network_arg,
-            "-p",
-            &port_arg,
-            "alpine/socat",
-            &listen_arg,
-            &connect_arg,
-        ])
-        .output()
-        .map_err(|e| VmError::general(e, "Failed to start tunnel relay".to_string()))?;
-
-    if !output.status.success() {
-        let error = String::from_utf8_lossy(&output.stderr);
-        return Err(VmError::general(
-            std::io::Error::new(std::io::ErrorKind::Other, error.to_string()),
-            format!("Failed to start relay container: {}", error.trim()),
-        ));
-    }
-
-    let container_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    debug!(
-        "Started tunnel relay container: {} (ID: {})",
-        relay_name, container_id
-    );
-
-    // Wait for container to start
-    std::thread::sleep(std::time::Duration::from_millis(500));
-
-    Ok((container_id, relay_name))
-}
-
-fn inspect_container_network(executable: &str, container_name: &str) -> VmResult<(String, String)> {
-    let output = StdCommand::new(executable)
-        .args([
-            "inspect",
-            "--type",
-            "container",
-            "--format",
-            "{{range $name, $network := .NetworkSettings.Networks}}{{$name}} {{$network.IPAddress}}{{println}}{{end}}",
-            container_name,
-        ])
-        .output()
-        .map_err(|e| {
-            VmError::general(
-                e,
-                format!("Failed to inspect container network for {}", container_name),
-            )
-        })?;
-
-    if !output.status.success() {
-        let error = String::from_utf8_lossy(&output.stderr);
-        return Err(VmError::general(
-            std::io::Error::new(std::io::ErrorKind::Other, error.to_string()),
-            format!("Failed to inspect container network: {}", error.trim()),
-        ));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    stdout
-        .lines()
-        .filter_map(|line| {
-            let mut parts = line.split_whitespace();
-            let network = parts.next()?;
-            let address = parts.next()?;
-            if network.is_empty() || address.is_empty() {
-                None
-            } else {
-                Some((network.to_string(), address.to_string()))
-            }
-        })
-        .next()
-        .ok_or_else(|| {
-            VmError::general(
-                std::io::Error::new(std::io::ErrorKind::NotFound, "No container network found"),
-                format!("No network with an IP address found for {}", container_name),
-            )
-        })
-}
-
-/// Check if a Docker container is running
-fn is_container_running(executable: &str, container_id: &str) -> bool {
-    StdCommand::new(executable)
-        .args([
-            "inspect",
-            "--type",
-            "container",
-            "-f",
-            "{{.State.Running}}",
-            container_id,
-        ])
-        .output()
-        .ok()
-        .and_then(|output| {
-            if output.status.success() {
-                let running = String::from_utf8_lossy(&output.stdout);
-                Some(running.trim() == "true")
-            } else {
-                None
-            }
-        })
-        .unwrap_or(false)
-}
-
-/// Stop a relay container
-fn stop_relay_container(executable: &str, container_id: &str) -> VmResult<()> {
-    let output = StdCommand::new(executable)
-        .args(["stop", container_id])
-        .output()
-        .map_err(|e| {
-            VmError::general(
-                e,
-                format!("Failed to stop relay container {}", container_id),
-            )
-        })?;
-
-    if !output.status.success() {
-        let error = String::from_utf8_lossy(&output.stderr);
-        return Err(VmError::general(
-            std::io::Error::new(std::io::ErrorKind::Other, error.to_string()),
-            format!("Failed to stop container {}", container_id),
-        ));
-    }
-
-    Ok(())
 }
 
 /// Handle tunnel command (create a new tunnel)
@@ -436,7 +284,7 @@ fn handle_tunnel(
     let container_name = provider.resolve_instance_name(container)?;
 
     // Create tunnel
-    let manager = TunnelManager::new(runtime_executable(provider.as_ref()))?;
+    let manager = TunnelManager::new(container_engine(provider.as_ref())?)?;
     manager.create_tunnel(host_port, container_port, &container_name)
 }
 
@@ -447,7 +295,7 @@ fn handle_tunnel_list(
     _config: VmConfig,
     _global_config: GlobalConfig,
 ) -> VmResult<()> {
-    let manager = TunnelManager::new(runtime_executable(provider.as_ref()))?;
+    let manager = TunnelManager::new(container_engine(provider.as_ref())?)?;
     let resolved_container = container
         .map(|value| provider.resolve_instance_name(Some(value)))
         .transpose()?;
@@ -491,7 +339,7 @@ fn handle_tunnel_stop(
     _config: VmConfig,
     _global_config: GlobalConfig,
 ) -> VmResult<()> {
-    let manager = TunnelManager::new(runtime_executable(provider.as_ref()))?;
+    let manager = TunnelManager::new(container_engine(provider.as_ref())?)?;
     let resolved_container = container
         .map(|value| provider.resolve_instance_name(Some(value)))
         .transpose()?;
@@ -517,9 +365,40 @@ fn handle_tunnel_stop(
     Ok(())
 }
 
-fn runtime_executable(provider: &dyn InstanceProvider) -> &str {
-    match provider.name() {
-        "podman" => "podman",
-        _ => "docker",
+fn container_engine(provider: &dyn InstanceProvider) -> VmResult<ContainerEngine> {
+    let provider_name = container_provider_name(provider.name())?;
+    ContainerEngine::detect(&provider_name).map_err(Into::into)
+}
+
+fn container_provider_name(name: &str) -> VmResult<ProviderName> {
+    let provider_name = ProviderName::from(name);
+    if !provider_name.is_container() {
+        return Err(VmError::validation(
+            format!(
+                "Tunnels require a Docker or Podman environment; '{}' is not supported",
+                name
+            ),
+            None::<String>,
+        ));
+    }
+    Ok(provider_name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::container_provider_name;
+
+    #[test]
+    fn tunnels_accept_only_container_providers() {
+        assert_eq!(
+            container_provider_name("docker").unwrap().as_str(),
+            "docker"
+        );
+        assert_eq!(
+            container_provider_name("podman").unwrap().as_str(),
+            "podman"
+        );
+        assert!(container_provider_name("tart").is_err());
+        assert!(container_provider_name("mock").is_err());
     }
 }

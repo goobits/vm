@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::process::Command;
+use std::time::Duration;
 
 use vm_config::config::ProviderName;
 use vm_core::command_stream::{is_tool_installed, stream_command, stream_command_visible};
@@ -116,6 +117,117 @@ impl ContainerEngine {
             ))),
         }
     }
+
+    /// Start one managed TCP relay beside a target container.
+    pub fn start_tcp_relay(
+        self,
+        relay_name: &str,
+        host_port: u16,
+        target_container: &str,
+        target_port: u16,
+    ) -> Result<String> {
+        let (network_name, target_address) = self.container_network(target_container)?;
+        let output = Command::new(self.executable())
+            .args([
+                "run",
+                "-d",
+                "--rm",
+                "--name",
+                relay_name,
+                &format!("--network={network_name}"),
+                "-p",
+                &format!("{host_port}:{host_port}"),
+                "alpine/socat",
+                &format!("tcp-listen:{host_port},fork,reuseaddr"),
+                &format!("tcp-connect:{target_address}:{target_port}"),
+            ])
+            .output()
+            .map_err(|error| VmError::general(error, "Failed to start tunnel relay"))?;
+        if !output.status.success() {
+            return Err(command_error("start tunnel relay", &output.stderr));
+        }
+        std::thread::sleep(Duration::from_millis(500));
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+
+    /// Resolve the first usable network and address for a container.
+    pub fn container_network(self, container_name: &str) -> Result<(String, String)> {
+        let output = Command::new(self.executable())
+            .args([
+                "inspect",
+                "--type",
+                "container",
+                "--format",
+                "{{range $name, $network := .NetworkSettings.Networks}}{{$name}} {{$network.IPAddress}}{{println}}{{end}}",
+                container_name,
+            ])
+            .output()
+            .map_err(|error| {
+                VmError::general(
+                    error,
+                    format!("Failed to inspect container network for {container_name}"),
+                )
+            })?;
+        if !output.status.success() {
+            return Err(command_error("inspect container network", &output.stderr));
+        }
+        parse_container_network(&String::from_utf8_lossy(&output.stdout), container_name)
+    }
+
+    /// Return whether a container is currently running.
+    pub fn container_is_running(self, container_id: &str) -> bool {
+        Command::new(self.executable())
+            .args([
+                "inspect",
+                "--type",
+                "container",
+                "--format",
+                "{{.State.Running}}",
+                container_id,
+            ])
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .is_some_and(|output| String::from_utf8_lossy(&output.stdout).trim() == "true")
+    }
+
+    /// Stop one container by immutable ID.
+    pub fn stop_container(self, container_id: &str) -> Result<()> {
+        let output = Command::new(self.executable())
+            .args(["stop", container_id])
+            .output()
+            .map_err(|error| {
+                VmError::general(error, format!("Failed to stop container {container_id}"))
+            })?;
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(command_error("stop container", &output.stderr))
+        }
+    }
+}
+
+fn command_error(operation: &str, stderr: &[u8]) -> VmError {
+    VmError::Provider(format!(
+        "Failed to {operation}: {}",
+        String::from_utf8_lossy(stderr).trim()
+    ))
+}
+
+fn parse_container_network(output: &str, container_name: &str) -> Result<(String, String)> {
+    output
+        .lines()
+        .find_map(|line| {
+            let mut parts = line.split_whitespace();
+            let network = parts.next()?;
+            let address = parts.next()?;
+            Some((network.to_string(), address.to_string()))
+        })
+        .ok_or_else(|| {
+            VmError::Provider(format!(
+                "No network with an IP address found for {container_name}"
+            ))
+        })
 }
 
 impl ComposeRuntime {
@@ -196,7 +308,7 @@ fn install_error(engine: ContainerEngine) -> VmError {
 
 #[cfg(test)]
 mod tests {
-    use super::{ComposeRuntime, PodmanCompose};
+    use super::{parse_container_network, ComposeRuntime, PodmanCompose};
     use std::path::Path;
 
     #[test]
@@ -213,5 +325,15 @@ mod tests {
         assert_eq!(standalone.program, "podman-compose");
         assert_eq!(standalone.args, ["-f", "compose.yml", "up", "-d"]);
         assert_ne!(PodmanCompose::BuiltIn, PodmanCompose::Standalone);
+    }
+
+    #[test]
+    fn container_network_uses_the_first_addressed_network() {
+        assert_eq!(
+            parse_container_network("project_default 172.20.0.3\nother 10.0.0.2\n", "demo")
+                .unwrap(),
+            ("project_default".into(), "172.20.0.3".into())
+        );
+        assert!(parse_container_network("", "demo").is_err());
     }
 }
