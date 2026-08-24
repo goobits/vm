@@ -18,7 +18,7 @@ fn to_hex(bytes: &[u8]) -> String {
 /// # Examples
 ///
 /// ```
-/// # use vm_package_server::hash_utils::sha256_hash;
+/// # use vm_package_server::sha256_hash;
 /// let data = b"hello world";
 /// let hash = sha256_hash(data);
 /// assert_eq!(hash.len(), 64); // SHA256 produces 64 hex characters
@@ -36,7 +36,7 @@ pub fn sha256_hash(data: &[u8]) -> String {
 /// # Examples
 ///
 /// ```
-/// # use vm_package_server::hash_utils::sha1_hash;
+/// # use vm_package_server::sha1_hash;
 /// let data = b"hello world";
 /// let hash = sha1_hash(data);
 /// assert_eq!(hash.len(), 40); // SHA1 produces 40 hex characters

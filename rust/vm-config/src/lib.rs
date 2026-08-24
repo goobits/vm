@@ -25,22 +25,22 @@
 //!
 //! Preset loading and discovery is handled internally by the `preset` module.
 
-pub mod cli;
+mod cli;
 pub mod config;
-pub mod config_ops;
+mod config_ops;
 pub mod detector;
 mod embedded_presets;
-pub mod global_config;
-pub mod limit_parser; // Shared limit parsing logic
-pub mod loader;
-pub mod merge;
-pub mod paths;
+mod global_config;
+mod limit_parser;
+mod loader;
+mod merge;
+mod paths;
 pub mod ports;
-pub mod preset; // Made public for integration tests - used internally by config_ops and cli
-pub mod preset_cache; // Preset caching layer
-pub mod schema; // Schema-aware type detection
+mod preset;
+mod preset_cache;
+mod schema;
 pub mod validation;
-pub mod yaml; // YAML operations module
+mod yaml;
 
 #[cfg(test)]
 mod test_memory;
@@ -53,21 +53,42 @@ mod config_tests;
 
 // Re-export commonly needed path utilities
 pub use paths::{
-    get_current_gid, get_current_uid, get_presets_dir, get_tool_dir, resolve_tool_path,
+    get_config_dir, get_current_gid, get_current_uid, get_presets_dir, get_schema_path,
+    get_tool_dir, resolve_tool_path,
 };
 
 // Re-export config operations for use by main vm binary
-pub use config_ops::{load_global_config, ConfigOps};
+pub use config_ops::{find_local_config, load_global_config, ConfigOps};
 
 // Re-export global config for use by other crates
-pub use global_config::{GlobalConfig, PackageInfrastructureSettings};
+pub use global_config::{
+    AuthProxySettings, BackupSettings, GlobalConfig, GlobalDefaults, GlobalFeatures,
+    GlobalServices, MongoDBSettings, MySqlSettings, PackageInfrastructureSettings,
+    PostgresSettings, RedisSettings, SnapshotSettings, WorktreesGlobalSettings,
+};
 
 // Re-export CLI utilities
-pub use cli::init_config_file;
+pub use cli::{
+    execute as execute_cli, init_config_file, load_and_merge_config, Args as CliArgs, ArrayCmd,
+    Command as CliCommand, ConfigCmd, FileCmd, OutputFormat, PortsCmd, ProjectCmd, QueryCmd,
+    TransformFormat,
+};
 pub use detector::{detect_worktrees, detect_worktrees_in};
 
 // Re-export ConfigLoader for relative path detection
+pub use limit_parser::{parse_limit_value, LimitVisitor, ParsedLimit};
 pub use loader::ConfigLoader;
+pub use merge::{apply_profile, merge_configs, ConfigMerger};
+pub use preset::{PresetDetector, PresetFile, PresetMetadata};
+pub use preset_cache::{
+    clear_preset_cache, get_cache_stats, list_all_presets_cached, list_presets_cached,
+    load_preset_cached, CacheStats,
+};
+pub use schema::{lookup_field_type, parse_value_with_schema, SchemaType};
+pub use yaml::{
+    ArrayOperations, CoreOperations, FieldOperations, QueryOperations, TransformOperations,
+    YamlOperations,
+};
 
 use std::path::PathBuf;
 use vm_core::error::Result;

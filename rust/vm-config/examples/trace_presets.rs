@@ -12,7 +12,7 @@ fn main() {
     let presets_dir = std::path::PathBuf::from("/tmp");
     let project_dir = std::env::current_dir().unwrap();
 
-    let detector = vm_config::preset::PresetDetector::new(project_dir, presets_dir);
+    let detector = vm_config::PresetDetector::new(project_dir, presets_dir);
 
     println!("\n=== Testing list_all_presets ===");
     if let Ok(presets) = detector.list_all_presets() {

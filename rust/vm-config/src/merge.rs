@@ -20,7 +20,7 @@ use vm_core::error::Result;
 ///
 /// # Examples
 /// ```rust
-/// use vm_config::merge::ConfigMerger;
+/// use vm_config::ConfigMerger;
 /// use vm_config::config::VmConfig;
 ///
 /// let base = VmConfig::default();
@@ -70,7 +70,7 @@ impl ConfigMerger {
     ///
     /// # Examples
     /// ```rust
-    /// use vm_config::merge::ConfigMerger;
+    /// use vm_config::ConfigMerger;
     /// use vm_config::config::VmConfig;
     ///
     /// let base = VmConfig::default();
@@ -107,7 +107,7 @@ impl ConfigMerger {
     ///
     /// # Examples
     /// ```rust
-    /// use vm_config::merge::ConfigMerger;
+    /// use vm_config::ConfigMerger;
     /// use vm_config::config::VmConfig;
     ///
     /// let base = VmConfig::default();
@@ -179,7 +179,7 @@ fn deep_merge(base: &mut Value, overlay: Value) {
 ///
 /// # Examples
 /// ```rust
-/// use vm_config::merge::merge_configs;
+/// use vm_config::merge_configs;
 /// use vm_config::config::VmConfig;
 ///
 /// let default_config = Some(VmConfig::default());

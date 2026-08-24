@@ -8,7 +8,7 @@
 ///
 /// This test file shows how the Docker command injection vulnerabilities
 /// have been fixed with proper validation and escaping.
-use vm_package_server::validation::{
+use vm_package_server::{
     sanitize_docker_name, validate_docker_image_name, validate_docker_port,
     validate_docker_volume_path, ValidationError,
 };

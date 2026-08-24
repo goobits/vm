@@ -14,8 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
 use tokio::time::timeout;
-use vm_package_server::config::Config;
-use vm_package_server::{upstream::UpstreamConfig, AppState, UpstreamClient};
+use vm_package_server::{AppState, Config, ResolverService, UpstreamClient, UpstreamConfig};
 
 /// Test server configuration
 pub struct TestServerConfig {
@@ -56,7 +55,7 @@ pub async fn create_test_setup() -> Result<TestSetup> {
         upstream_client,
         internal_client: None,
         config,
-        resolver: Arc::new(vm_package_server::resolver::ResolverService::standalone()),
+        resolver: Arc::new(ResolverService::standalone()),
     });
 
     // Find available port for testing

@@ -40,7 +40,8 @@ vm/
   delegates privately to endpoint-domain implementations and one transport.
 - `rust/vm-package-server/` owns native npm, Cargo, and Python protocol adapters
   plus the worker-local read-only cache/proxy edge. Protocol modules own their
-  validation; server setup and routing remain separate internal concerns.
+  validation; server setup and routing remain separate internal concerns. Its
+  external API is the small crate-root facade rather than those module paths.
 - `rust/vm-package-work/` owns durable checkout, lease, submission, integration,
   rollout, bundle, and receipt state. Editable isolated source belongs to the
   authenticated managed guest; workflow services retain immutable bundles and

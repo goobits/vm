@@ -1,7 +1,5 @@
 use crate::config::VmConfig;
-use serde_yaml::Value;
 use serde_yaml_ng as serde_yaml;
-use std::path::PathBuf;
 use vm_core::error::{Result, VmError};
 use vm_core::vm_error;
 
@@ -48,38 +46,6 @@ pub fn query_field(value: &serde_json::Value, field: &str) -> Result<serde_json:
     Ok(current.clone())
 }
 
-/// Find vm.yaml by searching current directory and upwards
-pub fn find_vm_config_file() -> Result<PathBuf> {
-    let current_dir = std::env::current_dir()?;
-    let mut dir = current_dir.as_path();
-
-    loop {
-        let config_path = dir.join("vm.yaml");
-        if config_path.exists() {
-            return Ok(config_path);
-        }
-
-        match dir.parent() {
-            Some(parent) => dir = parent,
-            None => break,
-        }
-    }
-
-    // Don't log this as an error - it's a normal situation
-    // Just return a clean error that can be handled appropriately
-    Err(VmError::Config(
-        "No vm.yaml found in current or parent directories".to_string(),
-    ))
-}
-
-pub fn output_shell_exports(value: &Value) {
-    let mut exports = Vec::new();
-    flatten_yaml_to_shell("", value, &mut exports);
-    for export in exports {
-        println!("{export}");
-    }
-}
-
 /// Optimized shell export output that works directly with VmConfig
 /// This avoids the expensive serialization to Value
 pub fn output_shell_exports_from_config(config: &VmConfig) {
@@ -87,42 +53,6 @@ pub fn output_shell_exports_from_config(config: &VmConfig) {
     flatten_config_to_shell("", config, &mut exports);
     for export in exports {
         println!("{export}");
-    }
-}
-
-fn flatten_yaml_to_shell(prefix: &str, value: &Value, exports: &mut Vec<String>) {
-    match value {
-        Value::Mapping(map) => {
-            for (key, val) in map {
-                if let Value::String(key_str) = key {
-                    // Sanitize key for shell variable names (replace hyphens with underscores)
-                    let sanitized_key = key_str.replace('-', "_");
-                    let new_prefix = if prefix.is_empty() {
-                        sanitized_key
-                    } else {
-                        format!("{prefix}_{sanitized_key}")
-                    };
-                    flatten_yaml_to_shell(&new_prefix, val, exports);
-                }
-            }
-        }
-        Value::String(s) => {
-            // Properly escape shell metacharacters for safe export
-            let escaped = s
-                .replace('\\', "\\\\") // Escape backslash first
-                .replace('"', "\\\"") // Escape double quotes
-                .replace('$', "\\$") // Escape dollar signs (prevents variable expansion)
-                .replace('`', "\\`"); // Escape backticks (prevents command substitution)
-            exports.push(format!("export {prefix}=\"{escaped}\""));
-        }
-        Value::Bool(b) => {
-            exports.push(format!("export {prefix}={b}"));
-        }
-        Value::Number(n) => {
-            exports.push(format!("export {prefix}={n}"));
-        }
-        // Sequences (arrays) and nulls are ignored for shell export
-        _ => {}
     }
 }
 

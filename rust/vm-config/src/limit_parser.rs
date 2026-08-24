@@ -32,7 +32,7 @@ pub enum ParsedLimit {
 ///
 /// # Examples
 /// ```
-/// # use vm_config::limit_parser::{parse_limit_value, ParsedLimit};
+/// # use vm_config::{parse_limit_value, ParsedLimit};
 /// assert_eq!(parse_limit_value("1024").unwrap(), ParsedLimit::Number(1024));
 /// assert_eq!(parse_limit_value("1gb").unwrap(), ParsedLimit::Bytes(1024 * 1024 * 1024));
 /// assert_eq!(parse_limit_value("50%").unwrap(), ParsedLimit::Percentage(50));

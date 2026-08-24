@@ -4,7 +4,7 @@
 //! Tests verify that security functions properly prevent DoS attacks, injection
 //! attacks, and other security vulnerabilities in upload handling.
 
-use vm_package_server::validation;
+use vm_package_server as validation;
 
 #[cfg(test)]
 mod validation_security_tests {

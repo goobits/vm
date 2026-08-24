@@ -14,8 +14,7 @@ use tempfile::TempDir;
 use vm_config::config::{BoxSpec, CpuLimit, MemoryLimit, ProjectConfig, TerminalConfig, VmConfig};
 use vm_core::error::Result;
 
-// Re-export PresetDetector for tests (since preset module is pub(crate))
-use vm_config::preset::PresetDetector;
+use vm_config::PresetDetector;
 
 // Global mutex to ensure tests run sequentially to avoid environment variable conflicts
 static TEST_MUTEX: Mutex<()> = Mutex::new(());
@@ -368,7 +367,7 @@ fn test_config_preset_provision() -> Result<()> {
     fs::write(fixture.project_dir.join("vm.yaml"), base_yaml)?;
 
     // Act: Apply nodejs preset
-    use vm_config::merge::ConfigMerger;
+    use vm_config::ConfigMerger;
     let detector = fixture.create_detector();
     let nodejs_preset = detector.load_preset("nodejs")?;
     let mut merged_config = ConfigMerger::new(base_config).merge(nodejs_preset)?;
@@ -693,7 +692,7 @@ fn test_multiple_provision_preset_merge() -> Result<()> {
     fixture.create_python_preset_plugin()?;
 
     // Act: Load and merge both presets
-    use vm_config::merge::ConfigMerger;
+    use vm_config::ConfigMerger;
     let detector = fixture.create_detector();
 
     let base_config = VmConfig::default();

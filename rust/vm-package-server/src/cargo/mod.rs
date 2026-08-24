@@ -22,8 +22,5 @@ pub struct CrateMetadata {
     pub features: Value,
 }
 
-// Re-export all public functions and types to maintain API compatibility
 pub use handlers::*;
 pub use index::*;
-pub use parsing::*;
-pub use storage::*;

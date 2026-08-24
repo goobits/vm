@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 /// # Examples
 ///
 /// ```rust
-/// use vm_package_server::validation::paths::validate_safe_path;
+/// use vm_package_server::validate_safe_path;
 ///
 /// // Safe relative path
 /// // assert!(validate_safe_path("packages/mypackage/1.0.0").is_ok());

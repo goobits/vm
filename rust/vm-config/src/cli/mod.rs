@@ -38,7 +38,6 @@ pub mod query_cmd;
 pub use array_cmd::ArrayCmd;
 pub use config_cmd::ConfigCmd;
 pub use file_cmd::FileCmd;
-pub use formatting::*;
 pub use ports_cmd::PortsCmd;
 pub use project_cmd::ProjectCmd;
 pub use query_cmd::QueryCmd;
@@ -184,17 +183,17 @@ pub fn init_config_file(
 ///
 /// # Examples
 /// ```rust,no_run
-/// use vm_config::cli::{Args, Command, ConfigCmd, OutputFormat};
+/// use vm_config::{CliArgs, CliCommand, ConfigCmd, OutputFormat};
 /// use std::path::PathBuf;
 ///
-/// let args = Args {
-///     command: Command::Config(ConfigCmd::Validate {
+/// let args = CliArgs {
+///     command: CliCommand::Config(ConfigCmd::Validate {
 ///         file: Some(PathBuf::from("vm.yaml")),
 ///         verbose: true,
 ///     }),
 /// };
 ///
-/// vm_config::cli::execute(args)?;
+/// vm_config::execute_cli(args)?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[must_use = "command execution results should be handled"]

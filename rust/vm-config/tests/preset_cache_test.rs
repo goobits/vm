@@ -1,9 +1,8 @@
 use serial_test::serial;
 use std::path::PathBuf;
 use tempfile::TempDir;
-use vm_config::preset::PresetDetector;
-use vm_config::preset_cache::{
-    clear_preset_cache, get_cache_stats, list_presets_cached, load_preset_cached,
+use vm_config::{
+    clear_preset_cache, get_cache_stats, list_presets_cached, load_preset_cached, PresetDetector,
 };
 
 fn setup_detector() -> (TempDir, PresetDetector) {

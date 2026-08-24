@@ -79,13 +79,18 @@ to `vm-core`; the executable renders each fatal error once.
 - Global settings and user preferences
 - Configuration-specific CLI helpers
 
-**Key Exports**: `VmConfig`, `AppConfig`, `GlobalConfig`, project detectors, CLI commands
+**Key Exports**: `config::VmConfig`, `AppConfig`, `GlobalConfig`, project detectors,
+and root CLI/config-operation facades
 
 Preset command validation and file IO stay in `config_ops::preset`; declared-preset
 resolution and minimal project-config materialization live in its private
 `materialize` module.
 The embedded YAML schemas are the canonical field/type registry used by both
 editor validation and schema-aware `vm config set` value parsing.
+Implementation modules for loading, merging, presets, schema lookup, paths, and
+YAML operations are private; stable domain entry points are exported from the
+crate root while configuration types, detectors, ports, and validation retain
+their explicit namespaces.
 
 #### vm-plugin
 **Role**: Plugin discovery, loading, and validation.
@@ -191,6 +196,11 @@ records, appliance resources
 - Read-only worker caching and approved public fallback
 - Immutable internal artifact storage and metadata
 - Protocol-owned validation with separate server routing and setup
+
+Protocol handlers, storage, resolver internals, and validation modules are
+private. The crate root exposes only server startup, state/config contracts,
+the resolver service, upstream clients, hashes, and security validation needed
+by binaries and integration tests.
 
 **Key Exports**: Package server implementation, HTTP handlers, registry operations
 

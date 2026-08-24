@@ -32,7 +32,7 @@ static DOCKER_NAME_REGEX: Lazy<Regex> = Lazy::new(|| {
 /// # Examples
 ///
 /// ```rust
-/// use vm_package_server::validation::docker::sanitize_docker_name;
+/// use vm_package_server::sanitize_docker_name;
 ///
 /// // Valid Docker name
 /// // assert!(sanitize_docker_name("my-app-container").is_ok());

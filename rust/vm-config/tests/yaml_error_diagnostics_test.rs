@@ -1,6 +1,6 @@
 use std::fs;
 use tempfile::TempDir;
-use vm_config::yaml::CoreOperations;
+use vm_config::CoreOperations;
 
 #[test]
 fn test_duplicate_key_detection() {

@@ -20,7 +20,7 @@
 /// # Examples
 ///
 /// ```rust
-/// use vm_package_server::validation::shell::escape_shell_arg;
+/// use vm_package_server::escape_shell_arg;
 ///
 /// let safe = escape_shell_arg("file with spaces.txt");
 /// assert_eq!(safe, "'file with spaces.txt'");

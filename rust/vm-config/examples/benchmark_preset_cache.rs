@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 use std::time::Instant;
-use vm_config::preset::PresetDetector;
-use vm_config::preset_cache::{clear_preset_cache, get_cache_stats};
+use vm_config::{clear_preset_cache, get_cache_stats, PresetDetector};
 
 fn main() {
     // Initialize logging

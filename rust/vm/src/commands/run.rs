@@ -153,7 +153,7 @@ fn ensure_config_exists(config_path: Option<&PathBuf>, provider: Option<&str>) -
         return Ok(());
     }
 
-    vm_config::cli::init_config_file(None, None, None, provider.map(ToString::to_string))
+    vm_config::init_config_file(None, None, None, provider.map(ToString::to_string))
         .map_err(|error| VmError::config(error, "initialize project configuration"))
 }
 

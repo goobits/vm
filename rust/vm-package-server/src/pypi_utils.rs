@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 /// # Examples
 ///
 /// ```
-/// # use vm_package_server::pypi_utils::normalize_pypi_name;
+/// # use vm_package_server::normalize_pypi_name;
 /// assert_eq!(normalize_pypi_name("Django-REST-framework"), "django-rest-framework");
 /// assert_eq!(normalize_pypi_name("some_package"), "some-package");
 /// ```

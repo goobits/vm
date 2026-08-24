@@ -14,7 +14,7 @@
 //! ## Usage
 //!
 //! ```rust
-//! use vm_package_server::validation::{sanitize_docker_name, validate_safe_path};
+//! use vm_package_server::{sanitize_docker_name, validate_safe_path};
 //!
 //! assert!(validate_safe_path("safe/relative/path").is_ok());
 //! assert_eq!(

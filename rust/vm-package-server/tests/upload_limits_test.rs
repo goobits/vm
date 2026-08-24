@@ -7,7 +7,7 @@
 // Test file to verify upload limit implementation logic and demonstrate proper size handling
 // This integrates with the actual validation module
 
-use vm_package_server::validation;
+use vm_package_server as validation;
 
 // Test size formatting function for human-readable output
 fn format_size(bytes: usize) -> String {

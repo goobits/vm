@@ -23,7 +23,7 @@ impl SimpleTestFixture {
     fn new() -> Result<Self> {
         // Ensure preset cache is cleared before starting a new test context
         // This prevents stale cache entries from previous tests interfering with current test
-        vm_config::preset_cache::clear_preset_cache();
+        vm_config::clear_preset_cache();
 
         let temp_dir = TempDir::new()?;
         let test_dir = temp_dir.path().to_path_buf();

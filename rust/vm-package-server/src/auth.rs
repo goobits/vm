@@ -67,14 +67,6 @@ pub async fn read_auth_middleware(
     Ok(next.run(req).await)
 }
 
-/// Check if authentication is required based on config
-pub fn is_auth_required(config: &Config) -> bool {
-    config.security.require_authentication
-        && (!config.security.read_keys.is_empty()
-            || !config.security.publish_keys.is_empty()
-            || !config.security.api_keys.is_empty())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
