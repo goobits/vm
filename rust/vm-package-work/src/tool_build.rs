@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use chrono::Utc;
 use vm_packages::{
     validate_label, validate_sha256, CompleteToolBuildRequest, PublishToolArtifact, ReceiptKind,
-    ReviewDecision, SourceKind, ToolBuildRecord, WorkflowState,
+    ReviewDecision, SourceKind, ToolBuildFailureKind, ToolBuildRecord, WorkflowState,
 };
 
 use crate::store::{
@@ -106,6 +106,7 @@ impl Store {
             version: request.version,
             artifacts: request.artifacts,
             failure: request.failure,
+            failure_kind: request.failure_kind,
             actor: request.actor.clone(),
             completed_at: Utc::now(),
         };
@@ -128,7 +129,13 @@ impl Store {
                 .ok_or_else(|| WorkError::Conflict("tool build review is missing".into()))?;
             review.decision = ReviewDecision::NeedsChanges;
             review.reason = reason.clone();
-            review.required_followups = vec!["Fix the binary build and resubmit".into()];
+            review.required_followups = vec![match record.failure_kind {
+                Some(ToolBuildFailureKind::Version) => {
+                    "Update the declared version, commit it, and rerun the same release command"
+                        .into()
+                }
+                _ => "Fix the binary build and resubmit".into(),
+            }];
             review.reviewer = request.actor.clone();
             review.timestamp = Utc::now();
         }
@@ -149,8 +156,12 @@ fn validate_build_request(request: &CompleteToolBuildRequest) -> WorkResult<()> 
     validate_idempotency_key(&request.idempotency_key)?;
     validate_sha256(&request.manifest_digest)?;
     if matches!(
-        (request.failure.as_ref(), request.artifacts.is_empty()),
-        (Some(_), false) | (None, true)
+        (
+            request.failure.as_ref(),
+            request.failure_kind,
+            request.artifacts.is_empty()
+        ),
+        (Some(_), _, false) | (None, Some(_), _) | (None, None, true)
     ) {
         return Err(WorkError::Invalid(
             "tool build must contain either artifacts or one failure".into(),
@@ -337,6 +348,7 @@ mod tests {
                 links: BTreeMap::from([(".local/bin/typemill".into(), "bin/typemill".into())]),
             }],
             failure: None,
+            failure_kind: None,
             actor: "tool-build-service".into(),
             idempotency_key: "complete-binary-build".into(),
         }
@@ -448,5 +460,34 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(revalidated.state, WorkflowState::Reviewing);
+    }
+
+    #[tokio::test]
+    async fn version_preflight_failure_returns_an_actionable_followup() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).await.unwrap();
+        let submission = ready_binary(&store).await;
+        let mut request = successful_request();
+        request.artifacts.clear();
+        request.failure = Some("release version 1.1.0 must be newer than 1.1.0".into());
+        request.failure_kind = Some(ToolBuildFailureKind::Version);
+        request.version.clear();
+        request.idempotency_key = "failed-version-preflight".into();
+
+        store
+            .complete_tool_build(&submission.submission_id, request)
+            .await
+            .unwrap();
+        let review = store
+            .submission(&submission.submission_id)
+            .await
+            .unwrap()
+            .review
+            .unwrap();
+        assert_eq!(review.decision, ReviewDecision::NeedsChanges);
+        assert_eq!(
+            review.required_followups,
+            ["Update the declared version, commit it, and rerun the same release command"]
+        );
     }
 }

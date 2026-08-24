@@ -2,13 +2,16 @@ use std::path::Path;
 use std::process::Command;
 
 use anyhow::{bail, Context, Result};
+use semver::Version;
 use vm_packages::{
     sha256_hex, validate_managed_id, CompleteToolBuildRequest, PackageInfrastructureClient,
-    SubmissionRecord, ToolBuildArtifact, ToolKind, ToolSourceManifest, WorkflowState,
+    SubmissionRecord, ToolBuildArtifact, ToolBuildFailureKind, ToolKind, ToolSourceManifest,
+    VersionRecommendation, WorkflowState,
 };
 
 use crate::runtime::{download_bundle, operation_key, run_command};
 
+use super::super::workflow::validate_version_bump;
 use super::artifact::{
     binary_identity, build_binary_artifacts, BuiltToolArtifact, ToolArtifactContext,
 };
@@ -35,6 +38,10 @@ pub async fn build_submission(
     if inventory.definition.kind != ToolKind::Binary {
         bail!("binary checkout no longer matches its registered tool definition");
     }
+    let review = submission
+        .review
+        .as_ref()
+        .context("binary tool submission has no integration review")?;
     let integration = submission
         .integration
         .as_ref()
@@ -81,11 +88,33 @@ pub async fn build_submission(
                 &integration.integration_commit,
                 &manifest_digest,
                 &error,
+                ToolBuildFailureKind::Build,
             )
             .await?;
             return Ok(());
         }
     };
+    if !checkout.initial_release {
+        let canonical = release_root.path().join("canonical");
+        clone_at(&bundle, &canonical, &integration.canonical_commit)?;
+        let previous_version = binary_identity(&canonical)?
+            .version
+            .context("previous binary tool manifest has no version")?;
+        if let Err(error) =
+            validate_declared_version(&previous_version, &version, review.recommended_version)
+        {
+            record_build_failure(
+                client,
+                submission,
+                &source_commit,
+                &manifest_digest,
+                &error,
+                ToolBuildFailureKind::Version,
+            )
+            .await?;
+            return Ok(());
+        }
+    }
     prepare_isolated_package_configuration(release_root.path())?;
     prepare_unprivileged_build(release_root.path(), &source)?;
     let tag = format!("v{version}");
@@ -101,8 +130,15 @@ pub async fn build_submission(
     let artifacts = match build_binary_artifacts(&context, &manifest) {
         Ok(artifacts) => artifacts,
         Err(error) => {
-            record_build_failure(client, submission, &source_commit, &manifest_digest, &error)
-                .await?;
+            record_build_failure(
+                client,
+                submission,
+                &source_commit,
+                &manifest_digest,
+                &error,
+                ToolBuildFailureKind::Build,
+            )
+            .await?;
             return Ok(());
         }
     };
@@ -114,6 +150,7 @@ pub async fn build_submission(
         version,
         artifacts: staged,
         failure: None,
+        failure_kind: None,
         actor: "tool-build-service".into(),
         idempotency_key: operation_key(
             "tool-build",
@@ -136,14 +173,20 @@ async fn record_build_failure(
     source_commit: &str,
     manifest_digest: &str,
     error: &anyhow::Error,
+    kind: ToolBuildFailureKind,
 ) -> Result<()> {
-    let reason = bounded_failure(&format!("binary build failed: {error:#}"));
+    let reason = match kind {
+        ToolBuildFailureKind::Build => format!("binary build failed: {error:#}"),
+        ToolBuildFailureKind::Version => error.to_string(),
+    };
+    let reason = bounded_failure(&reason);
     let request = CompleteToolBuildRequest {
         source_commit: source_commit.into(),
         manifest_digest: manifest_digest.into(),
         version: String::new(),
         artifacts: Vec::new(),
         failure: Some(reason),
+        failure_kind: Some(kind),
         actor: "tool-build-service".into(),
         idempotency_key: operation_key(
             "tool-build-failed",
@@ -155,6 +198,16 @@ async fn record_build_failure(
         .await?;
     println!("{} requires build changes", submission.submission_id);
     Ok(())
+}
+
+fn validate_declared_version(
+    previous: &str,
+    next: &str,
+    recommendation: VersionRecommendation,
+) -> Result<()> {
+    let previous = Version::parse(previous).context("previous binary tool version is invalid")?;
+    let next = Version::parse(next).context("binary tool version is invalid")?;
+    validate_version_bump(&previous, &next, recommendation)
 }
 
 fn bounded_failure(reason: &str) -> String {
@@ -362,5 +415,26 @@ pub(super) fn native_target() -> Option<&'static str> {
         ("linux", "x86_64") => Some("linux-amd64"),
         ("linux", "aarch64") => Some("linux-arm64"),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unchanged_version_fails_before_binary_build() {
+        let error =
+            validate_declared_version("1.1.0", "1.1.0", VersionRecommendation::Patch).unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "release version 1.1.0 must be newer than 1.1.0"
+        );
+    }
+
+    #[test]
+    fn reviewed_patch_version_passes_preflight() {
+        validate_declared_version("1.1.0", "1.1.1", VersionRecommendation::Patch).unwrap();
     }
 }

@@ -24,7 +24,9 @@ mod workflow;
 pub use appliance::{
     ApplianceConfig, APPLIANCE_DEFINITION_REVISION, COMPOSE_PROJECT, COMPOSE_YAML, GATEWAY_CONFIG,
 };
-pub use build::{CompleteToolBuildRequest, ToolBuildArtifact, ToolBuildRecord};
+pub use build::{
+    CompleteToolBuildRequest, ToolBuildArtifact, ToolBuildFailureKind, ToolBuildRecord,
+};
 pub use catalog::{PackageDefinition, RegisterPackage};
 pub use client::{InfrastructureStatus, PackageInfrastructureClient, PackageInventory};
 pub use consumer::{
