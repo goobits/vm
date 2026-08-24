@@ -1,3 +1,4 @@
 # Proposals
 
-- [VM Tool Completion Tracker](vm-tool-completion-tracker.md): canonical remaining-work and recovery plan for package infrastructure, Tart, provisioning, and security hardening.
+- [VM Tool Release Tracker](vm-tool-completion-tracker.md): canonical ordered
+  acceptance plan for package infrastructure and managed-tool releases.
