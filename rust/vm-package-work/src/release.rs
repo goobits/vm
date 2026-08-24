@@ -9,7 +9,7 @@ use crate::store::{
     ensure_fingerprint, operation_fingerprint, receipt, validate_idempotency_key,
     IdempotencyRecord, ReceiptInput,
 };
-use crate::submission::transition_records;
+use crate::workflow::transition_records;
 use crate::{Store, WorkError, WorkResult};
 
 impl Store {

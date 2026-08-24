@@ -286,6 +286,9 @@ current image. No real package release or publication was performed.
 - [x] Consolidate package and tool release source/workflow ownership, keeping
   orchestration separate from archive, artifact, isolated-build, and publication
   responsibilities.
+- [x] Split durable checkout leases, workflow transitions, review decisions,
+  and integration records into focused package-work owners without changing the
+  workflow API.
 - [x] Remove the package server's catch-all validation wrapper and split server
   routing, setup, response-body, storage, path, and size-limit ownership.
 - [x] Separate package repository scanning from manifest, ecosystem, tool, and

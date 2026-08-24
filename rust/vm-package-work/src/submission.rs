@@ -1,14 +1,13 @@
 use chrono::Utc;
 use vm_packages::{
-    validate_label, IntegrationRecord, IntegrationReview, ReceiptKind, ReviewDecision,
-    ReviewRequest, SubmissionRecord, ValidationRequest, ValidationResult, WorkflowState,
-    WorkflowTransition,
+    validate_label, ReceiptKind, SubmissionRecord, ValidationRequest, ValidationResult,
+    WorkflowState,
 };
 
 use crate::store::{
-    ensure_fingerprint, operation_fingerprint, receipt, validate_idempotency_key,
-    IdempotencyRecord, ReceiptInput,
+    ensure_fingerprint, operation_fingerprint, validate_idempotency_key, IdempotencyRecord,
 };
+use crate::workflow::transition_records;
 use crate::{Store, WorkError, WorkResult};
 
 pub(crate) struct ImportedSubmission {
@@ -159,17 +158,6 @@ impl Store {
             .collect()
     }
 
-    pub async fn next_review(&self) -> Option<SubmissionRecord> {
-        self.database
-            .lock()
-            .await
-            .submissions
-            .values()
-            .filter(|submission| submission.state == WorkflowState::Reviewing)
-            .min_by_key(|submission| submission.updated_at)
-            .cloned()
-    }
-
     pub async fn checkout_submission(&self, checkout_id: &str) -> WorkResult<SubmissionRecord> {
         self.database
             .lock()
@@ -288,290 +276,9 @@ impl Store {
         self.commit(&mut current, next).await?;
         Ok(result)
     }
-
-    pub async fn record_review(
-        &self,
-        submission_id: &str,
-        request: ReviewRequest,
-    ) -> WorkResult<SubmissionRecord> {
-        validate_review(&request)?;
-        let fingerprint = operation_fingerprint("review", Some(submission_id), &request)?;
-        let mut current = self.database.lock().await;
-        let mut retry_stale_generation = false;
-        if let Some(existing) = current.idempotency.get(&request.idempotency_key) {
-            ensure_fingerprint(existing, &fingerprint)?;
-            let recorded = current
-                .submissions
-                .get(&existing.target_id)
-                .cloned()
-                .ok_or_else(|| WorkError::Internal("idempotency target is missing".into()));
-            if !recorded.as_ref().is_ok_and(|submission| {
-                submission.state == WorkflowState::Reviewing && submission.review.is_none()
-            }) {
-                return recorded;
-            }
-            retry_stale_generation = true;
-        }
-        let mut next = current.clone();
-        if retry_stale_generation {
-            next.idempotency
-                .retain(|_, record| record.target_id != submission_id);
-        }
-        let review = IntegrationReview {
-            decision: request.decision,
-            recommended_version: request.recommended_version,
-            api_diff: request.api_diff,
-            reason: request.reason,
-            required_followups: request.required_followups,
-            merge_strategy: request.merge_strategy,
-            reviewer: request.reviewer,
-            timestamp: Utc::now(),
-        };
-        let target = match review.decision {
-            ReviewDecision::Approve => WorkflowState::Approved,
-            ReviewDecision::Reject => WorkflowState::Rejected,
-            ReviewDecision::NeedsChanges => WorkflowState::NeedsChanges,
-        };
-        transition_records(
-            &mut next,
-            submission_id,
-            target,
-            ReceiptKind::Review,
-            &review.reviewer,
-            &review.reason,
-            Some(format!("{:?}", review.decision).to_ascii_lowercase()),
-        )?;
-        next.submissions
-            .get_mut(submission_id)
-            .expect("submission remains present")
-            .review = Some(review);
-        next.idempotency.insert(
-            request.idempotency_key,
-            IdempotencyRecord {
-                fingerprint,
-                target_id: submission_id.to_string(),
-            },
-        );
-        let result = next
-            .submissions
-            .get(submission_id)
-            .cloned()
-            .expect("submission remains present");
-        self.commit(&mut current, next).await?;
-        Ok(result)
-    }
-
-    pub async fn record_integration(
-        &self,
-        submission_id: &str,
-        integration: IntegrationRecord,
-        actor: &str,
-        idempotency_key: String,
-    ) -> WorkResult<SubmissionRecord> {
-        validate_label("integration actor", actor)?;
-        validate_idempotency_key(&idempotency_key)?;
-        let fingerprint =
-            operation_fingerprint("integrate", Some(submission_id), &(&integration, actor))?;
-        let mut current = self.database.lock().await;
-        if let Some(existing) = current.idempotency.get(&idempotency_key) {
-            ensure_fingerprint(existing, &fingerprint)?;
-            return current
-                .submissions
-                .get(&existing.target_id)
-                .cloned()
-                .ok_or_else(|| WorkError::Internal("idempotency target is missing".into()));
-        }
-        let mut next = current.clone();
-        transition_records(
-            &mut next,
-            submission_id,
-            WorkflowState::Integrating,
-            ReceiptKind::Integration,
-            actor,
-            "approved submission integrated with current canonical source",
-            Some("integration_prepared".into()),
-        )?;
-        next.submissions
-            .get_mut(submission_id)
-            .expect("submission remains present")
-            .integration = Some(integration);
-        next.idempotency.insert(
-            idempotency_key,
-            IdempotencyRecord {
-                fingerprint,
-                target_id: submission_id.to_string(),
-            },
-        );
-        let result = next
-            .submissions
-            .get(submission_id)
-            .cloned()
-            .expect("submission remains present");
-        self.commit(&mut current, next).await?;
-        Ok(result)
-    }
-
-    pub async fn complete_integration(
-        &self,
-        submission_id: &str,
-        request: ValidationRequest,
-    ) -> WorkResult<SubmissionRecord> {
-        validate_validation(&request)?;
-        let fingerprint =
-            operation_fingerprint("complete_integration", Some(submission_id), &request)?;
-        let mut current = self.database.lock().await;
-        if let Some(existing) = current.idempotency.get(&request.idempotency_key) {
-            ensure_fingerprint(existing, &fingerprint)?;
-            return current
-                .submissions
-                .get(&existing.target_id)
-                .cloned()
-                .ok_or_else(|| WorkError::Internal("idempotency target is missing".into()));
-        }
-        let mut next = current.clone();
-        let checkout_id = next
-            .submissions
-            .get(submission_id)
-            .ok_or_else(|| WorkError::NotFound(submission_id.to_string()))?
-            .checkout_id
-            .clone();
-        let checkout = next
-            .checkouts
-            .get(&checkout_id)
-            .ok_or_else(|| WorkError::Internal("submission checkout is missing".into()))?;
-        validate_consumer_results(checkout, &request.consumers)?;
-        let validation = ValidationResult {
-            package: request.package,
-            consumers: request.consumers,
-            actor: request.actor.clone(),
-            timestamp: Utc::now(),
-        };
-        let target = if validation.passed() {
-            WorkflowState::ReadyToRelease
-        } else {
-            WorkflowState::Failed
-        };
-        transition_records(
-            &mut next,
-            submission_id,
-            target,
-            ReceiptKind::Integration,
-            &request.actor,
-            if validation.passed() {
-                "integrated package and consumer checks passed"
-            } else {
-                "integrated package or consumer checks failed"
-            },
-            Some(
-                if validation.passed() {
-                    "passed"
-                } else {
-                    "failed"
-                }
-                .into(),
-            ),
-        )?;
-        next.submissions
-            .get_mut(submission_id)
-            .and_then(|submission| submission.integration.as_mut())
-            .ok_or_else(|| WorkError::Conflict("integration record is missing".into()))?
-            .validation = Some(validation);
-        next.idempotency.insert(
-            request.idempotency_key,
-            IdempotencyRecord {
-                fingerprint,
-                target_id: submission_id.to_string(),
-            },
-        );
-        let result = next
-            .submissions
-            .get(submission_id)
-            .cloned()
-            .expect("submission remains present");
-        self.commit(&mut current, next).await?;
-        Ok(result)
-    }
 }
 
-pub(crate) fn transition_records(
-    database: &mut crate::store::Database,
-    submission_id: &str,
-    next: WorkflowState,
-    kind: ReceiptKind,
-    actor: &str,
-    reason: &str,
-    validation_result: Option<String>,
-) -> WorkResult<()> {
-    let submission = database
-        .submissions
-        .get(submission_id)
-        .ok_or_else(|| WorkError::NotFound(submission_id.to_string()))?;
-    let previous = submission.state;
-    if !previous.can_transition_to(next) {
-        return Err(WorkError::Conflict(format!(
-            "cannot transition submission from {previous:?} to {next:?}"
-        )));
-    }
-    let checkout_id = submission.checkout_id.clone();
-    let commit = Some(submission.integration.as_ref().map_or_else(
-        || submission.submitted_commit.clone(),
-        |integration| integration.integration_commit.clone(),
-    ));
-    let now = Utc::now();
-    let workflow_receipt = receipt(
-        database,
-        ReceiptInput {
-            kind,
-            checkout_id: &checkout_id,
-            actor,
-            previous: Some(previous),
-            next,
-            commit: commit.clone(),
-            validation_result: validation_result.clone(),
-            reason,
-            timestamp: now,
-        },
-    );
-    let submission = database
-        .submissions
-        .get_mut(submission_id)
-        .expect("submission remains present");
-    submission.state = next;
-    submission.updated_at = now;
-    let checkout = database
-        .checkouts
-        .get_mut(&checkout_id)
-        .ok_or_else(|| WorkError::Internal("submission checkout is missing".into()))?;
-    if checkout.state != previous {
-        return Err(WorkError::Conflict(
-            "checkout and submission workflow states diverged".into(),
-        ));
-    }
-    checkout.state = next;
-    checkout.updated_at = now;
-    if next.revokes_lease() {
-        checkout.lease = None;
-    }
-    checkout.transitions.push(WorkflowTransition {
-        timestamp: now,
-        actor: actor.to_string(),
-        previous: Some(previous),
-        next,
-        commit,
-        validation_result,
-        reason: reason.to_string(),
-        receipt_id: workflow_receipt.receipt_id.clone(),
-    });
-    database
-        .receipts
-        .insert(workflow_receipt.receipt_id.clone(), workflow_receipt);
-    if next.revokes_lease() {
-        database.lease_credentials.remove(&checkout_id);
-    }
-    Ok(())
-}
-
-fn validate_validation(request: &ValidationRequest) -> WorkResult<()> {
+pub(crate) fn validate_validation(request: &ValidationRequest) -> WorkResult<()> {
     validate_label("validation actor", &request.actor)?;
     for consumer in request.consumers.keys() {
         validate_label("consumer", consumer)?;
@@ -579,7 +286,7 @@ fn validate_validation(request: &ValidationRequest) -> WorkResult<()> {
     validate_idempotency_key(&request.idempotency_key)
 }
 
-fn validate_consumer_results(
+pub(crate) fn validate_consumer_results(
     checkout: &vm_packages::CheckoutRecord,
     consumers: &std::collections::BTreeMap<String, vm_packages::CheckOutcome>,
 ) -> WorkResult<()> {
@@ -604,27 +311,15 @@ fn validate_consumer_results(
     }
 }
 
-fn validate_review(request: &ReviewRequest) -> WorkResult<()> {
-    validate_label("reviewer", &request.reviewer)?;
-    if request.reason.trim().is_empty() || request.reason.len() > 4_000 {
-        return Err(WorkError::Invalid(
-            "review reason must contain 1 to 4000 characters".into(),
-        ));
-    }
-    if !matches!(request.merge_strategy.as_str(), "rebase" | "merge") {
-        return Err(WorkError::Invalid(
-            "merge strategy must be rebase or merge".into(),
-        ));
-    }
-    validate_idempotency_key(&request.idempotency_key)
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
-    use vm_packages::{CheckOutcome, CreateCheckout, RegisterTool, ToolKind};
+    use vm_packages::{
+        CheckOutcome, CreateCheckout, IntegrationRecord, RegisterTool, ReviewDecision,
+        ReviewRequest, ToolKind,
+    };
 
     #[tokio::test]
     async fn collection_validation_has_no_package_consumer_result() {

@@ -130,6 +130,8 @@ fn handle_request(stream: &mut TcpStream, requests: &Arc<Mutex<Vec<String>>>) {
         )
     } else if method == "GET" && path == "/work/v1/checkouts" {
         ("200 OK", "[]".to_string())
+    } else if method == "POST" && path == "/work/v1/tool-activations/repair" && authorized {
+        ("200 OK", "0".to_string())
     } else if method == "GET" && matches!(path, "/work/v1/packages" | "/work/v1/tools") {
         ("401 Unauthorized", "{}".to_string())
     } else if matches!(path, "/health" | "/work/health" | "/v2/") {

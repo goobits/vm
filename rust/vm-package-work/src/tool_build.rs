@@ -9,7 +9,7 @@ use vm_packages::{
 use crate::store::{
     ensure_fingerprint, operation_fingerprint, validate_idempotency_key, IdempotencyRecord, Store,
 };
-use crate::submission::transition_records;
+use crate::workflow::transition_records;
 use crate::{WorkError, WorkResult};
 
 impl Store {
