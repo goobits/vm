@@ -58,6 +58,8 @@ pub struct ServiceManager {
     state_file: PathBuf,
     /// Service implementations
     services: Arc<Mutex<HashMap<String, Arc<dyn ManagedService>>>>,
+    readiness_attempts: usize,
+    readiness_interval: Duration,
 }
 
 impl ServiceManager {
@@ -81,6 +83,8 @@ impl ServiceManager {
             state: Arc::new(Mutex::new(HashMap::new())),
             state_file,
             services: Arc::new(Mutex::new(services)),
+            readiness_attempts: 10,
+            readiness_interval: Duration::from_secs(2),
         };
 
         // Load existing state if available
@@ -166,20 +170,17 @@ impl ServiceManager {
                         });
 
                 // Add VM to registered list if not already present
-                if !service_state.registered_vms.contains(&vm_name.to_string()) {
+                if !service_state.registered_vms.iter().any(|vm| vm == vm_name) {
                     service_state.registered_vms.push(vm_name.to_string());
                     service_state.reference_count += 1;
-
-                    // If this is the first reference and service isn't running, mark for start
-                    #[allow(clippy::excessive_nesting)]
-                    if service_state.reference_count == 1 && !service_state.is_running {
-                        services_needing_start.push(service_name.to_string());
-                    }
 
                     info!(
                         "VM '{}' registered for service '{}' (ref count: {})",
                         vm_name, service_name, service_state.reference_count
                     );
+                }
+                if !service_state.is_running {
+                    services_needing_start.push(service_name.to_string());
                 }
             }
         }
@@ -296,29 +297,34 @@ impl ServiceManager {
         // Use trait dispatch to start the service (lock is dropped)
         service_impl.start(global_config).await?;
 
-        // Update state
-        {
-            let mut state_guard = self.state.lock().map_err(|e| {
-                VmError::general(
-                    std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
-                    "State mutex was poisoned",
-                )
-            })?;
-            if let Some(service_state) = state_guard.get_mut(service_name) {
-                service_state.is_running = true;
-            }
-        }
-
         // Verify service started
-        for attempt in 1..=10 {
-            sleep(Duration::from_millis(2000)).await;
+        for attempt in 1..=self.readiness_attempts {
             if self.check_service_health(service_name, global_config).await {
+                let mut state_guard = self.state.lock().map_err(|e| {
+                    VmError::general(
+                        std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+                        "State mutex was poisoned",
+                    )
+                })?;
+                if let Some(service_state) = state_guard.get_mut(service_name) {
+                    service_state.is_running = true;
+                }
                 vm_success!("Service '{}' started successfully", service_name);
                 return Ok(());
             }
             debug!(
-                "Service '{}' not ready, attempt {}/10",
-                service_name, attempt
+                "Service '{}' not ready, attempt {}/{}",
+                service_name, attempt, self.readiness_attempts
+            );
+            if attempt < self.readiness_attempts {
+                sleep(self.readiness_interval).await;
+            }
+        }
+
+        if let Err(error) = service_impl.stop().await {
+            warn!(
+                "Failed to stop unhealthy service '{}': {}",
+                service_name, error
             );
         }
 
@@ -433,6 +439,10 @@ impl ServiceManager {
             .lock()
             .map_err(|error| anyhow::anyhow!("Services mutex was poisoned: {error}"))?;
         loaded_state.retain(|name, _| services.contains_key(name));
+        for state in loaded_state.values_mut() {
+            state.is_running = false;
+            state.pid = None;
+        }
         drop(services);
 
         {
@@ -467,5 +477,136 @@ pub fn get_service_manager() -> Result<&'static ServiceManager> {
         Err(error) => Err(anyhow::anyhow!(
             "Failed to initialize service manager: {error}"
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ManagedService, ServiceManager};
+    use anyhow::{bail, Result};
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+    use vm_config::{config::ServiceConfig, config::VmConfig, GlobalConfig};
+
+    struct TestService {
+        fail_start: AtomicBool,
+        healthy: AtomicBool,
+        starts: AtomicUsize,
+        stops: AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl ManagedService for TestService {
+        async fn start(&self, _global_config: &GlobalConfig) -> Result<()> {
+            self.starts.fetch_add(1, Ordering::SeqCst);
+            if self.fail_start.load(Ordering::SeqCst) {
+                bail!("start failed");
+            }
+            Ok(())
+        }
+
+        async fn stop(&self) -> Result<()> {
+            self.stops.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+
+        async fn check_health(&self, _global_config: &GlobalConfig) -> bool {
+            self.healthy.load(Ordering::SeqCst)
+        }
+
+        fn name(&self) -> &str {
+            "postgresql"
+        }
+
+        fn get_port(&self, _global_config: &GlobalConfig) -> u16 {
+            3739
+        }
+    }
+
+    fn manager(service: Arc<TestService>, state_file: PathBuf) -> ServiceManager {
+        let services: HashMap<String, Arc<dyn ManagedService>> =
+            HashMap::from([("postgresql".into(), service as Arc<dyn ManagedService>)]);
+        ServiceManager {
+            state: Arc::new(Mutex::new(HashMap::new())),
+            state_file,
+            services: Arc::new(Mutex::new(services)),
+            readiness_attempts: 1,
+            readiness_interval: Duration::ZERO,
+        }
+    }
+
+    fn enabled_config() -> VmConfig {
+        let mut config = VmConfig::default();
+        config.services.insert(
+            "postgresql".into(),
+            ServiceConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+        config
+    }
+
+    #[tokio::test]
+    async fn failed_start_remains_retryable_for_the_same_vm() {
+        let directory = tempfile::tempdir().unwrap();
+        let service = Arc::new(TestService {
+            fail_start: AtomicBool::new(true),
+            healthy: AtomicBool::new(true),
+            starts: AtomicUsize::new(0),
+            stops: AtomicUsize::new(0),
+        });
+        let manager = manager(service.clone(), directory.path().join("services.json"));
+        let config = enabled_config();
+        let global = GlobalConfig::default();
+
+        manager
+            .register_vm_services("demo-dev", &config, &global)
+            .await
+            .unwrap();
+        assert!(!manager.get_service_status("postgresql").unwrap().is_running);
+
+        service.fail_start.store(false, Ordering::SeqCst);
+        manager
+            .register_vm_services("demo-dev", &config, &global)
+            .await
+            .unwrap();
+
+        let state = manager.get_service_status("postgresql").unwrap();
+        assert!(state.is_running);
+        assert_eq!(state.reference_count, 1);
+        assert_eq!(service.starts.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn unhealthy_start_is_stopped_and_remains_retryable() {
+        let directory = tempfile::tempdir().unwrap();
+        let service = Arc::new(TestService {
+            fail_start: AtomicBool::new(false),
+            healthy: AtomicBool::new(false),
+            starts: AtomicUsize::new(0),
+            stops: AtomicUsize::new(0),
+        });
+        let manager = manager(service.clone(), directory.path().join("services.json"));
+        let config = enabled_config();
+        let global = GlobalConfig::default();
+
+        manager
+            .register_vm_services("demo-dev", &config, &global)
+            .await
+            .unwrap();
+        assert!(!manager.get_service_status("postgresql").unwrap().is_running);
+        assert_eq!(service.stops.load(Ordering::SeqCst), 1);
+
+        service.healthy.store(true, Ordering::SeqCst);
+        manager
+            .register_vm_services("demo-dev", &config, &global)
+            .await
+            .unwrap();
+        assert!(manager.get_service_status("postgresql").unwrap().is_running);
+        assert_eq!(service.starts.load(Ordering::SeqCst), 2);
     }
 }
