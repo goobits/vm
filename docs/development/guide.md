@@ -20,7 +20,8 @@ Shared terminal output lives in `vm-core/src/output_macros.rs`:
 
 `vm --help` is the installed-version source of truth. The
 [CLI Reference](../user-guide/cli-reference.md) owns the documented public
-command inventory. Do not maintain a second command list in contributor docs.
+built-in command inventory. Do not maintain a second command list in
+contributor docs.
 
 ## Lifecycle Hooks
 

@@ -6,30 +6,10 @@ read-only cache/proxy edge attached to each managed environment.
 
 Operators should not run this component directly or publish with npm, Cargo,
 pip, or Twine. VM owns authentication, client configuration, source review,
-immutable publication, and service lifecycle:
-
-```bash
-vm packages up
-vm packages status
-```
-
-Agents change registered packages and tool collections through an isolated
-guest checkout:
-
-```bash
-vm packages checkout <source>
-cd <the-printed-Source-path>
-# Edit, test, bump the version when required, and commit.
-vm packages release
-```
-
-The workflow derives source-only package validation from the guest's registered
-consumer identity. `vm packages cancel`, run from the same source path, restores
-any checkout-scoped dependency override before closing durable state.
-
-The release worker publishes only to the private VM gateway. See the canonical
+immutable publication, and service lifecycle. The canonical
 [Package Infrastructure guide](../../docs/user-guide/package-infrastructure.md)
-for setup, release, consumer-update, security, and recovery behavior.
+owns direct-workspace and isolated-checkout workflows, setup, security, and
+recovery behavior.
 
 ## Development
 

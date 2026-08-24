@@ -10,7 +10,7 @@ architecture notes stay beside the package they describe.
 - [Quick Start](getting-started/quick-start.md) owns the first-use workflow.
 - `vm --help` is the installed-version source of truth. The
   [CLI Reference](user-guide/cli-reference.md) is the canonical documented
-  public command inventory and owns target-selection behavior.
+  public built-in command inventory and owns target-selection behavior.
 - [Configuration Guide](user-guide/configuration.md) owns `vm.yaml` semantics.
 - [Package Infrastructure](user-guide/package-infrastructure.md) owns shared
   package registries, managed source releases, automatic consumer upgrades,
@@ -18,6 +18,7 @@ architecture notes stay beside the package they describe.
 - [Troubleshooting](user-guide/troubleshooting.md) owns recovery guidance.
 - [Testing Guide](development/testing.md) owns supported quality commands.
 - [Architecture](development/architecture.md) owns code boundaries.
+- [Contributing](../CONTRIBUTING.md) owns contributor setup and review policy.
 
 Other guides should link to these owners instead of copying their inventories.
 
@@ -49,7 +50,7 @@ Reference for vm.yaml and global configuration.
 
 **CLI Reference**
 [user-guide/cli-reference.md](user-guide/cli-reference.md)
-Complete public command inventory and targeting rules.
+Complete public built-in command inventory and targeting rules.
 
 **Troubleshooting**
 [user-guide/troubleshooting.md](user-guide/troubleshooting.md)
@@ -79,7 +80,7 @@ Private npm, Cargo, and Python package workflows shared by Docker and Tart.
 
 **Development Guide**
 [development/guide.md](development/guide.md)
-Set up your development environment and run tests.
+CLI architecture, output behavior, and lifecycle hooks.
 
 **Testing Guide**
 [development/testing.md](development/testing.md)

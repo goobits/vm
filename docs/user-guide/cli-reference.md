@@ -1,7 +1,7 @@
 # CLI Reference
 
-This page is the single durable inventory of public `vm` commands. Runtime
-`vm --help` output remains authoritative for the installed version.
+This page is the single durable inventory of public built-in `vm` commands.
+Runtime `vm --help` output remains authoritative for the installed version.
 
 ```text
 vm [--config <path>] [--profile <name>] [--dry-run] <command>
@@ -17,6 +17,11 @@ Global options apply to every command:
 | `-h`, `--help` | Show command-specific help |
 | `-V`, `--version` | Show the installed version |
 
+Use `vm help [command]...` for nested help. Managed guests may also expose
+controller-approved top-level command names supplied by installed tooling. Those
+names are environment-specific, so they are intentionally absent from the
+built-in help and this static inventory.
+
 ## Environments
 
 | Command | Purpose |
@@ -28,13 +33,13 @@ Global options apply to every command:
 | `vm exec [environment] [<fleet-options>] -- <command>` | Start an existing environment and run one command |
 | `vm logs [environment] [-f\|--follow] [-n\|--tail <lines>] [-s\|--service <service>]` | Stream environment or service logs |
 | `vm copy [<fleet-options>] <source> <destination>` | Copy between host and environment paths |
-| `vm stop [environment] [<fleet-options>]` | Gracefully stop an environment; aliases: `down`, `halt` |
+| `vm stop [environment] [<fleet-options>]` | Gracefully stop an environment |
 | `vm status [environment]` | Inspect runtime, storage, mounts, and resource state |
 | `vm restart [environment] [<fleet-options>]` | Stop and restart an environment |
-| `vm remove [environment] [--force]` | Remove an environment while preserving saved snapshots; aliases: `rm`, `destroy` |
+| `vm remove [environment] [--force]` | Remove an environment while preserving saved snapshots |
 | `vm save [environment] as <snapshot> [--description <text>] [--quiesce] [--force]` | Save an environment state |
 | `vm revert [environment] <snapshot> [--force]` | Restore a saved environment state |
-| `vm package [environment] [-o\|--output <file>] [--compress <1-9>] [--build <path>]` | Export an environment or build context as a portable artifact |
+| `vm package [environment] [-o\|--output <file>] [--compress <level>] [--build <path>]` | Export an environment or build context as a portable artifact; compression defaults to `6` |
 
 `<fleet-options>` means:
 
@@ -45,6 +50,8 @@ Global options apply to every command:
 Fleet options are supported by `start`, `exec`, `copy`, `stop`, and `restart`.
 Provider and pattern filters require `--fleet`. Without filters, the command
 targets all applicable managed environments.
+
+### Target Selection
 
 When an environment is omitted, VM prefers the configured default profile, the
 canonical project environment, then the project's sole match. Interactive
@@ -85,18 +92,6 @@ Configuration fields and examples belong in the
 
 ## Package Infrastructure
 
-Primary tool-release workflow:
-
-```bash
-# Once
-vm tools enable typemill codeatlas
-
-# Daily producer workflow
-vm packages release
-```
-
-### Advanced Commands
-
 | Command | Purpose |
 | --- | --- |
 | `vm packages init <source-root> [--port <port>]` | Store the controller source shelf and initialize the appliance |
@@ -104,8 +99,8 @@ vm packages release
 | `vm packages down` | Stop the appliance while preserving volumes |
 | `vm packages status` | Report appliance or guest workflow health |
 | `vm packages doctor [--fix]` | Diagnose or safely repair package infrastructure |
-| `vm packages backup` | Create a private named-volume backup |
 | `vm packages backups` | List appliance backups |
+| `vm packages backup` | Create a private named-volume backup |
 | `vm packages restore <backup-id>` | Restore a backup while services are stopped |
 | `vm packages register <name-or-path>... [--ecosystem <npm\|cargo\|python>] [--repository <url>] [--branch <branch>] [--recursive]` | Register catalog metadata; successful local roots are remembered read-only |
 | `vm packages list` | List registered and published package state |
@@ -113,8 +108,8 @@ vm packages release
 | `vm packages consumer list` | List registered consumers |
 | `vm packages consumers <package>` | Show consumers and pending upgrades for one package |
 | `vm packages drift` | Show version drift across consumers |
-| `vm packages open <package-or-tool>` | Open the attested original source in its existing writable Docker owner; create no checkout |
-| `vm packages checkout <package-or-tool>` | Create or resume a guest-owned source checkout |
+| `vm packages open <source>` | Open an attested package or tool in its existing writable Docker owner; create no checkout |
+| `vm packages checkout <source>` | Create or resume a guest-owned package or tool checkout |
 | `vm packages release` | Release the checkout or canonical workspace containing the current directory |
 | `vm packages cancel` | Cancel and clean the checkout containing the current directory |
 | `vm packages auth (--github\|--token-file <path>\|--clear)` | Import or remove the controller Git token |
@@ -134,11 +129,6 @@ The [Package Infrastructure Guide](package-infrastructure.md) owns setup,
 release, security, recovery, and consumer workflow details.
 
 ## Managed Tools
-
-Primary enrollment is `vm tools enable <tool>...`; it selects tools globally
-and immediately activates them in running environments.
-
-### Advanced Commands
 
 | Command | Purpose |
 | --- | --- |

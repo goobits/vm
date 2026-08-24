@@ -2,26 +2,10 @@
 
 This workspace contains the Rust implementation of `vm`.
 
-## Build
-
-```bash
-cargo build --workspace
-```
-
-## Test
-
-The root [Testing Guide](../docs/development/testing.md) owns supported checks,
-test layers, and provider-isolation rules.
-
-## CLI Smoke
-
-```bash
-cargo run -p goobits-vm -- --help
-cargo run -p goobits-vm -- run linux as dev --dry-run
-cargo run -p goobits-vm -- list --dry-run
-cargo run -p goobits-vm -- system update --dry-run
-```
-
-The public v5 command surface is intent-first. The
-generated `vm --help` output owns its exact inventory; the
-[CLI Reference](../docs/user-guide/cli-reference.md) owns durable workflows.
+- [Contributing](../CONTRIBUTING.md) owns setup and review policy.
+- The [Testing Guide](../docs/development/testing.md) owns supported checks and
+  provider-isolation rules.
+- [Rust Architecture](ARCHITECTURE.md) owns the crate map and dependency details.
+- Generated `vm --help` is the installed command source of truth; the
+  [CLI Reference](../docs/user-guide/cli-reference.md) owns the documented
+  public built-in inventory and targeting rules.
