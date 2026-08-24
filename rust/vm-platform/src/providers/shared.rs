@@ -34,16 +34,6 @@ pub trait SharedPlatformOps: PlatformProvider {
         Ok(self.home_dir()?.join(".vm"))
     }
 
-    /// Default implementation for global_config_path
-    fn default_global_config_path(&self) -> Result<PathBuf> {
-        Ok(self.user_config_dir()?.join("global.yaml"))
-    }
-
-    /// Default implementation for port_registry_path
-    fn default_port_registry_path(&self) -> Result<PathBuf> {
-        Ok(self.vm_state_dir()?.join("port-registry.json"))
-    }
-
     /// Default implementation for cargo_home
     fn default_cargo_home(&self) -> Result<PathBuf> {
         if let Ok(cargo_home) = std::env::var("CARGO_HOME") {

@@ -47,14 +47,6 @@ impl PlatformProvider for UnixPlatform {
         self.default_vm_state_dir()
     }
 
-    fn global_config_path(&self) -> Result<PathBuf> {
-        self.default_global_config_path()
-    }
-
-    fn port_registry_path(&self) -> Result<PathBuf> {
-        self.default_port_registry_path()
-    }
-
     // === Shell Operations ===
 
     fn detect_shell(&self) -> Result<Box<dyn ShellProvider>> {

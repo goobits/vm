@@ -66,22 +66,6 @@ pub trait PlatformProvider: Send + Sync {
     /// or if the required directories cannot be accessed.
     fn vm_state_dir(&self) -> Result<PathBuf>;
 
-    /// Get the global configuration file path
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the global configuration path cannot be determined
-    /// or if the required directories cannot be accessed.
-    fn global_config_path(&self) -> Result<PathBuf>;
-
-    /// Get the port registry file path
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the port registry path cannot be determined
-    /// or if the required directories cannot be accessed.
-    fn port_registry_path(&self) -> Result<PathBuf>;
-
     // === Shell Operations ===
 
     /// Detect the current shell and return a shell provider

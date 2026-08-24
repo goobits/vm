@@ -2,13 +2,11 @@
 //!
 //! This module provides platform-agnostic functions for accessing user-specific
 //! directories like configuration, data, and binary directories. It delegates
-//! to the vm-platform crate for core functionality while providing backward
-//! compatibility and higher-level convenience functions.
+//! to the vm-platform crate for core functionality and adds higher-level paths.
 
 use crate::error::{Result, VmError};
-use crate::vm_warning;
 use std::borrow::Cow;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Get the user's configuration directory for the VM tool.
 ///
@@ -72,106 +70,34 @@ pub fn user_cache_dir() -> Result<PathBuf> {
 
 /// Get the global configuration path for the VM tool.
 ///
-/// Returns the path to the global configuration file:
-/// - Primary location: `~/.vm/config.yaml`
-/// - Fallback location: `~/.config/vm/global.yaml` (for backward compatibility)
+/// Returns `~/.vm/config.yaml`.
 #[must_use = "global configuration path should be used"]
 pub fn global_config_path() -> Result<PathBuf> {
-    // Try new unified location first
-    let new_path = vm_state_dir()?.join("config.yaml");
-    if new_path.exists() {
-        return Ok(new_path);
-    }
-
-    // Check old location for backward compatibility
-    let old_path = user_config_dir()?.join("global.yaml");
-    if old_path.exists() {
-        warn_deprecated_path(&old_path, &new_path);
-        return Ok(old_path);
-    }
-
-    // Return new path as default (even if doesn't exist yet)
-    Ok(new_path)
+    Ok(vm_state_dir()?.join("config.yaml"))
 }
 
 /// Get the port registry path for the VM tool.
 ///
-/// Returns the path to the port registry file:
-/// - Primary location: `~/.vm/ports.json`
-/// - Fallback location: `~/.vm/port-registry.json` (for backward compatibility)
+/// Returns `~/.vm/ports.json`.
 #[must_use = "port registry path should be used"]
 pub fn port_registry_path() -> Result<PathBuf> {
-    // Try new unified location first
-    let new_path = vm_state_dir()?.join("ports.json");
-    if new_path.exists() {
-        return Ok(new_path);
-    }
-
-    // Check old location for backward compatibility
-    let old_path = vm_state_dir()?.join("port-registry.json");
-    if old_path.exists() {
-        warn_deprecated_path(&old_path, &new_path);
-        return Ok(old_path);
-    }
-
-    // Return new path as default (even if doesn't exist yet)
-    Ok(new_path)
+    Ok(vm_state_dir()?.join("ports.json"))
 }
 
 /// Get the services state path for the VM tool.
 ///
-/// Returns the path to the services state file:
-/// - Primary location: `~/.vm/services.json`
-/// - Fallback location: `~/.vm/service_state.json` (for backward compatibility)
+/// Returns `~/.vm/services.json`.
 #[must_use = "services state path should be used"]
 pub fn services_state_path() -> Result<PathBuf> {
-    // Try new unified location first
-    let new_path = vm_state_dir()?.join("services.json");
-    if new_path.exists() {
-        return Ok(new_path);
-    }
-
-    // Check old location for backward compatibility
-    let old_path = vm_state_dir()?.join("service_state.json");
-    if old_path.exists() {
-        warn_deprecated_path(&old_path, &new_path);
-        return Ok(old_path);
-    }
-
-    // Return new path as default (even if doesn't exist yet)
-    Ok(new_path)
+    Ok(vm_state_dir()?.join("services.json"))
 }
 
 /// Get the temp VMs state path for the VM tool.
 ///
-/// Returns the path to the temp VMs state file:
-/// - Primary location: `~/.vm/temp-vms.json`
-/// - Fallback location: `~/.vm/temp-vm.state` (for backward compatibility)
+/// Returns `~/.vm/temp-vms.json`.
 #[must_use = "temp VMs state path should be used"]
 pub fn temp_vms_state_path() -> Result<PathBuf> {
-    // Try new unified location first
-    let new_path = vm_state_dir()?.join("temp-vms.json");
-    if new_path.exists() {
-        return Ok(new_path);
-    }
-
-    // Check old location for backward compatibility
-    let old_path = vm_state_dir()?.join("temp-vm.state");
-    if old_path.exists() {
-        warn_deprecated_path(&old_path, &new_path);
-        return Ok(old_path);
-    }
-
-    // Return new path as default (even if doesn't exist yet)
-    Ok(new_path)
-}
-
-fn warn_deprecated_path(old_path: &Path, new_path: &Path) {
-    vm_warning!(
-        "Deprecated state path '{}'; move it to '{}'",
-        old_path.display(),
-        new_path.display()
-    );
+    Ok(vm_state_dir()?.join("temp-vms.json"))
 }
 
 /// Get the user's home directory.
