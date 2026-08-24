@@ -141,6 +141,7 @@ impl Store {
                 && existing.default_branch == request.default_branch
             {
                 if existing.repository != request.repository
+                    || existing.build_sources != request.build_sources
                     || (request.workspace_release && !existing.workspace_release)
                 {
                     let mut next = current.clone();
@@ -149,6 +150,7 @@ impl Store {
                         .get_mut(&request.name)
                         .expect("tool remains registered");
                     definition.repository = request.repository;
+                    definition.build_sources = request.build_sources;
                     definition.workspace_release |= request.workspace_release;
                     let definition = definition.clone();
                     self.commit(&mut current, next).await?;
@@ -167,6 +169,7 @@ impl Store {
             kind: request.kind,
             repository: request.repository,
             default_branch: request.default_branch,
+            build_sources: request.build_sources,
             workspace_release: request.workspace_release,
             registered_at: Utc::now(),
         };
@@ -425,6 +428,7 @@ mod tests {
             kind,
             repository: format!("https://example.com/{name}.git"),
             default_branch: "main".into(),
+            build_sources: Vec::new(),
             workspace_release: false,
         }
     }

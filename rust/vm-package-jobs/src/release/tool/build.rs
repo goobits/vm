@@ -94,6 +94,27 @@ pub async fn build_submission(
             return Ok(());
         }
     };
+    let build_sources = match materialize_build_sources(
+        client,
+        &submission.submission_id,
+        build_token,
+        release_root.path(),
+        &manifest,
+    ) {
+        Ok(sources) => sources,
+        Err(error) => {
+            record_build_failure(
+                client,
+                submission,
+                &source_commit,
+                &manifest_digest,
+                &error,
+                ToolBuildFailureKind::Build,
+            )
+            .await?;
+            return Ok(());
+        }
+    };
     if !checkout.initial_release {
         let canonical = release_root.path().join("canonical");
         clone_at(&bundle, &canonical, &integration.canonical_commit)?;
@@ -116,7 +137,7 @@ pub async fn build_submission(
         }
     }
     prepare_isolated_package_configuration(release_root.path())?;
-    prepare_unprivileged_build(release_root.path(), &source)?;
+    prepare_unprivileged_build(release_root.path(), &source, &build_sources)?;
     let tag = format!("v{version}");
     let context = ToolArtifactContext {
         source: &source,
@@ -271,7 +292,46 @@ fn stage_artifacts(
         .collect()
 }
 
-fn prepare_unprivileged_build(root: &Path, source: &Path) -> Result<()> {
+fn materialize_build_sources(
+    client: &PackageInfrastructureClient,
+    submission_id: &str,
+    build_token: &str,
+    release_root: &Path,
+    manifest: &ToolSourceManifest,
+) -> Result<Vec<std::path::PathBuf>> {
+    manifest
+        .build_sources
+        .iter()
+        .map(|build_source| {
+            let bundle = release_root.join(format!("{}.bundle", build_source.name));
+            download_bundle(
+                &client.tool_build_source_url(submission_id, &build_source.name),
+                build_token,
+                &bundle,
+            )?;
+            let destination = release_root.join(&build_source.name);
+            clone_at(&bundle, &destination, &build_source.commit)?;
+            let resolved = git_text(
+                &destination,
+                &["rev-parse", "--verify", "HEAD^{commit}"],
+                "resolve immutable binary tool build source",
+            )?;
+            if resolved != build_source.commit {
+                bail!(
+                    "binary tool build source {} does not match its declared commit",
+                    build_source.name
+                );
+            }
+            Ok(destination)
+        })
+        .collect()
+}
+
+fn prepare_unprivileged_build(
+    root: &Path,
+    source: &Path,
+    build_sources: &[std::path::PathBuf],
+) -> Result<()> {
     let Some(uid) = std::env::var_os("PKG_BUILD_UID") else {
         return Ok(());
     };
@@ -294,18 +354,18 @@ fn prepare_unprivileged_build(root: &Path, source: &Path) -> Result<()> {
     ] {
         std::fs::create_dir_all(directory)?;
     }
-    run_command(
-        Command::new("chown")
-            .arg("-R")
-            .arg(format!(
-                "{}:{}",
-                uid.to_string_lossy(),
-                gid.to_string_lossy()
-            ))
-            .arg(source)
-            .arg(&sandbox),
-        "prepare unprivileged binary build workspace",
-    )?;
+    let mut chown = Command::new("chown");
+    chown.arg("-R").arg(format!(
+        "{}:{}",
+        uid.to_string_lossy(),
+        gid.to_string_lossy()
+    ));
+    chown.arg(source);
+    for build_source in build_sources {
+        chown.arg(build_source);
+    }
+    chown.arg(&sandbox);
+    run_command(&mut chown, "prepare unprivileged binary build workspace")?;
     Ok(())
 }
 

@@ -50,6 +50,7 @@ pub(super) async fn handle(
                     kind,
                     repository,
                     default_branch: branch,
+                    build_sources: Vec::new(),
                     workspace_release: false,
                 })
                 .await?;

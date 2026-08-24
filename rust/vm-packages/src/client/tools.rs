@@ -103,4 +103,12 @@ impl PackageInfrastructureClient {
     pub fn build_bundle_url(&self, submission_id: &str) -> String {
         self.work_url(&format!("v1/submissions/{submission_id}/build-bundle"))
     }
+
+    pub fn tool_build_source_url(&self, submission_id: &str, source_name: &str) -> String {
+        let source_name =
+            url::form_urlencoded::byte_serialize(source_name.as_bytes()).collect::<String>();
+        self.work_url(&format!(
+            "v1/submissions/{submission_id}/build-sources/{source_name}"
+        ))
+    }
 }

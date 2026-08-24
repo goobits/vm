@@ -23,6 +23,9 @@ pub struct RegisterTool {
     pub repository: String,
     #[serde(default = "default_branch")]
     pub default_branch: String,
+    /// Catalog tools this source is allowed to consume during isolated builds.
+    #[serde(default)]
+    pub build_sources: Vec<String>,
     /// Controller-attested membership in a configured package source root.
     #[serde(default)]
     pub workspace_release: bool,
@@ -32,7 +35,8 @@ impl RegisterTool {
     pub fn validate(&self) -> Result<(), PackageValidationError> {
         validate_tool_name(&self.name)?;
         validate_label("default branch", &self.default_branch)?;
-        validate_repository_url(&self.repository)
+        validate_repository_url(&self.repository)?;
+        validate_build_source_names(&self.name, &self.build_sources)
     }
 }
 
@@ -42,6 +46,8 @@ pub struct ToolDefinition {
     pub kind: ToolKind,
     pub repository: String,
     pub default_branch: String,
+    #[serde(default)]
+    pub build_sources: Vec<String>,
     #[serde(default)]
     pub workspace_release: bool,
     pub registered_at: DateTime<Utc>,
@@ -62,8 +68,20 @@ pub struct ToolSourceManifest {
     pub kind: ToolKind,
     #[serde(default)]
     pub version: Option<String>,
+    /// Registered immutable sibling tool repositories required by every build.
+    #[serde(default)]
+    pub build_sources: Vec<ToolBuildSource>,
     #[serde(default)]
     pub builds: Vec<ToolBuild>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToolBuildSource {
+    /// Catalog name of the registered tool source.
+    pub name: String,
+    /// Full immutable Git object ID to materialize beside the primary source.
+    pub commit: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,7 +104,10 @@ impl ToolSourceManifest {
         }
         match self.kind {
             ToolKind::Collection => {
-                if self.version.is_some() || !self.builds.is_empty() {
+                if self.version.is_some()
+                    || !self.build_sources.is_empty()
+                    || !self.builds.is_empty()
+                {
                     return Err(PackageValidationError::new(
                         "collection manifests cannot declare binary release fields",
                     ));
@@ -107,6 +128,20 @@ impl ToolSourceManifest {
                         "binary tool manifest must define 1 to 16 builds",
                     ));
                 }
+                if self.build_sources.len() > 8 {
+                    return Err(PackageValidationError::new(
+                        "binary tool manifest cannot define more than 8 build sources",
+                    ));
+                }
+                let mut source_names = std::collections::BTreeSet::new();
+                for source in &self.build_sources {
+                    source.validate()?;
+                    if !source_names.insert(&source.name) {
+                        return Err(PackageValidationError::new(
+                            "binary tool build source names must be unique",
+                        ));
+                    }
+                }
                 let mut targets = std::collections::BTreeSet::new();
                 for build in &self.builds {
                     build.validate()?;
@@ -117,6 +152,28 @@ impl ToolSourceManifest {
                     }
                 }
             }
+        }
+        Ok(())
+    }
+}
+
+impl ToolBuildSource {
+    fn validate(&self) -> Result<(), PackageValidationError> {
+        validate_tool_name(&self.name)?;
+        if matches!(self.name.as_str(), "source" | "canonical" | "untrusted") {
+            return Err(PackageValidationError::new(
+                "binary tool build source name is reserved",
+            ));
+        }
+        if !matches!(self.commit.len(), 40 | 64)
+            || !self
+                .commit
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(PackageValidationError::new(
+                "binary tool build source commit must be a full lowercase Git object ID",
+            ));
         }
         Ok(())
     }
@@ -195,6 +252,32 @@ fn validate_command(field: &str, command: &[String]) -> Result<(), PackageValida
         return Err(PackageValidationError::new(format!(
             "{field} must not use shell command text"
         )));
+    }
+    Ok(())
+}
+
+fn validate_build_source_names(
+    tool: &str,
+    build_sources: &[String],
+) -> Result<(), PackageValidationError> {
+    if build_sources.len() > 8 {
+        return Err(PackageValidationError::new(
+            "tool registration cannot authorize more than 8 build sources",
+        ));
+    }
+    let mut names = std::collections::BTreeSet::new();
+    for source in build_sources {
+        validate_tool_name(source)?;
+        if source == tool || matches!(source.as_str(), "source" | "canonical" | "untrusted") {
+            return Err(PackageValidationError::new(
+                "tool registration contains an invalid build source",
+            ));
+        }
+        if !names.insert(source) {
+            return Err(PackageValidationError::new(
+                "tool registration build sources must be unique",
+            ));
+        }
     }
     Ok(())
 }
@@ -583,6 +666,7 @@ builds:
             schema: TOOL_SOURCE_SCHEMA,
             kind: ToolKind::Binary,
             version: Some("1.0.0".into()),
+            build_sources: Vec::new(),
             builds: vec![ToolBuild {
                 target: "linux-amd64".into(),
                 command: vec!["make".into()],
@@ -595,6 +679,37 @@ builds:
 
         manifest.builds[0].archive = "dist/tool.tar.gz".into();
         manifest.builds.push(manifest.builds[0].clone());
+        assert!(manifest.validate().is_err());
+    }
+
+    #[test]
+    fn binary_source_manifest_validates_immutable_registered_build_sources() {
+        let mut manifest: ToolSourceManifest = serde_yaml_ng::from_str(
+            r#"
+kind: binary
+version: 1.2.3
+build_sources:
+  - name: hif
+    commit: 0123456789abcdef0123456789abcdef01234567
+builds:
+  - target: linux-arm64
+    command: [./build-tool]
+    archive: dist/tool.tar.gz
+    links:
+      .local/bin/tool: bin/tool
+"#,
+        )
+        .unwrap();
+        manifest.validate().unwrap();
+
+        manifest.build_sources[0].commit = "0123456".into();
+        assert!(manifest.validate().is_err());
+        manifest.build_sources[0].commit = "A".repeat(40);
+        assert!(manifest.validate().is_err());
+        manifest.build_sources[0].commit = "a".repeat(40);
+        manifest
+            .build_sources
+            .push(manifest.build_sources[0].clone());
         assert!(manifest.validate().is_err());
     }
 

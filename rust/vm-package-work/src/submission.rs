@@ -331,6 +331,7 @@ mod tests {
                 kind: ToolKind::Collection,
                 repository: "https://example.invalid/agent-skills.git".into(),
                 default_branch: "main".into(),
+                build_sources: Vec::new(),
                 workspace_release: false,
             })
             .await

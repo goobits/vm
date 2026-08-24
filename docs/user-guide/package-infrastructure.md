@@ -38,8 +38,8 @@ rerunning it resumes the same release instead of publishing again.
 ```
 
 Language-package dependency updates remain a separate consumer rollout. Tools
-whose release needs several repositories, including HIF, HQA, and HVR, must
-first produce one self-contained or coordinated build artifact.
+whose release needs several repositories, including HIF, HQA, and HVR, can pin
+registered sibling tool sources at exact commits in their binary manifest.
 
 ## Advanced: Architecture
 
@@ -425,6 +425,9 @@ publishes those exact staged bytes:
 schema: 1
 kind: binary
 version: 1.0.0
+build_sources:
+  - name: shared-tool
+    commit: 0123456789abcdef0123456789abcdef01234567
 builds:
   - target: linux-arm64
     command: ["npm", "run", "build:linux-arm64"]
@@ -433,6 +436,10 @@ builds:
       .local/bin/tool: bin/tool
     verify: ["bin/tool", "--version"]
 ```
+
+Each build source must already be registered as an authorized tool source. The
+builder receives an immutable bundle at the declared full Git commit without
+receiving repository credentials.
 
 Build commands are argument arrays, paths must remain inside the isolated build
 directory, and linked binaries must be nonempty executables. The Linux builder

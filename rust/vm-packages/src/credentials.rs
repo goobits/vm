@@ -33,6 +33,8 @@ pub struct ToolSourceAttestation {
     pub kind: ToolKind,
     pub repository: String,
     pub default_branch: String,
+    #[serde(default)]
+    pub build_sources: Vec<String>,
 }
 
 impl ToolSourceAttestation {
@@ -43,6 +45,7 @@ impl ToolSourceAttestation {
             kind: request.kind,
             repository: normalize_remote_repository_url(&request.repository)?,
             default_branch: request.default_branch,
+            build_sources: request.build_sources,
         })
     }
 
@@ -52,6 +55,7 @@ impl ToolSourceAttestation {
             kind: self.kind,
             repository: self.repository.clone(),
             default_branch: self.default_branch.clone(),
+            build_sources: self.build_sources.clone(),
             workspace_release: true,
         }
     }
@@ -291,6 +295,7 @@ mod tests {
             kind: ToolKind::Binary,
             repository: "ssh://git@github.com/team/typemill.git".into(),
             default_branch: "main".into(),
+            build_sources: Vec::new(),
             workspace_release: true,
         })
         .unwrap();

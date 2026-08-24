@@ -188,10 +188,12 @@ language-package consumer rollout.
 - [x] Reject a newer source commit that retains an already-published version
   before starting its isolated binary build.
 - [x] Reduce the primary guide to global enrollment followed by bare release.
+- [x] Let binary manifests pin controller-authorized sibling tool sources by
+  full Git commit and deliver their immutable bundles to the isolated builder.
 
-HIF, HQA, and HVR still require a self-contained or coordinated
-multi-repository build artifact; that producer-build work is outside this
-release-activation scope.
+HIF, HQA, and HVR can now coordinate multi-repository builds by declaring
+registered sibling tool sources at exact commits. Each producer must still
+define its own build commands and final artifact layout.
 
 Live Docker acceptance on 2026-08-22 fixed three blockers found only on the
 equipped macOS host: a launchd-only compile error, quarantine of the legacy

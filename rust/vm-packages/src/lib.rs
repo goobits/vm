@@ -61,8 +61,8 @@ pub use tool_activation::{
 pub use tools::{
     artifact_key as tool_artifact_key, tool_artifact_path, validate_sha256, validate_tool_name,
     validate_tool_target, validate_version as validate_tool_version, PublishToolArtifact,
-    RegisterTool, ToolArtifactRecord, ToolBuild, ToolDefinition, ToolIndex, ToolInventory,
-    ToolKind, ToolPublicationReceipt, ToolSourceManifest, TOOL_SOURCE_SCHEMA,
+    RegisterTool, ToolArtifactRecord, ToolBuild, ToolBuildSource, ToolDefinition, ToolIndex,
+    ToolInventory, ToolKind, ToolPublicationReceipt, ToolSourceManifest, TOOL_SOURCE_SCHEMA,
 };
 pub use validation::{
     normalize_remote_repository_url, repository_urls_equivalent, validate_label,

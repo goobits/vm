@@ -225,6 +225,10 @@ pub(crate) fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router 
             "/v1/submissions/{submission_id}/build-bundle",
             get(bundles::download_release_bundle),
         )
+        .route(
+            "/v1/submissions/{submission_id}/build-sources/{source_name}",
+            get(bundles::download_tool_build_source),
+        )
         .route_layer(middleware::from_fn_with_state(state.clone(), auth::build));
     let rollouts = Router::new()
         .route(

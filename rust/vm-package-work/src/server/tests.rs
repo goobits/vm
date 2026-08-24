@@ -248,6 +248,7 @@ async fn guest_can_register_only_its_signed_tool_attestation() {
         kind: vm_packages::ToolKind::Binary,
         repository: "https://example.com/tools/typemill.git".into(),
         default_branch: "main".into(),
+        build_sources: Vec::new(),
         workspace_release: true,
     })
     .unwrap();

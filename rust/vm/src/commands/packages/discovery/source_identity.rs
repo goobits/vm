@@ -102,6 +102,11 @@ pub(in crate::commands::packages) fn discover_tool(
             .map(str::to_string)
             .or(repository.default_branch)
             .unwrap_or_else(|| "main".into()),
+        build_sources: manifest
+            .build_sources
+            .into_iter()
+            .map(|source| source.name)
+            .collect(),
         workspace_release,
     };
     request.validate().map_err(|error| {

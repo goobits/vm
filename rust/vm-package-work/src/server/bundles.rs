@@ -180,6 +180,26 @@ pub(super) async fn download_release_bundle(
     .await
 }
 
+pub(super) async fn download_tool_build_source(
+    State(state): State<AppState>,
+    Path((submission_id, source_name)): Path<(String, String)>,
+) -> WorkResult<Response> {
+    let submission = state.store.submission(&submission_id).await?;
+    if !matches!(
+        submission.state,
+        WorkflowState::ReadyToRelease | WorkflowState::Publishing | WorkflowState::Published
+    ) {
+        return Err(WorkError::Conflict(
+            "submission is not ready for a binary tool build".into(),
+        ));
+    }
+    let bundle = state
+        .source
+        .tool_build_source_bundle(&state.store, &submission, &source_name)
+        .await?;
+    download(bundle, "build-source.bundle").await
+}
+
 async fn download(path: std::path::PathBuf, filename: &'static str) -> WorkResult<Response> {
     let file = tokio::fs::File::open(path).await?;
     Ok((

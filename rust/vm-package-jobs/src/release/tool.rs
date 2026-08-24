@@ -306,6 +306,7 @@ mod tests {
             schema: 1,
             kind: ToolKind::Binary,
             version: Some("1.2.3".into()),
+            build_sources: Vec::new(),
             builds: vec![ToolBuild {
                 target: target.into(),
                 command: vec!["./build-tool".into()],

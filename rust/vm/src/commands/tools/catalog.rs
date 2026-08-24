@@ -56,6 +56,7 @@ async fn ensure_builtin_releases(configs: &[VmConfig]) -> VmResult<()> {
                     kind: tool.kind,
                     repository: tool.repository.into(),
                     default_branch: tool.branch.into(),
+                    build_sources: Vec::new(),
                     workspace_release: false,
                 })
                 .await?;

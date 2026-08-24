@@ -5,8 +5,9 @@ use crate::Store;
 use vm_packages::{
     CheckOutcome, CreateCheckout, CreateRollout, IntegrationRecord, IntegrationRequest,
     PackageEcosystem, PublicApiDiff, PublicationRecord, RegisterConsumer, RegisterPackage,
-    RegisterTool, ReleaseRecord, ReviewDecision, ReviewRequest, RolloutState, SourceKind, ToolKind,
-    ValidationRequest, VersionRecommendation, WorkflowState,
+    RegisterTool, ReleaseRecord, ReviewDecision, ReviewRequest, RolloutState, SourceKind,
+    SubmissionRecord, ToolBuild, ToolBuildSource, ToolKind, ToolSourceManifest, ValidationRequest,
+    VersionRecommendation, WorkflowState,
 };
 
 fn git(repository: &Path, args: &[&str]) {
@@ -30,6 +31,170 @@ fn git_output(repository: &Path, args: &[&str]) -> String {
         .unwrap();
     assert!(output.status.success());
     String::from_utf8(output.stdout).unwrap().trim().to_string()
+}
+
+#[tokio::test]
+async fn binary_build_sources_are_declared_registered_and_immutable() {
+    let directory = tempfile::tempdir().unwrap();
+    let hif = directory.path().join("hif");
+    std::fs::create_dir(&hif).unwrap();
+    git(&hif, &["init", "--initial-branch", "main"]);
+    git(&hif, &["config", "user.email", "test@example.com"]);
+    git(&hif, &["config", "user.name", "Test"]);
+    std::fs::write(hif.join("source.txt"), "immutable input\n").unwrap();
+    git(&hif, &["add", "source.txt"]);
+    git(&hif, &["commit", "-m", "initial"]);
+    let hif_commit = git_output(&hif, &["rev-parse", "HEAD"]);
+
+    let data = directory.path().join("data");
+    let store = Store::open(&data).await.unwrap();
+    store
+        .register_tool(RegisterTool {
+            name: "hif".into(),
+            kind: ToolKind::Binary,
+            repository: url::Url::from_file_path(&hif).unwrap().into(),
+            default_branch: "main".into(),
+            build_sources: Vec::new(),
+            workspace_release: false,
+        })
+        .await
+        .unwrap();
+    store
+        .register_tool(RegisterTool {
+            name: "hqa".into(),
+            kind: ToolKind::Binary,
+            repository: url::Url::from_file_path(directory.path().join("hqa"))
+                .unwrap()
+                .into(),
+            default_branch: "main".into(),
+            build_sources: vec!["hif".into()],
+            workspace_release: false,
+        })
+        .await
+        .unwrap();
+
+    let hqa = directory.path().join("hqa");
+    std::fs::create_dir(&hqa).unwrap();
+    git(&hqa, &["init", "--initial-branch", "main"]);
+    git(&hqa, &["config", "user.email", "test@example.com"]);
+    git(&hqa, &["config", "user.name", "Test"]);
+    let manifest = ToolSourceManifest {
+        schema: 1,
+        kind: ToolKind::Binary,
+        version: Some("5.0.0".into()),
+        build_sources: vec![ToolBuildSource {
+            name: "hif".into(),
+            commit: hif_commit.clone(),
+        }],
+        builds: vec![ToolBuild {
+            target: "linux-arm64".into(),
+            command: vec!["./build-tool".into()],
+            archive: "dist/hqa.tar.gz".into(),
+            links: [(".local/bin/hqa".into(), "hqa".into())]
+                .into_iter()
+                .collect(),
+            verify: None,
+        }],
+    };
+    std::fs::write(
+        hqa.join("vm-tool.yaml"),
+        serde_yaml_ng::to_string(&manifest).unwrap(),
+    )
+    .unwrap();
+    git(&hqa, &["add", "vm-tool.yaml"]);
+    git(&hqa, &["commit", "-m", "release"]);
+    let hqa_commit = git_output(&hqa, &["rev-parse", "HEAD"]);
+    let checkout_id = "checkout-build-sources";
+    let submission_id = "submission-build-sources";
+    let integration_root = data
+        .join("agents")
+        .join(checkout_id)
+        .join("integrations")
+        .join(submission_id);
+    std::fs::create_dir_all(&integration_root).unwrap();
+    let integration_bundle = integration_root.join("integration.bundle");
+    git(
+        &hqa,
+        &[
+            "bundle",
+            "create",
+            integration_bundle.to_str().unwrap(),
+            "--all",
+        ],
+    );
+    let submission = SubmissionRecord {
+        submission_id: submission_id.into(),
+        checkout_id: checkout_id.into(),
+        package: "hqa".into(),
+        branch: "main".into(),
+        base_commit: hqa_commit.clone(),
+        submitted_commit: hqa_commit.clone(),
+        diff_digest: "a".repeat(64),
+        state: WorkflowState::ReadyToRelease,
+        validation: None,
+        review: None,
+        integration: Some(IntegrationRecord {
+            canonical_commit: hqa_commit.clone(),
+            integration_commit: hqa_commit,
+            strategy: "workspace".into(),
+            worktree: integration_root
+                .join("source")
+                .to_string_lossy()
+                .into_owned(),
+            validation: None,
+            timestamp: chrono::Utc::now(),
+        }),
+        release_id: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+
+    let source = SourceManager::new(&data);
+    let bundle = source
+        .tool_build_source_bundle(&store, &submission, "hif")
+        .await
+        .unwrap();
+    assert_eq!(
+        bundle,
+        source
+            .tool_build_source_bundle(&store, &submission, "hif")
+            .await
+            .unwrap()
+    );
+    let clone = directory.path().join("build-source-clone");
+    assert!(StdCommand::new("git")
+        .arg("clone")
+        .arg(&bundle)
+        .arg(&clone)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .unwrap()
+        .success());
+    git(&clone, &["checkout", "--detach", &hif_commit]);
+    assert_eq!(
+        std::fs::read_to_string(clone.join("source.txt")).unwrap(),
+        "immutable input\n"
+    );
+    assert!(source
+        .tool_build_source_bundle(&store, &submission, "other")
+        .await
+        .is_err());
+    store
+        .register_tool(RegisterTool {
+            name: "hqa".into(),
+            kind: ToolKind::Binary,
+            repository: url::Url::from_file_path(&hqa).unwrap().into(),
+            default_branch: "main".into(),
+            build_sources: Vec::new(),
+            workspace_release: false,
+        })
+        .await
+        .unwrap();
+    assert!(source
+        .tool_build_source_bundle(&store, &submission, "hif")
+        .await
+        .is_err());
 }
 
 #[tokio::test]
@@ -92,6 +257,7 @@ async fn tool_collection_checkout_uses_the_same_managed_source_boundary() {
             kind: ToolKind::Collection,
             repository: url::Url::from_file_path(&repository).unwrap().into(),
             default_branch: "main".into(),
+            build_sources: Vec::new(),
             workspace_release: false,
         })
         .await

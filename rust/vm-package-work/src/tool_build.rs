@@ -222,6 +222,7 @@ mod tests {
                 kind: ToolKind::Binary,
                 repository: "https://example.invalid/typemill.git".into(),
                 default_branch: "main".into(),
+                build_sources: Vec::new(),
                 workspace_release: true,
             })
             .await

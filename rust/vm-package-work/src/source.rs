@@ -13,6 +13,7 @@ use crate::{WorkError, WorkResult};
 mod integration;
 mod rollout;
 mod submission;
+mod tool_build;
 mod worktree;
 
 #[derive(Clone)]

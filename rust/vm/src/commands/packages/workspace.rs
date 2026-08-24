@@ -596,6 +596,7 @@ mod tests {
             schema: 1,
             kind: ToolKind::Binary,
             version: Some("1.0.0".into()),
+            build_sources: Vec::new(),
             builds: vec![vm_packages::ToolBuild {
                 target: "linux-amd64".into(),
                 command: vec!["make".into()],
@@ -616,6 +617,7 @@ mod tests {
             kind: ToolKind::Binary,
             repository: "https://example.com/tools/release-tool.git".into(),
             default_branch: "main".into(),
+            build_sources: Vec::new(),
             workspace_release: true,
             registered_at: Utc::now(),
         }];
