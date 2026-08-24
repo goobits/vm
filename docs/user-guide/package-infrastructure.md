@@ -5,7 +5,43 @@ guest tools. Packages, binary tools, and collections use the same durable
 review, integration, and release services. Editable isolated checkouts live
 only in the managed guest that requested them.
 
-## Architecture
+## Primary Workflow
+
+Enroll tools once on the controller, then release from an attested producer
+workspace with one command:
+
+```bash
+# Once
+vm tools enable typemill codeatlas
+
+# Daily producer workflow
+vm packages release
+```
+
+The release command automatically registers a valid `vm-tool.yaml` only when
+the controller already trusts that exact physical Git workspace. Guests cannot
+nominate or register another repository. Publication atomically queues durable
+fleet activation before reporting success.
+
+The host worker updates every running environment where the tool is globally
+enabled. It records stopped environments for activation on their next start,
+resumes interrupted work after controller or Docker recovery, and never
+recreates an environment or named volume. The release command waits for at most
+two minutes and reports completed, deferred, pending, and failed work honestly;
+rerunning it resumes the same release instead of publishing again.
+
+```text
+✓ Released typemill@1.2.0
+✓ Activated in 8 of 8 running environments
+✓ 3 stopped environments will update when started
+✓ No environments or volumes recreated
+```
+
+Language-package dependency updates remain a separate consumer rollout. Tools
+whose release needs several repositories, including HIF, HQA, and HVR, must
+first produce one self-contained or coordinated build artifact.
+
+## Advanced: Architecture
 
 For Docker and Tart consumers together, use the Tart runtime:
 
@@ -41,7 +77,7 @@ Their scoped, consumer-bound package capability can submit only assigned work.
 The gateway alone joins a host-facing controller bridge; all
 registry and workflow storage remains behind the appliance's internal network.
 
-## Initialize Package Work
+## Advanced: Initialize Package Work
 
 Run this once on the controller host:
 
@@ -94,42 +130,6 @@ step repairs only their named-volume roots to the package-service UID/GID. This
 keeps both fresh volumes and volumes added during an upgrade writable without
 granting the long-running services root access.
 
-## Private Tool Releases
-
-Use one controller-wide enrollment, then one command for every binary or
-collection release:
-
-```bash
-# Once, on the controller host
-vm tools enable typemill codeatlas
-
-# Daily, inside an attested producer workspace
-vm packages release
-```
-
-The release command registers a valid `vm-tool.yaml` automatically when the
-controller has already attested that exact physical Git workspace. The guest
-cannot nominate or register another repository. Publication atomically queues
-a durable fleet activation before reporting success.
-
-The host worker updates every running environment where the tool is globally
-enabled. It records stopped environments for activation on their next start,
-resumes interrupted work after controller or Docker recovery, and never
-recreates an environment or named volume. The release command waits for at most
-two minutes and reports completed, deferred, pending, and failed work honestly;
-rerunning it resumes the same release instead of publishing again.
-
-```text
-✓ Released typemill@1.2.0
-✓ Activated in 8 of 8 running environments
-✓ 3 stopped environments will update when started
-✓ No environments or volumes recreated
-```
-
-Language-package dependency updates remain a separate consumer rollout. Tools
-whose release needs several repositories, including HIF, HQA, and HVR, must
-first produce one self-contained or coordinated build artifact.
-
 VM injects the gateway and a read-only token through npm, Cargo, and pip
 environment settings whenever it creates or starts a project environment. It
 also exports `VM_OCI_MIRROR`; Linux Tart guests with managed Docker activate
@@ -137,7 +137,7 @@ that mirror in Docker Engine automatically.
 Projects keep ordinary versioned dependencies; no local/remote branch belongs
 in application code.
 
-## Daily Source Work
+## Advanced: Isolated Source Work
 
 From the managed guest where the agent is already running, create or resume the
 source checkout:
@@ -160,8 +160,7 @@ checkout and does not repair, publish, or activate anything.
 Package reconciliation installs the matching Linux `vm` guest client from the
 authenticated appliance and verifies its SHA-256 digest. `vm tools update`
 repairs existing environments in place; it does not require rebuilding or
-recreating them. If an older appliance does not yet expose the client, run
-`vm packages up` on the controller host once, then rerun `vm tools update`.
+recreating them.
 The same reconciliation activates installed Node and Cargo toolchains for
 non-interactive package checks and refreshes the host Git author identity when
 `host_sync.git_config` is enabled.
@@ -228,7 +227,7 @@ checkout can make multiple receipted rework passes without replaying stale
 results. Successful publication removes temporary checkout data without
 touching the registered repository or its persistent canonical mirror.
 
-## Release From A Canonical Workspace
+## Advanced: Canonical Workspace Details
 
 Use `vm packages checkout <source>` when an agent needs an isolated shared-source
 checkout. When an agent already owns an attested repository mounted as its
@@ -315,8 +314,7 @@ environment container.
 Explicit cross-project environment names resolve their owning `vm.yaml` from
 managed Docker metadata before reconciliation, so running `vm tools update
 --to projects-dev` from another repository updates `projects-package-edge`, not
-the caller's package edge. Docker Desktop bind paths are translated back
-to native host paths without recreating the container.
+the caller's package edge.
 
 Register exact read-only project workspaces, managed-shelf repositories, and
 consumer inventory:
@@ -536,7 +534,7 @@ are intentionally guest-safe. Other commands invoked inside a managed guest
 print the exact shell-safe host command, for example `Run on the host: vm tools
 update --to dev`.
 
-## Consumer Dependency Updates
+## Advanced: Consumer Dependency Updates
 
 After publication, the persistent rollout worker finds every registered
 consumer pinned to an older version. It clones each consumer independently,
@@ -554,7 +552,7 @@ The registered consumer version changes only after its normal review process
 updates the inventory. Rerun `vm packages consumer register` with the reviewed
 version to refresh that inventory and close the matching rollout receipt.
 
-## Backup and Recovery
+## Advanced: Backup and Recovery
 
 Backups stay inside a private appliance named volume:
 
@@ -572,7 +570,7 @@ volume.
 These are local operational backups; export the Docker or Tart storage through
 your infrastructure backup system to protect against physical disk loss.
 
-## Security Boundaries
+## Advanced: Security Boundaries
 
 - The gateway is private by default and all workflow routes are authenticated.
 - Read, controller, reviewer, build, rollout, release, and publish credentials are

@@ -85,6 +85,18 @@ Configuration fields and examples belong in the
 
 ## Package Infrastructure
 
+Primary tool-release workflow:
+
+```bash
+# Once
+vm tools enable typemill codeatlas
+
+# Daily producer workflow
+vm packages release
+```
+
+### Advanced Commands
+
 | Command | Purpose |
 | --- | --- |
 | `vm packages init <source-root> [--port <port>]` | Store the controller source shelf and initialize the appliance |
@@ -120,6 +132,11 @@ The [Package Infrastructure Guide](package-infrastructure.md) owns setup,
 release, security, recovery, and consumer workflow details.
 
 ## Managed Tools
+
+Primary enrollment is `vm tools enable <tool>...`; it selects tools globally
+and immediately activates them in running environments.
+
+### Advanced Commands
 
 | Command | Purpose |
 | --- | --- |

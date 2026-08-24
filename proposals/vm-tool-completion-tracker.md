@@ -871,7 +871,9 @@ serves Python indexes only from `/pypi/simple`; the deprecated credential field
 and duplicate legacy routes were deleted rather than retained as aliases.
 Package appliance state and CLI parsing now reject retired image, credential,
 and serialized state aliases instead of silently adopting them. Generated pip
-setup writes only the canonical XDG configuration path.
+setup writes only the canonical XDG configuration path. User documentation now
+leads with only global enrollment plus bare workspace release; initialization,
+registration, status, targeting, and recovery are explicitly advanced.
 
 ## Post-Recreation Acceptance
 
