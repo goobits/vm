@@ -168,7 +168,9 @@ pub(super) fn config_path_from_inspect(container: &serde_json::Value) -> Option<
         }
     }
 
-    if !is_legacy_environment(name, project, role, compose_service) {
+    if project.is_empty()
+        || (role != "environment" && !is_legacy_environment(name, project, role, compose_service))
+    {
         return None;
     }
 
@@ -279,6 +281,27 @@ mod tests {
         assert_eq!(
             config_path_from_inspect(&labeled),
             Some(project.path().join("vm.yaml"))
+        );
+
+        let partially_labeled = serde_json::json!({
+            "Name": "/demo-dev",
+            "Config": {
+                "Labels": {
+                    "com.vm.managed": "true",
+                    "com.vm.project": "demo",
+                    "com.vm.role": "environment",
+                    "com.docker.compose.service": "demo-dev"
+                }
+            },
+            "Mounts": [{
+                "Type": "bind",
+                "Source": project.path(),
+                "Destination": "/workspace"
+            }]
+        });
+        assert_eq!(
+            config_path_from_inspect(&partially_labeled),
+            Some(config.clone())
         );
 
         let legacy = serde_json::json!({

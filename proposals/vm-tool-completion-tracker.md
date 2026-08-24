@@ -106,10 +106,12 @@ nor Tart is available in the current development container.
 - 2026-08-24: Managed-source regression coverage proved that an unpublished
   tool's first checkout submits its canonical committed tree as the initial
   full-tree release without manufacturing an empty commit.
-- 2026-08-24: Legacy-label Docker inventory recovered the existing
-  `goobits-dev` environment from its exact managed project identity and
+- 2026-08-24: Upgrade-safe Docker inventory recovered existing legacy and
+  partially labeled environments from their exact managed project identity and
   `/workspace` configuration; project-local listing returned the unchanged,
-  healthy container instead of entering the create/recreate prompt.
+  healthy `goobits-dev` container instead of entering the create/recreate
+  prompt, while fleet activation resolved `projects-dev` and `vm-dev` without
+  replacement.
 - 2026-08-24: A live Docker appliance with the previous persisted `runtime`
   field migrated atomically to `engine`; `vm list` resumed without rebuilding
   or replacing the running environment.
