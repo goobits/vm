@@ -1,12 +1,11 @@
 pub const LINUX_NAME: &str = "vibe-tart-linux-base";
 pub const MACOS_NAME: &str = "vibe-tart-sequoia-base";
 pub const LINUX_REGISTRY: &str = "ghcr.io/goobits/vm-tart-linux";
-const LEGACY_MACOS_NAME: &str = "vibe-tart-base";
 
 pub fn guest_os(name: &str) -> Option<&'static str> {
     match name {
         LINUX_NAME => Some("linux"),
-        MACOS_NAME | LEGACY_MACOS_NAME => Some("macos"),
+        MACOS_NAME => Some("macos"),
         _ if name
             .strip_prefix(LINUX_NAME)
             .is_some_and(|suffix| suffix.starts_with("-v")) =>

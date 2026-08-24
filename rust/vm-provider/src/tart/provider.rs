@@ -134,7 +134,7 @@ impl TartProvider {
                 let manager = self.instance_manager();
                 manager.resolve_instance_name(instance)
             }
-            None => Ok(self.vm_name()), // Use existing default behavior for backward compatibility
+            None => Ok(self.vm_name()),
         }
     }
 }
