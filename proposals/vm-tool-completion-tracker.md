@@ -866,6 +866,9 @@ runtime, and storage checks separated from mutable host checks.
 Formatting, focused package/CLI tests, scoped all-target Clippy with warnings
 denied, and `git diff --check` passed. Rollout reconciliation remains an
 explicit authenticated `POST` command with no obsolete compatibility path.
+The package server now accepts only the canonical read/publish credentials and
+serves Python indexes only from `/pypi/simple`; the deprecated credential field
+and duplicate legacy routes were deleted rather than retained as aliases.
 
 ## Post-Recreation Acceptance
 

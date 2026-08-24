@@ -285,9 +285,6 @@ impl Default for RateLimitConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SecurityConfig {
     pub require_authentication: bool,
-    /// Deprecated publish keys retained for configuration compatibility.
-    #[serde(default)]
-    pub api_keys: Vec<String>,
     #[serde(default)]
     pub read_keys: Vec<String>,
     #[serde(default)]

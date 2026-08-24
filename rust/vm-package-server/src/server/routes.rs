@@ -37,12 +37,6 @@ pub(super) fn app_router(state: AppState) -> Router {
         .route("/pypi/packages/{filename}", get(pypi::download_file))
         .route("/pypi/internal/{*path}", get(pypi::download_internal_file))
         .route("/pypi/upstream/{*path}", get(pypi::download_upstream_file))
-        .route("/pypi/legacy/api/pypi", get(pypi::simple_index))
-        .route("/pypi/legacy/api/pypi/{package}/", get(pypi::package_index))
-        .route(
-            "/pypi/legacy/api/pypi/{package}/{version}",
-            get(pypi::package_index),
-        )
         .route("/cargo/index/{*path}", get(cargo::sparse_index))
         .route(
             "/cargo/api/v1/crates/{crate}/{version}/download",

@@ -41,8 +41,7 @@ fn validate_headers(
         AppError::Unauthorized("Missing or invalid Authorization header".to_string())
     })?;
 
-    let is_publisher =
-        config.security.publish_keys.contains(&token) || config.security.api_keys.contains(&token);
+    let is_publisher = config.security.publish_keys.contains(&token);
     let is_reader = allow_read_key && config.security.read_keys.contains(&token);
     if !is_publisher && !is_reader {
         return Err(AppError::Unauthorized("Invalid API key".to_string()));

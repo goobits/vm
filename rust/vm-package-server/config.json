@@ -34,7 +34,6 @@
   },
   "security": {
     "require_authentication": false,
-    "api_keys": [],
     "allowed_publishers": []
   }
 }
