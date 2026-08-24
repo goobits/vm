@@ -178,6 +178,7 @@ impl Store {
         base_commit: String,
         branch: String,
         worktree: String,
+        initial_release: bool,
     ) -> WorkResult<CheckoutRecord> {
         self.record_source_with_baseline(
             checkout_id,
@@ -185,7 +186,7 @@ impl Store {
             base_commit,
             branch,
             worktree,
-            false,
+            initial_release,
         )
         .await
     }

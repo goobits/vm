@@ -589,6 +589,7 @@ mod tests {
                 "1111111111111111111111111111111111111111".into(),
                 "agents/one".into(),
                 "/data/agents/one".into(),
+                false,
             )
             .await
             .unwrap();

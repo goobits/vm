@@ -357,6 +357,7 @@ async fn checkout_transition_keeps_submission_in_sync_when_cancelled() {
             "a".repeat(40),
             "agents/agent-1/cancel".into(),
             "/data/agents/cancel/source".into(),
+            false,
         )
         .await
         .unwrap();

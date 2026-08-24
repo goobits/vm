@@ -357,6 +357,10 @@ impl SourceManager {
             "resolve package base commit",
         )
         .await?;
+        let initial_release = store
+            .latest_published_source_commit(&definition.name)
+            .await
+            .is_none();
 
         if tokio::fs::try_exists(&source).await? {
             tokio::fs::remove_dir_all(&source).await?;
@@ -405,6 +409,7 @@ impl SourceManager {
                 base_commit,
                 branch,
                 source.to_string_lossy().into_owned(),
+                initial_release,
             )
             .await
     }

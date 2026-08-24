@@ -59,6 +59,7 @@
 
 ### 🐛 Fixed
 
+- 📦 The first managed checkout of an unpublished source can release its canonical committed tree directly, without requiring a meaningless empty commit.
 - 📦 Existing managed Docker environments created before ownership labels were introduced remain discoverable from their exact project identity and workspace configuration, preventing shell connections from entering the create/recreate path.
 - 📦 Existing package appliances migrate their persisted `runtime` and `review_image` metadata to the canonical state shape before normal commands run, so upgrades do not block `vm ssh` or `vm packages up`.
 - 📦 macOS source builds now compile and start the launchd tool-activation worker correctly.

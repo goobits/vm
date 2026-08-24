@@ -356,6 +356,7 @@ mod tests {
                 "abc123".into(),
                 "agents/collection".into(),
                 "/data/agents/collection".into(),
+                false,
             )
             .await
             .unwrap();
@@ -437,6 +438,7 @@ mod tests {
                 "abc123".into(),
                 "agents/source-only".into(),
                 "/data/agents/source-only".into(),
+                false,
             )
             .await
             .unwrap();
@@ -563,6 +565,7 @@ mod tests {
                 "abc123".into(),
                 "agents/one".into(),
                 "/data/agents/one".into(),
+                false,
             )
             .await
             .unwrap();

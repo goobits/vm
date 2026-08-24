@@ -92,6 +92,9 @@ available in the current development container.
 
 ## Verification Log
 
+- 2026-08-24: Managed-source regression coverage proved that an unpublished
+  tool's first checkout submits its canonical committed tree as the initial
+  full-tree release without manufacturing an empty commit.
 - 2026-08-24: Legacy-label Docker inventory recovered the existing
   `goobits-dev` environment from its exact managed project identity and
   `/workspace` configuration; project-local listing returned the unchanged,

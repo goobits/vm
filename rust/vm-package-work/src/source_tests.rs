@@ -532,6 +532,95 @@ fn cargo_repository(repository: &Path, manifest: &str, message: &str) {
 }
 
 #[tokio::test]
+async fn initial_managed_checkout_submits_its_canonical_head_without_an_empty_commit() {
+    let directory = tempfile::tempdir().unwrap();
+    let repository = directory.path().join("repository");
+    cargo_repository(
+        &repository,
+        "[package]\nname='first-release'\nversion='1.0.0'\n",
+        "prepare first release",
+    );
+    let canonical_head = git_output(&repository, &["rev-parse", "HEAD"]);
+    let data = directory.path().join("data");
+    let store = Store::open(&data).await.unwrap();
+    store
+        .register_package(RegisterPackage {
+            name: "first-release".into(),
+            ecosystem: PackageEcosystem::Cargo,
+            repository: url::Url::from_file_path(&repository).unwrap().into(),
+            default_branch: "main".into(),
+            workspace_release: false,
+        })
+        .await
+        .unwrap();
+    let lease = store
+        .create_checkout(CreateCheckout {
+            package: "first-release".into(),
+            agent: "agent-1".into(),
+            consumers: Vec::new(),
+            task: "publish the existing first release".into(),
+            workspace_release: false,
+            source_only: true,
+            lease_token: "lease-token-012345678901234567890123456789".into(),
+            idempotency_key: "initial-managed-checkout".into(),
+        })
+        .await
+        .unwrap();
+    let source = SourceManager::new(&data);
+    let prepared = source.prepare(&store, &lease).await.unwrap();
+    assert!(prepared.initial_release);
+    let checkout_bundle = source.archive(&prepared).await.unwrap();
+    let consumer = directory.path().join("consumer");
+    git(
+        directory.path(),
+        &[
+            "clone",
+            checkout_bundle.to_str().unwrap(),
+            consumer.to_str().unwrap(),
+        ],
+    );
+    git(&consumer, &["switch", prepared.branch.as_deref().unwrap()]);
+    let active = store
+        .transition(
+            &prepared.checkout_id,
+            vm_packages::TransitionRequest {
+                next: WorkflowState::Active,
+                actor: "agent-1".into(),
+                reason: "consumer attached".into(),
+                commit: prepared.base_commit.clone(),
+                validation_result: None,
+                idempotency_key: "initial-managed-active".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let submitted_bundle = directory.path().join("submitted.bundle");
+    git(
+        &consumer,
+        &[
+            "bundle",
+            "create",
+            submitted_bundle.to_str().unwrap(),
+            "--all",
+        ],
+    );
+    let submission = source
+        .import_submission(&store, &active, &submitted_bundle)
+        .await
+        .unwrap();
+    assert_eq!(submission.base_commit, canonical_head);
+    assert_eq!(submission.submitted_commit, canonical_head);
+    let diff = std::fs::read_to_string(
+        data.join("agents")
+            .join(&prepared.checkout_id)
+            .join("submissions")
+            .join(format!("{}.diff", &canonical_head[..16])),
+    )
+    .unwrap();
+    assert!(diff.contains("Cargo.toml"));
+}
+
+#[tokio::test]
 async fn package_checkout_lifecycle_stays_inside_managed_agent_storage() {
     let directory = tempfile::tempdir().unwrap();
     let repository = directory.path().join("repository");
