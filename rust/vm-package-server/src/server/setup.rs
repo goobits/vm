@@ -156,17 +156,9 @@ echo "📡 Registry URL: {server_url}/pypi/simple/"
 
 # Create pip config directory
 mkdir -p ~/.config/pip
-mkdir -p ~/.pip
 
 # Configure pip
 cat > ~/.config/pip/pip.conf << EOF
-[global]
-index-url = {server_url}/pypi/simple/
-trusted-host = $(echo {server_url} | cut -d'/' -f3 | cut -d':' -f1)
-EOF
-
-# Also create old-style config for compatibility
-cat > ~/.pip/pip.conf << EOF
 [global]
 index-url = {server_url}/pypi/simple/
 trusted-host = $(echo {server_url} | cut -d'/' -f3 | cut -d':' -f1)
@@ -230,5 +222,18 @@ echo "   curl {server_url}/setup.sh?registry=cargo | bash"
 "#
             )
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::client_script;
+
+    #[test]
+    fn pypi_script_writes_only_the_canonical_config() {
+        let script = client_script("pypi", 3080);
+
+        assert!(script.contains("~/.config/pip/pip.conf"));
+        assert!(!script.contains("~/.pip"));
     }
 }

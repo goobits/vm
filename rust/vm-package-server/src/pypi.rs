@@ -230,8 +230,6 @@ fn rewrite_internal_links(html: String, internal_gateway: &str, public_base_url:
         )
 }
 
-// Deprecated functions have been removed.
-
 /// Downloads a specific PyPI package file.
 ///
 /// Serves package files (.whl, .tar.gz) with fallback to upstream PyPI if the file

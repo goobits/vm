@@ -870,7 +870,8 @@ The package server now accepts only the canonical read/publish credentials and
 serves Python indexes only from `/pypi/simple`; the deprecated credential field
 and duplicate legacy routes were deleted rather than retained as aliases.
 Package appliance state and CLI parsing now reject retired image, credential,
-and serialized state aliases instead of silently adopting them.
+and serialized state aliases instead of silently adopting them. Generated pip
+setup writes only the canonical XDG configuration path.
 
 ## Post-Recreation Acceptance
 
