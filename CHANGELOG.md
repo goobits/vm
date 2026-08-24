@@ -59,6 +59,7 @@
 
 ### 🐛 Fixed
 
+- 📦 Managed tool checkouts remain available until fleet activation succeeds, and release waits long enough for the activation worker's bounded per-target retries, making its retry guidance executable on larger fleets.
 - 📦 Restored managed checkouts recreate their durable submission ref before integration, allowing compacted and first-release checkouts to proceed without another agent commit.
 - 📦 The first managed checkout of an unpublished source can release its canonical committed tree directly, without requiring a meaningless empty commit.
 - 📦 Existing managed Docker environments created before or during ownership-label rollout remain discoverable from their exact project identity and workspace configuration, preventing shell connections and tool activation from entering a create/recreate or unresolved-owner path.

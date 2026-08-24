@@ -12,7 +12,7 @@ use super::{
 };
 
 const RELEASE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
-const ACTIVATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2 * 60);
+const ACTIVATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10 * 60);
 const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
 
 pub(super) async fn handle_guest() -> VmResult<()> {
@@ -100,17 +100,19 @@ pub(super) async fn handle_guest() -> VmResult<()> {
         VmError::validation("Published submission has no release record", None::<String>)
     })?;
     let release = client.release(release_id).await?;
+    let managed_checkout = workspace.is_none();
     if let Some(workspace) = workspace.as_mut() {
         workspace.record_commit(&subject, &release.source_commit)?;
-    } else {
-        let checkout = client.checkout(checkout_id).await?;
-        if let Err(error) = checkout::cleanup_guest(&subject, &checkout) {
-            vm_hint!("Published successfully; local checkout cleanup was skipped: {error}");
-        }
     }
     vm_success!("Released {}@{}", release.package, release.version);
     if checkout.source_kind != SourceKind::Package {
         wait_for_tool_activation(&client, release_id).await?;
+    }
+    if managed_checkout {
+        let checkout = client.checkout(checkout_id).await?;
+        if let Err(error) = checkout::cleanup_guest(&subject, &checkout) {
+            vm_hint!("Published successfully; local checkout cleanup was skipped: {error}");
+        }
     }
     Ok(())
 }

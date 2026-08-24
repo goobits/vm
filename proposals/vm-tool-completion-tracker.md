@@ -97,6 +97,10 @@ nor Tart is available in the current development container.
 
 ## Verification Log
 
+- 2026-08-24: Managed tool releases now retain their guest checkout until
+  durable fleet activation succeeds and allow the worker's bounded target
+  retries to complete, so a partial activation can be resumed from the exact
+  command and path printed by the CLI.
 - 2026-08-24: Package workspace routing gained exact source and Docker-owner
   validation, explicit dry-run output, and a Docker assertion that the original
   host bind opens without adding managed checkout state.
