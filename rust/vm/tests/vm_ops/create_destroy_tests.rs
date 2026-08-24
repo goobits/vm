@@ -95,7 +95,7 @@ fn test_vm_destroy_command() -> Result<()> {
     );
 
     // Test destroy command with force flag (to avoid confirmation prompt)
-    let output = fixture.run_vm_command(&["destroy", "--force"])?;
+    let output = fixture.run_vm_command(&["remove", "--force"])?;
     assert!(
         output.status.success(),
         "VM destroy failed: {}",

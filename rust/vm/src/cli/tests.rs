@@ -79,9 +79,9 @@ fn list_aliases_parse_filters() {
 }
 
 #[test]
-fn destroy_alias_parses_as_remove() {
+fn remove_parses_environment_and_force() {
     assert!(matches!(
-        Args::parse_from(["vm", "destroy", "backend", "--force"]).command,
+        Args::parse_from(["vm", "remove", "backend", "--force"]).command,
         Command::Remove {
             environment: Some(environment),
             force: true
@@ -112,15 +112,20 @@ fn lifecycle_commands_parse() {
 }
 
 #[test]
-fn stop_legacy_aliases_parse() {
-    for alias in ["down", "halt"] {
-        assert!(matches!(
-            Args::parse_from(["vm", alias, "backend"]).command,
-            Command::Stop {
-                environment: Some(environment),
-                ..
-            } if environment == "backend"
-        ));
+fn stop_parses_environment() {
+    assert!(matches!(
+        Args::parse_from(["vm", "stop", "backend"]).command,
+        Command::Stop {
+            environment: Some(environment),
+            ..
+        } if environment == "backend"
+    ));
+}
+
+#[test]
+fn retired_lifecycle_aliases_are_rejected() {
+    for command in ["down", "halt", "rm", "destroy"] {
+        assert!(Args::try_parse_from(["vm", command, "backend"]).is_err());
     }
 }
 

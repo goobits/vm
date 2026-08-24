@@ -60,11 +60,11 @@ fn test_vm_multi_instance_lifecycle() -> Result<()> {
 
     // Clean up both VMs
     assert!(fixture1
-        .run_vm_command(&["destroy", "--force"])?
+        .run_vm_command(&["remove", "--force"])?
         .status
         .success());
     assert!(fixture2
-        .run_vm_command(&["destroy", "--force"])?
+        .run_vm_command(&["remove", "--force"])?
         .status
         .success());
 

@@ -47,7 +47,7 @@ fn test_vm_lifecycle_integration() -> Result<()> {
     assert!(fixture.wait_for_container_state("running", 30));
 
     // 7. Destroy
-    let output = fixture.run_vm_command(&["destroy", "--force"])?;
+    let output = fixture.run_vm_command(&["remove", "--force"])?;
     assert!(output.status.success(), "Destroy failed");
 
     // 8. Verify container is gone

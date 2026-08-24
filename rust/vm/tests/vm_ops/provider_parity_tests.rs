@@ -54,13 +54,9 @@ fn test_vm_lifecycle_provider_parity() -> Result<()> {
         let output = fixture.run_vm_command(&["stop"])?;
         assert!(output.status.success(), "vm stop failed for {}", provider);
 
-        // Test `vm destroy`
-        let output = fixture.run_vm_command(&["destroy", "--force"])?;
-        assert!(
-            output.status.success(),
-            "vm destroy failed for {}",
-            provider
-        );
+        // Test `vm remove`
+        let output = fixture.run_vm_command(&["remove", "--force"])?;
+        assert!(output.status.success(), "vm remove failed for {}", provider);
     }
 
     Ok(())

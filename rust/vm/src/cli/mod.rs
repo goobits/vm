@@ -152,7 +152,6 @@ pub enum Command {
         destination: String,
     },
     /// Gracefully halt an environment
-    #[command(alias = "down", alias = "halt")]
     Stop {
         #[arg(conflicts_with = "fleet")]
         environment: Option<String>,
@@ -172,7 +171,6 @@ pub enum Command {
         fleet: FleetArgs,
     },
     /// Remove an environment while preserving saved snapshots
-    #[command(alias = "rm", alias = "destroy")]
     Remove {
         environment: Option<String>,
         #[arg(long)]

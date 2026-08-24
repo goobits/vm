@@ -72,17 +72,17 @@ impl TestFixture {
     /// Runs the cleanup command without asserting its success. This is critical
     /// for the Drop implementation to prevent panics during cleanup.
     fn run_cleanup_command(&self) {
-        // Use `vm destroy` to clean up - it handles all Docker cleanup without sudo
+        // Use `vm remove` to clean up - it handles all Docker cleanup without sudo
         let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("vm"));
         cmd.current_dir(self.path());
-        cmd.args(["destroy", "--force"]);
+        cmd.args(["remove", "--force"]);
         // Do not assert success. Just run it and ignore the result.
         // This prevents a panic in a panic, which would abort the test runner.
         let _ = cmd.output();
     }
 }
 
-/// The Drop implementation ensures that `vm destroy` is called for cleanup,
+/// The Drop implementation ensures that `vm remove` is called for cleanup,
 /// even if the test panics. It uses a non-panicking command runner.
 impl Drop for TestFixture {
     fn drop(&mut self) {
