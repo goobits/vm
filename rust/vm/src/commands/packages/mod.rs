@@ -13,6 +13,7 @@ mod process;
 mod registration;
 mod release;
 mod runtime;
+mod source_images;
 mod sources;
 mod state;
 mod submission;

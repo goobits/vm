@@ -113,7 +113,7 @@ pub(super) async fn up(
 
     let gateway_url = container::up(engine, files, &config, allow_source_build)?;
     wait_for_gateway(&gateway_url).await?;
-    let registry_image_identity = container::image_identity(engine, &config.registry_image)?;
+    let registry_image_identity = super::source_images::identity(engine, &config.registry_image)?;
 
     files.write_state(&ApplianceState {
         definition_revision: APPLIANCE_DEFINITION_REVISION,
@@ -167,7 +167,7 @@ pub(super) fn repair_client_access(
     files.materialize(&config)?;
     let engine = state.container_engine()?;
     state.gateway_url = container::up(engine, files, &config, allow_source_build)?;
-    state.registry_image_identity = container::image_identity(engine, &config.registry_image)?;
+    state.registry_image_identity = super::source_images::identity(engine, &config.registry_image)?;
     state.registry_image = config.registry_image;
     state.job_image = config.job_image;
     state.controller_version = env!("CARGO_PKG_VERSION").to_string();

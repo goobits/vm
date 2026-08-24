@@ -1,22 +1,29 @@
 use std::path::Path;
-use std::process::Command;
 
 use anyhow::{bail, Context, Result};
 use semver::Version;
 use vm_packages::{
-    sha256_hex, validate_managed_id, CompleteToolBuildRequest, PackageInfrastructureClient,
-    SubmissionRecord, ToolBuildArtifact, ToolBuildFailureKind, ToolKind, ToolSourceManifest,
-    VersionRecommendation, WorkflowState,
+    sha256_hex, CompleteToolBuildRequest, PackageInfrastructureClient, SubmissionRecord,
+    ToolBuildFailureKind, ToolKind, ToolSourceManifest, VersionRecommendation, WorkflowState,
 };
 
-use crate::runtime::{download_bundle, operation_key, run_command};
+use crate::release::{git_text, source::clone_at};
+use crate::runtime::{download_bundle, operation_key};
 
 use super::super::workflow::validate_version_bump;
-use super::artifact::{
-    binary_identity, build_binary_artifacts, BuiltToolArtifact, ToolArtifactContext,
-};
-use super::publication::publication_request;
-use crate::release::{git_text, source::clone_at};
+use super::artifact::{binary_identity, build_binary_artifacts, ToolArtifactContext};
+
+mod sandbox;
+mod sources;
+mod staging;
+
+use sandbox::prepare_unprivileged_build;
+use sources::materialize;
+use staging::stage;
+
+#[cfg(test)]
+pub(super) use sandbox::cargo_source_config;
+pub(super) use sandbox::{native_target, prepare_isolated_package_configuration, run_isolated};
 
 /// Build an approved binary tool in the credential-separated builder and
 /// persist immutable artifacts for the publisher.
@@ -94,7 +101,7 @@ pub async fn build_submission(
             return Ok(());
         }
     };
-    let build_sources = match materialize_build_sources(
+    let build_sources = match materialize(
         client,
         &submission.submission_id,
         build_token,
@@ -164,7 +171,7 @@ pub async fn build_submission(
         }
     };
 
-    let staged = stage_artifacts(staging_root, &submission.submission_id, &artifacts)?;
+    let staged = stage(staging_root, &submission.submission_id, &artifacts)?;
     let request = CompleteToolBuildRequest {
         source_commit,
         manifest_digest,
@@ -200,13 +207,12 @@ async fn record_build_failure(
         ToolBuildFailureKind::Build => format!("binary build failed: {error:#}"),
         ToolBuildFailureKind::Version => error.to_string(),
     };
-    let reason = bounded_failure(&reason);
     let request = CompleteToolBuildRequest {
         source_commit: source_commit.into(),
         manifest_digest: manifest_digest.into(),
         version: String::new(),
         artifacts: Vec::new(),
-        failure: Some(reason),
+        failure: Some(bounded_failure(&reason)),
         failure_kind: Some(kind),
         actor: "tool-build-service".into(),
         idempotency_key: operation_key(
@@ -241,241 +247,6 @@ fn bounded_failure(reason: &str) -> String {
         end -= 1;
     }
     reason[..end].to_string()
-}
-
-fn stage_artifacts(
-    root: &Path,
-    submission_id: &str,
-    artifacts: &[BuiltToolArtifact],
-) -> Result<Vec<ToolBuildArtifact>> {
-    validate_managed_id("submission ID", submission_id)?;
-    let directory = root.join(submission_id);
-    std::fs::create_dir_all(&directory)?;
-    artifacts
-        .iter()
-        .map(|artifact| {
-            let digest = &artifact.request.artifact_digest;
-            let destination = directory.join(format!("{digest}.tar.gz"));
-            if destination.exists() {
-                let existing = publication_request(&destination, artifact.manifest.clone())?;
-                if existing.artifact_digest != *digest {
-                    bail!("staged tool artifact digest changed");
-                }
-            } else {
-                let temporary = directory.join(format!(".{digest}.tmp"));
-                std::fs::copy(&artifact.archive, &temporary)?;
-                let copied = publication_request(&temporary, artifact.manifest.clone())?;
-                if copied.artifact_digest != *digest {
-                    let _ = std::fs::remove_file(&temporary);
-                    bail!("copied tool artifact digest changed");
-                }
-                match std::fs::rename(&temporary, &destination) {
-                    Ok(()) => {}
-                    Err(error) if destination.exists() => {
-                        let _ = std::fs::remove_file(&temporary);
-                        let existing =
-                            publication_request(&destination, artifact.manifest.clone())?;
-                        if existing.artifact_digest != *digest {
-                            return Err(error.into());
-                        }
-                    }
-                    Err(error) => return Err(error.into()),
-                }
-            }
-            Ok(ToolBuildArtifact {
-                target: artifact.request.target.clone(),
-                artifact_digest: digest.clone(),
-                size_bytes: artifact.request.size_bytes,
-                links: artifact.request.links.clone(),
-            })
-        })
-        .collect()
-}
-
-fn materialize_build_sources(
-    client: &PackageInfrastructureClient,
-    submission_id: &str,
-    build_token: &str,
-    release_root: &Path,
-    manifest: &ToolSourceManifest,
-) -> Result<Vec<std::path::PathBuf>> {
-    manifest
-        .build_sources
-        .iter()
-        .map(|build_source| {
-            let bundle = release_root.join(format!("{}.bundle", build_source.name));
-            download_bundle(
-                &client.tool_build_source_url(submission_id, &build_source.name),
-                build_token,
-                &bundle,
-            )?;
-            let destination = release_root.join(&build_source.name);
-            clone_at(&bundle, &destination, &build_source.commit)?;
-            let resolved = git_text(
-                &destination,
-                &["rev-parse", "--verify", "HEAD^{commit}"],
-                "resolve immutable binary tool build source",
-            )?;
-            if resolved != build_source.commit {
-                bail!(
-                    "binary tool build source {} does not match its declared commit",
-                    build_source.name
-                );
-            }
-            Ok(destination)
-        })
-        .collect()
-}
-
-fn prepare_unprivileged_build(
-    root: &Path,
-    source: &Path,
-    build_sources: &[std::path::PathBuf],
-) -> Result<()> {
-    let Some(uid) = std::env::var_os("PKG_BUILD_UID") else {
-        return Ok(());
-    };
-    let gid = std::env::var_os("PKG_BUILD_GID").context("PKG_BUILD_GID is required")?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-
-        let mut permissions = std::fs::metadata(root)?.permissions();
-        permissions.set_mode(0o711);
-        std::fs::set_permissions(root, permissions)?;
-    }
-    let sandbox = root.join("untrusted");
-    for directory in [
-        sandbox.join("cargo-home"),
-        sandbox.join("cargo-target"),
-        sandbox.join("npm-cache"),
-        sandbox.join("pip-cache"),
-        sandbox.join("xdg-cache"),
-    ] {
-        std::fs::create_dir_all(directory)?;
-    }
-    let mut chown = Command::new("chown");
-    chown.arg("-R").arg(format!(
-        "{}:{}",
-        uid.to_string_lossy(),
-        gid.to_string_lossy()
-    ));
-    chown.arg(source);
-    for build_source in build_sources {
-        chown.arg(build_source);
-    }
-    chown.arg(&sandbox);
-    run_command(&mut chown, "prepare unprivileged binary build workspace")?;
-    Ok(())
-}
-
-pub(super) fn run_isolated(
-    arguments: &[String],
-    directory: &Path,
-    release_root: &Path,
-    operation: &str,
-) -> Result<()> {
-    let (program, arguments) = arguments
-        .split_first()
-        .context("isolated command cannot be empty")?;
-    let mut command = Command::new("timeout");
-    let sandbox_home = release_root.join("untrusted");
-    let sandbox_home = if sandbox_home.is_dir() {
-        sandbox_home.as_path()
-    } else {
-        release_root
-    };
-    let package_gateway = std::env::var("PKG_BUILD_PACKAGE_GATEWAY")
-        .unwrap_or_else(|_| "http://build-edge:3080".into());
-    let package_gateway = package_gateway.trim_end_matches('/');
-    let cargo_home = sandbox_home.join("cargo-home");
-    std::fs::create_dir_all(&cargo_home).context("create isolated Cargo home")?;
-    let cargo_config = cargo_home.join("config.toml");
-    if !cargo_config.is_file() {
-        std::fs::write(&cargo_config, cargo_source_config(package_gateway)?)
-            .context("write isolated Cargo source configuration")?;
-    }
-    command
-        .args(["--signal=TERM", "--kill-after=10s", "30m"])
-        .arg(program)
-        .args(arguments)
-        .current_dir(directory)
-        .env_clear()
-        .env("HOME", sandbox_home)
-        .env("TMPDIR", sandbox_home)
-        .env("XDG_CACHE_HOME", sandbox_home.join("xdg-cache"))
-        .env("CARGO_HOME", cargo_home)
-        .env("CARGO_TARGET_DIR", sandbox_home.join("cargo-target"))
-        .env("npm_config_cache", sandbox_home.join("npm-cache"))
-        .env("PIP_CACHE_DIR", sandbox_home.join("pip-cache"))
-        .env("NPM_CONFIG_REGISTRY", format!("{package_gateway}/npm/"))
-        .env("PIP_INDEX_URL", format!("{package_gateway}/pypi/simple/"))
-        .env("UV_INDEX_URL", format!("{package_gateway}/pypi/simple/"))
-        .env(
-            "CARGO_REGISTRIES_VM_INDEX",
-            format!("sparse+{package_gateway}/cargo/index/"),
-        )
-        .env("CARGO_SOURCE_CRATES_IO_REPLACE_WITH", "vm")
-        .env(
-            "CARGO_SOURCE_VM_REGISTRY",
-            format!("sparse+{package_gateway}/cargo/index/"),
-        );
-    for variable in ["PATH", "RUSTUP_HOME"] {
-        if let Some(value) = std::env::var_os(variable) {
-            command.env(variable, value);
-        }
-    }
-    #[cfg(unix)]
-    if let Some(uid) = std::env::var_os("PKG_BUILD_UID") {
-        use std::os::unix::process::CommandExt;
-
-        let uid = uid
-            .to_string_lossy()
-            .parse::<u32>()
-            .context("PKG_BUILD_UID must be a numeric user ID")?;
-        let gid = std::env::var("PKG_BUILD_GID")
-            .context("PKG_BUILD_GID is required")?
-            .parse::<u32>()
-            .context("PKG_BUILD_GID must be a numeric group ID")?;
-        command.uid(uid).gid(gid);
-    }
-    run_command(&mut command, operation)?;
-    Ok(())
-}
-
-pub(super) fn prepare_isolated_package_configuration(release_root: &Path) -> Result<()> {
-    let package_gateway = std::env::var("PKG_BUILD_PACKAGE_GATEWAY")
-        .unwrap_or_else(|_| "http://build-edge:3080".into());
-    let cargo_home = release_root.join("untrusted/cargo-home");
-    std::fs::create_dir_all(&cargo_home).context("create isolated Cargo home")?;
-    std::fs::write(
-        cargo_home.join("config.toml"),
-        cargo_source_config(package_gateway.trim_end_matches('/'))?,
-    )
-    .context("write isolated Cargo source configuration")?;
-    Ok(())
-}
-
-pub(super) fn cargo_source_config(package_gateway: &str) -> Result<String> {
-    let gateway = url::Url::parse(package_gateway).context("parse package build gateway")?;
-    if !matches!(gateway.scheme(), "http" | "https") {
-        bail!("package build gateway must use HTTP(S)");
-    }
-    let registry = format!(
-        "sparse+{}/cargo/index/",
-        gateway.as_str().trim_end_matches('/')
-    );
-    Ok(format!(
-        "[source.crates-io]\nreplace-with = \"vm\"\n\n[source.vm]\nregistry = \"{registry}\"\n"
-    ))
-}
-
-pub(super) fn native_target() -> Option<&'static str> {
-    match (std::env::consts::OS, std::env::consts::ARCH) {
-        ("linux", "x86_64") => Some("linux-amd64"),
-        ("linux", "aarch64") => Some("linux-arm64"),
-        _ => None,
-    }
 }
 
 #[cfg(test)]
