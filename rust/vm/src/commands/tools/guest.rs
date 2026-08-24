@@ -4,7 +4,7 @@ use vm_packages::{
     validate_sha256, validate_tool_name, validate_tool_target, validate_tool_version,
     RegistryEndpoints, ToolArtifactRecord, ToolKind,
 };
-use vm_provider::Provider;
+use vm_provider::CommandProvider;
 
 use crate::error::{VmError, VmResult};
 
@@ -195,7 +195,10 @@ impl InstallMode {
     }
 }
 
-pub(super) fn platform_target(provider: &dyn Provider, environment: &str) -> VmResult<String> {
+pub(super) fn platform_target(
+    provider: &dyn CommandProvider,
+    environment: &str,
+) -> VmResult<String> {
     let output = provider
         .exec_output(
             Some(environment),
@@ -206,7 +209,7 @@ pub(super) fn platform_target(provider: &dyn Provider, environment: &str) -> VmR
 }
 
 pub(super) fn installed(
-    provider: &dyn Provider,
+    provider: &dyn CommandProvider,
     environment: &str,
 ) -> VmResult<BTreeMap<String, InstalledTool>> {
     let output = provider
@@ -219,7 +222,7 @@ pub(super) fn installed(
 }
 
 pub(super) fn consumable(
-    provider: &dyn Provider,
+    provider: &dyn CommandProvider,
     environment: &str,
 ) -> VmResult<BTreeMap<String, bool>> {
     let output = provider
@@ -231,7 +234,10 @@ pub(super) fn consumable(
     Ok(parse_consumable(&output))
 }
 
-pub(super) fn shell_state(provider: &dyn Provider, environment: &str) -> VmResult<ShellState> {
+pub(super) fn shell_state(
+    provider: &dyn CommandProvider,
+    environment: &str,
+) -> VmResult<ShellState> {
     let script = shell_state_script();
     let output = provider
         .exec_output(Some(environment), &["sh".into(), "-c".into(), script])
@@ -240,7 +246,7 @@ pub(super) fn shell_state(provider: &dyn Provider, environment: &str) -> VmResul
 }
 
 pub(super) fn project_collection_overrides(
-    provider: &dyn Provider,
+    provider: &dyn CommandProvider,
     environment: &str,
     workspace: &str,
     artifacts: &BTreeMap<String, ToolArtifactRecord>,
@@ -278,7 +284,7 @@ pub(super) fn project_collection_overrides(
 }
 
 pub(super) fn install(
-    provider: &dyn Provider,
+    provider: &dyn CommandProvider,
     environment: &str,
     artifacts: &[ToolArtifactRecord],
     gateway: &str,

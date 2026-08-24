@@ -8,7 +8,7 @@ use crate::cli::FleetArgs;
 use crate::error::{VmError, VmResult};
 use vm_config::config::VmConfig;
 use vm_core::{vm_println, vm_success, vm_warning};
-use vm_provider::{get_provider, InstanceInfo, Provider, ProviderContext};
+use vm_provider::{get_provider, InstanceInfo, InstanceProvider, Provider, ProviderContext};
 
 use super::{
     lifecycle::wait_until_commands_ready,
@@ -174,7 +174,7 @@ pub async fn handle_fleet_lifecycle(
 }
 
 async fn apply_lifecycle(
-    provider: &dyn Provider,
+    provider: &dyn InstanceProvider,
     context: &ProviderContext,
     environment: &str,
     action: FleetAction,

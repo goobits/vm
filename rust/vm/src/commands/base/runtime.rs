@@ -1,5 +1,5 @@
 use vm_config::{config::BoxSpec, config::VmConfig};
-use vm_provider::Provider;
+use vm_provider::CommandProvider;
 
 use crate::error::{VmError, VmResult};
 
@@ -521,7 +521,7 @@ impl ReconcileMode {
 }
 
 pub(in crate::commands) fn reconcile_codex(
-    provider: &dyn Provider,
+    provider: &dyn CommandProvider,
     environment: &str,
     config: &VmConfig,
 ) -> VmResult<()> {
@@ -534,7 +534,7 @@ pub(in crate::commands) fn reconcile_codex(
 }
 
 pub(in crate::commands) fn reconcile_codex_in_background(
-    provider: &dyn Provider,
+    provider: &dyn CommandProvider,
     environment: &str,
     config: &VmConfig,
 ) -> VmResult<bool> {
@@ -546,7 +546,7 @@ pub(in crate::commands) fn reconcile_codex_in_background(
 }
 
 fn launch_reconciliation(
-    provider: &dyn Provider,
+    provider: &dyn CommandProvider,
     environment: &str,
     expected: bool,
     mode: ReconcileMode,
@@ -571,7 +571,7 @@ fn launch_reconciliation(
 }
 
 pub(in crate::commands) fn codex_state(
-    provider: &dyn Provider,
+    provider: &dyn CommandProvider,
     environment: &str,
 ) -> VmResult<CodexState> {
     let output = provider
@@ -634,7 +634,7 @@ mod tests {
     use vm_config::config::{BoxSpec, VmConfig, VmSettings};
     use vm_provider::{
         CommandProvider, InstanceInfo, InstanceProvider, InstanceState, Provider, ProviderContext,
-        VmStatusReport,
+        ProvisioningProvider, VmStatusReport,
     };
 
     use super::{
@@ -668,6 +668,20 @@ mod tests {
     }
 
     impl CommandProvider for FakeProvider {
+        fn ssh(
+            &self,
+            _container: Option<&str>,
+            _relative_path: &Path,
+        ) -> vm_core::error::Result<()> {
+            Ok(())
+        }
+
+        fn exec(&self, _container: Option<&str>, command: &[String]) -> vm_core::error::Result<()> {
+            self.calls.lock().unwrap().push("exec");
+            self.commands.lock().unwrap().push(command.to_vec());
+            Ok(())
+        }
+
         fn exec_output(
             &self,
             _container: Option<&str>,
@@ -677,29 +691,36 @@ mod tests {
             let state = self.states.lock().unwrap().pop_front().unwrap();
             Ok(format!("VM_CODEX_STATE={state}\n"))
         }
+
+        fn logs(&self, _container: Option<&str>) -> vm_core::error::Result<()> {
+            Ok(())
+        }
+
+        fn copy(
+            &self,
+            _source: &str,
+            _destination: &str,
+            _container: Option<&str>,
+        ) -> vm_core::error::Result<()> {
+            Ok(())
+        }
     }
 
     impl InstanceProvider for FakeProvider {
-        fn create_instance(
-            &self,
-            _instance_name: &str,
-            context: &ProviderContext,
-        ) -> vm_core::error::Result<()> {
-            Provider::create(self, context)
-        }
-
-        fn list_instances(&self) -> vm_core::error::Result<Vec<InstanceInfo>> {
-            Ok(Vec::new())
-        }
-    }
-
-    impl Provider for FakeProvider {
         fn name(&self) -> &'static str {
             "fake"
         }
 
         fn create(&self, _context: &ProviderContext) -> vm_core::error::Result<()> {
             Ok(())
+        }
+
+        fn create_instance(
+            &self,
+            _instance_name: &str,
+            context: &ProviderContext,
+        ) -> vm_core::error::Result<()> {
+            InstanceProvider::create(self, context)
         }
 
         fn start(
@@ -722,31 +743,8 @@ mod tests {
             Ok(())
         }
 
-        fn ssh(
-            &self,
-            _container: Option<&str>,
-            _relative_path: &Path,
-        ) -> vm_core::error::Result<()> {
-            Ok(())
-        }
-
-        fn exec(&self, _container: Option<&str>, command: &[String]) -> vm_core::error::Result<()> {
-            self.calls.lock().unwrap().push("exec");
-            self.commands.lock().unwrap().push(command.to_vec());
-            Ok(())
-        }
-
-        fn logs(&self, _container: Option<&str>) -> vm_core::error::Result<()> {
-            Ok(())
-        }
-
-        fn copy(
-            &self,
-            _source: &str,
-            _destination: &str,
-            _container: Option<&str>,
-        ) -> vm_core::error::Result<()> {
-            Ok(())
+        fn list_instances(&self) -> vm_core::error::Result<Vec<InstanceInfo>> {
+            Ok(Vec::new())
         }
 
         fn status(&self, _container: Option<&str>) -> vm_core::error::Result<VmStatusReport> {
@@ -759,7 +757,9 @@ mod tests {
         ) -> vm_core::error::Result<InstanceState> {
             Ok(InstanceState::Running)
         }
+    }
 
+    impl ProvisioningProvider for FakeProvider {
         fn provision(&self, _container: Option<&str>) -> vm_core::error::Result<()> {
             Ok(())
         }
@@ -776,7 +776,9 @@ mod tests {
         fn get_sync_directory(&self) -> String {
             "/workspace".into()
         }
+    }
 
+    impl Provider for FakeProvider {
         fn clone_box(&self) -> Box<dyn Provider> {
             Box::new(self.clone())
         }

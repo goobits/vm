@@ -9,11 +9,11 @@ use crate::commands::vm_ops::target::project_instance_matches;
 use crate::commands::vm_ops::targets::{get_all_instances, get_instances_from_provider};
 use crate::error::VmResult;
 use vm_core::vm_println;
-use vm_provider::{InstanceInfo, Provider};
+use vm_provider::{InstanceInfo, InstanceProvider};
 
 /// Handle VM listing with enhanced filtering options
 pub fn handle_list_enhanced(
-    configured_provider: Option<&dyn Provider>,
+    configured_provider: Option<&dyn InstanceProvider>,
     provider_filter: Option<&str>,
     project_filter: Option<&str>,
     raw: bool,
@@ -53,7 +53,7 @@ pub fn handle_list_enhanced(
 }
 
 fn load_instances(
-    configured_provider: Option<&dyn Provider>,
+    configured_provider: Option<&dyn InstanceProvider>,
     provider_filter: Option<&str>,
 ) -> VmResult<Vec<InstanceInfo>> {
     if let Some(provider) = configured_provider {

@@ -14,7 +14,7 @@ use tracing::{debug, warn};
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::{vm_hint, vm_println, vm_success, vm_warning};
 use vm_platform::platform;
-use vm_provider::Provider;
+use vm_provider::{InstanceProvider, Provider};
 
 pub(super) fn handle_command(
     command: TunnelSubcommand,
@@ -129,7 +129,6 @@ impl TunnelManager {
         host_port: u16,
         container_port: u16,
         container_name: &str,
-        _provider: &dyn Provider,
     ) -> VmResult<()> {
         let mut tunnels = self.load_tunnels()?;
 
@@ -438,12 +437,7 @@ fn handle_tunnel(
 
     // Create tunnel
     let manager = TunnelManager::new(runtime_executable(provider.as_ref()))?;
-    manager.create_tunnel(
-        host_port,
-        container_port,
-        &container_name,
-        provider.as_ref(),
-    )
+    manager.create_tunnel(host_port, container_port, &container_name)
 }
 
 /// Handle tunnel list command
@@ -523,7 +517,7 @@ fn handle_tunnel_stop(
     Ok(())
 }
 
-fn runtime_executable(provider: &dyn Provider) -> &str {
+fn runtime_executable(provider: &dyn InstanceProvider) -> &str {
     match provider.name() {
         "podman" => "podman",
         _ => "docker",

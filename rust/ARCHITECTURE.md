@@ -99,9 +99,10 @@ preset-content, and service-content validation are separate private owners.
 **Role**: Provider abstraction layer enabling support for multiple VM technologies.
 
 **Responsibilities**:
-- `Provider` trait defining shared lifecycle behavior
-- `CommandProvider` and `InstanceProvider` capability traits composed by every
-  provider
+- `CommandProvider`, `InstanceProvider`, and `ProvisioningProvider` capability
+  traits for command transport, lifecycle/state, and runtime reconciliation
+- `Provider` as the factory-owned aggregate over those capabilities, not a
+  second owner of their methods
 - `TempProvider` capability trait for optional temporary VM operations
 - Docker, Podman, and Tart provider implementations
 - VM lifecycle management (create, start, stop, destroy)

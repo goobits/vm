@@ -3,7 +3,7 @@ use std::process::{Command, Stdio};
 
 use vm_config::config::VmConfig;
 use vm_packages::{ClientEnvironment, RegistryEndpoints};
-use vm_provider::Provider;
+use vm_provider::{CommandProvider, Provider};
 
 use crate::error::{VmError, VmResult};
 
@@ -266,7 +266,7 @@ pub(in crate::commands) fn reconcile_client_settings(
 }
 
 fn reconcile_git_identity(
-    provider: &dyn Provider,
+    provider: &dyn CommandProvider,
     environment: &str,
     config: &VmConfig,
 ) -> VmResult<()> {

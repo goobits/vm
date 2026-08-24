@@ -15,7 +15,7 @@ use vm_core::error::Result;
 use vm_config::config::{BoxSpec, ProviderName, VmConfig};
 
 // Re-export common types for convenience
-pub use capabilities::{CommandProvider, InstanceProvider, TempProvider};
+pub use capabilities::{CommandProvider, InstanceProvider, ProvisioningProvider, TempProvider};
 pub use common::instance::{InstanceInfo, InstanceResolver};
 pub use context::ProviderContext;
 pub use status::{
@@ -218,97 +218,8 @@ impl BoxConfig {
     }
 }
 
-/// The core trait for all VM providers.
-/// This defines the contract for creating, managing, and interacting with a VM.
-pub trait Provider: CommandProvider + InstanceProvider {
-    /// Get the name of the provider (e.g., "docker", "podman", "tart").
-    fn name(&self) -> &'static str;
-
-    /// Create a new VM instance.
-    fn create(&self, context: &ProviderContext) -> Result<()>;
-
-    /// Start an existing, stopped VM.
-    fn start(&self, container: Option<&str>, context: &ProviderContext) -> Result<()>;
-
-    /// Stop a running VM without destroying it.
-    fn stop(&self, container: Option<&str>) -> Result<()>;
-
-    /// Destroy a VM, removing all associated resources.
-    fn destroy(&self, container: Option<&str>, context: &ProviderContext) -> Result<()>;
-
-    /// Open an interactive shell (SSH) into the VM.
-    fn ssh(&self, container: Option<&str>, relative_path: &Path) -> Result<()>;
-
-    /// Execute a command inside the VM.
-    fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()>;
-
-    /// Get the logs of the VM.
-    fn logs(&self, container: Option<&str>) -> Result<()>;
-
-    /// Get the logs of the VM with extended options (follow, tail, service filtering).
-    /// Providers that don't implement this will fall back to basic logs behavior.
-    fn logs_extended(
-        &self,
-        container: Option<&str>,
-        follow: bool,
-        tail: usize,
-        service: Option<&str>,
-        _config: &VmConfig,
-    ) -> Result<()> {
-        // Default implementation: ignore new params and fall back to basic logs
-        let _ = (follow, tail, service);
-        self.logs(container)
-    }
-
-    /// Copy files to/from the VM.
-    ///
-    /// # Arguments
-    /// * `source` - Source path (local file or container:path)
-    /// * `destination` - Destination path (local file or container:path)
-    /// * `container` - Optional container name for auto-detection
-    fn copy(&self, source: &str, destination: &str, container: Option<&str>) -> Result<()>;
-
-    /// Get the status of the VM.
-    fn status(&self, container: Option<&str>) -> Result<VmStatusReport>;
-
-    /// Get lifecycle state without collecting metrics, services, or readiness.
-    fn instance_state(&self, container: Option<&str>) -> Result<InstanceState>;
-
-    /// Check whether an instance is ready for non-interactive command execution.
-    fn is_ready(&self, container: Option<&str>) -> Result<bool> {
-        Ok(self.instance_state(container)?.is_running())
-    }
-
-    /// Check whether an instance is ready for an interactive shell.
-    ///
-    /// Providers with a separate shell transport can override this without
-    /// weakening the readiness contract used by `exec`.
-    fn is_shell_ready(&self, container: Option<&str>) -> Result<bool> {
-        self.is_ready(container)
-    }
-
-    /// Restart a VM (stop then start).
-    fn restart(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
-        self.stop(container)?;
-        self.start(container, context)
-    }
-
-    /// Re-run provisioning on existing VM.
-    fn provision(&self, container: Option<&str>) -> Result<()>;
-
-    /// Reconcile mutable runtime infrastructure without rebuilding the base or
-    /// recreating the primary environment.
-    fn reconcile_runtime(
-        &self,
-        _container: Option<&str>,
-        _context: &ProviderContext,
-    ) -> Result<()> {
-        Ok(())
-    }
-
-    /// Get workspace directory.
-    fn get_sync_directory(&self) -> String;
-
+/// Factory-owned aggregate over the provider capabilities used by the CLI.
+pub trait Provider: CommandProvider + InstanceProvider + ProvisioningProvider {
     /// Get access to temp provider capabilities if supported
     fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
         None

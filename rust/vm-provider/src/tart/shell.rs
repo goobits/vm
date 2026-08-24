@@ -1,5 +1,7 @@
 use super::{provider::TartProvider, readiness::ShellTransport, ssh_identity::TartSshIdentity};
-use crate::{security::SecurityValidator, shell_session, InstanceProvider, Provider, VmError};
+use crate::{
+    security::SecurityValidator, shell_session, InstanceProvider, ProvisioningProvider, VmError,
+};
 use std::io::IsTerminal;
 use std::path::Path;
 use tracing::info;

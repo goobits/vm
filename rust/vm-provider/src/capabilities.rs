@@ -1,11 +1,18 @@
 use std::path::{Path, PathBuf};
 
+use vm_config::config::VmConfig;
 use vm_core::error::Result;
 
-use crate::{InstanceInfo, ProviderContext, TempVmState, VmError};
+use crate::{InstanceInfo, InstanceState, ProviderContext, TempVmState, VmError, VmStatusReport};
 
 /// Non-interactive and interactive command forms supported by a provider.
 pub trait CommandProvider {
+    /// Open an interactive shell in the environment.
+    fn ssh(&self, container: Option<&str>, relative_path: &Path) -> Result<()>;
+
+    /// Execute a command and stream its output.
+    fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()>;
+
     fn exec_interactive(
         &self,
         _container: Option<&str>,
@@ -33,11 +40,57 @@ pub trait CommandProvider {
             "This provider does not support captured command output".into(),
         ))
     }
+
+    /// Stream the environment logs.
+    fn logs(&self, container: Option<&str>) -> Result<()>;
+
+    /// Stream logs with provider-specific filtering options.
+    fn logs_extended(
+        &self,
+        container: Option<&str>,
+        follow: bool,
+        tail: usize,
+        service: Option<&str>,
+        _config: &VmConfig,
+    ) -> Result<()> {
+        let _ = (follow, tail, service);
+        self.logs(container)
+    }
+
+    /// Copy files to or from an environment.
+    fn copy(&self, source: &str, destination: &str, container: Option<&str>) -> Result<()>;
 }
 
-/// Named-instance discovery, creation, and ownership metadata.
+/// Environment lifecycle, discovery, state, and ownership metadata.
 pub trait InstanceProvider {
+    fn name(&self) -> &'static str;
+
+    fn create(&self, context: &ProviderContext) -> Result<()>;
+
     fn create_instance(&self, instance_name: &str, context: &ProviderContext) -> Result<()>;
+
+    fn start(&self, container: Option<&str>, context: &ProviderContext) -> Result<()>;
+
+    fn stop(&self, container: Option<&str>) -> Result<()>;
+
+    fn destroy(&self, container: Option<&str>, context: &ProviderContext) -> Result<()>;
+
+    fn restart(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
+        self.stop(container)?;
+        self.start(container, context)
+    }
+
+    fn status(&self, container: Option<&str>) -> Result<VmStatusReport>;
+
+    fn instance_state(&self, container: Option<&str>) -> Result<InstanceState>;
+
+    fn is_ready(&self, container: Option<&str>) -> Result<bool> {
+        Ok(self.instance_state(container)?.is_running())
+    }
+
+    fn is_shell_ready(&self, container: Option<&str>) -> Result<bool> {
+        self.is_ready(container)
+    }
 
     fn resolve_instance_name(&self, instance: Option<&str>) -> Result<String> {
         Ok(instance.unwrap_or("default").to_string())
@@ -56,6 +109,21 @@ pub trait InstanceProvider {
     fn supports_multi_instance(&self) -> bool {
         false
     }
+}
+
+/// Provisioning and mutable runtime reconciliation supported by a provider.
+pub trait ProvisioningProvider {
+    fn provision(&self, container: Option<&str>) -> Result<()>;
+
+    fn reconcile_runtime(
+        &self,
+        _container: Option<&str>,
+        _context: &ProviderContext,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    fn get_sync_directory(&self) -> String;
 }
 
 /// Temporary-VM mount and health operations, available through an explicit capability check.

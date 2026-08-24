@@ -7,7 +7,7 @@ use tracing::{debug, info_span};
 use crate::error::{VmError, VmResult};
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::{vm_hint, vm_progress, vm_success};
-use vm_provider::{InstanceState, Provider, ProviderContext};
+use vm_provider::{InstanceProvider, InstanceState, Provider, ProviderContext};
 
 use super::{
     helpers::{
@@ -35,7 +35,7 @@ enum ReadyFor {
 impl ReadyFor {
     fn check(
         self,
-        provider: &dyn Provider,
+        provider: &dyn InstanceProvider,
         container: Option<&str>,
     ) -> vm_core::error::Result<bool> {
         match self {
@@ -53,14 +53,18 @@ fn project_name(config: &VmConfig) -> &str {
         .unwrap_or("vm-project")
 }
 
-fn target_name(provider: &dyn Provider, container: Option<&str>, config: &VmConfig) -> String {
+fn target_name(
+    provider: &dyn InstanceProvider,
+    container: Option<&str>,
+    config: &VmConfig,
+) -> String {
     container
         .map(ToOwned::to_owned)
         .unwrap_or_else(|| canonical_instance_name(provider.name(), project_name(config), None))
 }
 
 async fn wait_until_ready(
-    provider: &dyn Provider,
+    provider: &dyn InstanceProvider,
     container: Option<&str>,
     display_name: &str,
     ready_for: ReadyFor,
@@ -77,7 +81,7 @@ async fn wait_until_ready(
 }
 
 pub(in crate::commands) async fn wait_until_commands_ready(
-    provider: &dyn Provider,
+    provider: &dyn InstanceProvider,
     container: Option<&str>,
     display_name: &str,
 ) -> VmResult<()> {
@@ -85,7 +89,7 @@ pub(in crate::commands) async fn wait_until_commands_ready(
 }
 
 async fn wait_until_ready_for(
-    provider: &dyn Provider,
+    provider: &dyn InstanceProvider,
     container: Option<&str>,
     display_name: &str,
     ready_for: ReadyFor,
@@ -132,7 +136,7 @@ async fn wait_until_ready_for(
 ///
 /// This function never creates, rebuilds, or removes an environment.
 pub(in crate::commands) async fn ensure_running(
-    provider: &dyn Provider,
+    provider: &dyn InstanceProvider,
     container: Option<&str>,
     config: &VmConfig,
     global_config: &GlobalConfig,
@@ -149,7 +153,7 @@ pub(in crate::commands) async fn ensure_running(
 }
 
 pub(in crate::commands) async fn ensure_running_for_shell(
-    provider: &dyn Provider,
+    provider: &dyn InstanceProvider,
     container: Option<&str>,
     config: &VmConfig,
     global_config: &GlobalConfig,
@@ -165,7 +169,7 @@ pub(in crate::commands) async fn ensure_running_for_shell(
 }
 
 async fn ensure_running_for(
-    provider: &dyn Provider,
+    provider: &dyn InstanceProvider,
     container: Option<&str>,
     config: &VmConfig,
     global_config: &GlobalConfig,

@@ -11,7 +11,7 @@ use crate::commands::vm_ops::resolve_or_create_target;
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_provider::{
     CommandProvider, InstanceInfo, InstanceProvider, InstanceState, Provider, ProviderContext,
-    VmError as ProviderError, VmResult as ProviderResult, VmStatusReport,
+    ProvisioningProvider, VmError as ProviderError, VmResult as ProviderResult, VmStatusReport,
 };
 
 #[derive(Clone)]
@@ -70,41 +70,32 @@ vm:
     .unwrap()
 }
 
-impl CommandProvider for FakeProvider {}
-
-impl InstanceProvider for FakeProvider {
-    fn create_instance(
-        &self,
-        instance_name: &str,
-        _context: &ProviderContext,
-    ) -> ProviderResult<()> {
-        self.creates.fetch_add(1, Ordering::SeqCst);
-        *self.instance_name.lock().unwrap() = format!("demo-{instance_name}-dev");
-        *self.state.lock().unwrap() = Some(InstanceState::Running);
+impl CommandProvider for FakeProvider {
+    fn ssh(&self, _container: Option<&str>, _relative_path: &Path) -> ProviderResult<()> {
+        self.shells.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
-    fn list_instances(&self) -> ProviderResult<Vec<InstanceInfo>> {
-        let Some(state) = self.state.lock().unwrap().clone() else {
-            return Ok(Vec::new());
-        };
-        Ok(vec![InstanceInfo {
-            name: self.instance_name.lock().unwrap().clone(),
-            id: "demo-id".to_string(),
-            status: state.to_string(),
-            provider: "fake".to_string(),
-            project: Some("demo".to_string()),
-            uptime: None,
-            created_at: None,
-        }])
+    fn exec(&self, _container: Option<&str>, _cmd: &[String]) -> ProviderResult<()> {
+        self.execs.fetch_add(1, Ordering::SeqCst);
+        Ok(())
     }
 
-    fn supports_multi_instance(&self) -> bool {
-        true
+    fn logs(&self, _container: Option<&str>) -> ProviderResult<()> {
+        Ok(())
+    }
+
+    fn copy(
+        &self,
+        _source: &str,
+        _destination: &str,
+        _container: Option<&str>,
+    ) -> ProviderResult<()> {
+        Ok(())
     }
 }
 
-impl Provider for FakeProvider {
+impl InstanceProvider for FakeProvider {
     fn name(&self) -> &'static str {
         "fake"
     }
@@ -112,6 +103,17 @@ impl Provider for FakeProvider {
     fn create(&self, _context: &ProviderContext) -> ProviderResult<()> {
         self.creates.fetch_add(1, Ordering::SeqCst);
         *self.instance_name.lock().unwrap() = "demo-dev".to_string();
+        *self.state.lock().unwrap() = Some(InstanceState::Running);
+        Ok(())
+    }
+
+    fn create_instance(
+        &self,
+        instance_name: &str,
+        _context: &ProviderContext,
+    ) -> ProviderResult<()> {
+        self.creates.fetch_add(1, Ordering::SeqCst);
+        *self.instance_name.lock().unwrap() = format!("demo-{instance_name}-dev");
         *self.state.lock().unwrap() = Some(InstanceState::Running);
         Ok(())
     }
@@ -135,27 +137,23 @@ impl Provider for FakeProvider {
         Ok(())
     }
 
-    fn ssh(&self, _container: Option<&str>, _relative_path: &Path) -> ProviderResult<()> {
-        self.shells.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+    fn list_instances(&self) -> ProviderResult<Vec<InstanceInfo>> {
+        let Some(state) = self.state.lock().unwrap().clone() else {
+            return Ok(Vec::new());
+        };
+        Ok(vec![InstanceInfo {
+            name: self.instance_name.lock().unwrap().clone(),
+            id: "demo-id".to_string(),
+            status: state.to_string(),
+            provider: "fake".to_string(),
+            project: Some("demo".to_string()),
+            uptime: None,
+            created_at: None,
+        }])
     }
 
-    fn exec(&self, _container: Option<&str>, _cmd: &[String]) -> ProviderResult<()> {
-        self.execs.fetch_add(1, Ordering::SeqCst);
-        Ok(())
-    }
-
-    fn logs(&self, _container: Option<&str>) -> ProviderResult<()> {
-        Ok(())
-    }
-
-    fn copy(
-        &self,
-        _source: &str,
-        _destination: &str,
-        _container: Option<&str>,
-    ) -> ProviderResult<()> {
-        Ok(())
+    fn supports_multi_instance(&self) -> bool {
+        true
     }
 
     fn status(&self, container: Option<&str>) -> ProviderResult<VmStatusReport> {
@@ -184,7 +182,9 @@ impl Provider for FakeProvider {
         self.shell_ready_checks.fetch_add(1, Ordering::SeqCst);
         Ok(self.ready && self.instance_state(container)?.is_running())
     }
+}
 
+impl ProvisioningProvider for FakeProvider {
     fn provision(&self, _container: Option<&str>) -> ProviderResult<()> {
         Ok(())
     }
@@ -201,7 +201,9 @@ impl Provider for FakeProvider {
     fn get_sync_directory(&self) -> String {
         "/workspace".to_string()
     }
+}
 
+impl Provider for FakeProvider {
     fn clone_box(&self) -> Box<dyn Provider> {
         Box::new(self.clone())
     }

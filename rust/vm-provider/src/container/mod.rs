@@ -33,7 +33,7 @@ use vm_core::error::Result;
 // Internal imports
 use crate::{
     context::ProviderContext, preflight, CommandProvider, InstanceProvider, InstanceState,
-    Provider, TempProvider, VmStatusReport,
+    Provider, ProvisioningProvider, TempProvider, VmStatusReport,
 };
 use vm_config::config::VmConfig;
 
@@ -149,6 +149,15 @@ pub(crate) fn get_dockerfile_tera() -> &'static Tera {
 }
 
 impl CommandProvider for ContainerProvider {
+    fn ssh(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
+        self.lifecycle_ops()
+            .ssh_into_container(container, relative_path)
+    }
+
+    fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()> {
+        self.lifecycle_ops().exec_in_container(container, cmd)
+    }
+
     fn exec_interactive(
         &self,
         container: Option<&str>,
@@ -168,14 +177,99 @@ impl CommandProvider for ContainerProvider {
         self.lifecycle_ops()
             .exec_in_container_output(container, cmd)
     }
+
+    fn logs(&self, container: Option<&str>) -> Result<()> {
+        self.lifecycle_ops().show_logs(container)
+    }
+
+    fn logs_extended(
+        &self,
+        container: Option<&str>,
+        follow: bool,
+        tail: usize,
+        service: Option<&str>,
+        config: &VmConfig,
+    ) -> Result<()> {
+        self.lifecycle_ops()
+            .show_logs_extended(container, follow, tail, service, config)
+    }
+
+    fn copy(&self, source: &str, destination: &str, container: Option<&str>) -> Result<()> {
+        let lifecycle = self.lifecycle_ops();
+        let resolved_source = if source.contains(':') && !source.starts_with('/') {
+            let parts: Vec<&str> = source.splitn(2, ':').collect();
+            if parts.len() == 2 {
+                let container_name = lifecycle.resolve_target_container(Some(parts[0]))?;
+                format!("{}:{}", container_name, parts[1])
+            } else {
+                source.to_string()
+            }
+        } else {
+            source.to_string()
+        };
+        let resolved_destination = if destination.contains(':') && !destination.starts_with('/') {
+            let parts: Vec<&str> = destination.splitn(2, ':').collect();
+            if parts.len() == 2 {
+                let container_name = lifecycle.resolve_target_container(Some(parts[0]))?;
+                format!("{}:{}", container_name, parts[1])
+            } else {
+                destination.to_string()
+            }
+        } else if !source.contains(':') && !destination.contains(':') {
+            let container_name = lifecycle.resolve_target_container(container)?;
+            format!("{}:{}", container_name, destination)
+        } else {
+            destination.to_string()
+        };
+
+        ContainerOps::copy(
+            Some(&self.executable),
+            &resolved_source,
+            &resolved_destination,
+        )
+    }
 }
 
 impl InstanceProvider for ContainerProvider {
+    fn name(&self) -> &'static str {
+        self.engine.name()
+    }
+
+    fn create(&self, context: &ProviderContext) -> Result<()> {
+        validate_container_environment(self.engine)?;
+        preflight::check_system_resources()?;
+        self.lifecycle_ops().create_container(context)
+    }
+
     fn create_instance(&self, instance_name: &str, context: &ProviderContext) -> Result<()> {
         validate_container_environment(self.engine)?;
         preflight::check_system_resources()?;
         let lifecycle = self.lifecycle_ops();
         lifecycle.create_container_with_instance(instance_name, context)
+    }
+
+    fn start(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
+        self.lifecycle_ops().start_container(container, context)
+    }
+
+    fn stop(&self, container: Option<&str>) -> Result<()> {
+        self.lifecycle_ops().stop_container(container)
+    }
+
+    fn destroy(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
+        self.lifecycle_ops().destroy_container(container, context)
+    }
+
+    fn restart(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
+        self.lifecycle_ops().restart_container(container, context)
+    }
+
+    fn status(&self, container: Option<&str>) -> Result<VmStatusReport> {
+        self.lifecycle_ops().status_report(container)
+    }
+
+    fn instance_state(&self, container: Option<&str>) -> Result<InstanceState> {
+        self.lifecycle_ops().instance_state(container)
     }
 
     fn supports_multi_instance(&self) -> bool {
@@ -199,110 +293,9 @@ impl InstanceProvider for ContainerProvider {
     }
 }
 
-impl Provider for ContainerProvider {
-    fn name(&self) -> &'static str {
-        self.engine.name()
-    }
-
-    fn create(&self, context: &ProviderContext) -> Result<()> {
-        validate_container_environment(self.engine)?;
-        preflight::check_system_resources()?;
-
-        let lifecycle = self.lifecycle_ops();
-        lifecycle.create_container(context)
-    }
-
-    fn start(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
-        let lifecycle = self.lifecycle_ops();
-        lifecycle.start_container(container, context)
-    }
-
-    fn stop(&self, container: Option<&str>) -> Result<()> {
-        let lifecycle = self.lifecycle_ops();
-        lifecycle.stop_container(container)
-    }
-
-    fn destroy(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
-        let lifecycle = self.lifecycle_ops();
-        lifecycle.destroy_container(container, context)
-    }
-
-    fn ssh(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
-        let lifecycle = self.lifecycle_ops();
-        lifecycle.ssh_into_container(container, relative_path)
-    }
-
-    fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()> {
-        let lifecycle = self.lifecycle_ops();
-        lifecycle.exec_in_container(container, cmd)
-    }
-
-    fn logs(&self, container: Option<&str>) -> Result<()> {
-        let lifecycle = self.lifecycle_ops();
-        lifecycle.show_logs(container)
-    }
-
-    fn logs_extended(
-        &self,
-        container: Option<&str>,
-        follow: bool,
-        tail: usize,
-        service: Option<&str>,
-        config: &VmConfig,
-    ) -> Result<()> {
-        let lifecycle = self.lifecycle_ops();
-        lifecycle.show_logs_extended(container, follow, tail, service, config)
-    }
-
-    fn copy(&self, source: &str, destination: &str, container: Option<&str>) -> Result<()> {
-        let lifecycle = self.lifecycle_ops();
-
-        // Resolve container name if needed
-        let resolved_source = if source.contains(':') && !source.starts_with('/') {
-            // Format: container:/path - resolve the container part
-            let parts: Vec<&str> = source.splitn(2, ':').collect();
-            if parts.len() == 2 {
-                let container_name = lifecycle.resolve_target_container(Some(parts[0]))?;
-                format!("{}:{}", container_name, parts[1])
-            } else {
-                source.to_string()
-            }
-        } else {
-            source.to_string()
-        };
-
-        let resolved_destination = if destination.contains(':') && !destination.starts_with('/') {
-            // Format: container:/path - resolve the container part
-            let parts: Vec<&str> = destination.splitn(2, ':').collect();
-            if parts.len() == 2 {
-                let container_name = lifecycle.resolve_target_container(Some(parts[0]))?;
-                format!("{}:{}", container_name, parts[1])
-            } else {
-                destination.to_string()
-            }
-        } else if !source.contains(':') && !destination.contains(':') {
-            // Neither has container prefix, add one to destination
-            let container_name = lifecycle.resolve_target_container(container)?;
-            format!("{}:{}", container_name, destination)
-        } else {
-            destination.to_string()
-        };
-
-        ContainerOps::copy(
-            Some(&self.executable),
-            &resolved_source,
-            &resolved_destination,
-        )
-    }
-
-    fn restart(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
-        let lifecycle = self.lifecycle_ops();
-        lifecycle.restart_container(container, context)
-    }
-
+impl ProvisioningProvider for ContainerProvider {
     fn provision(&self, container: Option<&str>) -> Result<()> {
-        let lifecycle = self.lifecycle_ops();
-        lifecycle.provision_existing(container)?;
+        self.lifecycle_ops().provision_existing(container)?;
         tracing::info!("Configuration applied");
         Ok(())
     }
@@ -311,20 +304,12 @@ impl Provider for ContainerProvider {
         self.lifecycle_ops().reconcile_runtime(container, context)
     }
 
-    fn status(&self, container: Option<&str>) -> Result<VmStatusReport> {
-        let lifecycle = self.lifecycle_ops();
-        lifecycle.status_report(container)
-    }
-
-    fn instance_state(&self, container: Option<&str>) -> Result<InstanceState> {
-        self.lifecycle_ops().instance_state(container)
-    }
-
     fn get_sync_directory(&self) -> String {
-        let lifecycle = self.lifecycle_ops();
-        lifecycle.get_sync_directory()
+        self.lifecycle_ops().get_sync_directory()
     }
+}
 
+impl Provider for ContainerProvider {
     fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
         Some(self)
     }

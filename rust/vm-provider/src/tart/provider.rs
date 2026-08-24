@@ -7,8 +7,8 @@ use crate::{
     common::instance::{extract_project_name, InstanceInfo, InstanceResolver},
     context::ProviderContext,
     project_plan::ProjectPlan,
-    shell_session, CommandProvider, InstanceProvider, InstanceState, Provider, TempProvider,
-    VmError, VmStatusReport,
+    shell_session, CommandProvider, InstanceProvider, InstanceState, Provider,
+    ProvisioningProvider, TempProvider, VmError, VmStatusReport,
 };
 use duct::cmd;
 use std::ffi::OsStr;
@@ -140,6 +140,16 @@ impl TartProvider {
 }
 
 impl CommandProvider for TartProvider {
+    fn ssh(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
+        self.open_shell(container, relative_path)
+    }
+
+    fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()> {
+        let args = self.guest_exec_args(container, cmd)?;
+        let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        self.stream_tart_command_visible(&arg_refs)
+    }
+
     fn exec_interactive(
         &self,
         container: Option<&str>,
@@ -169,47 +179,112 @@ impl CommandProvider for TartProvider {
                 ))
             })
     }
+
+    fn logs(&self, container: Option<&str>) -> Result<()> {
+        let vm_name = self.vm_name_with_instance(container)?;
+        let tart_home = self.tart_home().map(PathBuf::from).map_or_else(
+            || vm_core::user_paths::home_dir().map(|home| home.join(".tart")),
+            Ok,
+        )?;
+        let log_path = tart_home.join("vms").join(&vm_name).join("app.log");
+
+        if !log_path.exists() {
+            let error_msg = format!("Log file not found at: {}", log_path.display());
+            error!("{}", error_msg);
+            info!("{}", MESSAGES.service.provider_logs_unavailable);
+            info!(
+                "{}",
+                msg!(
+                    MESSAGES.service.provider_logs_expected_location,
+                    name = vm_name
+                )
+            );
+            return Err(VmError::Internal(error_msg));
+        }
+
+        info!(
+            "{}",
+            msg!(
+                MESSAGES.service.provider_logs_showing,
+                path = log_path.display().to_string()
+            )
+        );
+        info!("{}", MESSAGES.common.press_ctrl_c_to_stop);
+
+        let log_path = log_path.to_string_lossy();
+        stream_command("tail", &["-f", &log_path])
+    }
+
+    fn copy(&self, source: &str, destination: &str, container: Option<&str>) -> Result<()> {
+        let vm_name = self.vm_name_with_instance(container)?;
+        let (local_path, remote_path, is_upload) = if source.contains(':') {
+            let parts: Vec<&str> = source.splitn(2, ':').collect();
+            if parts.len() == 2 {
+                (destination, parts[1], false)
+            } else {
+                return Err(VmError::Provider("Invalid source format".to_string()));
+            }
+        } else if destination.contains(':') {
+            let parts: Vec<&str> = destination.splitn(2, ':').collect();
+            if parts.len() == 2 {
+                (source, parts[1], true)
+            } else {
+                return Err(VmError::Provider("Invalid destination format".to_string()));
+            }
+        } else {
+            (source, destination, true)
+        };
+
+        if is_upload {
+            let copy_cmd = format!("cat > {}", shell_session::quote_posix_argument(remote_path));
+            let output = cmd!(
+                "sh",
+                "-c",
+                format!(
+                    "cat {} | tart exec {} sh -c {}",
+                    shell_session::quote_posix_argument(local_path),
+                    shell_session::quote_posix_argument(&vm_name),
+                    shell_session::quote_posix_argument(&copy_cmd)
+                )
+            );
+            let output = if let Some(tart_home) = self.tart_home() {
+                output.env("TART_HOME", tart_home).run()
+            } else {
+                output.run()
+            };
+
+            output.map_err(|e| VmError::Provider(format!("Failed to copy file to VM: {}", e)))?;
+        } else {
+            let copy_cmd = format!("cat {}", shell_session::quote_posix_argument(remote_path));
+            let result = self
+                .tart_expr(&["exec", &vm_name, "sh", "-c", &copy_cmd])
+                .stdout_capture()
+                .run()
+                .map_err(|e| VmError::Provider(format!("Failed to read file from VM: {}", e)))?;
+
+            std::fs::write(local_path, result.stdout)
+                .map_err(|e| VmError::Provider(format!("Failed to write local file: {}", e)))?;
+        }
+
+        Ok(())
+    }
 }
 
 impl InstanceProvider for TartProvider {
-    fn create_instance(&self, instance_name: &str, context: &ProviderContext) -> Result<()> {
-        // Apply global config defaults if present, but always use the project VmConfig
-        let _ = context; // Global config is not directly applicable to VM creation
-        let vm_name = format!("{}-{}", self.vm_name(), instance_name);
-        self.create_vm_internal(&vm_name, Some(instance_name), &self.config)
-    }
-
-    fn supports_multi_instance(&self) -> bool {
-        true
-    }
-
-    fn resolve_instance_name(&self, instance: Option<&str>) -> Result<String> {
-        if let Some(name) = instance {
-            if self.get_instance_state(name)?.is_some() {
-                return Ok(name.to_string());
-            }
-        }
-        self.instance_manager().resolve_instance_name(instance)
-    }
-
-    fn list_instances(&self) -> Result<Vec<InstanceInfo>> {
-        self.instance_manager().list_instances()
-    }
-
-    fn instance_config_path(&self, instance: &str) -> Result<Option<PathBuf>> {
-        self.command.instance_config_path(instance)
-    }
-}
-
-impl Provider for TartProvider {
     fn name(&self) -> &'static str {
         "tart"
     }
 
     fn create(&self, context: &ProviderContext) -> Result<()> {
+        let _ = context;
+        self.create_vm_internal(&self.vm_name(), None, &self.config)
+    }
+
+    fn create_instance(&self, instance_name: &str, context: &ProviderContext) -> Result<()> {
         // Apply global config defaults if present, but always use the project VmConfig
         let _ = context; // Global config is not directly applicable to VM creation
-        self.create_vm_internal(&self.vm_name(), None, &self.config)
+        let vm_name = format!("{}-{}", self.vm_name(), instance_name);
+        self.create_vm_internal(&vm_name, Some(instance_name), &self.config)
     }
 
     fn start(&self, container: Option<&str>, context: &ProviderContext) -> Result<()> {
@@ -255,118 +330,29 @@ impl Provider for TartProvider {
         storage::forget_instance(&vm_name)
     }
 
-    fn ssh(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
-        self.open_shell(container, relative_path)
+    fn supports_multi_instance(&self) -> bool {
+        true
     }
 
-    fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()> {
-        let args = self.guest_exec_args(container, cmd)?;
-        let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        self.stream_tart_command_visible(&arg_refs)
-    }
-
-    fn logs(&self, container: Option<&str>) -> Result<()> {
-        let vm_name = self.vm_name_with_instance(container)?;
-        let tart_home = self.tart_home().map(PathBuf::from).map_or_else(
-            || vm_core::user_paths::home_dir().map(|home| home.join(".tart")),
-            Ok,
-        )?;
-        let log_path = tart_home.join("vms").join(&vm_name).join("app.log");
-
-        // Check if log file exists before attempting to tail
-        if !log_path.exists() {
-            let error_msg = format!("Log file not found at: {}", log_path.display());
-            error!("{}", error_msg);
-            info!("{}", MESSAGES.service.provider_logs_unavailable);
-            info!(
-                "{}",
-                msg!(
-                    MESSAGES.service.provider_logs_expected_location,
-                    name = vm_name
-                )
-            );
-            return Err(VmError::Internal(error_msg));
-        }
-
-        info!(
-            "{}",
-            msg!(
-                MESSAGES.service.provider_logs_showing,
-                path = log_path.display().to_string()
-            )
-        );
-        info!("{}", MESSAGES.common.press_ctrl_c_to_stop);
-
-        // Use tail -f to follow the log file
-        let log_path = log_path.to_string_lossy();
-        stream_command("tail", &["-f", &log_path])
-    }
-
-    fn copy(&self, source: &str, destination: &str, container: Option<&str>) -> Result<()> {
-        let vm_name = self.vm_name_with_instance(container)?;
-
-        // Determine if we're copying to or from the VM
-        let (local_path, remote_path, is_upload) = if source.contains(':') {
-            // Downloading from VM
-            let parts: Vec<&str> = source.splitn(2, ':').collect();
-            if parts.len() == 2 {
-                (destination, parts[1], false)
-            } else {
-                return Err(VmError::Provider("Invalid source format".to_string()));
+    fn resolve_instance_name(&self, instance: Option<&str>) -> Result<String> {
+        if let Some(name) = instance {
+            if self.get_instance_state(name)?.is_some() {
+                return Ok(name.to_string());
             }
-        } else if destination.contains(':') {
-            // Uploading to VM
-            let parts: Vec<&str> = destination.splitn(2, ':').collect();
-            if parts.len() == 2 {
-                (source, parts[1], true)
-            } else {
-                return Err(VmError::Provider("Invalid destination format".to_string()));
-            }
-        } else {
-            // Neither has container prefix, assume uploading to VM
-            (source, destination, true)
-        };
-
-        // Use scp-like approach via tart exec
-        if is_upload {
-            // Upload: local -> VM
-            let copy_cmd = format!("cat > {}", shell_session::quote_posix_argument(remote_path));
-            let output = cmd!(
-                "sh",
-                "-c",
-                format!(
-                    "cat {} | tart exec {} sh -c {}",
-                    shell_session::quote_posix_argument(local_path),
-                    shell_session::quote_posix_argument(&vm_name),
-                    shell_session::quote_posix_argument(&copy_cmd)
-                )
-            );
-            let output = if let Some(tart_home) = self.tart_home() {
-                output.env("TART_HOME", tart_home).run()
-            } else {
-                output.run()
-            };
-
-            output.map_err(|e| VmError::Provider(format!("Failed to copy file to VM: {}", e)))?;
-        } else {
-            // Download: VM -> local
-            let copy_cmd = format!("cat {}", shell_session::quote_posix_argument(remote_path));
-            let result = self
-                .tart_expr(&["exec", &vm_name, "sh", "-c", &copy_cmd])
-                .stdout_capture()
-                .run()
-                .map_err(|e| VmError::Provider(format!("Failed to read file from VM: {}", e)))?;
-
-            std::fs::write(local_path, result.stdout)
-                .map_err(|e| VmError::Provider(format!("Failed to write local file: {}", e)))?;
         }
+        self.instance_manager().resolve_instance_name(instance)
+    }
 
-        Ok(())
+    fn list_instances(&self) -> Result<Vec<InstanceInfo>> {
+        self.instance_manager().list_instances()
+    }
+
+    fn instance_config_path(&self, instance: &str) -> Result<Option<PathBuf>> {
+        self.command.instance_config_path(instance)
     }
 
     fn status(&self, container: Option<&str>) -> Result<VmStatusReport> {
         let instance_name = self.resolve_instance_name(container)?;
-
         let Some(state) = self.get_instance_state(&instance_name)? else {
             return Err(VmError::NotFound(format!(
                 "Tart VM '{}' does not exist",
@@ -386,7 +372,6 @@ impl Provider for TartProvider {
         }
 
         let metrics = self.collect_metrics(&instance_name)?;
-
         Ok(VmStatusReport {
             name: instance_name,
             provider: "tart".into(),
@@ -430,10 +415,11 @@ impl Provider for TartProvider {
         self.stop(container)?;
         self.start(container, context)
     }
+}
 
+impl ProvisioningProvider for TartProvider {
     fn provision(&self, container: Option<&str>) -> Result<()> {
         let instance_name = self.resolve_instance_name(container)?;
-
         let provisioner = TartProvisioner::new(
             instance_name.clone(),
             self.get_sync_directory(),
@@ -458,12 +444,14 @@ impl Provider for TartProvider {
         provisioner.reconcile_runtime(&self.config)
     }
 
-    fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
-        Some(self)
-    }
-
     fn get_sync_directory(&self) -> String {
         self.effective_sync_directory()
+    }
+}
+
+impl Provider for TartProvider {
+    fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
+        Some(self)
     }
 
     fn clone_box(&self) -> Box<dyn Provider> {
@@ -474,7 +462,7 @@ impl Provider for TartProvider {
 #[cfg(test)]
 mod tests {
     use super::TartProvider;
-    use crate::{tart_base, Provider};
+    use crate::{tart_base, ProvisioningProvider};
     use vm_config::config::{BoxSpec, ProjectConfig, TartConfig, VmConfig, VmSettings};
 
     fn provider(config: VmConfig) -> TartProvider {

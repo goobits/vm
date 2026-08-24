@@ -25,9 +25,9 @@ vm/
   IO is separate from private preset resolution/materialization.
 - `rust/vm-plugin/` owns plugin discovery and the validation facade; metadata,
   preset-content, and service-content rules remain separate private concerns.
-- `rust/vm-provider/` owns Docker, Podman, and Tart lifecycle implementation.
-  The core provider contract composes command-execution and named-instance
-  capabilities; temporary-VM behavior is an explicit optional capability.
+- `rust/vm-provider/` owns Docker, Podman, and Tart implementation. Its factory
+  aggregate composes command, instance-lifecycle, and provisioning capabilities;
+  temporary-VM behavior is an explicit optional capability.
 - `rust/vm-temp/` owns temporary lifecycle orchestration, state, status, and
   mount mutation behind the `TempVmOps` facade.
 - `rust/vm-snapshot/` owns snapshot creation, restoration, import, and export.
@@ -85,6 +85,11 @@ use stderr. Libraries return errors without printing them, and the `vm`
 executable renders each fatal error once.
 
 ## Provider Boundaries
+
+Callers borrow the narrowest capability they need: `CommandProvider` for guest
+commands, `InstanceProvider` for lifecycle and discovery, and
+`ProvisioningProvider` for mutable runtime reconciliation. `Provider` remains
+the factory-owned aggregate used when orchestration genuinely spans capabilities.
 
 Docker and Podman implement container mounts, named volumes, tmpfs, resource
 limits, and logging. Tart owns macOS/Linux guest provisioning and does not

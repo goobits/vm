@@ -12,7 +12,7 @@ use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::{vm_hint, vm_println, vm_progress, vm_success, vm_warning};
-use vm_provider::{Provider, ProviderContext, VmError as ProviderError};
+use vm_provider::{InstanceProvider, Provider, ProviderContext, VmError as ProviderError};
 
 use super::helpers::{has_enabled_services, unregister_vm_services_helper};
 use super::target::canonical_instance_name;
@@ -189,7 +189,7 @@ pub async fn handle_destroy(
     Ok(())
 }
 
-fn provider_display_name(provider: &dyn Provider) -> &'static str {
+fn provider_display_name(provider: &dyn InstanceProvider) -> &'static str {
     match provider.name() {
         "docker" => "Docker",
         "podman" => "Podman",
@@ -198,7 +198,7 @@ fn provider_display_name(provider: &dyn Provider) -> &'static str {
     }
 }
 
-fn provider_resource_label(provider: &dyn Provider) -> &'static str {
+fn provider_resource_label(provider: &dyn InstanceProvider) -> &'static str {
     match provider.name() {
         "docker" | "podman" => "Container",
         "tart" => "VM",
@@ -206,7 +206,7 @@ fn provider_resource_label(provider: &dyn Provider) -> &'static str {
     }
 }
 
-fn provider_destroyed_items(provider: &dyn Provider) -> &'static str {
+fn provider_destroyed_items(provider: &dyn InstanceProvider) -> &'static str {
     match provider.name() {
         "docker" | "podman" => {
             "  - Container and its writable layer\n\n  Managed named volumes are preserved."

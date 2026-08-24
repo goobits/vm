@@ -5,7 +5,7 @@ use std::io::IsTerminal;
 
 use crate::error::{VmError, VmResult};
 use vm_config::config::VmConfig;
-use vm_provider::{InstanceInfo, Provider};
+use vm_provider::{InstanceInfo, InstanceProvider};
 
 enum TargetChoice {
     Selected(InstanceInfo),
@@ -48,7 +48,7 @@ pub(super) fn creation_instance_name(
 }
 
 pub fn resolve_runtime_target(
-    provider: &dyn Provider,
+    provider: &dyn InstanceProvider,
     config: &VmConfig,
     requested: Option<&str>,
 ) -> VmResult<String> {
@@ -56,7 +56,7 @@ pub fn resolve_runtime_target(
 }
 
 pub(in crate::commands) fn resolve_runtime_instance(
-    provider: &dyn Provider,
+    provider: &dyn InstanceProvider,
     config: &VmConfig,
     requested: Option<&str>,
 ) -> VmResult<InstanceInfo> {
@@ -80,7 +80,7 @@ pub(in crate::commands) fn resolve_runtime_instance(
 }
 
 pub(super) fn find_runtime_target(
-    provider: &dyn Provider,
+    provider: &dyn InstanceProvider,
     config: &VmConfig,
     requested: Option<&str>,
 ) -> VmResult<Option<InstanceInfo>> {

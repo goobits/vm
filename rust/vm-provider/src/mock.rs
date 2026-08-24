@@ -1,6 +1,6 @@
 use crate::{
     CommandProvider, InstanceInfo, InstanceProvider, InstanceState, Provider, ProviderContext,
-    TempProvider, VmStatusReport,
+    ProvisioningProvider, TempProvider, VmStatusReport,
 };
 use std::path::Path;
 use vm_config::config::VmConfig;
@@ -9,43 +9,7 @@ use vm_core::error::Result;
 #[derive(Debug, Default, Clone)]
 pub struct MockProvider;
 
-impl CommandProvider for MockProvider {}
-
-impl InstanceProvider for MockProvider {
-    fn create_instance(&self, _instance_name: &str, _context: &ProviderContext) -> Result<()> {
-        Ok(())
-    }
-
-    fn list_instances(&self) -> Result<Vec<InstanceInfo>> {
-        Ok(vec![InstanceInfo {
-            name: "mock-vm".to_string(),
-            id: "mock-id".to_string(),
-            status: "running".to_string(),
-            provider: "mock".to_string(),
-            project: Some("mock".to_string()),
-            uptime: None,
-            created_at: None,
-        }])
-    }
-}
-
-impl Provider for MockProvider {
-    fn name(&self) -> &'static str {
-        "mock"
-    }
-
-    fn create(&self, _context: &ProviderContext) -> Result<()> {
-        Ok(())
-    }
-    fn start(&self, _container: Option<&str>, _context: &ProviderContext) -> Result<()> {
-        Ok(())
-    }
-    fn stop(&self, _container: Option<&str>) -> Result<()> {
-        Ok(())
-    }
-    fn destroy(&self, _container: Option<&str>, _context: &ProviderContext) -> Result<()> {
-        Ok(())
-    }
+impl CommandProvider for MockProvider {
     fn ssh(&self, _container: Option<&str>, _relative_path: &Path) -> Result<()> {
         Ok(())
     }
@@ -64,6 +28,44 @@ impl Provider for MockProvider {
         println!("Mock copy successful");
         Ok(())
     }
+}
+
+impl InstanceProvider for MockProvider {
+    fn name(&self) -> &'static str {
+        "mock"
+    }
+
+    fn create(&self, _context: &ProviderContext) -> Result<()> {
+        Ok(())
+    }
+
+    fn create_instance(&self, _instance_name: &str, _context: &ProviderContext) -> Result<()> {
+        Ok(())
+    }
+
+    fn start(&self, _container: Option<&str>, _context: &ProviderContext) -> Result<()> {
+        Ok(())
+    }
+
+    fn stop(&self, _container: Option<&str>) -> Result<()> {
+        Ok(())
+    }
+
+    fn destroy(&self, _container: Option<&str>, _context: &ProviderContext) -> Result<()> {
+        Ok(())
+    }
+
+    fn list_instances(&self) -> Result<Vec<InstanceInfo>> {
+        Ok(vec![InstanceInfo {
+            name: "mock-vm".to_string(),
+            id: "mock-id".to_string(),
+            status: "running".to_string(),
+            provider: "mock".to_string(),
+            project: Some("mock".to_string()),
+            uptime: None,
+            created_at: None,
+        }])
+    }
 
     fn status(&self, _container: Option<&str>) -> Result<VmStatusReport> {
         Ok(VmStatusReport {
@@ -81,6 +83,9 @@ impl Provider for MockProvider {
     fn restart(&self, _container: Option<&str>, _context: &ProviderContext) -> Result<()> {
         Ok(())
     }
+}
+
+impl ProvisioningProvider for MockProvider {
     fn provision(&self, _container: Option<&str>) -> Result<()> {
         Ok(())
     }
@@ -88,6 +93,9 @@ impl Provider for MockProvider {
     fn get_sync_directory(&self) -> String {
         "/tmp/mock_sync".to_string()
     }
+}
+
+impl Provider for MockProvider {
     fn as_temp_provider(&self) -> Option<&dyn TempProvider> {
         Some(self)
     }

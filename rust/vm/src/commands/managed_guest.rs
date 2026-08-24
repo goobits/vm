@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use vm_packages::ManagedClientSettings;
-use vm_provider::Provider;
+use vm_provider::CommandProvider;
 
 use crate::error::{VmError, VmResult};
 
@@ -136,7 +136,7 @@ enum RemoteSettings {
 }
 
 pub(crate) fn install_package_settings(
-    provider: &dyn Provider,
+    provider: &dyn CommandProvider,
     environment: &str,
     settings: &ManagedClientSettings,
 ) -> VmResult<()> {
@@ -153,7 +153,7 @@ pub(crate) fn install_package_settings(
 }
 
 pub(crate) fn reconcile_remote_commands(
-    provider: &dyn Provider,
+    provider: &dyn CommandProvider,
     environment: &str,
 ) -> VmResult<()> {
     match remote_settings(&controller_registry_path(), environment)? {
@@ -185,7 +185,7 @@ pub(crate) fn reconcile_remote_commands(
 }
 
 fn install(
-    provider: &dyn Provider,
+    provider: &dyn CommandProvider,
     environment: &str,
     request: &InstallRequest<'_>,
 ) -> VmResult<()> {
