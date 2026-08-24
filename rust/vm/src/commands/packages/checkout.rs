@@ -51,7 +51,7 @@ pub(super) fn cleanup_guest(
             record.restore(subject)?;
         }
     }
-    exec(subject, ["rm", "-rf", "--", root.as_str()])
+    exec(subject, ["find", root.as_str(), "-depth", "-delete"])
 }
 
 pub(super) async fn handle_guest(package: String) -> VmResult<()> {
@@ -161,10 +161,7 @@ pub(super) async fn cancel_guest() -> VmResult<()> {
             None::<String>,
         ));
     }
-    let cancelled = if matches!(
-        checkout.state,
-        WorkflowState::Cancelled | WorkflowState::Closed
-    ) {
+    let cancelled = if cleanup_ready(checkout.state) {
         checkout
     } else {
         client
@@ -197,6 +194,17 @@ pub(super) async fn cancel_guest() -> VmResult<()> {
     };
     vm_success!("Cancelled {}", closed.package);
     Ok(())
+}
+
+fn cleanup_ready(state: WorkflowState) -> bool {
+    matches!(
+        state,
+        WorkflowState::Published
+            | WorkflowState::Rejected
+            | WorkflowState::Cancelled
+            | WorkflowState::Failed
+            | WorkflowState::Closed
+    )
 }
 
 fn attach(
@@ -352,7 +360,23 @@ pub(super) fn consumer_version(
 
 #[cfg(test)]
 mod tests {
-    use super::consumer_version;
+    use super::{cleanup_ready, consumer_version};
+    use vm_packages::WorkflowState;
+
+    #[test]
+    fn rejected_checkout_can_be_cleaned_without_an_invalid_cancel_transition() {
+        for state in [
+            WorkflowState::Published,
+            WorkflowState::Rejected,
+            WorkflowState::Cancelled,
+            WorkflowState::Failed,
+            WorkflowState::Closed,
+        ] {
+            assert!(cleanup_ready(state));
+        }
+        assert!(!cleanup_ready(WorkflowState::Active));
+        assert!(!cleanup_ready(WorkflowState::NeedsChanges));
+    }
 
     #[test]
     fn source_only_checkout_does_not_require_a_consumer_dependency() {

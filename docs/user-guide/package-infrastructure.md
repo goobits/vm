@@ -229,7 +229,9 @@ and consumer checks for the life of that checkout.
 Cancellation first restores any development override and removes the guest
 copy, then closes the durable checkout. If local restoration fails, the
 checkout remains cancelled rather than closed; correct the reported local
-problem and rerun `vm packages cancel` from the checkout source.
+problem and rerun `vm packages cancel` from the checkout source. A rejected or
+failed checkout skips the invalid cancellation transition and proceeds directly
+through the same managed cleanup path.
 
 That resumable command submits the exact Git bundle, waits for isolated review,
 integrates against the latest canonical source, reruns checks, and lets

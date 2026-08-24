@@ -65,6 +65,10 @@ None.
 
 ## Verification Log
 
+- 2026-08-24: Rejected and failed guest checkouts now proceed directly through
+  supported terminal cleanup rather than attempting an invalid transition to
+  `cancelled`; guest removal uses the validated checkout root without recursive
+  force deletion.
 - 2026-08-24: Removed the equipped-host Docker, Tart, multi-worker, and final
   matrix acceptance gates from tracked release scope at owner direction. They
   were dropped, not recorded as completed verification.
