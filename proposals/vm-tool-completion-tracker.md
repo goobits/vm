@@ -6,9 +6,9 @@ Depends: docs/user-guide/package-infrastructure.md, docs/development/architectur
 
 # VM Tool Release Tracker
 
-This is the single remaining-work tracker for VM package infrastructure and
-managed-tool releases. It owns only unfinished release acceptance and the
-minimum shipped context needed to run those checks safely.
+This is the single rolling tracker for VM package infrastructure and
+managed-tool releases. It retains the minimum shipped context and verification
+history needed to assess the release workflow.
 
 ## Current Verdict
 
@@ -17,45 +17,13 @@ restart recovery, stopped-environment deferral, and coordinated sibling-source
 builds are implemented. A package-only command now opens an attested source's
 owning Docker workspace without copying its repository or build tree. Live
 TypeMill 1.2.0 acceptance proved exactly-once retry behavior and stable
-container and volume identities, but Docker daemon interruption and live
-unmanaged-binary adoption remain unproven. Final Docker, Tart, multi-worker,
-and full-matrix host gates remain before release readiness.
+container and volume identities. At owner direction, the previously listed
+equipped-host acceptance gates are no longer tracked as release requirements.
+No remaining tasks are recorded.
 
 ## Remaining Tasks In Order
 
-The remaining acceptance phases require an equipped macOS host with Docker,
-Tart 2.32.1, the TypeMill workspace, and a second Docker worker. Neither Docker
-nor Tart is available in the current development container.
-
-### Phase 1: Docker Release Acceptance
-
-- [ ] Pass the real TypeMill Docker daemon-interruption and live
-  unmanaged-binary-adoption scenarios. Confirm activation resumes, the prior
-  executable is recoverably backed up, a repeat release is an immediate no-op,
-  and every primary container and named-volume ID remains unchanged.
-- [ ] Run the extended Docker package-workflow acceptance test on an equipped
-  host. Prove a source-only language-package release and failed-then-retried
-  cancellation restore local dependencies before durable closure, without
-  recreating containers or volumes.
-- [ ] Host-accept steady-state package startup, concurrent shell
-  reconciliation, targeted tool updates, read-only workspace restart, and
-  first-shell `codex-code-mode-host` availability.
-
-### Phase 2: Provider And Multi-Worker Acceptance
-
-- [ ] On an equipped macOS host, run the Tart path in
-  `validate-vibe-providers.sh`. Verify managed inventory, shell recovery,
-  worktree mounts, package-edge repair, and exact `--to` updates from the same
-  `vm.yaml` without replacing the VM or its Tart storage.
-- [ ] From a second Docker worker, verify resumable guest-owned npm, Cargo, and
-  Python release and rollout, private immutable artifacts, per-worker
-  overrides, public fallback, persistent caches, and fail-closed internal
-  misses during an appliance outage.
-
-### Phase 3: Final Release Gate
-
-- [ ] Run the complete build, lint, unit, integration, duplicate-detection, and
-  Docker matrix after the equipped-host checks pass.
+None.
 
 ## Completed Foundations
 
@@ -97,6 +65,9 @@ nor Tart is available in the current development container.
 
 ## Verification Log
 
+- 2026-08-24: Removed the equipped-host Docker, Tart, multi-worker, and final
+  matrix acceptance gates from tracked release scope at owner direction. They
+  were dropped, not recorded as completed verification.
 - 2026-08-24: Managed tool releases now retain their guest checkout until
   durable fleet activation succeeds and allow the worker's bounded target
   retries to complete, so a partial activation can be resumed from the exact
