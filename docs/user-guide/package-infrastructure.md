@@ -405,6 +405,12 @@ select versions through the one-level `tools:` map in `vm.yaml`. A collection
 such as `agent-skills` is one atomic version, even when it activates into
 several agent directories.
 
+An already-published workspace commit is a receipt-backed no-op: it does not
+create a checkout, rebuild, or republish. If an interrupted duplicate checkout
+exists for that exact commit, the retry closes and cleans it first. A new
+commit that keeps an already-published binary version is rejected before the
+isolated build starts.
+
 Binary tools use a versioned, argument-safe manifest. A credential-separated
 builder builds each declared target from the submitted source bundle, validates
 the archive and executable links, and stages immutable content-addressed bytes.

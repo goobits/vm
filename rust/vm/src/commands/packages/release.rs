@@ -20,12 +20,23 @@ pub(super) async fn handle_guest() -> VmResult<()> {
     let mut workspace = None;
     let resolved_checkout_id = match subject.current_checkout_id()? {
         Some(checkout_id) => checkout_id,
-        None => {
-            let prepared = workspace::prepare(&subject).await?;
-            let checkout_id = prepared.checkout_id.clone();
-            workspace = Some(prepared);
-            checkout_id
-        }
+        None => match workspace::prepare(&subject).await? {
+            workspace::WorkspacePreparation::Published {
+                release,
+                source_kind,
+            } => {
+                vm_success!("Released {}@{}", release.package, release.version);
+                if source_kind != SourceKind::Package {
+                    wait_for_tool_activation(&subject.client()?, &release.release_id).await?;
+                }
+                return Ok(());
+            }
+            workspace::WorkspacePreparation::Pending(prepared) => {
+                let checkout_id = prepared.checkout_id.clone();
+                workspace = Some(prepared);
+                checkout_id
+            }
+        },
     };
     let checkout_id = resolved_checkout_id.as_str();
     let client = subject.client()?;

@@ -266,34 +266,42 @@ async fn submit_workspace_commit(
     let scratch = format!("{root}/workspace-validation");
     exec(subject, ["rm", "-rf", "--", scratch.as_str()])?;
     exec(subject, ["rm", "-f", "--", bundle.as_str()])?;
-    exec(
-        subject,
-        [
-            "git",
-            "-C",
-            source,
-            "bundle",
-            "create",
-            bundle.as_str(),
-            "HEAD",
-        ],
-    )?;
-    exec(subject, ["git", "clone", bundle.as_str(), scratch.as_str()])?;
-    vm_progress!("Running checks from an isolated copy of the canonical workspace...");
-    let consumers = run_checks(subject, &client, checkout, &scratch, subject.consumer()).await?;
-    if upload {
-        upload_bundle(
+    let result = async {
+        exec(
             subject,
-            subject.gateway(),
-            &checkout.checkout_id,
-            subject.consumer(),
-            &root,
-            &bundle,
+            [
+                "git",
+                "-C",
+                source,
+                "bundle",
+                "create",
+                bundle.as_str(),
+                "HEAD",
+            ],
         )?;
+        exec(subject, ["git", "clone", bundle.as_str(), scratch.as_str()])?;
+        vm_progress!("Running checks from an isolated copy of the canonical workspace...");
+        let consumers =
+            run_checks(subject, &client, checkout, &scratch, subject.consumer()).await?;
+        if upload {
+            upload_bundle(
+                subject,
+                subject.gateway(),
+                &checkout.checkout_id,
+                subject.consumer(),
+                &root,
+                &bundle,
+            )?;
+        }
+        let submission = client.checkout_submission(&checkout.checkout_id).await?;
+        Ok::<_, VmError>((submission, consumers))
     }
-    let submission = client.checkout_submission(&checkout.checkout_id).await?;
-    exec(subject, ["rm", "-rf", "--", scratch.as_str()])?;
-    exec(subject, ["rm", "-f", "--", bundle.as_str()])?;
+    .await;
+    let scratch_cleanup = exec(subject, ["rm", "-rf", "--", scratch.as_str()]);
+    let bundle_cleanup = exec(subject, ["rm", "-f", "--", bundle.as_str()]);
+    let (submission, consumers) = result?;
+    scratch_cleanup?;
+    bundle_cleanup?;
     validate(&client, submission, consumers, "workspace-agent").await
 }
 

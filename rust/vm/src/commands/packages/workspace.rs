@@ -2,13 +2,14 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use vm_packages::{
-    repository_urls_equivalent, CheckoutRecord, CreateCheckout, PackageDefinition, SourceKind,
-    ToolDefinition, ToolKind, WorkflowState,
+    repository_urls_equivalent, CheckoutRecord, CleanupRequest, CreateCheckout, PackageDefinition,
+    ReleaseRecord, SourceKind, ToolDefinition, ToolKind, TransitionRequest, WorkflowState,
 };
 
 use crate::error::{VmError, VmResult};
 
 use super::{
+    checkout,
     discovery::{normalize_repository_url, package_name, tool_manifest},
     runtime::{checkout_root, copy_private, exec_output, write_checkout_access, GuestRuntime},
 };
@@ -20,6 +21,14 @@ pub(super) struct WorkspaceRelease {
     pub(super) source: String,
     state_path: PathBuf,
     state: WorkspaceReleaseState,
+}
+
+pub(super) enum WorkspacePreparation {
+    Published {
+        release: vm_packages::ReleaseRecord,
+        source_kind: SourceKind,
+    },
+    Pending(WorkspaceRelease),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -51,7 +60,7 @@ impl WorkspaceRelease {
     }
 }
 
-pub(super) async fn prepare(subject: &GuestRuntime) -> VmResult<WorkspaceRelease> {
+pub(super) async fn prepare(subject: &GuestRuntime) -> VmResult<WorkspacePreparation> {
     let source = git_root(subject)?;
     ensure_clean(subject, &source)?;
     let head = git_output(subject, &source, ["rev-parse", "--verify", "HEAD^{commit}"])?;
@@ -81,9 +90,19 @@ pub(super) async fn prepare(subject: &GuestRuntime) -> VmResult<WorkspaceRelease
         ))[..32]
     );
     let state_path = subject.request_state_path(&key)?;
-    let mut state = load_state(&state_path)?
-        .filter(|state| state_matches(state, &registered, &repository))
-        .unwrap_or_else(|| new_state(&registered.name, &repository, &head));
+    let saved_state =
+        load_state(&state_path)?.filter(|state| state_matches(state, &registered, &repository));
+    if let Some(release) = matching_release(client.releases().await?, &registered.name, &head) {
+        if let Some(state) = saved_state.as_ref() {
+            cleanup_redundant_checkout(subject, &client, &registered, &release, state, &state_path)
+                .await?;
+        }
+        return Ok(WorkspacePreparation::Published {
+            release,
+            source_kind: registered.kind,
+        });
+    }
+    let mut state = saved_state.unwrap_or_else(|| new_state(&registered.name, &repository, &head));
 
     let existing = match state.checkout_id.as_deref() {
         Some(checkout_id) => client.checkout(checkout_id).await.ok(),
@@ -112,12 +131,104 @@ pub(super) async fn prepare(subject: &GuestRuntime) -> VmResult<WorkspaceRelease
     validate_checkout(subject, &checkout, &registered)?;
     let root = checkout_root(subject, &checkout.checkout_id)?;
     write_checkout_access(subject, &root, &state.lease_token)?;
-    Ok(WorkspaceRelease {
+    Ok(WorkspacePreparation::Pending(WorkspaceRelease {
         checkout_id: checkout.checkout_id,
         source,
         state_path,
         state,
-    })
+    }))
+}
+
+async fn cleanup_redundant_checkout(
+    subject: &GuestRuntime,
+    client: &vm_packages::PackageInfrastructureClient,
+    registered: &RegisteredSource,
+    release: &ReleaseRecord,
+    state: &WorkspaceReleaseState,
+    state_path: &Path,
+) -> VmResult<()> {
+    let Some(checkout_id) = state.checkout_id.as_deref() else {
+        remove_state(state_path)?;
+        return Ok(());
+    };
+    let checkout = client.checkout(checkout_id).await?;
+    if !redundant_checkout_matches(subject.consumer(), registered, release, state, &checkout) {
+        return Ok(());
+    }
+    let terminal = if checkout.state.revokes_lease() {
+        checkout
+    } else {
+        client
+            .transition(
+                checkout_id,
+                &TransitionRequest {
+                    next: WorkflowState::Cancelled,
+                    actor: checkout.agent.clone(),
+                    reason: "canonical workspace commit is already published".into(),
+                    commit: None,
+                    validation_result: Some("published_source_noop".into()),
+                    idempotency_key: format!("cancel-published-{checkout_id}"),
+                },
+            )
+            .await?
+    };
+    checkout::cleanup_guest(subject, &terminal)?;
+    client
+        .cleanup_checkout(
+            checkout_id,
+            &CleanupRequest {
+                actor: terminal.agent,
+                idempotency_key: format!("guest-cleanup-published-{checkout_id}"),
+            },
+        )
+        .await?;
+    remove_state(state_path)
+}
+
+fn redundant_checkout_matches(
+    consumer: &str,
+    registered: &RegisteredSource,
+    release: &ReleaseRecord,
+    state: &WorkspaceReleaseState,
+    checkout: &CheckoutRecord,
+) -> bool {
+    state.source_commit.trim() == release.source_commit
+        && checkout.workspace_release
+        && checkout.package == registered.name
+        && checkout.source_kind == registered.kind
+        && checkout.base_commit.as_deref() == Some(release.source_commit.as_str())
+        && checkout
+            .consumers
+            .iter()
+            .any(|candidate| candidate == consumer)
+}
+
+fn remove_state(path: &Path) -> VmResult<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(VmError::filesystem(
+            error,
+            path.display().to_string(),
+            "remove completed workspace release state",
+        )),
+    }
+}
+
+fn matching_release(
+    releases: Vec<vm_packages::ReleaseRecord>,
+    source: &str,
+    head: &str,
+) -> Option<vm_packages::ReleaseRecord> {
+    let head = head.trim();
+    releases
+        .into_iter()
+        .filter(|release| {
+            release.package == source
+                && release.source_commit == head
+                && release.state == WorkflowState::Published
+        })
+        .max_by_key(|release| release.created_at)
 }
 
 async fn create_checkout(
@@ -329,9 +440,105 @@ fn save_state(subject: &GuestRuntime, path: &Path, state: &WorkspaceReleaseState
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use vm_packages::{PackageEcosystem, ToolSourceManifest};
+    use vm_packages::{PackageEcosystem, ReleaseRecord, ToolSourceManifest};
 
     use super::*;
+
+    fn release(package: &str, commit: &str, state: WorkflowState) -> ReleaseRecord {
+        let now = Utc::now();
+        ReleaseRecord {
+            release_id: format!("release-{package}"),
+            submission_id: "submission-1".into(),
+            checkout_id: "checkout-1".into(),
+            package: package.into(),
+            version: "1.2.0".into(),
+            source_repository: "ssh://git@example.com/example/tool.git".into(),
+            source_commit: commit.into(),
+            tag: "v1.2.0".into(),
+            artifact_digest: "a".repeat(64),
+            source_pushed: true,
+            source_archive_digest: None,
+            registry: "http://gateway/tools/example".into(),
+            expected_publications: Vec::new(),
+            publications: Vec::new(),
+            state,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn published_workspace_head_resolves_existing_release() {
+        let head = "a".repeat(40);
+        let matched = matching_release(
+            vec![
+                release("typemill", &head, WorkflowState::Published),
+                release("typemill", &"b".repeat(40), WorkflowState::Published),
+                release("other", &head, WorkflowState::Published),
+            ],
+            "typemill",
+            &format!("{head}\n"),
+        )
+        .unwrap();
+
+        assert_eq!(matched.package, "typemill");
+        assert_eq!(matched.source_commit, head);
+    }
+
+    #[test]
+    fn published_source_matches_only_its_redundant_workspace_checkout() {
+        let head = "a".repeat(40);
+        let release = release("typemill", &head, WorkflowState::Published);
+        let registered = RegisteredSource {
+            name: "typemill".into(),
+            kind: SourceKind::ToolBinary,
+        };
+        let state = WorkspaceReleaseState {
+            schema: STATE_SCHEMA,
+            source: "typemill".into(),
+            repository: "ssh://git@example.com/example/tool.git".into(),
+            lease_token: "x".repeat(48),
+            idempotency_key: "workspace-release".into(),
+            checkout_id: Some("checkout-1".into()),
+            source_commit: format!("{head}\n"),
+        };
+        let now = Utc::now();
+        let checkout = CheckoutRecord {
+            checkout_id: "checkout-1".into(),
+            package: "typemill".into(),
+            source_kind: SourceKind::ToolBinary,
+            agent: "typemill".into(),
+            consumers: vec!["typemill".into()],
+            task: "release canonical workspace".into(),
+            workspace_release: true,
+            source_only: false,
+            initial_release: false,
+            state: WorkflowState::Active,
+            base_branch: Some("main".into()),
+            base_commit: Some(head.clone()),
+            branch: Some("workspace/checkout-1".into()),
+            worktree: Some("/data/agents/checkout-1/source".into()),
+            lease: None,
+            created_at: now,
+            updated_at: now,
+            transitions: Vec::new(),
+        };
+
+        assert!(redundant_checkout_matches(
+            "typemill",
+            &registered,
+            &release,
+            &state,
+            &checkout
+        ));
+        assert!(!redundant_checkout_matches(
+            "another-environment",
+            &registered,
+            &release,
+            &state,
+            &checkout
+        ));
+    }
 
     #[test]
     fn registered_workspace_requires_canonical_remote_identity_and_attestation() {

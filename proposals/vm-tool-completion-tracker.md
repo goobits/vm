@@ -183,7 +183,7 @@ language-package consumer rollout.
   container/volume identity assertions.
 - [ ] Pass the real TypeMill Docker interruption, adoption, stable-ID, and
   repeat-release acceptance gate.
-- [ ] Reject a newer source commit that retains an already-published version
+- [x] Reject a newer source commit that retains an already-published version
   before starting its isolated binary build.
 - [x] Reduce the primary guide to global enrollment followed by bare release.
 
@@ -200,12 +200,17 @@ running project containers retained their exact IDs and named volumes while
 their authenticated guest clients updated in place; CodeAtlas 0.10.0 and
 TypeMill 1.1.0 remained consumable in every environment.
 
-The TypeMill release attempt stopped without publication because current HEAD
-`114b046f` is newer than the published source while still declaring 1.1.0. The
-immutable-version decision was correct, but happened after a four-minute
-binary build; the early version check above remains open. A new authorized
-version is still required to prove publication-created activation and complete
-the interruption/restart gate.
+Live Docker acceptance on 2026-08-24 published TypeMill 1.2.0 privately from
+source commit `6c1d01d29390c576e8d43c38d6738af9736e0a79`. Version and review bump
+failures both returned before the isolated binary build. The durable host
+worker activated all seven initially running environments, deferred fifteen
+stopped environments, and activated CodeAtlas through its normal start path.
+All eight inspected primary container IDs and their named-volume sets remained
+identical. Recreating the package workflow service preserved the activation
+record. A duplicate release closed its redundant active checkout and removed
+its guest staging/state, then a clean receipt-backed retry completed in 0.02
+seconds without checkout, build, or publication. The remaining TypeMill gate
+is limited to a Docker-daemon interruption and live unmanaged-binary adoption.
 
 ## Remaining Acceptance
 
