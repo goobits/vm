@@ -649,6 +649,18 @@ async fn initial_managed_checkout_submits_its_canonical_head_without_an_empty_co
         )
         .await
         .unwrap();
+    source.restore_checkout(&store, &active).await.unwrap();
+    let restored_source = data
+        .join("agents")
+        .join(&prepared.checkout_id)
+        .join("source");
+    let submission_ref = format!("refs/submissions/{}", &canonical_head[..16]);
+    git(&restored_source, &["update-ref", "-d", &submission_ref]);
+    source.restore_checkout(&store, &active).await.unwrap();
+    assert_eq!(
+        git_output(&restored_source, &["rev-parse", &submission_ref]),
+        canonical_head
+    );
     let integrated = source
         .prepare_integration(
             &store,
