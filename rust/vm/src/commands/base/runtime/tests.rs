@@ -506,64 +506,6 @@ fn codex_repair_refuses_an_unmanaged_launcher() {
 
 #[cfg(unix)]
 #[test]
-fn codex_repair_migrates_the_legacy_nvm_launcher() {
-    let directory = TempDir::new().unwrap();
-    let prefix = directory.path().join("prefix");
-    let bin = prefix.join("bin");
-    let legacy = directory
-        .path()
-        .join("home/.nvm/versions/node/v22/bin/codex");
-    fs::create_dir_all(&bin).unwrap();
-    fs::create_dir_all(legacy.parent().unwrap()).unwrap();
-    write_executable(&legacy, "#!/bin/sh\nprintf '%s\\n' legacy\n");
-    std::os::unix::fs::symlink(&legacy, bin.join("codex")).unwrap();
-    let installer = fake_codex_installer(&directory);
-    let package = fake_codex_package(&directory, "1.0.0");
-
-    let output = run_codex_repair(&directory, &prefix, &installer, &package, None);
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(
-        fs::read_link(bin.join("codex")).unwrap(),
-        prefix.join("lib/vm-ai-tools/codex")
-    );
-}
-
-#[cfg(unix)]
-#[test]
-fn codex_repair_migrates_the_official_user_standalone_launcher() {
-    let directory = TempDir::new().unwrap();
-    let prefix = directory.path().join("prefix");
-    let user_bin = directory.path().join("home/.local/bin");
-    let legacy = directory
-        .path()
-        .join("home/.codex/packages/standalone/current/bin/codex");
-    fs::create_dir_all(&user_bin).unwrap();
-    fs::create_dir_all(legacy.parent().unwrap()).unwrap();
-    write_executable(&legacy, "#!/bin/sh\nprintf '%s\\n' legacy\n");
-    std::os::unix::fs::symlink(&legacy, user_bin.join("codex")).unwrap();
-    let installer = fake_codex_installer(&directory);
-    let package = fake_codex_package(&directory, "1.0.0");
-
-    let output = run_codex_repair(&directory, &prefix, &installer, &package, None);
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(
-        fs::read_link(user_bin.join("codex")).unwrap(),
-        prefix.join("lib/vm-ai-tools/codex")
-    );
-}
-
-#[cfg(unix)]
-#[test]
 fn codex_repair_refuses_an_unmanaged_user_launcher() {
     let directory = TempDir::new().unwrap();
     let prefix = directory.path().join("prefix");

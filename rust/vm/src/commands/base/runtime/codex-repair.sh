@@ -78,43 +78,15 @@ require_managed_launcher() {
   return 1
 }
 
-legacy_nvm_codex_launcher() {
-  launcher=$1
-  if ! run_install test -L "$launcher"; then
-    return 1
-  fi
-  launcher_target="$(run_install readlink "$launcher")"
-  case "$launcher_target" in
-    "$user_home"/.nvm/versions/node/v*/bin/codex)
-      run_install test -x "$launcher_target"
-      ;;
-    *) return 1 ;;
-  esac
-}
-
-legacy_user_codex_launcher() {
-  launcher=$1
-  if ! test -L "$launcher"; then
-    return 1
-  fi
-  launcher_target="$(readlink "$launcher")"
-  test "$launcher_target" = \
-    "$user_home/.codex/packages/standalone/current/bin/codex"
-}
-
-if ! legacy_nvm_codex_launcher "$bin_root/codex"; then
-  require_managed_launcher \
-    "$bin_root/codex" "$root/codex" "$target/bin/codex"
-fi
+require_managed_launcher \
+  "$bin_root/codex" "$root/codex" "$target/bin/codex"
 require_managed_launcher \
   "$bin_root/codex-code-mode-host" \
   "$root/codex-code-mode-host" "$target/bin/codex-code-mode-host"
 mkdir -p "$user_bin"
-if ! legacy_user_codex_launcher "$user_bin/codex"; then
-  require_managed_launcher \
-    "$user_bin/codex" \
-    "$root/codex" "$target/bin/codex" "$bin_root/codex"
-fi
+require_managed_launcher \
+  "$user_bin/codex" \
+  "$root/codex" "$target/bin/codex" "$bin_root/codex"
 require_managed_launcher \
   "$user_bin/codex-code-mode-host" \
   "$root/codex-code-mode-host" "$target/bin/codex-code-mode-host" \

@@ -35,7 +35,7 @@ fn with_buildkit<A: AsRef<OsStr>>(command: &str, args: &[A]) -> duct::Expression
     cmd_builder
 }
 
-/// The original simple command streamer for backward compatibility.
+/// Stream command output through tracing without a timeout.
 pub fn stream_command<A: AsRef<OsStr>>(command: &str, args: &[A]) -> Result<()> {
     stream_command_with_timeout(command, args, None)
 }

@@ -16,7 +16,7 @@ pub mod compose;
 pub mod lifecycle;
 mod preview;
 
-// Re-export the main types and functions for backwards compatibility
+// Re-export the main container-provider types and functions.
 pub use build::BuildOperations;
 pub use command::ContainerOps;
 pub use engine::ContainerEngine;

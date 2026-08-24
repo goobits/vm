@@ -102,7 +102,6 @@
             terminal_colors: "{{ terminal_themes[project_config.terminal.theme | default('dracula')].colors | default(terminal_themes.dracula.colors) }}"
             project_ports: "{{ project_config.ports | default({}) | dict2items }}"
             home_dir: "/home/{{ project_config.vm.user | default(default_user) }}"
-            # Gemini remains a deprecated input alias for Antigravity.
             claude_sync_enabled: "{{ (ai_sync_all_enabled or ai_sync_tools.get('claude', false)) | bool }}"
             antigravity_sync_enabled: "{{ (ai_sync_all_enabled or ai_sync_tools.get('antigravity', false)) | bool }}"
             codex_sync_enabled: "{{ (ai_sync_all_enabled or ai_sync_tools.get('codex', false)) | bool }}"
@@ -489,12 +488,6 @@
             group: '{{ project_user_group }}'
             mode: '0644'
         become_user: root
-
-      - name: Remove legacy per-shell worktree repair hook
-        file:
-            path: /etc/profile.d/vm-worktree-repair.sh
-            state: absent
-        when: is_docker_container
 
       # Layered provisioning: works for both fresh builds and snapshots.
       - name: Install additional APT packages

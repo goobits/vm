@@ -45,9 +45,6 @@ pub enum VmError {
     #[error("Serialization error: {0}")]
     Serialization(String),
 
-    #[error("Migration error: {0}")]
-    Migration(String),
-
     #[error("Validation error: {0}")]
     Validation(String),
 

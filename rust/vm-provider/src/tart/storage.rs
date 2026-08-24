@@ -13,12 +13,10 @@ const STATE_FILE: &str = "instances.json";
 const LOCK_FILE: &str = "instances.lock";
 
 #[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct StorageState {
-    #[serde(default)]
     managed: BTreeSet<String>,
-    #[serde(default)]
     instances: BTreeMap<String, PathBuf>,
-    #[serde(default)]
     configs: BTreeMap<String, PathBuf>,
 }
 
@@ -321,12 +319,10 @@ mod tests {
     }
 
     #[test]
-    fn older_storage_state_defaults_missing_config_ownership() {
-        let state: StorageState =
-            serde_json::from_str(r#"{"instances":{"demo":"/tmp/tart"}}"#).unwrap();
-        assert_eq!(state.instances["demo"], PathBuf::from("/tmp/tart"));
-        assert!(state.managed.is_empty());
-        assert!(state.configs.is_empty());
+    fn incomplete_storage_state_is_rejected() {
+        assert!(
+            serde_json::from_str::<StorageState>(r#"{"instances":{"demo":"/tmp/tart"}}"#).is_err()
+        );
     }
 
     #[test]

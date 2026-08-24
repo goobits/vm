@@ -10,7 +10,7 @@ if [[ $# -eq 0 ]]; then
 fi
 
 install_tool() {
-  local executable installer shell shell_arg legacy_package
+  local executable installer shell shell_arg
   shell_arg=""
 
   case "$1" in
@@ -18,20 +18,17 @@ install_tool() {
       executable=agy
       installer=https://antigravity.google/cli/install.sh
       shell=bash
-      legacy_package=@google/gemini-cli
       ;;
     claude)
       executable=claude
       installer=https://claude.ai/install.sh
       shell=bash
       shell_arg=stable
-      legacy_package=@anthropic-ai/claude-code
       ;;
     codex)
       executable=codex
       installer=https://chatgpt.com/codex/install.sh
       shell=sh
-      legacy_package=@openai/codex
       ;;
     *)
       echo "Unsupported Vibe AI tool: $1" >&2
@@ -83,10 +80,6 @@ install_tool() {
       /usr/local/bin/codex-code-mode-host
     test -x /usr/local/bin/codex-code-mode-host
     /usr/local/bin/codex --version >/dev/null
-  fi
-
-  if command -v npm >/dev/null 2>&1; then
-    npm uninstall -g "$legacy_package" >/dev/null 2>&1 || true
   fi
 }
 
