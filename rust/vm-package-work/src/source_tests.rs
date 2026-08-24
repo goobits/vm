@@ -618,6 +618,53 @@ async fn initial_managed_checkout_submits_its_canonical_head_without_an_empty_co
     )
     .unwrap();
     assert!(diff.contains("Cargo.toml"));
+    store
+        .validate_submission(
+            &submission.submission_id,
+            ValidationRequest {
+                package: CheckOutcome::Passed,
+                consumers: Default::default(),
+                actor: "agent-1".into(),
+                idempotency_key: "validate-initial-managed".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let approved = store
+        .record_review(
+            &submission.submission_id,
+            ReviewRequest {
+                decision: ReviewDecision::Approve,
+                recommended_version: VersionRecommendation::Patch,
+                api_diff: PublicApiDiff {
+                    changed_paths: vec!["Cargo.toml".into()],
+                    potentially_breaking: false,
+                },
+                reason: "initial managed release is valid".into(),
+                required_followups: Vec::new(),
+                merge_strategy: "rebase".into(),
+                reviewer: "reviewer".into(),
+                idempotency_key: "review-initial-managed".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let integrated = source
+        .prepare_integration(
+            &store,
+            &approved,
+            IntegrationRequest {
+                actor: "agent-1".into(),
+                strategy: "rebase".into(),
+                idempotency_key: "integrate-initial-managed".into(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        integrated.integration.unwrap().integration_commit,
+        canonical_head
+    );
 }
 
 #[tokio::test]

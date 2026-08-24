@@ -92,6 +92,9 @@ available in the current development container.
 
 ## Verification Log
 
+- 2026-08-24: Initial managed-checkout coverage now proceeds through validation,
+  approval, restoration, and integration, proving the durable submission ref is
+  recovered after the appliance compacts the imported checkout.
 - 2026-08-24: Managed-source regression coverage proved that an unpublished
   tool's first checkout submits its canonical committed tree as the initial
   full-tree release without manufacturing an empty commit.

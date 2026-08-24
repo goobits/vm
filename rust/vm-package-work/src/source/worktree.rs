@@ -254,6 +254,17 @@ impl SourceManager {
                     "reset restored checkout to submitted commit",
                 )
                 .await?;
+                let submission_ref = format!("refs/submissions/{key}");
+                run(
+                    self.git()
+                        .arg("-C")
+                        .arg(&temporary)
+                        .arg("update-ref")
+                        .arg(submission_ref)
+                        .arg(&submission.submitted_commit),
+                    "restore submitted checkout ref",
+                )
+                .await?;
             }
             run(
                 self.git()
