@@ -419,6 +419,20 @@ fn package_checkout_parses_isolated_work_request() {
 }
 
 #[test]
+fn package_open_parses_direct_workspace_request() {
+    assert!(matches!(
+        Args::parse_from(["vm", "packages", "open", "auth"]).command,
+        Command::Packages {
+            command: PackagesSubcommand::Open { source }
+        } if source == "auth"
+    ));
+    assert!(
+        Args::try_parse_from(["vm", "packages", "open", "auth", "--environment", "other",])
+            .is_err()
+    );
+}
+
+#[test]
 fn package_cancel_parses_directory_inferred_workflow() {
     assert!(matches!(
         Args::parse_from(["vm", "packages", "cancel"]),

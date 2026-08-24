@@ -35,6 +35,20 @@ fn dry_run_redacts_secret_values_and_changes_nothing() {
 }
 
 #[test]
+fn package_open_dry_run_names_the_direct_owner_without_creating_state() {
+    let temp_dir = TempDir::new().unwrap();
+    let output = run(&temp_dir, &["--dry-run", "packages", "open", "auth"]);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(output.status.success(), "{stderr}");
+    assert!(stdout.contains("original workspace for 'auth'"), "{stdout}");
+    assert!(stdout.contains("owning Docker environment"), "{stdout}");
+    assert!(stdout.contains("No changes made."), "{stdout}");
+    assert!(!temp_dir.path().join(".vm").exists());
+}
+
+#[test]
 fn managed_guest_guard_precedes_dry_run_and_prints_the_exact_host_command() {
     let temp_dir = TempDir::new().unwrap();
     let output = Command::new(cargo_bin!("vm"))

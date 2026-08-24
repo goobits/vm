@@ -18,6 +18,7 @@ mod sources;
 mod state;
 mod submission;
 pub(in crate::commands) mod tooling;
+mod work_session;
 mod workspace;
 
 use std::path::PathBuf;
@@ -202,7 +203,8 @@ pub(super) async fn handle(
     let _operation_lock = match &command {
         PackagesSubcommand::Backups
         | PackagesSubcommand::Backup
-        | PackagesSubcommand::Restore { .. } => None,
+        | PackagesSubcommand::Restore { .. }
+        | PackagesSubcommand::Open { .. } => None,
         PackagesSubcommand::Init { .. }
         | PackagesSubcommand::Up { .. }
         | PackagesSubcommand::Down => Some(files.acquire_lifecycle_lock()?),
@@ -280,6 +282,7 @@ pub(super) async fn handle(
             consumer::show_consumers(&files, &package).await
         }
         PackagesSubcommand::Drift => consumer::show_drift(&files).await,
+        PackagesSubcommand::Open { source } => work_session::open(&files, source, profile).await,
         PackagesSubcommand::Checkout { source } => Err(VmError::validation(
             "Managed source checkout runs inside a managed VM",
             Some(format!(

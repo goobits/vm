@@ -102,6 +102,11 @@ pub enum PackagesSubcommand {
     Consumers { package: String },
     /// Show package-version drift across registered consumers
     Drift,
+    /// Open an attested package or tool in its owning Docker workspace without copying it
+    Open {
+        #[arg(value_name = "SOURCE")]
+        source: String,
+    },
     /// Create or resume an isolated package or tool checkout in this managed guest
     Checkout {
         #[arg(value_name = "SOURCE")]

@@ -3,7 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use vm_packages::{
-    PackageDefinition, PackageEcosystem, RegisterPackage, RegisterTool, ToolDefinition,
+    repository_urls_equivalent, PackageDefinition, PackageEcosystem, RegisterPackage, RegisterTool,
+    SourceKind, ToolDefinition, ToolKind,
 };
 use walkdir::{DirEntry, WalkDir};
 
@@ -40,6 +41,12 @@ pub(super) struct LocalSource {
 pub(super) enum SourceRequest {
     Package(RegisterPackage),
     Tool(RegisterTool),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct RegisteredSource {
+    pub(super) name: String,
+    pub(super) kind: SourceKind,
 }
 
 #[derive(Default)]
@@ -119,7 +126,7 @@ pub(super) fn discover_canonical(
                 .map_err(|error| {
                     VmError::filesystem(error, target, "resolve canonical package source")
                 })
-                .and_then(|root| discover_registered_source(&root, packages, tools))
+                .and_then(|root| discover_catalog_source(&root, packages, tools))
         };
         match result {
             Ok(source) => discovery.push(source),
@@ -133,7 +140,7 @@ pub(super) fn discover_canonical(
     discovery
 }
 
-fn discover_registered_source(
+fn discover_catalog_source(
     root: &Path,
     packages: &[PackageDefinition],
     tools: &[ToolDefinition],
@@ -173,6 +180,86 @@ fn discover_registered_source(
             Some("Remove duplicate source registrations, then retry"),
         )),
     }
+}
+
+pub(super) fn resolve_registered_source_at(
+    root: &Path,
+    packages: &[PackageDefinition],
+    tools: &[ToolDefinition],
+) -> VmResult<RegisteredSource> {
+    let repository = normalize_repository_url(&exact_repository(root)?.origin_url)?;
+    resolve_registered_source(root, &repository, packages, tools)
+}
+
+pub(super) fn resolve_registered_source(
+    root: &Path,
+    repository: &str,
+    packages: &[PackageDefinition],
+    tools: &[ToolDefinition],
+) -> VmResult<RegisteredSource> {
+    let packages = packages
+        .iter()
+        .filter(|package| repository_urls_equivalent(&package.repository, repository))
+        .collect::<Vec<_>>();
+    let tools = tools
+        .iter()
+        .filter(|tool| repository_urls_equivalent(&tool.repository, repository))
+        .collect::<Vec<_>>();
+    if packages.len() + tools.len() != 1 {
+        let message = if packages.is_empty() && tools.is_empty() {
+            "Workspace Git origin is not registered in the package catalog".to_string()
+        } else {
+            "Workspace Git origin is ambiguous in the package catalog".to_string()
+        };
+        return Err(VmError::validation(
+            message,
+            Some("Run `vm packages doctor --fix` on the controller host"),
+        ));
+    }
+    if let Some(package) = packages.first() {
+        if !package.workspace_release {
+            return Err(unattested_workspace());
+        }
+        let actual = package_name(root, package.ecosystem)?;
+        if actual != package.name {
+            return Err(VmError::validation(
+                format!(
+                    "Workspace package identity '{actual}' does not match registered source '{}'",
+                    package.name
+                ),
+                Some("Run `vm packages doctor --fix` on the controller host"),
+            ));
+        }
+        return Ok(RegisteredSource {
+            name: package.name.clone(),
+            kind: SourceKind::Package,
+        });
+    }
+    let tool = tools[0];
+    if !tool.workspace_release {
+        return Err(unattested_workspace());
+    }
+    let manifest = tool_manifest(root)?;
+    if manifest.kind != tool.kind {
+        return Err(VmError::validation(
+            "Workspace tool kind does not match its registered catalog identity",
+            Some("Run `vm packages doctor --fix` on the controller host"),
+        ));
+    }
+    Ok(RegisteredSource {
+        name: tool.name.clone(),
+        kind: match tool.kind {
+            ToolKind::Binary => SourceKind::ToolBinary,
+            ToolKind::Collection => SourceKind::ToolCollection,
+        },
+    })
+}
+
+fn unattested_workspace() -> VmError {
+    VmError::validation(
+        "Workspace source is not registered as a read-only canonical workspace",
+        Some("Run `vm packages register <local-path>` on the controller host"),
+    )
 }
 
 impl Discovery {

@@ -2,15 +2,17 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use vm_packages::{
-    repository_urls_equivalent, CheckoutRecord, CleanupRequest, CreateCheckout, PackageDefinition,
-    ReleaseRecord, SourceKind, ToolDefinition, ToolKind, TransitionRequest, WorkflowState,
+    repository_urls_equivalent, CheckoutRecord, CleanupRequest, CreateCheckout, ReleaseRecord,
+    SourceKind, TransitionRequest, WorkflowState,
 };
 
 use crate::error::{VmError, VmResult};
 
 use super::{
     checkout,
-    discovery::{normalize_repository_url, package_name, tool_manifest},
+    discovery::{
+        normalize_repository_url, resolve_registered_source, tool_manifest, RegisteredSource,
+    },
     runtime::{checkout_root, copy_private, exec_output, write_checkout_access, GuestRuntime},
 };
 
@@ -43,12 +45,6 @@ struct WorkspaceReleaseState {
     source_commit: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct RegisteredSource {
-    name: String,
-    kind: SourceKind,
-}
-
 impl WorkspaceRelease {
     pub(super) fn record_commit(&mut self, subject: &GuestRuntime, commit: &str) -> VmResult<()> {
         self.state.source_commit = commit.to_string();
@@ -79,7 +75,7 @@ pub(super) async fn prepare(subject: &GuestRuntime) -> VmResult<WorkspacePrepara
         tool_manifest(Path::new(&source))?;
         tools.push(client.register_attested_tool().await?);
     }
-    let registered = resolve_registered_source(&source, &repository, &packages, &tools)?;
+    let registered = resolve_registered_source(Path::new(&source), &repository, &packages, &tools)?;
     let key = format!(
         "workspace-release-{}",
         &vm_packages::sha256_hex(format!(
@@ -255,77 +251,6 @@ async fn create_checkout(
     Ok(created.checkout)
 }
 
-fn resolve_registered_source(
-    root: &str,
-    repository: &str,
-    packages: &[PackageDefinition],
-    tools: &[ToolDefinition],
-) -> VmResult<RegisteredSource> {
-    let packages = packages
-        .iter()
-        .filter(|package| repository_urls_equivalent(&package.repository, repository))
-        .collect::<Vec<_>>();
-    let tools = tools
-        .iter()
-        .filter(|tool| repository_urls_equivalent(&tool.repository, repository))
-        .collect::<Vec<_>>();
-    if packages.len() + tools.len() != 1 {
-        let message = if packages.is_empty() && tools.is_empty() {
-            "Workspace Git origin is not registered in the package catalog".to_string()
-        } else {
-            "Workspace Git origin is ambiguous in the package catalog".to_string()
-        };
-        return Err(VmError::validation(
-            message,
-            Some("Run `vm packages doctor --fix` on the controller host"),
-        ));
-    }
-    if let Some(package) = packages.first() {
-        if !package.workspace_release {
-            return Err(unattested_workspace());
-        }
-        let actual = package_name(Path::new(root), package.ecosystem)?;
-        if actual != package.name {
-            return Err(VmError::validation(
-                format!(
-                    "Workspace package identity '{actual}' does not match registered source '{}'",
-                    package.name
-                ),
-                Some("Run `vm packages doctor --fix` on the controller host"),
-            ));
-        }
-        return Ok(RegisteredSource {
-            name: package.name.clone(),
-            kind: SourceKind::Package,
-        });
-    }
-    let tool = tools[0];
-    if !tool.workspace_release {
-        return Err(unattested_workspace());
-    }
-    let manifest = tool_manifest(Path::new(root))?;
-    if manifest.kind != tool.kind {
-        return Err(VmError::validation(
-            "Workspace tool kind does not match its registered catalog identity",
-            Some("Run `vm packages doctor --fix` on the controller host"),
-        ));
-    }
-    Ok(RegisteredSource {
-        name: tool.name.clone(),
-        kind: match tool.kind {
-            ToolKind::Binary => SourceKind::ToolBinary,
-            ToolKind::Collection => SourceKind::ToolCollection,
-        },
-    })
-}
-
-fn unattested_workspace() -> VmError {
-    VmError::validation(
-        "Workspace source is not registered as a read-only canonical workspace",
-        Some("Run `vm packages register <local-path>` on the controller host"),
-    )
-}
-
 fn validate_checkout(
     subject: &GuestRuntime,
     checkout: &CheckoutRecord,
@@ -440,7 +365,10 @@ fn save_state(subject: &GuestRuntime, path: &Path, state: &WorkspaceReleaseState
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use vm_packages::{PackageEcosystem, ReleaseRecord, ToolSourceManifest};
+    use vm_packages::{
+        PackageDefinition, PackageEcosystem, ReleaseRecord, ToolDefinition, ToolKind,
+        ToolSourceManifest,
+    };
 
     use super::*;
 
@@ -557,7 +485,7 @@ mod tests {
             registered_at: Utc::now(),
         }];
         let source = resolve_registered_source(
-            directory.path().to_str().unwrap(),
+            directory.path(),
             "ssh://git@example.com/shared/auth.git",
             &packages,
             &[],
@@ -571,7 +499,7 @@ mod tests {
             ..packages[0].clone()
         }];
         assert!(resolve_registered_source(
-            directory.path().to_str().unwrap(),
+            directory.path(),
             "https://github.com/goobits/shared-auth.git",
             &github_packages,
             &[],
@@ -581,7 +509,7 @@ mod tests {
         let mut unattested = packages;
         unattested[0].workspace_release = false;
         assert!(resolve_registered_source(
-            directory.path().to_str().unwrap(),
+            directory.path(),
             "ssh://git@example.com/shared/auth.git",
             &unattested,
             &[],
@@ -622,7 +550,7 @@ mod tests {
             registered_at: Utc::now(),
         }];
         let source = resolve_registered_source(
-            directory.path().to_str().unwrap(),
+            directory.path(),
             "https://example.com/tools/release-tool.git",
             &[],
             &tools,
