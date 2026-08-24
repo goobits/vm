@@ -92,6 +92,9 @@ available in the current development container.
 
 ## Verification Log
 
+- 2026-08-24: A live Docker appliance with the previous persisted `runtime`
+  field migrated atomically to `engine`; `vm list` resumed without rebuilding
+  or replacing the running environment.
 - 2026-08-24: TypeMill 1.2.0 published privately once, activated in all seven
   running environments, deferred fifteen stopped environments, retained all
   inspected primary container and named-volume identities, survived workflow

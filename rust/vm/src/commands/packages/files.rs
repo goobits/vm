@@ -300,7 +300,13 @@ impl ApplianceFiles {
     pub(super) fn read_state(&self) -> VmResult<Option<ApplianceState>> {
         let path = self.root.join(STATE_FILE);
         match fs::read(&path) {
-            Ok(json) => ApplianceState::from_json(&json).map(Some),
+            Ok(json) => {
+                let (state, migrated) = ApplianceState::from_persisted_json(&json)?;
+                if migrated {
+                    self.write_state(&state)?;
+                }
+                Ok(Some(state))
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(error) => Err(VmError::filesystem(
                 error,

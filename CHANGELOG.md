@@ -59,6 +59,7 @@
 
 ### 🐛 Fixed
 
+- 📦 Existing package appliances migrate their persisted `runtime` and `review_image` metadata to the canonical state shape before normal commands run, so upgrades do not block `vm ssh` or `vm packages up`.
 - 📦 macOS source builds now compile and start the launchd tool-activation worker correctly.
 - 📦 Legacy managed collections remain discoverable during schema migration, and quarantine repair preserves equivalent GitHub SSH origins instead of requiring HTTPS.
 - 📦 The built-in `agent-skills` source and equivalent catalog migrations now retain SSH as their canonical Git transport.
