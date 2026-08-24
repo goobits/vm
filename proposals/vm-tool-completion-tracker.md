@@ -92,6 +92,10 @@ available in the current development container.
 
 ## Verification Log
 
+- 2026-08-24: Legacy-label Docker inventory recovered the existing
+  `goobits-dev` environment from its exact managed project identity and
+  `/workspace` configuration; project-local listing returned the unchanged,
+  healthy container instead of entering the create/recreate prompt.
 - 2026-08-24: A live Docker appliance with the previous persisted `runtime`
   field migrated atomically to `engine`; `vm list` resumed without rebuilding
   or replacing the running environment.

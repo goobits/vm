@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 use vm_core::error::{Result, VmError};
@@ -17,7 +17,7 @@ pub(super) fn list_instances(
             "--filter",
             "label=com.vm.managed=true",
             "--format",
-            "{{.Names}}\t{{.ID}}\t{{.Status}}\t{{.CreatedAt}}\t{{.RunningFor}}\t{{.Label \"com.vm.project\"}}\t{{.Label \"com.vm.role\"}}",
+            "{{.Names}}\t{{.ID}}\t{{.Status}}\t{{.CreatedAt}}\t{{.RunningFor}}\t{{.Label \"com.vm.project\"}}\t{{.Label \"com.vm.role\"}}\t{{.Label \"com.docker.compose.service\"}}",
         ])
         .output()
         .map_err(|error| {
@@ -41,8 +41,10 @@ pub(super) fn list_instances(
             if parts.len() < 5 {
                 return None;
             }
+            let project = parts.get(5).copied().unwrap_or_default();
             let role = parts.get(6).copied().unwrap_or_default();
-            is_environment_container(role).then(|| {
+            let compose_service = parts.get(7).copied().unwrap_or_default();
+            is_environment_container(parts[0], project, role, compose_service).then(|| {
                 create_container_instance_info(
                     engine.name(),
                     parts[0],
@@ -126,19 +128,92 @@ fn host_ports_from_bindings(bindings: &str) -> Result<Vec<u16>> {
     Ok(ports)
 }
 
-pub(super) fn is_environment_container(role: &str) -> bool {
-    role == "environment"
+pub(super) fn is_environment_container(
+    name: &str,
+    project: &str,
+    role: &str,
+    compose_service: &str,
+) -> bool {
+    role == "environment" || is_legacy_environment(name, project, role, compose_service)
+}
+
+fn is_legacy_environment(name: &str, project: &str, role: &str, compose_service: &str) -> bool {
+    !project.is_empty()
+        && role.is_empty()
+        && name == format!("{project}-dev")
+        && (compose_service.is_empty() || compose_service == name)
 }
 
 pub(super) fn config_path_from_inspect(container: &serde_json::Value) -> Option<PathBuf> {
     let labels = &container["Config"]["Labels"];
+    let name = container["Name"]
+        .as_str()
+        .unwrap_or_default()
+        .trim_start_matches('/');
+    let project = labels["com.vm.project"].as_str().unwrap_or_default();
     let role = labels["com.vm.role"].as_str().unwrap_or_default();
-    if labels["com.vm.managed"].as_str() != Some("true") || !is_environment_container(role) {
+    let compose_service = labels["com.docker.compose.service"]
+        .as_str()
+        .unwrap_or_default();
+    if labels["com.vm.managed"].as_str() != Some("true")
+        || !is_environment_container(name, project, role, compose_service)
+    {
         return None;
     }
 
-    let path = PathBuf::from(labels["com.vm.config-path"].as_str()?);
-    (path.is_absolute() && path.is_file()).then_some(path)
+    if let Some(path) = labels["com.vm.config-path"].as_str() {
+        let path = PathBuf::from(path);
+        if path.is_absolute() && path.is_file() {
+            return Some(path);
+        }
+    }
+
+    if !is_legacy_environment(name, project, role, compose_service) {
+        return None;
+    }
+
+    let source = container["Mounts"].as_array().and_then(|mounts| {
+        mounts.iter().find_map(|mount| {
+            if mount["Type"].as_str() == Some("bind")
+                && mount["Destination"].as_str() == Some("/workspace")
+            {
+                mount["Source"].as_str()
+            } else {
+                None
+            }
+        })
+    })?;
+    config_path_from_workspace_source(source, project)
+}
+
+fn config_path_from_workspace_source(source: &str, project: &str) -> Option<PathBuf> {
+    let source = Path::new(source);
+    if let Some(config) = config_path_below_workspace(source, project) {
+        return Some(config);
+    }
+
+    source
+        .strip_prefix("/host_mnt")
+        .ok()
+        .map(|relative| Path::new("/").join(relative))
+        .and_then(|source| config_path_below_workspace(&source, project))
+}
+
+fn config_path_below_workspace(source: &Path, project: &str) -> Option<PathBuf> {
+    if !source.is_absolute() {
+        return None;
+    }
+    let direct = source.join("vm.yaml");
+    if direct.is_file() {
+        return Some(direct);
+    }
+
+    let mut components = Path::new(project).components();
+    if !matches!(components.next(), Some(Component::Normal(_))) || components.next().is_some() {
+        return None;
+    }
+    let nested = source.join(project).join("vm.yaml");
+    nested.is_file().then_some(nested)
 }
 
 #[cfg(test)]
@@ -147,9 +222,29 @@ mod tests {
 
     #[test]
     fn environment_filter_excludes_managed_compose_services() {
-        assert!(is_environment_container("environment"));
-        assert!(!is_environment_container(""));
-        assert!(!is_environment_container("service"));
+        assert!(is_environment_container(
+            "demo-dev",
+            "demo",
+            "environment",
+            "demo-dev"
+        ));
+        assert!(is_environment_container("demo-dev", "demo", "", "demo-dev"));
+        assert!(!is_environment_container(
+            "demo-postgres",
+            "demo",
+            "",
+            "postgres"
+        ));
+        assert!(!is_environment_container("demo-dev", "", "", "demo-dev"));
+        assert!(!is_environment_container(
+            "other-dev",
+            "demo",
+            "",
+            "other-dev"
+        ));
+        assert!(!is_environment_container(
+            "demo-dev", "demo", "service", "demo-dev"
+        ));
     }
 
     #[test]
@@ -186,11 +281,12 @@ mod tests {
             Some(project.path().join("vm.yaml"))
         );
 
-        let unlabeled = serde_json::json!({
+        let legacy = serde_json::json!({
             "Name": "/demo-dev",
             "Config": {
                 "Labels": {
                     "com.vm.managed": "true",
+                    "com.vm.project": "demo",
                     "com.docker.compose.service": "demo-dev"
                 },
                 "WorkingDir": "/workspace"
@@ -201,6 +297,23 @@ mod tests {
                 "Destination": "/workspace"
             }]
         });
-        assert_eq!(config_path_from_inspect(&unlabeled), None);
+        assert_eq!(config_path_from_inspect(&legacy), Some(config));
+
+        let service = serde_json::json!({
+            "Name": "/demo-postgres",
+            "Config": {
+                "Labels": {
+                    "com.vm.managed": "true",
+                    "com.vm.project": "demo",
+                    "com.docker.compose.service": "postgres"
+                }
+            },
+            "Mounts": [{
+                "Type": "bind",
+                "Source": project.path(),
+                "Destination": "/workspace"
+            }]
+        });
+        assert_eq!(config_path_from_inspect(&service), None);
     }
 }
