@@ -11,36 +11,10 @@ use vm_core::vm_warning;
 /// Definition of a managed service
 #[derive(Debug, Clone)]
 pub struct ServiceDefinition {
-    /// Service name (used as identifier)
-    #[allow(dead_code)]
-    pub name: String,
     /// Display name for user-facing messages
     pub display_name: String,
     /// Default port the service runs on
     pub port: u16,
-    /// Health check endpoint relative to service URL
-    #[allow(dead_code)]
-    pub health_endpoint: String,
-    /// Description of what the service provides
-    #[allow(dead_code)]
-    pub description: String,
-    /// Whether the service supports graceful shutdown
-    #[allow(dead_code)]
-    pub supports_graceful_shutdown: bool,
-}
-
-impl ServiceDefinition {
-    /// Get the full health check URL for this service
-    #[allow(dead_code)]
-    pub fn health_url(&self) -> String {
-        format!("http://localhost:{}{}", self.port, self.health_endpoint)
-    }
-
-    /// Get the base URL for this service
-    #[allow(dead_code)]
-    pub fn base_url(&self) -> String {
-        format!("http://localhost:{}", self.port)
-    }
 }
 
 /// Service registry providing centralized service definitions
@@ -57,12 +31,8 @@ impl ServiceRegistry {
         services.insert(
             "auth_proxy".to_string(),
             ServiceDefinition {
-                name: "auth_proxy".to_string(),
                 display_name: "Auth Proxy".to_string(),
                 port: 3090,
-                health_endpoint: "/health".to_string(),
-                description: "Centralized secrets management with encrypted storage".to_string(),
-                supports_graceful_shutdown: true,
             },
         );
 
@@ -105,20 +75,12 @@ impl ServiceRegistry {
 
             // Create service definition from plugin service
             let service_def = ServiceDefinition {
-                name: plugin.info.name.clone(),
                 display_name: plugin
                     .info
                     .description
                     .clone()
                     .unwrap_or_else(|| plugin.info.name.clone()),
                 port,
-                health_endpoint: content.health_check.unwrap_or_else(|| "/".to_string()), // Use health_check or default to "/"
-                description: plugin
-                    .info
-                    .description
-                    .clone()
-                    .unwrap_or_else(|| format!("Service from {} plugin", plugin.info.name)),
-                supports_graceful_shutdown: true,
             };
 
             // Add to registry (plugin services don't override built-in ones)
@@ -130,31 +92,6 @@ impl ServiceRegistry {
         Ok(())
     }
 
-    /// Get service definition by name
-    #[allow(dead_code)]
-    pub fn get_service(&self, name: &str) -> Option<&ServiceDefinition> {
-        self.services.get(name)
-    }
-
-    /// Get all service definitions
-    #[allow(dead_code)]
-    pub fn get_all_services(&self) -> &HashMap<String, ServiceDefinition> {
-        &self.services
-    }
-
-    /// Get service names that should be enabled based on VM configuration
-    #[allow(dead_code)]
-    pub fn get_enabled_services(&self, _config: &vm_config::config::VmConfig) -> Vec<String> {
-        // Global services are configured in GlobalConfig and are not checked here.
-        Vec::new()
-    }
-
-    /// Check if a service is defined in the registry
-    #[allow(dead_code)]
-    pub fn is_service_defined(&self, name: &str) -> bool {
-        self.services.contains_key(name)
-    }
-
     /// Get service port by name
     pub fn get_service_port(&self, name: &str) -> Option<u16> {
         self.services.get(name).map(|s| s.port)
@@ -163,22 +100,6 @@ impl ServiceRegistry {
     /// Get service display name
     pub fn get_service_display_name(&self, name: &str) -> Option<&str> {
         self.services.get(name).map(|s| s.display_name.as_str())
-    }
-
-    /// Validate that all enabled services in config are supported
-    #[allow(dead_code)]
-    pub fn validate_config_services(&self, config: &vm_config::config::VmConfig) -> Result<()> {
-        let enabled_services = self.get_enabled_services(config);
-
-        for service_name in &enabled_services {
-            if !self.is_service_defined(service_name) {
-                return Err(anyhow::anyhow!(
-                    "Unknown service '{service_name}' enabled in configuration"
-                ));
-            }
-        }
-
-        Ok(())
     }
 
     /// Get status icon for service state
@@ -229,15 +150,6 @@ pub fn get_service_registry() -> &'static ServiceRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vm_config::config::VmConfig;
-
-    #[test]
-    fn test_service_registry_creation() {
-        let registry = ServiceRegistry::new();
-
-        assert!(registry.is_service_defined("auth_proxy"));
-        assert!(!registry.is_service_defined("unknown_service"));
-    }
 
     #[test]
     fn test_service_ports() {
@@ -245,37 +157,6 @@ mod tests {
 
         assert_eq!(registry.get_service_port("auth_proxy"), Some(3090));
         assert_eq!(registry.get_service_port("unknown"), None);
-    }
-
-    #[test]
-    fn test_enabled_services_from_config() {
-        let registry = ServiceRegistry::new();
-
-        // Global services are no longer configured per-VM, so this test
-        // now verifies that no services are returned for VM-specific config
-        let config = VmConfig::default();
-
-        let enabled = registry.get_enabled_services(&config);
-        assert_eq!(enabled.len(), 0); // No VM-specific global services
-
-        // Test with default config (no longer uses deprecated fields)
-        let config = VmConfig {
-            ..Default::default()
-        };
-
-        let enabled = registry.get_enabled_services(&config);
-        assert_eq!(enabled.len(), 0); // No global services from VM config
-    }
-
-    #[test]
-    fn test_service_urls() {
-        let registry = ServiceRegistry::new();
-        let auth_service = registry
-            .get_service("auth_proxy")
-            .expect("should get auth_proxy service");
-
-        assert_eq!(auth_service.health_url(), "http://localhost:3090/health");
-        assert_eq!(auth_service.base_url(), "http://localhost:3090");
     }
 
     #[test]

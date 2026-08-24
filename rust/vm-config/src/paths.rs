@@ -156,17 +156,6 @@ pub fn get_presets_dir() -> PathBuf {
     get_config_dir().join("presets")
 }
 
-/// Get the schema file path
-/// Returns VM_TOOL_DIR/configs/schema/vm.schema.yaml
-#[allow(dead_code)]
-pub fn get_schema_path() -> PathBuf {
-    let tool_dir = get_tool_dir();
-    tool_dir
-        .join("configs")
-        .join("schema")
-        .join("vm.schema.yaml")
-}
-
 /// Get the default workspace path
 /// Returns /home/USER/workspace on Unix or current directory
 #[cfg(test)]

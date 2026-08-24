@@ -56,9 +56,6 @@ pub struct ServiceManager {
     state: Arc<Mutex<HashMap<String, ServiceState>>>,
     /// Path to persistent state file
     state_file: PathBuf,
-    /// Shutdown handles for services that support graceful shutdown
-    #[allow(dead_code)]
-    shutdown_handles: Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
     /// Service implementations
     services: Arc<Mutex<HashMap<String, Arc<dyn ManagedService>>>>,
 }
@@ -83,7 +80,6 @@ impl ServiceManager {
         let manager = Self {
             state: Arc::new(Mutex::new(HashMap::new())),
             state_file,
-            shutdown_handles,
             services: Arc::new(Mutex::new(services)),
         };
 
@@ -274,15 +270,6 @@ impl ServiceManager {
             .lock()
             .ok()
             .and_then(|guard| guard.get(service_name).cloned())
-    }
-
-    /// Get all service statuses
-    #[allow(dead_code)]
-    pub fn get_all_service_statuses(&self) -> HashMap<String, ServiceState> {
-        self.state
-            .lock()
-            .map(|guard| guard.clone())
-            .unwrap_or_default()
     }
 
     /// Start a service

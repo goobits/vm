@@ -53,8 +53,8 @@ mod config_tests;
 
 // Re-export commonly needed path utilities
 pub use paths::{
-    get_config_dir, get_current_gid, get_current_uid, get_presets_dir, get_schema_path,
-    get_tool_dir, resolve_tool_path,
+    get_config_dir, get_current_gid, get_current_uid, get_presets_dir, get_tool_dir,
+    resolve_tool_path,
 };
 
 // Re-export config operations for use by main vm binary

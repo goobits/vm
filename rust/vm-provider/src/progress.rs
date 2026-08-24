@@ -136,9 +136,7 @@ struct TaskProgress {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
 enum TaskStatus {
-    Pending,
     Running,
     Completed,
     Failed,
@@ -170,7 +168,6 @@ impl AnsibleProgressParser {
                 TaskStatus::Running => "  ⠴",
                 TaskStatus::Failed => "  ✗",
                 TaskStatus::Skipped => "  -",
-                TaskStatus::Pending => "  ○",
             };
 
             println!("{} {}", icon, task.name);

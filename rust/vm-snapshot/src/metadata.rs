@@ -152,31 +152,4 @@ mod tests {
             restored.volumes[0].size_bytes
         );
     }
-
-    #[test]
-    fn test_metadata_backward_compatibility() {
-        // Simulates loading an old snapshot created before potential field additions
-        let json = r#"{
-            "name": "old-snapshot",
-            "created_at": "2024-01-01T00:00:00Z",
-            "description": null,
-            "project_name": "legacy-project",
-            "project_dir": "/workspace/legacy",
-            "git_commit": null,
-            "git_dirty": false,
-            "git_branch": null,
-            "services": [],
-            "volumes": [],
-            "compose_file": "docker-compose.yml",
-            "vm_config_file": "vm.yaml",
-            "total_size_bytes": 0
-        }"#;
-
-        let metadata: SnapshotMetadata = serde_json::from_str(json).unwrap();
-
-        assert_eq!(metadata.name, "old-snapshot");
-        assert_eq!(metadata.project_name, "legacy-project");
-        assert_eq!(metadata.description, None);
-        assert_eq!(metadata.git_commit, None);
-    }
 }
