@@ -12,7 +12,9 @@ use std::path::{Path, PathBuf};
 use vm_core::error::Result;
 
 // Internal imports
-use vm_config::config::{BoxSpec, ProviderName, VmConfig};
+#[cfg(any(feature = "docker", feature = "tart", feature = "test-helpers"))]
+use vm_config::config::ProviderName;
+use vm_config::config::{BoxSpec, VmConfig};
 
 // Re-export common types for convenience
 pub use capabilities::{CommandProvider, InstanceProvider, ProvisioningProvider, TempProvider};
@@ -34,12 +36,8 @@ pub mod resources;
 mod shell_session;
 mod stable_name;
 mod status;
+pub mod tart;
 pub mod tart_base;
-#[path = "tart/command.rs"]
-mod tart_command;
-#[path = "tart/storage.rs"]
-mod tart_storage;
-pub use tart_command::TartCommand;
 
 // Re-export template constants for testing
 pub use resources::THEMES_JSON;
@@ -53,8 +51,6 @@ mod user_home;
 
 #[cfg(feature = "docker")]
 pub mod container;
-#[cfg(feature = "tart")]
-pub mod tart;
 
 // When the `test-helpers` feature is enabled, include the mock provider.
 #[cfg(feature = "test-helpers")]

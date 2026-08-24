@@ -359,10 +359,9 @@ Keep that source shelf flat and make each child an independent Git repository:
 The shelf itself should not be a Git repository. A repository with a valid
 root schema-1 `vm-tool.yaml` (`kind: binary` or `kind: collection`) is
 registered as a tool source and skipped by language-package registration.
-Legacy kind-only collection manifests remain readable during migration. This
-lets managed tools live beside npm, Cargo, and Python sources without being
-misclassified by their metadata files. Both tool kinds can use the managed
-checkout or canonical-workspace release path.
+The schema field is required. This lets managed tools live beside npm, Cargo,
+and Python sources without being misclassified by their metadata files. Both
+tool kinds can use the managed checkout or canonical-workspace release path.
 
 Path registration detects `package.json`, `Cargo.toml`, or `pyproject.toml`,
 then reads each repository's `origin` and default branch. Every supplied path

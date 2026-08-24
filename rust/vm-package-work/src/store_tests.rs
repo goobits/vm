@@ -19,6 +19,18 @@ fn request(key: &str, agent: &str) -> CreateCheckout {
     }
 }
 
+#[test]
+fn idempotency_records_require_the_current_target_field() {
+    assert!(serde_json::from_str::<IdempotencyRecord>(
+        r#"{"fingerprint":"abc","checkout_id":"checkout-1"}"#
+    )
+    .is_err());
+    assert!(serde_json::from_str::<IdempotencyRecord>(
+        r#"{"fingerprint":"abc","target_id":"checkout-1"}"#
+    )
+    .is_ok());
+}
+
 #[tokio::test]
 async fn concurrent_checkouts_are_isolated_and_idempotent() {
     let directory = tempfile::tempdir().unwrap();

@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use vm_core::vm_warning;
-use vm_provider::TartCommand;
+use vm_provider::tart::TartCommand;
 
 use crate::error::{VmError, VmResult};
 

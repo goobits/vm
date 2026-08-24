@@ -6,7 +6,7 @@ use vm_config::{
     resolve_tool_path, AppConfig,
 };
 use vm_core::{vm_println, vm_warning};
-use vm_provider::{tart_base, TartCommand};
+use vm_provider::{tart::TartCommand, tart_base};
 
 mod runtime;
 mod tart_install;
@@ -293,7 +293,7 @@ mod tests {
     };
     use std::ffi::OsStr;
     use vm_config::config::{BoxSpec, TartConfig, VmConfig, VmSettings};
-    use vm_provider::{tart_base, TartCommand};
+    use vm_provider::{tart::TartCommand, tart_base};
 
     fn config(provider: &str, box_name: &str) -> VmConfig {
         VmConfig {

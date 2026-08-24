@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use vm_config::config::VmConfig;
 use vm_core::error::Result;
 
-use crate::tart_storage as storage;
+use super::storage;
 
 #[derive(Clone, Debug)]
 pub struct TartCommand {

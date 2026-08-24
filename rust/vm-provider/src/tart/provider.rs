@@ -1,8 +1,7 @@
 use super::{
     instance::TartInstanceManager, provisioner::TartProvisioner, readiness::SharedShellProbeCache,
-    TartCommand,
+    storage, TartCommand,
 };
-use crate::tart_storage as storage;
 use crate::{
     common::instance::{extract_project_name, InstanceInfo, InstanceResolver},
     context::ProviderContext,

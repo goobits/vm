@@ -23,7 +23,6 @@ const STATE_FILE: &str = "state/workflows.json";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct IdempotencyRecord {
     pub(crate) fingerprint: String,
-    #[serde(alias = "checkout_id")]
     pub(crate) target_id: String,
 }
 
