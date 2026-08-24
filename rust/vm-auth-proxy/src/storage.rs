@@ -1,11 +1,10 @@
 //! Persistent storage for encrypted secrets
 
 use crate::crypto::{
-    generate_auth_token, generate_salt, get_or_create_master_password, legacy_master_password,
-    EncryptionKey,
+    generate_auth_token, generate_salt, get_or_create_master_password, EncryptionKey,
 };
-use crate::types::{Secret, SecretScope, SecretStorage};
-use anyhow::{Context, Result};
+use crate::types::{Secret, SecretScope, SecretStorage, SECRET_STORAGE_VERSION};
+use anyhow::{bail, Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use std::collections::HashMap;
 use std::fs;
@@ -20,12 +19,8 @@ const DIR_PERMISSIONS: u32 = 0o700;
 /// File permissions for secrets file
 const FILE_PERMISSIONS: u32 = 0o600;
 
-const STORAGE_VERSION_RANDOM_MASTER_KEY: u32 = 2;
-
 /// Secret storage manager
 pub struct SecretStore {
-    #[allow(dead_code)]
-    data_dir: PathBuf,
     storage_file: PathBuf,
     encryption_key: EncryptionKey,
     storage: SecretStorage,
@@ -54,6 +49,12 @@ impl SecretStore {
         } else {
             Self::create_new_storage()?
         };
+        if storage.version != SECRET_STORAGE_VERSION {
+            bail!(
+                "Unsupported secret storage version {} (expected {SECRET_STORAGE_VERSION})",
+                storage.version
+            );
+        }
 
         // Get master password and create encryption key
         let master_password = get_or_create_master_password(&data_dir)?;
@@ -62,17 +63,12 @@ impl SecretStore {
             .context("Failed to decode salt")?;
         let encryption_key = EncryptionKey::derive_from_password(&master_password, &salt_bytes)?;
 
-        if storage.version < STORAGE_VERSION_RANDOM_MASTER_KEY {
-            Self::migrate_from_legacy_master_password(&mut storage, &salt_bytes, &encryption_key)?;
-        }
-
         // Generate auth token if not present
         if storage.auth_token.is_none() {
             storage.auth_token = Some(generate_auth_token());
         }
 
         let store = Self {
-            data_dir,
             storage_file,
             encryption_key,
             storage,
@@ -182,7 +178,7 @@ impl SecretStore {
         let salt_b64 = STANDARD.encode(salt);
 
         Ok(SecretStorage {
-            version: STORAGE_VERSION_RANDOM_MASTER_KEY,
+            version: SECRET_STORAGE_VERSION,
             salt: salt_b64,
             secrets: HashMap::new(),
             auth_token: None,
@@ -193,28 +189,6 @@ impl SecretStore {
     fn load_storage(path: &Path) -> Result<SecretStorage> {
         let content = fs::read_to_string(path).context("Failed to read secrets file")?;
         serde_json::from_str(&content).context("Failed to parse secrets file")
-    }
-
-    fn migrate_from_legacy_master_password(
-        storage: &mut SecretStorage,
-        salt_bytes: &[u8],
-        new_key: &EncryptionKey,
-    ) -> Result<()> {
-        let legacy_key = EncryptionKey::derive_from_password(&legacy_master_password(), salt_bytes)
-            .context("Failed to derive legacy auth-proxy encryption key")?;
-
-        for (name, secret) in &mut storage.secrets {
-            let plaintext = legacy_key
-                .decrypt(&secret.encrypted_value)
-                .with_context(|| format!("Failed to decrypt legacy secret '{name}'"))?;
-            let encrypted_value = new_key
-                .encrypt(&plaintext)
-                .with_context(|| format!("Failed to re-encrypt migrated secret '{name}'"))?;
-            secret.update(encrypted_value);
-        }
-
-        storage.version = STORAGE_VERSION_RANDOM_MASTER_KEY;
-        Ok(())
     }
 
     /// Save storage without exposing partially written secret data.
@@ -247,8 +221,6 @@ pub fn get_auth_data_dir() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::Secret;
-    use std::collections::HashMap;
     use tempfile::TempDir;
 
     #[test]
@@ -294,40 +266,25 @@ mod tests {
     }
 
     #[test]
-    fn test_legacy_master_password_store_is_migrated() {
+    fn unsupported_storage_version_is_rejected_without_rewriting_it() {
         let temp_dir = TempDir::new().expect("should create temp dir");
-        let salt = generate_salt();
-        let legacy_key =
-            EncryptionKey::derive_from_password(&legacy_master_password(), &salt).unwrap();
-        let encrypted_value = legacy_key.encrypt("legacy-secret").unwrap();
-
-        let mut secrets = HashMap::new();
-        secrets.insert(
-            "legacy_key".to_string(),
-            Secret::new(encrypted_value, SecretScope::Global, None),
-        );
-        let legacy_storage = SecretStorage {
+        let unsupported_storage = SecretStorage {
             version: 1,
-            salt: STANDARD.encode(salt),
-            secrets,
+            salt: STANDARD.encode(generate_salt()),
+            secrets: HashMap::new(),
             auth_token: Some("token".to_string()),
         };
-        fs::write(
-            temp_dir.path().join(SECRETS_FILE),
-            serde_json::to_string_pretty(&legacy_storage).unwrap(),
-        )
-        .unwrap();
+        let storage_file = temp_dir.path().join(SECRETS_FILE);
+        let original = serde_json::to_string_pretty(&unsupported_storage).unwrap();
+        fs::write(&storage_file, &original).unwrap();
 
-        let store =
-            SecretStore::new(temp_dir.path().to_path_buf()).expect("should migrate legacy store");
-
-        assert_eq!(
-            store.get_secret("legacy_key").unwrap().as_deref(),
-            Some("legacy-secret")
-        );
-
-        let migrated = SecretStore::load_storage(&temp_dir.path().join(SECRETS_FILE)).unwrap();
-        assert_eq!(migrated.version, STORAGE_VERSION_RANDOM_MASTER_KEY);
+        let error = SecretStore::new(temp_dir.path().to_path_buf())
+            .err()
+            .expect("unsupported storage should fail");
+        assert!(error
+            .to_string()
+            .contains("Unsupported secret storage version 1"));
+        assert_eq!(fs::read_to_string(storage_file).unwrap(), original);
     }
 
     #[test]

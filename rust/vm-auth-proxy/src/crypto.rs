@@ -66,7 +66,6 @@ impl EncryptionKey {
     }
 
     /// Decrypt a ciphertext value
-    #[allow(deprecated)]
     pub fn decrypt(&self, encrypted: &str) -> Result<String> {
         // Decode from base64
         let combined = STANDARD
@@ -79,7 +78,10 @@ impl EncryptionKey {
 
         // Split nonce and ciphertext
         let (nonce_bytes, ciphertext) = combined.split_at(NONCE_LENGTH);
-        let nonce = Nonce::clone_from_slice(nonce_bytes);
+        let nonce = Nonce::from(
+            <[u8; NONCE_LENGTH]>::try_from(nonce_bytes)
+                .map_err(|_| anyhow!("Invalid encryption nonce"))?,
+        );
 
         // Decrypt
         let plaintext = self
@@ -131,16 +133,6 @@ pub fn get_or_create_master_password(data_dir: &Path) -> Result<String> {
     }
 
     Ok(password)
-}
-
-pub(crate) fn legacy_master_password() -> String {
-    let username = std::env::var("USER")
-        .or_else(|_| std::env::var("USERNAME"))
-        .unwrap_or_else(|_| "vm-user".to_string());
-
-    let hostname = std::env::var("HOSTNAME").unwrap_or_else(|_| "vm-host".to_string());
-
-    format!("vm-auth-proxy-{username}-{hostname}")
 }
 
 #[cfg(test)]
@@ -208,7 +200,6 @@ mod tests {
             .expect("should read persisted master password");
 
         assert_eq!(first, second);
-        assert_ne!(first, legacy_master_password());
         assert!(temp_dir.path().join(MASTER_KEY_FILE).exists());
     }
 }

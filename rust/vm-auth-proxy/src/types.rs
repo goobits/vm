@@ -4,6 +4,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+pub const SECRET_STORAGE_VERSION: u32 = 2;
+
 /// Scope of secret access
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum SecretScope {
@@ -43,12 +45,6 @@ impl Secret {
             description,
         }
     }
-
-    /// Update the secret value and timestamp
-    pub fn update(&mut self, encrypted_value: String) {
-        self.encrypted_value = encrypted_value;
-        self.updated_at = Utc::now();
-    }
 }
 
 /// Storage structure for persisted secrets
@@ -67,7 +63,7 @@ pub struct SecretStorage {
 impl Default for SecretStorage {
     fn default() -> Self {
         Self {
-            version: 1,
+            version: SECRET_STORAGE_VERSION,
             salt: String::new(),
             secrets: HashMap::new(),
             auth_token: None,
