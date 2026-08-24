@@ -84,6 +84,8 @@ to `vm-core`; the executable renders each fatal error once.
 Preset command validation and file IO stay in `config_ops::preset`; declared-preset
 resolution and minimal project-config materialization live in its private
 `materialize` module.
+The embedded YAML schemas are the canonical field/type registry used by both
+editor validation and schema-aware `vm config set` value parsing.
 
 #### vm-plugin
 **Role**: Plugin discovery, loading, and validation.

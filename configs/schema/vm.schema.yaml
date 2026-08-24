@@ -687,6 +687,17 @@ properties:
             examples:
               - ~/worktrees
               - ~/dev/worktrees
+  networking:
+    type: object
+    description: Additional container networks joined by the project environment
+    properties:
+      networks:
+        type: array
+        items:
+          type: string
+          minLength: 1
+        uniqueItems: true
+    additionalProperties: false
   profiles:
     type: object
     description: "Profile configuration merging over the base config"

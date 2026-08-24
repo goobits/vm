@@ -21,267 +21,133 @@ pub enum SchemaType {
 }
 
 /// Schema cache for fast lookups
-static VM_SCHEMA_CACHE: Lazy<HashMap<String, SchemaType>> = Lazy::new(build_vm_schema_cache);
+static VM_SCHEMA_CACHE: Lazy<HashMap<String, SchemaType>> =
+    Lazy::new(|| build_schema_cache(include_str!("../../../configs/schema/vm.schema.yaml")));
 static GLOBAL_SCHEMA_CACHE: Lazy<HashMap<String, SchemaType>> =
-    Lazy::new(build_global_schema_cache);
+    Lazy::new(|| build_schema_cache(include_str!("../../../configs/schema/global.schema.yaml")));
 
-/// Helper macro to add string fields to schema cache
-macro_rules! add_strings {
-    ($cache:expr, $($field:expr),+ $(,)?) => {
-        $(
-            $cache.insert($field.to_string(), SchemaType::String);
-        )+
-    };
-}
-
-/// Helper macro to add boolean fields to schema cache
-macro_rules! add_booleans {
-    ($cache:expr, $($field:expr),+ $(,)?) => {
-        $(
-            $cache.insert($field.to_string(), SchemaType::Boolean);
-        )+
-    };
-}
-
-/// Helper macro to add integer fields to schema cache
-macro_rules! add_integers {
-    ($cache:expr, $($field:expr),+ $(,)?) => {
-        $(
-            $cache.insert($field.to_string(), SchemaType::Integer);
-        )+
-    };
-}
-
-/// Helper macro to add string array fields to schema cache
-macro_rules! add_string_arrays {
-    ($cache:expr, $($field:expr),+ $(,)?) => {
-        $(
-            $cache.insert($field.to_string(), SchemaType::Array {
-                item_type: Box::new(SchemaType::String),
-            });
-        )+
-    };
-}
-
-/// Add common service fields (enabled and port) for multiple services
-fn add_service_entries(cache: &mut HashMap<String, SchemaType>, services: &[&str]) {
-    for service in services {
-        cache.insert(format!("services.{}.enabled", service), SchemaType::Boolean);
-        cache.insert(format!("services.{}.port", service), SchemaType::Integer);
-    }
-}
-
-/// Add database service fields (user, password, database)
-fn add_database_service_fields(cache: &mut HashMap<String, SchemaType>, service: &str) {
-    let fields = ["user", "password", "database"];
-    for field in fields {
-        cache.insert(
-            format!("services.{}.{}", service, field),
-            SchemaType::String,
-        );
-    }
-}
-
-/// Build the VM schema cache from embedded schema
-fn build_vm_schema_cache() -> HashMap<String, SchemaType> {
+fn build_schema_cache(source: &str) -> HashMap<String, SchemaType> {
+    let schema: Value =
+        serde_yaml_ng::from_str(source).expect("embedded configuration schema must be valid YAML");
     let mut cache = HashMap::new();
-
-    add_vm_schema_fields(&mut cache);
-    add_service_schema_fields(&mut cache);
-    add_terminal_and_package_fields(&mut cache);
-
+    collect_children(&schema, &schema, "", &mut cache);
     cache
 }
 
-/// Add VM-related schema fields
-fn add_vm_schema_fields(cache: &mut HashMap<String, SchemaType>) {
-    // Simple scalar types and project fields
-    add_strings!(
-        cache,
-        "version",
-        "os",
-        "provider",
-        "default_profile",
-        "project.name",
-        "project.hostname",
-        "project.workspace_path",
-        "project.workspace_access",
-        "project.env_template_path",
-        "project.backup_pattern"
-    );
-
-    // VM fields
-    add_strings!(
-        cache,
-        "vm.box",
-        "vm.image",
-        "vm.memory",
-        "vm.cpus",
-        "vm.user",
-        "vm.port_binding",
-        "vm.timezone",
-        "vm.swap",
-        "vm.logging.driver",
-        "vm.logging.max_size"
-    );
-    add_booleans!(cache, "vm.gui");
-    add_integers!(
-        cache,
-        "vm.swappiness",
-        "vm.pids_limit",
-        "vm.stop_grace_period",
-        "vm.logging.max_files"
-    );
-
-    // Version fields
-    add_strings!(
-        cache,
-        "versions.node",
-        "versions.npm",
-        "versions.nvm",
-        "versions.pnpm",
-        "versions.python"
-    );
-    add_booleans!(cache, "bootstrap.dependencies");
-    add_string_arrays!(cache, "bootstrap.playwright.browsers");
-
-    // Port fields
-    cache.insert(
-        "ports._range".to_string(),
-        SchemaType::Array {
-            item_type: Box::new(SchemaType::Integer),
-        },
-    );
-    cache.insert(
-        "mounts".to_string(),
-        SchemaType::Array {
-            item_type: Box::new(SchemaType::Object),
-        },
-    );
-    cache.insert("tools".to_string(), SchemaType::Object);
-
-    // Tart fields
-    add_strings!(
-        cache,
-        "tart.guest_os",
-        "tart.disk_size",
-        "tart.ssh_user",
-        "tart.storage_path"
-    );
-    add_booleans!(cache, "tart.rosetta", "tart.nested", "tart.install_docker");
+fn collect_schema(
+    root: &Value,
+    schema: &Value,
+    path: &str,
+    cache: &mut HashMap<String, SchemaType>,
+) {
+    let schema = resolve_reference(root, schema);
+    cache.insert(path.to_string(), schema_type(root, schema));
+    collect_children(root, schema, path, cache);
+    for variant in sequence_field(schema, "oneOf") {
+        collect_children(root, resolve_reference(root, variant), path, cache);
+    }
 }
 
-/// Add service-related schema fields
-fn add_service_schema_fields(cache: &mut HashMap<String, SchemaType>) {
-    // Service fields (common pattern)
-    add_service_entries(
-        cache,
-        &[
-            "postgresql",
-            "redis",
-            "mongodb",
-            "mysql",
-            "docker",
-            "headless_browser",
-        ],
-    );
+fn collect_children(
+    root: &Value,
+    schema: &Value,
+    path: &str,
+    cache: &mut HashMap<String, SchemaType>,
+) {
+    let schema = resolve_reference(root, schema);
+    if let Some(properties) = mapping_field(schema, "properties") {
+        for (name, child) in properties {
+            let Some(name) = name.as_str() else {
+                continue;
+            };
+            collect_schema(root, child, &joined_path(path, name), cache);
+        }
+    }
 
-    // Database-specific fields
-    add_database_service_fields(cache, "postgresql");
-    add_database_service_fields(cache, "mysql");
+    if let Some(additional) =
+        value_field(schema, "additionalProperties").filter(|value| value.is_mapping())
+    {
+        collect_schema(root, additional, &joined_path(path, "*"), cache);
+    }
 
-    // Simple boolean services (gpu/audio/video passthrough)
-    add_booleans!(cache, "services.gpu", "services.audio", "services.video");
-
-    // Service-specific fields
-    add_booleans!(cache, "services.docker.buildx");
-    add_strings!(
-        cache,
-        "services.headless_browser.display",
-        "services.headless_browser.executable_path"
-    );
+    if string_field(schema, "type") == Some("array") {
+        if let Some(items) = value_field(schema, "items").filter(|value| value.is_mapping()) {
+            collect_schema(root, items, &joined_path(path, "*"), cache);
+        }
+    }
 }
 
-/// Add terminal, package, and host sync schema fields
-fn add_terminal_and_package_fields(cache: &mut HashMap<String, SchemaType>) {
-    // Terminal fields
-    add_strings!(
-        cache,
-        "terminal.emoji",
-        "terminal.username",
-        "terminal.theme"
-    );
-    add_booleans!(cache, "terminal.show_git_branch", "terminal.show_timestamp");
+fn schema_type(root: &Value, schema: &Value) -> SchemaType {
+    let schema = resolve_reference(root, schema);
+    if let Some(kind) = string_field(schema, "type") {
+        return match kind {
+            "string" => SchemaType::String,
+            "integer" | "number" => SchemaType::Integer,
+            "boolean" => SchemaType::Boolean,
+            "array" => SchemaType::Array {
+                item_type: Box::new(
+                    value_field(schema, "items")
+                        .map_or(SchemaType::Unknown, |items| schema_type(root, items)),
+                ),
+            },
+            "object" => SchemaType::Object,
+            _ => SchemaType::Unknown,
+        };
+    }
 
-    // Package arrays
-    add_string_arrays!(
-        cache,
-        "apt_packages",
-        "npm_packages",
-        "cargo_packages",
-        "pip_packages"
-    );
-
-    // Object types
-    cache.insert("aliases".to_string(), SchemaType::Object);
-    cache.insert("environment".to_string(), SchemaType::Object);
-    cache.insert("storage.tmpfs".to_string(), SchemaType::Object);
-
-    // Host synchronization
-    add_booleans!(
-        cache,
-        "host_sync.git_config",
-        "host_sync.ssh_agent",
-        "host_sync.ssh_config",
-        "host_sync.ai_tools",
-        "host_sync.ai_tools.claude",
-        "host_sync.ai_tools.antigravity",
-        "host_sync.ai_tools.codex",
-        "host_sync.worktrees.enabled"
-    );
-    add_strings!(cache, "host_sync.worktrees.base_path");
-    add_string_arrays!(cache, "host_sync.dotfiles", "networking.networks");
+    let variants = sequence_field(schema, "oneOf")
+        .map(|variant| schema_type(root, variant))
+        .collect::<Vec<_>>();
+    for preferred in [
+        SchemaType::String,
+        SchemaType::Boolean,
+        SchemaType::Integer,
+        SchemaType::Object,
+    ] {
+        if variants.contains(&preferred) {
+            return preferred;
+        }
+    }
+    variants.into_iter().next().unwrap_or(SchemaType::Unknown)
 }
 
-/// Build the global schema cache
-fn build_global_schema_cache() -> HashMap<String, SchemaType> {
-    let mut cache = HashMap::new();
+fn resolve_reference<'a>(root: &'a Value, schema: &'a Value) -> &'a Value {
+    let Some(reference) = string_field(schema, "$ref") else {
+        return schema;
+    };
+    let Some(pointer) = reference.strip_prefix("#/") else {
+        return schema;
+    };
+    pointer.split('/').fold(root, |current, segment| {
+        value_field(current, &segment.replace("~1", "/").replace("~0", "~")).unwrap_or(schema)
+    })
+}
 
-    // Auth proxy service
-    add_booleans!(cache, "services.auth_proxy.enabled");
-    add_integers!(
-        cache,
-        "services.auth_proxy.port",
-        "services.auth_proxy.token_expiry_hours"
-    );
+fn value_field<'a>(value: &'a Value, field: &str) -> Option<&'a Value> {
+    value.as_mapping()?.get(Value::String(field.to_string()))
+}
 
-    // Defaults
-    add_strings!(
-        cache,
-        "defaults.provider",
-        "defaults.user",
-        "defaults.terminal.theme",
-        "defaults.terminal.shell"
-    );
-    add_integers!(cache, "defaults.memory", "defaults.cpus");
+fn mapping_field<'a>(value: &'a Value, field: &str) -> Option<&'a serde_yaml_ng::Mapping> {
+    value_field(value, field)?.as_mapping()
+}
 
-    // Features
-    add_booleans!(
-        cache,
-        "features.auto_detect_presets",
-        "features.auto_port_allocation",
-        "features.telemetry",
-        "features.update_notifications"
-    );
+fn sequence_field<'a>(value: &'a Value, field: &str) -> impl Iterator<Item = &'a Value> {
+    value_field(value, field)
+        .and_then(Value::as_sequence)
+        .into_iter()
+        .flatten()
+}
 
-    // Worktrees
-    add_booleans!(cache, "worktrees.enabled");
-    add_strings!(cache, "worktrees.base_path");
+fn string_field<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
+    value_field(value, field)?.as_str()
+}
 
-    // Shared package source discovery
-    add_string_arrays!(cache, "packages.source_roots", "packages.canonical_sources");
-
-    cache
+fn joined_path(parent: &str, child: &str) -> String {
+    if parent.is_empty() {
+        child.to_string()
+    } else {
+        format!("{parent}.{child}")
+    }
 }
 
 /// Look up the schema type for a given field path
@@ -297,45 +163,23 @@ pub fn lookup_field_type(field: &str, global: bool) -> SchemaType {
         return schema_type.clone();
     }
 
-    // Pattern matching for dynamic fields
-    // Port assignments: ports.* (except _range)
-    if field.starts_with("ports.") && !field.ends_with("._range") {
-        return SchemaType::Integer;
-    }
-
-    // Alias definitions: aliases.*
-    if field.starts_with("aliases.") {
-        return SchemaType::String;
-    }
-
-    // Environment variables: environment.*
-    if field.starts_with("environment.") {
-        return SchemaType::String;
-    }
-
-    if field.starts_with("storage.volumes.") {
-        return match field.rsplit('.').next() {
-            Some("nocopy") => SchemaType::Boolean,
-            Some("target" | "scope" | "retention") => SchemaType::String,
-            _ => SchemaType::Unknown,
-        };
-    }
-
-    if field.starts_with("storage.tmpfs.") {
-        return match field.rsplit('.').next() {
-            Some("target" | "size" | "mode") => SchemaType::String,
-            _ => SchemaType::Unknown,
-        };
-    }
-
-    if field.starts_with("tools.") {
-        return match field.rsplit('.').next() {
-            Some("version" | "updates") => SchemaType::String,
-            _ => SchemaType::Object,
-        };
-    }
-
-    SchemaType::Unknown
+    let segments = field.split('.').collect::<Vec<_>>();
+    cache
+        .iter()
+        .filter_map(|(pattern, schema_type)| {
+            let pattern = pattern.split('.').collect::<Vec<_>>();
+            (pattern.len() == segments.len()
+                && pattern
+                    .iter()
+                    .zip(&segments)
+                    .all(|(expected, actual)| *expected == "*" || expected == actual))
+            .then_some((
+                pattern.iter().filter(|segment| **segment != "*").count(),
+                schema_type,
+            ))
+        })
+        .max_by_key(|(specificity, _)| *specificity)
+        .map_or(SchemaType::Unknown, |(_, schema_type)| schema_type.clone())
 }
 
 /// Parse a value according to its schema type
@@ -547,7 +391,25 @@ mod tests {
         );
         assert_eq!(
             lookup_field_type("storage.tmpfs", false),
-            SchemaType::Object
+            SchemaType::Array {
+                item_type: Box::new(SchemaType::Object)
+            }
+        );
+    }
+
+    #[test]
+    fn schema_cache_follows_references_and_additional_properties() {
+        assert_eq!(
+            lookup_field_type("services.postgresql.version", true),
+            SchemaType::String
+        );
+        assert_eq!(
+            lookup_field_type("tools.typemill.updates", true),
+            SchemaType::String
+        );
+        assert_eq!(
+            lookup_field_type("mounts.0.access", false),
+            SchemaType::String
         );
     }
 
