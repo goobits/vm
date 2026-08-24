@@ -17,5 +17,4 @@ pub const SOURCE_WORKSPACE_MARKER: &str = ".vm-source-workspace";
 /// Shared machine-local build directory used outside managed guest cache volumes.
 pub const MACHINE_CARGO_TARGET_DIR: &str = "/tmp/vm-rust-target";
 
-// Re-export system resource detection functions for convenience
-pub use system_check::{check_system_resources, get_cpu_core_count, get_total_memory_gb};
+pub use system_check::check_system_resources;

@@ -33,8 +33,11 @@ vm/
 - `rust/vm-snapshot/` owns snapshot creation, restoration, import, and export.
   Archive safety/staging, images, volumes, and Dockerfile base images have one
   private owner each.
+- `rust/vm-platform/` owns platform-specific paths, process integration, and
+  host CPU/memory detection.
 - `rust/vm-core/` owns shared filesystem, command, prompt, and message-format
-  utilities.
+  utilities plus system requirement policy; it consumes platform facts rather
+  than detecting them.
 - `rust/vm-packages/` owns package identities, resolver policy, client
   environment, and shared workflow contracts. One public infrastructure client
   delegates privately to endpoint-domain implementations and one transport.

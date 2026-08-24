@@ -3708,7 +3708,6 @@ dependencies = [
  "rand 0.10.2",
  "serde_json",
  "serde_yaml_ng",
- "sysinfo",
  "tempfile",
  "thiserror",
  "tokio",

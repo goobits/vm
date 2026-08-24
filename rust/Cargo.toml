@@ -1,6 +1,7 @@
 [workspace]
 members = [
     # Foundation Layer
+    "vm-platform",
     "vm-core",
     "vm-messages",
     "vm-logging",
@@ -9,8 +10,7 @@ members = [
     "vm-config",
     "vm-plugin",
 
-    # Utility Layer
-    "vm-platform",
+    # Domain Layer
     "vm-packages",
 
     # Provider Layer

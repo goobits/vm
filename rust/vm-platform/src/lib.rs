@@ -137,4 +137,10 @@ mod tests {
         let home = platform::home_dir().expect("should get home dir");
         assert_eq!(home, test_home);
     }
+
+    #[test]
+    fn resource_detection_returns_host_capacity() {
+        assert!(platform::cpu_core_count().expect("should detect CPU cores") > 0);
+        assert!(platform::total_memory_gb().expect("should detect memory") > 0);
+    }
 }

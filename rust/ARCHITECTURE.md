@@ -16,7 +16,8 @@ Goobits VM is built using a **layered architecture** designed around the princip
 
 | Layer | Crate | Primary Responsibility | Quick Checks |
 | --- | --- | --- | --- |
-| Foundation | `vm-core` | Shared errors, output primitives, FS utilities, platform helpers | `cargo test -p vm-core` |
+| Foundation | `vm-platform` | OS integration, paths, and host resource detection | `cargo test -p vm-platform` |
+| Foundation | `vm-core` | Shared errors, output primitives, FS and command utilities | `cargo test -p vm-core` |
 | Foundation | `vm-messages` | Reusable config, plugin, and service message templates | `cargo test -p vm-messages` |
 | Foundation | `vm-logging` | Tracing subscriber + log routing setup used by every binary | `cargo test -p vm-logging` |
 | Configuration | `vm-config` | Configuration schema, detectors, CLI helpers | `cargo test -p vm-config` |
@@ -31,26 +32,30 @@ Goobits VM is built using a **layered architecture** designed around the princip
 | Service | `vm-package-work` | Deterministic checkout, review, release, and rollout state | `cargo test -p vm-package-work` |
 | Service | `vm-package-jobs` | Persistent review, release, and rollout workers | `cargo test -p vm-package-jobs` |
 | Service | `vm-auth-proxy` | Authentication proxy that fronts API/services | `cargo run -p vm-auth-proxy -- --help` |
-| Utility | `vm-platform` | OS detection, system integration, resource probing | `cargo test -p vm-platform` |
 | Tooling | `version-sync` | Keeps version numbers aligned across manifests | `cargo run -p version-sync -- check` |
 
 ## Crate Architecture
 
 ### Foundation Layer
 
+#### vm-platform
+**Role**: The sole owner of platform-specific operations and host resource detection.
+
+**Key Exports**: Platform paths, shell detection, process integration, and resource probing
+
 #### vm-core
 **Role**: The foundational crate providing shared utilities and error handling for the entire workspace.
 
 **Responsibilities**:
 - Unified error types (`VmError`) used throughout the system
-- Cross-cutting utilities (file system operations, command execution, platform detection)
+- Cross-cutting utilities (file system operations and command execution)
 - Core traits and interfaces shared across crates
 - System validation and health checks
 - Message substitution and shared stdout/stderr primitives (`msg!`, `vm_println!`,
   `vm_progress!`, `vm_error!`, etc.)
 
 **Key Exports**: `VmError`, `Result`, output macros, file system utilities,
-command streaming, platform detection
+command streaming, and system validation
 
 #### vm-messages
 **Role**: Pure data crate containing reusable domain message templates.
@@ -244,25 +249,13 @@ store, source manager, and persistence records remain service-internal.
 
 **Key Exports**: Auth proxy server, middleware, session management
 
-### Utility Layer
-
-#### vm-platform
-**Role**: Platform-specific utilities and system integration.
-
-**Responsibilities**:
-- Operating system detection and capabilities
-- Platform-specific file system operations
-- System resource monitoring
-- Hardware detection and reporting
-
-**Key Exports**: Platform detection, system utilities, resource monitoring
-
 ## Dependency Flow
 
 ```mermaid
 graph TD
     %% Foundation layer
     A[vm-core] --> B[vm-messages]
+    A --> F[vm-platform]
 
     %% Configuration layer
     C[vm-config] --> A
@@ -274,8 +267,7 @@ graph TD
     E[vm-temp] --> A
     E --> D
 
-    %% Utility layer
-    F[vm-platform] --> A
+    %% Domain layer
     Q[vm-packages]
 
     %% Service layer

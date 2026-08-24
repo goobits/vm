@@ -1,7 +1,8 @@
 use tracing::info;
 use vm_config::config::VmConfig;
 use vm_core::error::Result;
-use vm_core::{get_cpu_core_count, get_total_memory_gb, vm_warning};
+use vm_core::vm_warning;
+use vm_platform::platform;
 
 use super::provider::TartProvider;
 use crate::{resource_limits::ResolvedResources, VmError};
@@ -25,7 +26,7 @@ impl TartProvider {
     }
 
     fn adjust_cpu_count(requested: u32) -> u32 {
-        let available = get_cpu_core_count().unwrap_or(2);
+        let available = platform::cpu_core_count().unwrap_or(2);
         if requested > available {
             (available / 2).max(1).min(available)
         } else {
@@ -34,7 +35,10 @@ impl TartProvider {
     }
 
     fn adjust_memory_mb(requested: u32) -> u32 {
-        let safe_gb = get_total_memory_gb().unwrap_or(4).saturating_sub(2).max(1);
+        let safe_gb = platform::total_memory_gb()
+            .unwrap_or(4)
+            .saturating_sub(2)
+            .max(1);
         if u64::from(requested) / 1024 > safe_gb {
             (safe_gb * 1024) as u32
         } else {
@@ -54,8 +58,10 @@ impl TartProvider {
             if adjusted != value { vm_warning!("Tart requested {value} MB RAM, but the host can safely apply {adjusted} MB; using {adjusted} MB"); }
             adjusted
         });
-        let host_cpus = get_cpu_core_count().unwrap_or(2);
-        let host_memory_mb = get_total_memory_gb().unwrap_or(4).saturating_mul(1024);
+        let host_cpus = platform::cpu_core_count().unwrap_or(2);
+        let host_memory_mb = platform::total_memory_gb()
+            .unwrap_or(4)
+            .saturating_mul(1024);
         if Self::uses_most_of_host(cpus, memory_mb, host_cpus, host_memory_mb) {
             vm_warning!("Tart is configured for at least 75% of this host; Docker Desktop or another VM may oversubscribe macOS");
         }
