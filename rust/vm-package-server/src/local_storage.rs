@@ -135,7 +135,7 @@ mod tests {
         ] {
             std::fs::write(metadata.join(file_name), "{}\n").unwrap();
         }
-        std::fs::create_dir(metadata.join("legacy-directory.json")).unwrap();
+        std::fs::create_dir(metadata.join("ignored-directory.json")).unwrap();
 
         let inventory = list_local_packages(directory.path()).unwrap();
 

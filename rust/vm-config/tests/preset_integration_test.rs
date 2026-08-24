@@ -8,7 +8,7 @@
 
 use serde_yaml_ng as serde_yaml;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Mutex;
 use tempfile::TempDir;
 use vm_config::config::{BoxSpec, CpuLimit, MemoryLimit, ProjectConfig, TerminalConfig, VmConfig};
@@ -60,24 +60,6 @@ impl PresetTestFixture {
             original_home,
             original_vm_tool_dir,
         })
-    }
-
-    #[allow(dead_code)]
-    fn project_path(&self) -> &Path {
-        &self.project_dir
-    }
-
-    #[allow(dead_code)]
-    fn create_dir(&self, name: &str) -> Result<PathBuf> {
-        let path = self.project_dir.join(name);
-        fs::create_dir_all(&path)?;
-        Ok(path)
-    }
-
-    #[allow(dead_code)]
-    fn write_file(&self, path: &str, content: &str) -> Result<()> {
-        fs::write(self.project_dir.join(path), content)?;
-        Ok(())
     }
 
     fn read_vm_yaml(&self) -> Result<VmConfig> {
