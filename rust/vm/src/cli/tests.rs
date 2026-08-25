@@ -188,6 +188,17 @@ fn save_parses_humane_snapshot_name() {
 }
 
 #[test]
+fn import_parses_portable_snapshot_archive() {
+    assert!(matches!(
+        Args::parse_from(["vm", "import", "stable.snapshot.tar.gz", "--name", "stable", "--force"]).command,
+        Command::Import { archive, name, force }
+            if archive == std::path::PathBuf::from("stable.snapshot.tar.gz")
+                && name.as_deref() == Some("stable")
+                && force
+    ));
+}
+
+#[test]
 fn system_base_build_parses_macos_guest_os() {
     assert!(matches!(
         Args::parse_from([

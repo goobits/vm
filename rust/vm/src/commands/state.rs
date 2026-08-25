@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use super::command_context::load_runtime_subject;
 use crate::error::{VmError, VmResult};
-use vm_config::AppConfig;
+use vm_config::{AppConfig, GlobalConfig};
 use vm_core::{vm_progress, vm_success};
 
 pub(super) async fn save(
@@ -106,6 +106,14 @@ pub(super) async fn package(
     .await
     .map_err(VmError::from)?;
     vm_success!("Packaged snapshot '{snapshot}'");
+    Ok(())
+}
+
+pub(super) async fn import(archive: PathBuf, name: Option<String>, force: bool) -> VmResult<()> {
+    let provider = GlobalConfig::load()?.container_provider().to_string();
+    vm_progress!("Importing portable snapshot '{}'...", archive.display());
+    vm_snapshot::handle_import(&provider, &archive, name.as_deref(), force).await?;
+    vm_success!("Imported portable snapshot");
     Ok(())
 }
 

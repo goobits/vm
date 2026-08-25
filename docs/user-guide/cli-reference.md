@@ -40,6 +40,7 @@ built-in help and this static inventory.
 | `vm save [environment] as <snapshot> [--description <text>] [--quiesce] [--force]` | Save an environment state |
 | `vm revert [environment] <snapshot> [--force]` | Restore a saved environment state |
 | `vm package [environment] [-o\|--output <file>] [--compress <level>] [--build <path>]` | Export an environment or build context as a portable artifact; compression defaults to `6` |
+| `vm import <archive> [--name <snapshot>] [--force]` | Import a portable snapshot artifact and verify platform compatibility |
 
 `<fleet-options>` means:
 

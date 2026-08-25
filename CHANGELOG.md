@@ -17,6 +17,7 @@
 
 ### ✨ Added
 
+- 🚀 `vm import <archive>` restores portable snapshot artifacts with typed manifests, mandatory platform checks, and explicit support for platform-less v1 archives.
 - 🪟 `vm restart` provides the same humane environment targeting as start and stop operations.
 - ☁️ Container storage configuration supports scoped named volumes, bounded tmpfs mounts, PID limits, graceful-stop timing, and log rotation.
 - 🚀 Targeted status reports include writable-layer size, volume and tmpfs usage, memory and PID peaks, mounts, logging, and lifecycle settings.

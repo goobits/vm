@@ -207,6 +207,14 @@ pub enum Command {
         #[arg(long, value_name = "PATH")]
         build: Option<PathBuf>,
     },
+    /// Import a portable snapshot artifact
+    Import {
+        archive: PathBuf,
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long)]
+        force: bool,
+    },
     /// Manage the shared package-infrastructure appliance
     Packages {
         #[command(subcommand)]

@@ -1,6 +1,7 @@
 //! Snapshot export functionality
 
 use crate::archive::{copy_directory, create_gzip_archive, validate_snapshot_files};
+use crate::archive_manifest::ArchiveManifest;
 use crate::manager::{SnapshotManager, SnapshotScope};
 use crate::metadata::SnapshotMetadata;
 use std::path::Path;
@@ -82,26 +83,10 @@ pub async fn handle_export(
         })?;
 
     // Create manifest.json
-    let manifest = serde_json::json!({
-        "version": "1.0",
-        "snapshot_name": clean_name,
-        "is_global": is_global,
-        "runtime": executable,
-        "platform": {
-            "os": vm_platform::platform::operating_system(),
-            "arch": vm_platform::platform::architecture(),
-        },
-        "created_at": metadata.created_at,
-        "description": metadata.description,
-        "project_name": metadata.project_name,
-        "total_size_bytes": metadata.total_size_bytes,
-        "services": metadata.services.len(),
-        "volumes": metadata.volumes.len(),
-    });
+    let manifest = ArchiveManifest::new(executable, clean_name, is_global, &metadata);
 
     let manifest_path = export_build_dir.join("manifest.json");
-    let manifest_json = serde_json::to_string_pretty(&manifest)
-        .map_err(|e| VmError::general(e, "Failed to serialize manifest"))?;
+    let manifest_json = manifest.to_json_pretty()?;
     tokio::fs::write(&manifest_path, manifest_json)
         .await
         .map_err(|e| VmError::filesystem(e, manifest_path.display().to_string(), "write"))?;
@@ -145,13 +130,13 @@ pub async fn handle_export(
 
     if is_global {
         tracing::info!("\nTo import on another machine:");
-        tracing::info!("  vm snapshot import {}", output_file.display());
+        tracing::info!("  vm import {}", output_file.display());
         tracing::info!("\nThen use in any project with:");
         tracing::info!("  vm:");
         tracing::info!("    image: @{}", clean_name);
     } else {
         tracing::info!("\nTo import on another machine:");
-        tracing::info!("  vm snapshot import {}", output_file.display());
+        tracing::info!("  vm import {}", output_file.display());
     }
 
     Ok(())

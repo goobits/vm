@@ -338,6 +338,11 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             )
             .await
         }
+        Command::Import {
+            archive,
+            name,
+            force,
+        } => state::import(archive, name, force).await,
         Command::Packages { command } => packages::handle(command, args.config, args.profile).await,
         Command::Tools { command } => tools::handle(command, args.config, args.profile).await,
         Command::Tunnel { command } => tunnel::handle_command(command, args.config, args.profile),

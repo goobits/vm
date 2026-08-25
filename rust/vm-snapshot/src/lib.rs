@@ -3,6 +3,7 @@
 //! Provides snapshot creation, restoration, export, and import functionality.
 
 mod archive;
+mod archive_manifest;
 mod base_image;
 mod create;
 mod docker;

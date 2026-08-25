@@ -95,6 +95,9 @@ fn dry_run_description(command: &Command) -> String {
         Command::Save { .. } => "save an environment snapshot".to_string(),
         Command::Revert { .. } => "restore an environment snapshot".to_string(),
         Command::Package { environment, .. } => format!("package {}", target(environment)),
+        Command::Import { archive, .. } => {
+            format!("import portable snapshot {}", archive.display())
+        }
         Command::Packages {
             command: crate::cli::PackagesSubcommand::Open { source },
         } => format!("open the original workspace for '{source}' in its owning Docker environment"),

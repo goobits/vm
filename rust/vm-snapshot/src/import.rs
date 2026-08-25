@@ -1,6 +1,7 @@
 //! Snapshot import functionality
 
 use crate::archive::{copy_directory, extract_gzip_archive, validate_snapshot_files};
+use crate::archive_manifest::ArchiveManifest;
 use crate::images::load_service_images;
 use crate::manager::{SnapshotManager, SnapshotScope};
 use crate::metadata::SnapshotMetadata;
@@ -12,7 +13,6 @@ pub async fn handle_import(
     executable: &str,
     file_path: &Path,
     name_override: Option<&str>,
-    verify: bool,
     force: bool,
 ) -> Result<()> {
     let manager = SnapshotManager::new()?;
@@ -50,38 +50,15 @@ pub async fn handle_import(
         .await
         .map_err(|e| VmError::filesystem(e, manifest_path.display().to_string(), "read"))?;
 
-    let manifest: serde_json::Value = serde_json::from_str(&manifest_content)
-        .map_err(|e| VmError::general(e, "Failed to parse manifest.json"))?;
+    let manifest = ArchiveManifest::parse(&manifest_content)?;
 
     // Get snapshot name (from manifest or override)
     let snapshot_name = name_override
         .map(|s| s.to_string())
-        .or_else(|| {
-            manifest
-                .get("snapshot_name")
-                .and_then(|v| v.as_str())
-                .map(String::from)
-        })
-        .ok_or_else(|| {
-            VmError::validation(
-                "Snapshot name not found in manifest and no override provided",
-                None::<String>,
-            )
-        })?;
+        .unwrap_or_else(|| manifest.snapshot_name().to_string());
 
-    let is_global = manifest
-        .get("is_global")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    let project_name = if is_global {
-        "global"
-    } else {
-        manifest
-            .get("project_name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("default")
-    };
+    let is_global = manifest.is_global();
+    let project_name = manifest.project_name();
 
     tracing::info!("  Snapshot name: {}", snapshot_name);
     tracing::info!("  Project: {}", project_name);
@@ -111,10 +88,7 @@ pub async fn handle_import(
         ));
     }
 
-    // Verify platform compatibility (warning only)
-    if verify {
-        validate_manifest_platform(&manifest)?;
-    }
+    manifest.validate_current_platform()?;
 
     // Load snapshot metadata
     let metadata_path = extract_dir.join("metadata.json");
@@ -152,63 +126,18 @@ pub async fn handle_import(
         tracing::info!("\nThe VM will start instantly using the imported base image!");
     } else {
         tracing::info!("\nTo restore this project snapshot:");
-        tracing::info!("  vm snapshot restore {}", snapshot_name);
-    }
-
-    Ok(())
-}
-
-fn validate_manifest_platform(manifest: &serde_json::Value) -> Result<()> {
-    tracing::info!("  Verifying platform compatibility...");
-    let current_arch = vm_platform::platform::architecture();
-    let current_os = vm_platform::platform::operating_system();
-    tracing::info!("    Current platform: {}/{}", current_os, current_arch);
-
-    let manifest_os = manifest
-        .get("platform")
-        .and_then(|platform| platform.get("os"))
-        .and_then(|value| value.as_str());
-    let manifest_arch = manifest
-        .get("platform")
-        .and_then(|platform| platform.get("arch"))
-        .and_then(|value| value.as_str());
-
-    if let (Some(manifest_os), Some(manifest_arch)) = (manifest_os, manifest_arch) {
-        if manifest_os != current_os || manifest_arch != current_arch {
-            return Err(VmError::validation(
-                format!(
-                    "Snapshot was exported for {}/{} but current platform is {}/{}",
-                    manifest_os, manifest_arch, current_os, current_arch
-                ),
-                Some(
-                    "Use a matching machine or re-export the snapshot on this platform".to_string(),
-                ),
-            ));
-        }
-    } else {
-        tracing::warn!("Snapshot manifest does not include platform metadata; proceeding without a compatibility guarantee.");
+        tracing::info!("  vm revert {}", snapshot_name);
     }
 
     Ok(())
 }
 
 fn validate_import_contents(
-    manifest: &serde_json::Value,
+    manifest: &ArchiveManifest,
     metadata: &SnapshotMetadata,
     extract_dir: &Path,
 ) -> Result<()> {
-    let is_global = manifest
-        .get("is_global")
-        .and_then(|value| value.as_bool())
-        .unwrap_or(false);
-    let expected_project = if is_global {
-        "global"
-    } else {
-        manifest
-            .get("project_name")
-            .and_then(|value| value.as_str())
-            .unwrap_or("default")
-    };
+    let expected_project = manifest.project_name();
 
     if metadata.project_name != expected_project {
         return Err(VmError::validation(
@@ -229,27 +158,20 @@ mod tests {
     use crate::metadata::{ServiceSnapshot, SnapshotMetadata, VolumeSnapshot};
 
     #[test]
-    fn validate_manifest_platform_accepts_matching_platform() {
-        let manifest = serde_json::json!({
-            "platform": {
-                "os": vm_platform::platform::operating_system(),
-                "arch": vm_platform::platform::architecture()
-            }
-        });
-
-        assert!(validate_manifest_platform(&manifest).is_ok());
-    }
-
-    #[test]
     fn validate_import_contents_rejects_missing_image() {
         let tempdir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(tempdir.path().join("images")).unwrap();
         std::fs::create_dir_all(tempdir.path().join("volumes")).unwrap();
 
-        let manifest = serde_json::json!({
-            "is_global": true,
-            "project_name": "global"
-        });
+        let manifest = ArchiveManifest::parse(
+            r#"{
+                "version": "1.0",
+                "snapshot_name": "demo",
+                "is_global": true,
+                "project_name": "global"
+            }"#,
+        )
+        .unwrap();
         let metadata = SnapshotMetadata {
             name: "demo".to_string(),
             created_at: chrono::Utc::now(),
