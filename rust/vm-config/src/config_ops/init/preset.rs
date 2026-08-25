@@ -20,7 +20,7 @@ pub(super) fn build_config_from_preset(
         )));
     }
 
-    let preset = detector.load_preset_cached(preset_name)?;
+    let preset = detector.load_preset(preset_name)?;
     let category = preset_category(preset_name, &preset);
     let base = build_initial_config(sanitized_name)?;
     let mut config = match category {

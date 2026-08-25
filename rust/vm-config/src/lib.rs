@@ -36,7 +36,6 @@ mod merge;
 mod paths;
 pub mod ports;
 mod preset;
-mod preset_cache;
 mod schema;
 pub mod validation;
 mod yaml;
@@ -50,11 +49,8 @@ mod global_config_tests;
 #[cfg(test)]
 mod config_tests;
 
-// Re-export commonly needed path utilities
-pub use paths::{get_config_dir, get_presets_dir, get_tool_dir};
-
 // Re-export config operations for use by main vm binary
-pub use config_ops::{find_local_config, init_config_file, load_global_config, ConfigOps};
+pub use config_ops::{init_config_file, ConfigOps};
 
 // Re-export global config for use by other crates
 pub use global_config::{
@@ -66,15 +62,9 @@ pub use global_config::{
 pub use detector::{detect_worktrees, detect_worktrees_in};
 
 // Re-export ConfigLoader for relative path detection
-pub use limit_parser::{parse_limit_value, LimitVisitor, ParsedLimit};
-pub use loader::{load_and_merge_config, ConfigLoader};
+pub use loader::ConfigLoader;
 pub use merge::{apply_profile, merge_configs, ConfigMerger};
-pub use preset::{PresetDetector, PresetFile, PresetMetadata};
-pub use preset_cache::{
-    clear_preset_cache, get_cache_stats, list_all_presets_cached, list_presets_cached,
-    load_preset_cached, CacheStats,
-};
-pub use schema::{lookup_field_type, parse_value_with_schema, SchemaType};
+pub use preset::PresetDetector;
 pub use yaml::CoreOperations;
 
 use std::path::PathBuf;

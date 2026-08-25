@@ -30,14 +30,6 @@ pub enum ParsedLimit {
 /// - Percentages: "50%", "90%", "75%"
 /// - Unlimited: "unlimited"
 ///
-/// # Examples
-/// ```
-/// # use vm_config::{parse_limit_value, ParsedLimit};
-/// assert_eq!(parse_limit_value("1024").unwrap(), ParsedLimit::Number(1024));
-/// assert_eq!(parse_limit_value("1gb").unwrap(), ParsedLimit::Bytes(1024 * 1024 * 1024));
-/// assert_eq!(parse_limit_value("50%").unwrap(), ParsedLimit::Percentage(50));
-/// assert_eq!(parse_limit_value("unlimited").unwrap(), ParsedLimit::Unlimited);
-/// ```
 pub fn parse_limit_value(s: &str) -> Result<ParsedLimit, String> {
     let s = s.trim();
 

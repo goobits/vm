@@ -43,6 +43,7 @@
 
 ### 🔧 Changed
 
+- 📦 Preset operations now resolve directly within each CLI invocation; the redundant process-global cache, cache-only benchmark/tests, orphan workspace test file, and unused configuration exports are removed.
 - 🪟 Compatibility paths now name their exact pre-role or approved scope, all managed-settings reconciliation writes the canonical guest marker, and the active tracker records evidence required before v6 removals.
 - 📦 Configuration initialization and loading now have library-owned implementations used by `vm`; the redundant standalone `vm-config` executable and its generic YAML query/transform surface are removed.
 - 🚀 Docker vibe base builds stage the definition embedded in the installed binary, and the repository-only provider validation workflow is no longer exposed as a public CLI command.

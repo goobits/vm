@@ -385,23 +385,6 @@ impl PresetDetector {
             _ => None,
         }
     }
-
-    /// Load a preset with caching enabled
-    ///
-    /// This is the preferred method for repeated preset loading.
-    /// Falls back to non-cached `load_preset` if caching is disabled.
-    #[instrument(skip(self), fields(name = %name))]
-    pub fn load_preset_cached(&self, name: &str) -> Result<VmConfig> {
-        crate::preset_cache::load_preset_cached(self, name)
-    }
-
-    /// List presets with caching enabled
-    ///
-    /// This is the preferred method for repeated preset listing.
-    #[instrument(skip(self))]
-    pub fn list_presets_cached(&self) -> Result<Vec<String>> {
-        crate::preset_cache::list_presets_cached(self)
-    }
 }
 
 #[cfg(test)]

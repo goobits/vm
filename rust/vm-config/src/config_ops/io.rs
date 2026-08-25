@@ -72,7 +72,7 @@ pub fn get_or_create_global_config_path() -> Result<PathBuf> {
     Ok(config_path)
 }
 
-pub fn find_local_config() -> Result<PathBuf> {
+pub(super) fn find_local_config() -> Result<PathBuf> {
     find_local_config_impl()
 }
 
@@ -103,13 +103,4 @@ pub fn find_or_create_local_config() -> Result<PathBuf> {
     }
     let current_dir = std::env::current_dir()?;
     Ok(current_dir.join("vm.yaml"))
-}
-
-/// Load global configuration if it exists
-pub fn load_global_config() -> Option<VmConfig> {
-    let global_path = get_global_config_path();
-    if !global_path.exists() {
-        return None;
-    }
-    VmConfig::from_file(&global_path).ok()
 }

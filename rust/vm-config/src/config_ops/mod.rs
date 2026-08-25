@@ -18,7 +18,6 @@ pub mod port_placeholders;
 
 // Re-export the public API functions for direct use
 pub use init::init_config_file;
-pub use io::{find_local_config, load_global_config};
 
 // Internal imports
 use vm_core::error::Result;

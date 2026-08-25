@@ -39,7 +39,7 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
 
 /// List all available presets
 fn list_presets(detector: &PresetDetector) -> Result<()> {
-    let presets = detector.list_presets_cached()?;
+    let presets = detector.list_presets()?;
     vm_println!("{}", MESSAGES.config.available_presets);
     for preset in presets {
         let description = detector
@@ -57,7 +57,7 @@ fn list_presets(detector: &PresetDetector) -> Result<()> {
 
 /// Show a specific preset configuration
 fn show_preset(detector: &PresetDetector, name: &str) -> Result<()> {
-    let preset_config = detector.load_preset_cached(name)?;
+    let preset_config = detector.load_preset(name)?;
     let yaml = serde_yaml::to_string(&preset_config)?;
     vm_println!("📋 Preset '{}' configuration:\n", name);
     vm_println!("{}", yaml);
@@ -74,7 +74,7 @@ fn apply_preset_to_config(
 ) -> Result<()> {
     // Validate all presets exist BEFORE attempting to initialize/modify config
     let preset_list: Vec<&str> = preset_names.split(',').map(|s| s.trim()).collect();
-    let available_presets = detector.list_presets_cached()?;
+    let available_presets = detector.list_presets()?;
     let mut missing_presets = Vec::new();
 
     for preset_name in &preset_list {
