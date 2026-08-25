@@ -22,17 +22,31 @@ pub(crate) async fn snapshot_container(
         "vm-snapshot/{}/{}:{}",
         project_name, service_name, snapshot_name
     );
-    execute_docker_with_output(executable, &["commit", container_id, &image_tag]).await?;
+    let commit_output =
+        execute_docker_with_output(executable, &["commit", container_id, &image_tag]).await?;
 
     let image_file = format!("{service_name}.tar");
     save_image(executable, &image_tag, &images_dir.join(&image_file)).await?;
 
     Ok(ServiceSnapshot {
         name: service_name.to_string(),
-        image_digest: image_digest(executable, &image_tag).await?,
+        image_digest: match commit_image_digest(&commit_output) {
+            Some(digest) => Some(digest),
+            None => image_digest(executable, &image_tag).await?,
+        },
         image_tag,
         image_file,
     })
+}
+
+fn commit_image_digest(output: &str) -> Option<String> {
+    let digest = output.trim();
+    let encoded = digest.strip_prefix("sha256:")?;
+    (encoded.len() == 64
+        && encoded
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)))
+    .then(|| digest.to_string())
 }
 
 pub(crate) async fn load_service_images(
@@ -95,4 +109,74 @@ fn path_argument(path: &Path) -> Result<&str> {
             ),
         )
     })
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::snapshot_container;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+
+    async fn snapshot_with_commit_output(commit_output: &str) -> (Option<String>, String) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let executable = temp_dir.path().join("runtime");
+        let log = temp_dir.path().join("commands.log");
+        let fallback = format!("sha256:{}", "b".repeat(64));
+        fs::write(
+            &executable,
+            format!(
+                r#"#!/bin/sh
+echo "$@" >> '{}'
+if [ "$1" = commit ]; then printf '%s' '{}'; exit 0; fi
+if [ "$1" = image ]; then printf '%s' '{}'; exit 0; fi
+exit 0
+"#,
+                log.display(),
+                commit_output,
+                fallback
+            ),
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&executable).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&executable, permissions).unwrap();
+
+        let snapshot = snapshot_container(
+            executable.to_str().unwrap(),
+            "demo",
+            "stable",
+            "app",
+            "container-id",
+            temp_dir.path(),
+        )
+        .await
+        .unwrap();
+
+        (snapshot.image_digest, fs::read_to_string(log).unwrap())
+    }
+
+    #[tokio::test]
+    async fn valid_commit_digest_avoids_an_image_inspect() {
+        let committed = format!("sha256:{}", "a".repeat(64));
+
+        let (digest, commands) = snapshot_with_commit_output(&committed).await;
+
+        assert_eq!(digest.as_deref(), Some(committed.as_str()));
+        assert_eq!(commands.lines().count(), 2);
+        assert!(!commands.lines().any(|line| line.starts_with("image ")));
+    }
+
+    #[tokio::test]
+    async fn empty_or_malformed_commit_output_falls_back_to_inspect() {
+        let fallback = format!("sha256:{}", "b".repeat(64));
+        for output in ["", "sha256:short", "unexpected output"] {
+            let (digest, commands) = snapshot_with_commit_output(output).await;
+
+            assert_eq!(digest.as_deref(), Some(fallback.as_str()));
+            assert_eq!(commands.lines().count(), 3);
+            assert!(commands
+                .lines()
+                .any(|line| line == "image inspect --format={{.Id}} vm-snapshot/demo/app:stable"));
+        }
+    }
 }
