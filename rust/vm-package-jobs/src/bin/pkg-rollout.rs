@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::process::{Command, ExitCode};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Error, Result};
 use vm_logging::init_service_subscriber;
 use vm_package_jobs::runtime::{
     authorization_header, command_text as text, download_bundle, operation_key,
@@ -105,8 +105,7 @@ async fn run_rollout(
         &rollout.version,
         &source,
     ) {
-        let _ = complete(client, &rollout.rollout_id, false).await;
-        return Err(error);
+        return Err(record_failure(client, &rollout.rollout_id, error).await);
     }
     let status = text(
         Command::new("git")
@@ -116,8 +115,12 @@ async fn run_rollout(
         "inspect consumer rollout changes",
     )?;
     if status.trim().is_empty() {
-        let _ = complete(client, &rollout.rollout_id, false).await;
-        bail!("package manager produced no consumer dependency change");
+        return Err(record_failure(
+            client,
+            &rollout.rollout_id,
+            anyhow!("package manager produced no consumer dependency change"),
+        )
+        .await);
     }
     run(
         Command::new("git")
@@ -177,6 +180,19 @@ async fn run_rollout(
         "package rollout is ready for review"
     );
     Ok(())
+}
+
+async fn record_failure(
+    client: &PackageInfrastructureClient,
+    rollout_id: &str,
+    error: Error,
+) -> Error {
+    match complete(client, rollout_id, false).await {
+        Ok(_) => error,
+        Err(completion_error) => error.context(format!(
+            "failed to persist rejection for rollout {rollout_id}: {completion_error:#}"
+        )),
+    }
 }
 
 async fn complete(

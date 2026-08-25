@@ -114,6 +114,35 @@ async fn transitions_are_validated_persisted_and_receipted() {
 }
 
 #[tokio::test]
+async fn committed_state_survives_a_repairable_receipt_projection_failure() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::open(directory.path()).await.unwrap();
+    let receipts = directory.path().join("receipts");
+    tokio::fs::remove_dir_all(&receipts).await.unwrap();
+    tokio::fs::write(&receipts, b"blocked").await.unwrap();
+
+    let created = store
+        .create_checkout(request("projection-drift", "agent-1"))
+        .await
+        .unwrap();
+    let checkout_id = created.checkout.checkout_id;
+    drop(store);
+
+    tokio::fs::remove_file(&receipts).await.unwrap();
+    tokio::fs::create_dir(&receipts).await.unwrap();
+    let reopened = Store::open(directory.path()).await.unwrap();
+    assert_eq!(
+        reopened
+            .get_checkout(&checkout_id)
+            .await
+            .unwrap()
+            .checkout_id,
+        checkout_id
+    );
+    assert!(receipts.read_dir().unwrap().next().is_some());
+}
+
+#[tokio::test]
 async fn client_lease_tokens_make_checkout_creation_retryable() {
     let directory = tempfile::tempdir().unwrap();
     let store = Store::open(directory.path()).await.unwrap();

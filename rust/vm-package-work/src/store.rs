@@ -115,7 +115,14 @@ impl Store {
     ) -> WorkResult<()> {
         persist_database(&self.root, &next).await?;
         **current = next;
-        self.materialize_receipts_locked(current).await
+        if let Err(error) = self.materialize_receipts_locked(current).await {
+            tracing::error!(
+                operation = "materialize_receipts",
+                error = ?error,
+                "durable workflow state committed but receipt projection is stale"
+            );
+        }
+        Ok(())
     }
 }
 
