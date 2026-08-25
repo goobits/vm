@@ -6,7 +6,7 @@
 use tracing::{debug, warn};
 
 use crate::error::VmResult;
-use crate::service_manager::get_service_manager;
+use crate::services::service_lifecycle;
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::msg;
 use vm_core::{vm_println, vm_success, vm_warning};
@@ -36,16 +36,16 @@ pub(super) async fn register_vm_services_helper(
     vm_config: &VmConfig,
     global_config: &GlobalConfig,
 ) -> VmResult<()> {
-    let service_manager = match get_service_manager() {
-        Ok(sm) => sm,
+    let lifecycle = match service_lifecycle() {
+        Ok(lifecycle) => lifecycle,
         Err(e) => {
-            warn!("Failed to get service manager: {}", e);
-            vm_warning!("Service manager unavailable: {e}");
+            warn!("Failed to get service lifecycle: {}", e);
+            vm_warning!("Service lifecycle unavailable: {e}");
             return Ok(());
         }
     };
 
-    if let Err(e) = service_manager
+    if let Err(e) = lifecycle
         .register_vm_services(vm_name, vm_config, global_config)
         .await
     {
@@ -63,16 +63,16 @@ pub(super) async fn unregister_vm_services_helper(
     vm_name: &str,
     global_config: &GlobalConfig,
 ) -> VmResult<()> {
-    let service_manager = match get_service_manager() {
-        Ok(sm) => sm,
+    let lifecycle = match service_lifecycle() {
+        Ok(lifecycle) => lifecycle,
         Err(e) => {
-            warn!("Failed to get service manager: {}", e);
-            vm_warning!("Service manager unavailable: {e}");
+            warn!("Failed to get service lifecycle: {}", e);
+            vm_warning!("Service lifecycle unavailable: {e}");
             return Ok(());
         }
     };
 
-    if let Err(e) = service_manager
+    if let Err(e) = lifecycle
         .unregister_vm_services(vm_name, global_config)
         .await
     {

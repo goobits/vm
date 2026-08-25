@@ -21,7 +21,6 @@ use vm_logging::init_subscriber;
 mod cli;
 mod commands;
 mod error;
-mod service_manager;
 mod services;
 mod utils;
 

@@ -176,6 +176,11 @@ None.
 - 2026-08-24: Doctor is now a thin diagnostic orchestrator over dedicated
   configuration, provider, host-resource, and SSH owners. Focused doctor tests,
   all-target checks, and strict Clippy passed in an isolated build cache.
+- 2026-08-24: The service-manager god module and its retired naming were
+  removed. Immutable service construction, atomic persistent state, and
+  reference-counted lifecycle orchestration now have separate owners under
+  `services/`. Focused lifecycle tests, all-target checks, and strict Clippy
+  passed.
 
 ## Related Context
 

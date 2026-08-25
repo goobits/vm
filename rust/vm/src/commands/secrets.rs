@@ -6,7 +6,7 @@
 
 use crate::cli::SecretSubcommand;
 use crate::error::{VmError, VmResult};
-use crate::service_manager::get_service_manager;
+use crate::services::service_lifecycle;
 use dialoguer::{Confirm, Input, Password, Select};
 use vm_auth_proxy::{self, check_server_running, SecretScope};
 use vm_config::{AppConfig, GlobalConfig};
@@ -63,21 +63,20 @@ async fn ensure_server(global_config: &GlobalConfig) -> VmResult<()> {
     if check_server_running(port).await {
         return Ok(());
     }
-    get_service_manager()?
+    service_lifecycle()?
         .ensure_service_running("auth_proxy", global_config)
         .await
         .map_err(VmError::from)
 }
 
-/// Show secrets proxy status with service manager information
+/// Show secrets proxy status with lifecycle information.
 async fn handle_status(global_config: &GlobalConfig) -> VmResult<()> {
-    let service_manager_result = get_service_manager();
+    let lifecycle = service_lifecycle();
 
     vm_println!("Auth proxy status");
 
-    // Get service status from service manager
-    let service_status_opt = if let Ok(sm) = service_manager_result {
-        sm.get_service_status("auth_proxy")
+    let service_status_opt = if let Ok(lifecycle) = lifecycle {
+        lifecycle.service_status("auth_proxy")
     } else {
         None
     };

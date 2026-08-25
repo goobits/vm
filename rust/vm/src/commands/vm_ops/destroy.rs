@@ -9,7 +9,7 @@ use tracing::debug;
 
 use crate::commands::db::utils::execute_psql_command;
 use crate::error::{VmError, VmResult};
-use crate::service_manager::get_service_manager;
+use crate::services::service_lifecycle;
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::{vm_hint, vm_println, vm_progress, vm_success, vm_warning};
 use vm_provider::{InstanceProvider, Provider, ProviderContext, VmError as ProviderError};
@@ -103,9 +103,9 @@ pub async fn handle_destroy(
             ));
         }
 
-        let service_manager_result = get_service_manager();
-        let pg_service_check = if let Ok(sm) = service_manager_result {
-            if let Some(pg_state) = sm.get_service_status("postgresql") {
+        let lifecycle = service_lifecycle();
+        let pg_service_check = if let Ok(lifecycle) = lifecycle {
+            if let Some(pg_state) = lifecycle.service_status("postgresql") {
                 pg_state.is_running && pg_state.reference_count == 1
             } else {
                 false
