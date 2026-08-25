@@ -4,8 +4,7 @@ use anyhow::Result;
 use vm_config::GlobalConfig;
 
 use super::container::{
-    loopback_healthy, loopback_port, reuse_managed_container, stop_managed_container,
-    ManagedContainerSpec,
+    loopback_healthy, start_managed_container, stop_managed_container, ManagedContainerSpec,
 };
 use super::{container_runtime, get_or_generate_password, ManagedService};
 
@@ -37,6 +36,7 @@ impl ManagedService for MongodbService {
         let executable = container_runtime(global_config);
         let spec = ManagedContainerSpec {
             name: CONTAINER_NAME,
+            service: "mongodb",
             display_name: DISPLAY_NAME,
             image: IMAGE,
             version: &settings.version,
@@ -44,37 +44,19 @@ impl ManagedService for MongodbService {
             guest_port: GUEST_PORT,
         };
 
-        let data_dir = shellexpand::tilde(&settings.data_dir).to_string();
-        tokio::fs::create_dir_all(&data_dir).await?;
-
         let password = get_or_generate_password("mongodb").await?;
-        if reuse_managed_container(executable, spec).await? {
-            return Ok(());
-        }
-
-        let mut cmd = tokio::process::Command::new(executable);
-        cmd.arg("run")
-            .arg("-d")
-            .arg("--name")
-            .arg(CONTAINER_NAME)
-            .args(["--label", "com.vm.managed=true"])
-            .args(["--label", "com.vm.service=mongodb"])
-            .arg("-p")
-            .arg(loopback_port(settings.port, GUEST_PORT))
-            .arg("-v")
-            .arg(format!("{data_dir}:/data/db"))
-            .arg("-e")
-            .arg("MONGO_INITDB_ROOT_USERNAME=root")
-            .arg("-e")
-            .arg(format!("MONGO_INITDB_ROOT_PASSWORD={}", password))
-            .arg(format!("mongo:{}", settings.version));
-
-        let status = cmd.status().await?;
-        if !status.success() {
-            return Err(anyhow::anyhow!("Failed to start MongoDB container"));
-        }
-
-        Ok(())
+        start_managed_container(
+            executable,
+            spec,
+            &settings.data_dir,
+            "/data/db",
+            &[
+                ("MONGO_INITDB_ROOT_USERNAME", "root"),
+                ("MONGO_INITDB_ROOT_PASSWORD", &password),
+            ],
+            &[],
+        )
+        .await
     }
 
     async fn stop(&self) -> Result<()> {

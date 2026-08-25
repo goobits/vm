@@ -111,7 +111,7 @@ impl TunnelManager {
         let content = serde_json::to_string_pretty(tunnels)
             .map_err(|e| VmError::general(e, "Failed to serialize tunnels".to_string()))?;
 
-        fs::write(&self.state_file, content)
+        vm_core::file_system::atomic_write(&self.state_file, content.as_bytes())
             .map_err(|e| VmError::general(e, "Failed to write tunnels state".to_string()))?;
 
         Ok(())

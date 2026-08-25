@@ -2,13 +2,14 @@ use anyhow::Result;
 use serde_json::Value;
 use tracing::{info, warn};
 
-pub(super) fn loopback_port(host: u16, guest: u16) -> String {
+fn loopback_port(host: u16, guest: u16) -> String {
     format!("127.0.0.1:{host}:{guest}")
 }
 
 #[derive(Clone, Copy)]
 pub(super) struct ManagedContainerSpec<'a> {
     pub name: &'a str,
+    pub service: &'a str,
     pub display_name: &'a str,
     pub image: &'a str,
     pub version: &'a str,
@@ -24,6 +25,48 @@ impl ManagedContainerSpec<'_> {
     fn port_key(self) -> String {
         format!("{}/tcp", self.guest_port)
     }
+}
+
+pub(super) async fn start_managed_container(
+    executable: &str,
+    spec: ManagedContainerSpec<'_>,
+    configured_data_dir: &str,
+    guest_data_dir: &str,
+    environment: &[(&str, &str)],
+    command: &[&str],
+) -> Result<()> {
+    let data_dir = shellexpand::tilde(configured_data_dir).into_owned();
+    tokio::fs::create_dir_all(&data_dir).await?;
+    if reuse_managed_container(executable, spec).await? {
+        return Ok(());
+    }
+
+    let mut process = tokio::process::Command::new(executable);
+    process
+        .arg("run")
+        .arg("-d")
+        .arg("--name")
+        .arg(spec.name)
+        .args(["--label", "com.vm.managed=true"])
+        .args(["--label", &format!("com.vm.service={}", spec.service)])
+        .arg("-p")
+        .arg(loopback_port(spec.host_port, spec.guest_port))
+        .arg("-v")
+        .arg(format!("{data_dir}:{guest_data_dir}"));
+    for (name, value) in environment {
+        process.arg("-e").arg(format!("{name}={value}"));
+    }
+    let output = process.arg(spec.image_ref()).args(command).output().await?;
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!(
+            "failed to start {} container '{}': {}",
+            spec.display_name,
+            spec.name,
+            detail.trim()
+        );
+    }
+    Ok(())
 }
 
 pub(super) async fn reuse_managed_container(
@@ -159,6 +202,7 @@ mod tests {
 
         let spec = ManagedContainerSpec {
             name: "vm-postgres-global",
+            service: "postgresql",
             display_name: "PostgreSQL",
             image: "postgres",
             version: "15",

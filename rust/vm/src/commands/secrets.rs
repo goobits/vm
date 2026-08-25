@@ -7,7 +7,6 @@
 use crate::cli::SecretSubcommand;
 use crate::error::{VmError, VmResult};
 use crate::service_manager::get_service_manager;
-use crate::service_registry::get_service_registry;
 use dialoguer::{Confirm, Input, Password, Select};
 use vm_auth_proxy::{self, check_server_running, SecretScope};
 use vm_config::{AppConfig, GlobalConfig};
@@ -72,7 +71,6 @@ async fn ensure_server(global_config: &GlobalConfig) -> VmResult<()> {
 
 /// Show secrets proxy status with service manager information
 async fn handle_status(global_config: &GlobalConfig) -> VmResult<()> {
-    let registry = get_service_registry();
     let service_manager_result = get_service_manager();
 
     vm_println!("Auth proxy status");
@@ -91,12 +89,15 @@ async fn handle_status(global_config: &GlobalConfig) -> VmResult<()> {
             service_state.registered_vms
         );
 
-        let status_line = registry.format_service_status(
-            "auth_proxy",
-            service_state.is_running,
-            service_state.reference_count,
+        let status = if service_state.is_running {
+            "running"
+        } else {
+            "stopped"
+        };
+        vm_println!(
+            "  Status: {status} (port {})",
+            global_config.services.auth_proxy.port
         );
-        vm_println!("{}", status_line);
     } else {
         vm_println!("  Status: not managed");
     }

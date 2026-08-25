@@ -451,7 +451,8 @@ impl ServiceManager {
             std::fs::create_dir_all(parent).context("Failed to create service state directory")?;
         }
 
-        std::fs::write(&self.state_file, json).context("Failed to write service state file")?;
+        vm_core::file_system::atomic_write(&self.state_file, json.as_bytes())
+            .context("Failed to write service state file")?;
 
         debug!("Service state saved to {:?}", self.state_file);
         Ok(())
