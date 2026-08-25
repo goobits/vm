@@ -19,8 +19,11 @@ owning Docker workspace without copying its repository or build tree. Live
 TypeMill 1.2.0 acceptance proved exactly-once retry behavior and stable
 container and volume identities. At owner direction, the previously listed
 equipped-host acceptance gates are no longer tracked as release requirements.
-Release behavior remains complete. Package services now use shared structured,
-container-safe logging without changing release semantics.
+Release behavior remains complete. VM-owned Codex, Claude, and Antigravity can
+now be updated across existing environments through the same `vm tools update`
+surface without project configuration or package publication. Package services
+use shared structured, container-safe logging without changing release
+semantics.
 
 ## Remaining Tasks In Order
 
@@ -28,6 +31,9 @@ None.
 
 ## Completed Foundations
 
+- [x] Update VM-owned vendor tools from declarative official-installer,
+  artifact-layout, required-executable, and version-probe definitions through
+  one transactional fleet engine with rollback and no environment recreation.
 - [x] Route `vm packages open <source>` only to the attested original source's
   existing writable Docker owner, with no checkout, copied build tree, hidden
   fallback, or second release pipeline.
@@ -66,6 +72,10 @@ None.
 
 ## Verification Log
 
+- 2026-08-24: The generic vendor updater adopted the proven legacy base layout
+  in `vm-dev`, updated Codex 0.149.1, Claude 2.1.231, and Antigravity 1.1.19
+  through their declared installers, reported every runtime consumable, kept
+  the exact primary container ID, and validated Codex's code-mode host.
 - 2026-08-24: Package registry, workflow, and worker processes now share
   container-safe structured logging, request IDs, stable operation and error
   fields, bounded queue-outage reporting, and secret-safe diagnostics. Focused

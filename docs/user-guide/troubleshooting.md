@@ -219,14 +219,22 @@ collection. Remove it when VM should own the collection, or update it through
 Git and disable the managed tool when the repository should own it. VM never
 rewrites project Git.
 
-`update` repairs the worker edge, Codex package, and managed links without a
-base rebuild or persistent edge-cache removal. If it refuses to overwrite an
-unmanaged `/usr/local/bin/codex`, resolve that ownership before retrying. A
-background shell repair may finish after the terminal opens; inspect its guest
-log with:
+`update` repairs the worker edge, VM-owned vendor tools, and managed package
+links without a base rebuild or persistent edge-cache removal. Select a vendor
+explicitly to fetch its latest official release:
 
 ```bash
-tail -n 50 "${XDG_STATE_HOME:-$HOME/.local/state}/vm-runtime/codex.log"
+vm tools update codex --to <environment>
+vm tools update claude antigravity --to <environment>
+```
+
+If VM refuses to overwrite an unmanaged launcher, resolve that ownership before
+retrying; it never silently replaces unrelated executables. A background shell
+repair may finish after the terminal opens; inspect its guest log with the
+vendor name:
+
+```bash
+tail -n 50 "${XDG_STATE_HOME:-$HOME/.local/state}/vm-runtime/<vendor>.log"
 ```
 
 If an older environment prints zsh job lines such as `[5] 26237` around a
@@ -236,7 +244,7 @@ repair remains targeted to a broken linked worktree and stays silent.
 
 For a deterministic foreground result, run `vm tools refresh` followed by `vm
 tools update --to <environment>` on the host. The update waits for an in-flight
-repair and fails if Codex remains unusable.
+repair and fails if a required vendor or managed package tool remains unusable.
 
 If a package/tool command was run inside a managed guest, do not try to operate
 the controller from there. The error prints the exact shell-safe host command,

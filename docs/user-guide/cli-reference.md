@@ -133,13 +133,13 @@ release, security, recovery, and consumer workflow details.
 | Command | Purpose |
 | --- | --- |
 | `vm tools register <name> --repository <url> [--branch <branch>] [--kind <binary\|collection>]` | Register a trusted tool source |
-| `vm tools list` | List registered tools and publication state |
-| `vm tools show <name>` | Show one tool and its releases |
+| `vm tools list` | List VM-owned vendor tools and registered package tools |
+| `vm tools show <name>` | Show one vendor definition or package tool and its releases |
 | `vm tools refresh` | Refresh the controller tool catalog |
 | `vm tools status [environment]` | Combine controller, installed, and consumable state |
 | `vm tools enable <tool>...` | Select tools globally and activate them in every running managed Docker environment |
 | `vm tools disable <tool>...` | Remove tools from the global selection while retaining existing managed files |
-| `vm tools update [<tool>...] [--to <environment>]... [--include-stopped] [--background]` | Update configured tools across selected environments |
+| `vm tools update [<tool>...] [--to <environment>]... [--include-stopped] [--background]` | Update VM-owned vendor tools and configured package tools across selected environments |
 
 `enable` persists controller-global defaults, then activates each tool in every
 running managed Docker environment. Future environments inherit those defaults.
@@ -147,16 +147,23 @@ Project entries with the same name override global version and update-policy
 settings. `disable` stops global enrollment without deleting existing managed
 files or a project-owned selection.
 
-With no tool names, `update` loads every running managed Docker environment's
-effective global-plus-project tool selection. Tool names filter those configured
-selections; they never install an unconfigured tool. Repeat `--to` to restrict exact environments,
+With no tool names, `update` refreshes Codex, Claude, and Antigravity and loads
+every running managed Docker environment's effective global-plus-project
+package-tool selection. Those three VM-owned names can be selected directly
+without configuration. Other names filter configured package-tool selections;
+they never install an unconfigured package tool. Repeat `--to` to restrict exact environments,
 including Podman or Tart targets. Stopped environments remain untouched unless
 `--include-stopped` is explicit. A selected tool that is not configured in any
 successfully loaded target is rejected.
 
-Explicit updates include prompt-policy releases while respecting persisted
+Vendor updates download the declared official HTTPS installer, stage and
+version-check its result, atomically activate managed links, and roll back on
+failure. Codex also requires `codex-code-mode-host`. Vendor tools do not use
+`enable`, project configuration, or package publication.
+
+Explicit package updates include prompt-policy releases while respecting persisted
 `off` policies for ordinary upgrades. Reconciliation repairs package routing,
-the base-owned Codex runtime, and managed links without recreating the primary
+base-owned vendor runtimes, and managed links without recreating the primary
 environment. Active agent sessions do not hot-reload updated skills.
 
 ## Diagnostics And System Management

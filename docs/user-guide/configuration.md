@@ -284,9 +284,16 @@ unattested.
 
 ## Managed Tools And AI State
 
-Vibe bases ship Antigravity, Claude Code, and Codex. Package infrastructure is
-reserved for explicitly managed artifacts such as the shared agent-skills
-collection:
+Vibe bases ship Antigravity, Claude Code, and Codex. Their executable updates
+are VM-owned and require no project configuration:
+
+```bash
+vm tools update codex
+vm tools update codex claude antigravity
+```
+
+Package infrastructure is reserved for explicitly managed artifacts such as
+the shared agent-skills collection:
 
 ```bash
 vm tools enable codeatlas typemill
@@ -338,8 +345,9 @@ host_sync:
 ```
 
 `ai_tools: true` syncs all three state areas. Host sync retains supported state
-and credentials only. The Vibe base owns the three executables and Codex repair;
-package infrastructure owns explicitly managed tools.
+and credentials only. The Vibe base owns the three executables and their generic
+transactional repair/update path; package infrastructure owns explicitly
+managed tools.
 
 ## Presets
 

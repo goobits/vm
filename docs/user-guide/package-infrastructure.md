@@ -481,8 +481,10 @@ artifacts it cannot verify. A deterministic command, archive, or verification
 failure returns the same workspace release to `NeedsChanges`; infrastructure
 failures remain retryable.
 
-The Vibe base owns Antigravity, Claude Code, and Codex executables. They do not
-require this appliance; `agent-skills` remains an intentionally managed tool.
+The Vibe base owns Antigravity, Claude Code, and Codex executables. VM updates
+them directly from their official installers through one transactional vendor
+engine; they do not require this appliance or entries in project repositories.
+`agent-skills` remains an intentionally managed package tool.
 Tool updates activate inside an already-running environment and do not require
 a base rebuild. Read credentials travel to the guest over standard input rather
 than command arguments. Collection activation merges individual skills into an
@@ -496,6 +498,8 @@ hot-reloaded.
 
 ```bash
 vm tools status [environment]
+vm tools update codex
+vm tools update codex claude antigravity
 vm tools update agent-skills another-tool
 vm tools update agent-skills --to projects-dev --to typemill-dev
 ```
@@ -504,9 +508,11 @@ These status and targeted-update commands are diagnostic and recovery controls,
 not daily release steps. See the
 [CLI reference](cli-reference.md#managed-tools) for every option.
 
-With no names, `update` uses every running managed Docker environment's effective
-global-plus-project tool selection. Positional names filter those selections and never
-make an unconfigured tool eligible. Each `--to` accepts one exact Docker,
+With no names, `update` refreshes the three VM-owned vendor tools and uses every
+running managed Docker environment's effective global-plus-project package-tool
+selection. A positional vendor name selects that VM-owned tool directly. Other
+positional names filter package-tool selections and never make an unconfigured
+package tool eligible. Each `--to` accepts one exact Docker,
 Podman, or Tart environment name. Stopped environments are ignored unless
 `--include-stopped` is explicit; then VM starts selected stopped environments in
 place. A tool absent from every successfully loaded target is rejected instead
@@ -516,20 +522,21 @@ Omitted versions track the latest release. Explicit semantic versions remain
 pinned. An explicit `update` installs every eligible selected change without a
 checklist. A persisted `off` policy disables newer-release upgrades, but not a
 required first install or pinned-version repair. Normal startup never waits for
-the registry, an update prompt, a guest download, or base-owned Codex repair. It
-launches only cached automatic tool work and the Vibe runtime probe/repair in
+the registry, an update prompt, a guest download, or base-owned vendor repair.
+It launches only cached automatic tool work and the Vibe vendor probes/repairs in
 the background. Prompt-policy upgrades remain pending for an explicit `vm tools
 update`. The
 [configuration guide](configuration.md#managed-tools-and-ai-state) owns the
 `tools` policy syntax.
-When no managed tools are selected, update can repair base-owned Codex without
-requiring a tool catalog or package-appliance connection.
+An explicitly selected vendor tool does not require global selection, a tool
+catalog, or a package-appliance connection.
 
 `vm packages list` reports registered and published package state; installation
 is environment-specific, and a published package is consumable through the
-gateway. `vm tools list` reports controller registration/publication only.
+gateway. `vm tools list` reports VM-owned vendor definitions plus controller
+registration/publication.
 `vm tools status [environment]` adds installed and consumable guest state and
-reports the base-owned Codex runtime separately. Its rows are the union of
+reports the three base-owned vendor runtimes separately. Its rows are the union of
 configured tools, controller registrations, and guest state, so a stale
 installed tool remains visible after it is removed from project configuration.
 For collections, `PROJECT_COPY` also identifies a standalone project checkout
@@ -545,14 +552,16 @@ paths preserve the edge cache named volume and leave the primary environment
 and base image intact. Both also repair managed client files in place so a new
 shell no longer depends on the primary container's creation-time environment.
 `vm ssh` and `vm exec` perform that package-edge and client-file repair before
-entering the guest or running the requested command. Tool and Codex
+entering the guest or running the requested command. Package-tool and vendor-tool
 reconciliation remains shell-specific.
 The explicit tool update then
-invokes base-owned Codex reconciliation in the foreground, waiting for any
-shell-triggered repair already in flight, before it verifies managed-tool links.
-A Codex replacement is staged and validated before activation, rolls back on
-failure, never writes executable content through host-synced `~/.codex`, and
-does not overwrite an unmanaged `/usr/local/bin/codex` launcher.
+repairs base-owned vendor tools in the foreground, waiting for any
+shell-triggered repair already in flight. Explicitly selected vendor tools are
+then downloaded from their declared official HTTPS installers. Every
+replacement is staged, version-probed, and activated through managed links;
+failure rolls back the complete prior runtime. Codex additionally requires its
+package manifest and `codex-code-mode-host`. VM adopts only declared base-image
+layouts or byte-identical legacy launchers and refuses unrelated executables.
 A matching installed release with broken links is treated as non-consumable and
 retried, including by the cached background startup path.
 
@@ -565,7 +574,7 @@ still respecting active locks.
 
 The default update discovers running managed Docker environments and loads each
 target's owning configuration before reconciling its shared package routing,
-base-owned Codex runtime, and managed-tool selection. It does not project the
+base-owned vendor runtimes, and managed-tool selection. It does not project the
 invoking project's application services or tool policy onto unrelated
 environments.
 

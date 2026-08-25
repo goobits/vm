@@ -35,6 +35,7 @@
 - 📦 Explicit cross-project Docker targets load their owning project configuration before managed-tool and package-edge reconciliation.
 - 📦 `vm tools update [<tool>...]` filters each running managed Docker environment's configured tools by default, supports repeated exact `--to` targeting across providers, and excludes stopped environments unless explicitly included.
 - 📦 `vm tools enable <tool>...` persists global tool enrollment and immediately activates selected tools across running managed Docker environments; future environments inherit the same baseline.
+- ☁️ `vm tools update codex claude antigravity` updates VM-owned vendor CLIs from declarative official-installer definitions with staging, validation, rollback, and no environment rebuild.
 - 📦 Package gateway upstreams now follow Docker DNS changes after appliance service replacement instead of retaining stale container addresses.
 - 📦 `vm packages release` queues one durable activation for each binary or collection release, resumes after interruption, and defers stopped environments until startup.
 - 📦 Attested canonical tool workspaces register their exact signed source automatically during release without granting repository choice to guests.
