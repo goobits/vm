@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use sha1::{Digest, Sha1};
 use std::path::{Path, PathBuf};
 use tracing::{debug, info};
-use vm_packages::{encode_hex, sha256_hex};
+use vm_packages::{encode_hex, sha256_hex, PackageEcosystem, PackageIdentity};
 
 use crate::validation;
 use crate::{storage, AppError, AppResult, AppState, SuccessResponse};
@@ -20,8 +20,14 @@ fn sha1_hex(data: &[u8]) -> String {
 }
 
 fn validate_package(package: &str) -> AppResult<String> {
-    validation::validate_package_name(package, "npm")
-        .map_err(|error| AppError::BadRequest(format!("Invalid npm package name: {error}")))
+    let identity = PackageIdentity::new(PackageEcosystem::Npm, package)
+        .map_err(|error| AppError::BadRequest(format!("Invalid npm package name: {error}")))?;
+    if identity.name != package {
+        return Err(AppError::BadRequest(
+            "Invalid npm package name: npm package names must be lowercase".into(),
+        ));
+    }
+    Ok(identity.name)
 }
 
 async fn merge_metadata(path: &Path, incoming: &Value) -> AppResult<Value> {
@@ -34,7 +40,7 @@ async fn merge_metadata(path: &Path, incoming: &Value) -> AppResult<Value> {
         ));
     }
     for version in incoming_versions.keys() {
-        validation::validate_version(version)
+        validation::validate_registry_version(version)
             .map_err(|error| AppError::BadRequest(format!("Invalid npm version: {error}")))?;
     }
 
@@ -76,8 +82,7 @@ fn metadata_file_name(package: &str) -> String {
 pub(crate) fn package_from_metadata_file_name(file_name: &str) -> Option<String> {
     let encoded = file_name.strip_suffix(".json")?;
     let package = encoded.replace("%2F", "/").replace("%2f", "/");
-    validation::validate_package_name(&package, "npm").ok()?;
-    Some(package)
+    validate_package(&package).ok()
 }
 
 pub(crate) fn metadata_path(data_dir: &Path, package: &str) -> AppResult<PathBuf> {
@@ -590,6 +595,7 @@ mod tests {
         for package in ["..", "../outside", "@scope/../outside", "/tmp/outside"] {
             assert!(metadata_path(root, package).is_err());
         }
+        assert!(metadata_path(root, "Express").is_err());
     }
 
     #[tokio::test]

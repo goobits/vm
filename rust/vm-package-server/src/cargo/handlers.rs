@@ -100,9 +100,8 @@ pub async fn download_crate(
     State(state): State<Arc<AppState>>,
 ) -> AppResult<Vec<u8>> {
     // Validate crate name and version for security
-    validation::validate_package_name(&crate_name, "cargo")
-        .map_err(|e| AppError::BadRequest(format!("Invalid crate name '{crate_name}': {e}")))?;
-    validation::validate_version(&version)
+    super::validate_crate_name(&crate_name)?;
+    validation::validate_registry_version(&version)
         .map_err(|e| AppError::BadRequest(format!("Invalid version '{version}': {e}")))?;
 
     let filename = format!("{crate_name}-{version}.crate");

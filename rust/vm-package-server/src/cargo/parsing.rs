@@ -59,9 +59,9 @@ pub fn parse_crate_upload(body: axum::body::Bytes) -> AppResult<(CrateMetadata, 
     })?;
 
     // Validate crate name and version early
-    validation::validate_package_name(crate_name, "cargo")
-        .map_err(|e| AppError::BadRequest(format!("Invalid crate name: {e}")))?;
-    validation::validate_version(version)
+    super::validate_crate_name(crate_name)
+        .map_err(|error| AppError::BadRequest(format!("Invalid crate name: {error}")))?;
+    validation::validate_registry_version(version)
         .map_err(|e| AppError::BadRequest(format!("Invalid version: {e}")))?;
 
     // Extract .crate file length

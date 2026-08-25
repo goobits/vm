@@ -39,7 +39,7 @@
 //! ```rust,no_run
 //! use vm_package_server::{AppError, AppResult};
 //!
-//! fn validate_package_name(name: &str) -> AppResult<()> {
+//! fn validate_request(name: &str) -> AppResult<()> {
 //!     if name.is_empty() {
 //!         return Err(AppError::BadRequest("Package name cannot be empty".to_string()));
 //!     }

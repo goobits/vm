@@ -22,6 +22,6 @@ pub use self::{
         validate_file_size, validate_package_upload, validate_total_upload_size, MAX_METADATA_SIZE,
         MAX_MULTIPART_FIELDS, MAX_REQUEST_BODY_SIZE, MAX_UPLOAD_SIZE,
     },
-    manifests::{validate_cargo_upload_structure, validate_package_name, validate_version},
+    manifests::{validate_cargo_upload_structure, validate_registry_version},
     paths::{validate_filename, validate_safe_path},
 };

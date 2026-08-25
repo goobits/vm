@@ -4,6 +4,9 @@
 //! index management, package uploads, downloads, and metadata operations.
 
 use serde_json::Value;
+use vm_packages::{PackageEcosystem, PackageIdentity};
+
+use crate::{AppError, AppResult};
 
 mod handlers;
 mod index;
@@ -24,3 +27,9 @@ pub struct CrateMetadata {
 
 pub use handlers::*;
 pub use index::*;
+
+fn validate_crate_name(name: &str) -> AppResult<&str> {
+    PackageIdentity::new(PackageEcosystem::Cargo, name)
+        .map_err(|error| AppError::BadRequest(format!("Invalid crate name '{name}': {error}")))?;
+    Ok(name)
+}

@@ -3,7 +3,9 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{validate_label, PackageDefinition, PackageEcosystem, PackageValidationError};
+use crate::{PackageDefinition, PackageEcosystem, PackageValidationError};
+
+const MAX_PACKAGE_NAME_LENGTH: usize = 214;
 
 /// Unambiguous identity used by resolver policy and persisted catalog snapshots.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -18,7 +20,7 @@ impl PackageIdentity {
         name: impl Into<String>,
     ) -> Result<Self, PackageValidationError> {
         let name = normalize_name(ecosystem, &name.into());
-        validate_label("package", &name)?;
+        validate_name(ecosystem, &name)?;
         Ok(Self { ecosystem, name })
     }
 
@@ -187,6 +189,57 @@ fn normalize_name(ecosystem: PackageEcosystem, name: &str) -> String {
     }
 }
 
+fn validate_name(ecosystem: PackageEcosystem, name: &str) -> Result<(), PackageValidationError> {
+    if name.is_empty() || name.len() > MAX_PACKAGE_NAME_LENGTH {
+        return Err(invalid_name(ecosystem));
+    }
+
+    let valid = match ecosystem {
+        PackageEcosystem::Npm => {
+            let segments = if let Some(scoped) = name.strip_prefix('@') {
+                let Some((scope, package)) = scoped.split_once('/') else {
+                    return Err(invalid_name(ecosystem));
+                };
+                if package.contains('/') {
+                    return Err(invalid_name(ecosystem));
+                }
+                vec![scope, package]
+            } else {
+                vec![name]
+            };
+            segments.into_iter().all(|segment| {
+                !segment.is_empty()
+                    && !segment.starts_with(['.', '_'])
+                    && segment.chars().all(|character| {
+                        character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_')
+                    })
+            })
+        }
+        PackageEcosystem::Cargo => {
+            !name.starts_with(|character: char| character.is_ascii_digit())
+                && name
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || character == '-')
+        }
+        PackageEcosystem::Python => {
+            !name.starts_with(|character: char| character.is_ascii_digit())
+                && name
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || character == '-')
+        }
+    };
+
+    if valid {
+        Ok(())
+    } else {
+        Err(invalid_name(ecosystem))
+    }
+}
+
+fn invalid_name(ecosystem: PackageEcosystem) -> PackageValidationError {
+    PackageValidationError::new(format!("invalid {ecosystem} package name"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -215,6 +268,16 @@ mod tests {
         );
         assert!(package(PackageEcosystem::Cargo, "goobits-auth").matches_name("Goobits_Auth"));
         assert!(package(PackageEcosystem::Python, "goobits-auth").matches_name("Goobits.Auth"));
+    }
+
+    #[test]
+    fn identities_enforce_ecosystem_name_rules() {
+        assert!(PackageIdentity::new(PackageEcosystem::Npm, "@scope/package").is_ok());
+        assert!(PackageIdentity::new(PackageEcosystem::Npm, "@scope/../package").is_err());
+        assert!(PackageIdentity::new(PackageEcosystem::Cargo, "serde_json").is_ok());
+        assert!(PackageIdentity::new(PackageEcosystem::Cargo, "123invalid").is_err());
+        assert!(PackageIdentity::new(PackageEcosystem::Python, "django-rest-framework").is_ok());
+        assert!(PackageIdentity::new(PackageEcosystem::Python, "123invalid").is_err());
     }
 
     #[test]

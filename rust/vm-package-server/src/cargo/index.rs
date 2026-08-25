@@ -21,8 +21,7 @@ use tracing::debug;
 /// directory traversal attacks and panics from malformed input.
 pub fn index_path(name: &str) -> AppResult<String> {
     // Validate the crate name first
-    let validated_name = validation::validate_package_name(name, "cargo")
-        .map_err(|e| AppError::BadRequest(format!("Invalid crate name '{name}': {e}")))?;
+    let validated_name = super::validate_crate_name(name)?;
 
     let name = validated_name.to_lowercase();
 
@@ -122,9 +121,9 @@ pub async fn index_file(
         .ok_or_else(|| AppError::BadRequest(format!("Cargo index path format is invalid: '{path}' - expected format: 1/a, 2/ab, 3/a/abc, or ab/cd/abcd...")))?;
 
     // Validate the extracted crate name for security
-    validation::validate_package_name(crate_name, "cargo").map_err(|e| {
+    super::validate_crate_name(crate_name).map_err(|error| {
         AppError::BadRequest(format!(
-            "Invalid crate name '{crate_name}' extracted from path '{path}': {e}"
+            "Invalid crate name '{crate_name}' extracted from path '{path}': {error}"
         ))
     })?;
 

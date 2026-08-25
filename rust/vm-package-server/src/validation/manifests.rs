@@ -5,145 +5,9 @@
 
 use crate::validation::error::ValidationError;
 use crate::validation::limits::{
-    MAX_METADATA_SIZE, MAX_PACKAGE_FILE_SIZE, MAX_PACKAGE_NAME_LENGTH, MAX_REQUEST_BODY_SIZE,
-    MAX_VERSION_LENGTH,
+    MAX_METADATA_SIZE, MAX_PACKAGE_FILE_SIZE, MAX_REQUEST_BODY_SIZE, MAX_VERSION_LENGTH,
 };
 use crate::validation::result::ValidationResult;
-
-/// Validate package names according to ecosystem-specific rules.
-///
-/// This function validates package names for npm, PyPI, and Cargo ecosystems,
-/// ensuring they conform to the respective naming conventions and don't contain
-/// malicious characters.
-///
-/// # Arguments
-///
-/// * `name` - The package name to validate
-/// * `ecosystem` - The package ecosystem ("npm", "pypi", "cargo")
-///
-/// # Returns
-///
-/// `Ok(String)` with the validated name, `Err(ValidationError)` if invalid
-pub fn validate_package_name(name: &str, ecosystem: &str) -> ValidationResult<String> {
-    // Common validations
-    if name.is_empty() {
-        return Err(ValidationError::TooShort { actual: 0, min: 1 });
-    }
-
-    if name.len() > MAX_PACKAGE_NAME_LENGTH {
-        return Err(ValidationError::TooLong {
-            actual: name.len(),
-            max: MAX_PACKAGE_NAME_LENGTH,
-        });
-    }
-
-    // Check for null bytes and control characters
-    if name.contains('\0') {
-        return Err(ValidationError::NullBytes);
-    }
-
-    if name.chars().any(|c| c.is_control()) {
-        return Err(ValidationError::ControlCharacters);
-    }
-
-    // Ecosystem-specific validations
-    match ecosystem.to_lowercase().as_str() {
-        "npm" => validate_npm_package_name(name),
-        "pypi" => validate_pypi_package_name(name),
-        "cargo" => validate_cargo_package_name(name),
-        _ => Err(ValidationError::InvalidFormat {
-            reason: format!("Unknown ecosystem: {ecosystem}"),
-        }),
-    }
-}
-
-/// Validate npm package names according to npm rules
-fn validate_npm_package_name(name: &str) -> ValidationResult<String> {
-    if name.to_lowercase() != name {
-        return Err(ValidationError::InvalidFormat {
-            reason: "npm package names must be lowercase".to_string(),
-        });
-    }
-
-    let segments: Vec<&str> = if let Some(scoped) = name.strip_prefix('@') {
-        let (scope, package) =
-            scoped
-                .split_once('/')
-                .ok_or_else(|| ValidationError::InvalidFormat {
-                    reason: "scoped npm names must use @scope/package".to_string(),
-                })?;
-        if package.contains('/') {
-            return Err(ValidationError::InvalidFormat {
-                reason: "scoped npm names must contain exactly one slash".to_string(),
-            });
-        }
-        vec![scope, package]
-    } else {
-        vec![name]
-    };
-
-    for segment in segments {
-        if segment.is_empty() || segment.starts_with(['.', '_']) {
-            return Err(ValidationError::InvalidFormat {
-                reason: "npm name segments cannot be empty or start with . or _".to_string(),
-            });
-        }
-        if !segment.chars().all(|character| {
-            character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_')
-        }) {
-            return Err(ValidationError::InvalidCharacters {
-                input: name.to_string(),
-            });
-        }
-    }
-
-    Ok(name.to_string())
-}
-
-/// Validate PyPI package names according to PEP 508
-fn validate_pypi_package_name(name: &str) -> ValidationResult<String> {
-    // PyPI allows letters, numbers, hyphens, periods, and underscores
-    // Names are case-insensitive but normalized to lowercase with hyphens
-    if name
-        .chars()
-        .any(|c| !c.is_ascii_alphanumeric() && !matches!(c, '-' | '.' | '_'))
-    {
-        return Err(ValidationError::InvalidCharacters {
-            input: name.to_string(),
-        });
-    }
-
-    // Cannot start with numbers
-    if name.chars().next().is_some_and(|c| c.is_ascii_digit()) {
-        return Err(ValidationError::InvalidFormat {
-            reason: "PyPI package names cannot start with numbers".to_string(),
-        });
-    }
-
-    Ok(name.to_string())
-}
-
-/// Validate Cargo package names according to Cargo rules
-fn validate_cargo_package_name(name: &str) -> ValidationResult<String> {
-    // Cargo allows letters, numbers, hyphens, and underscores
-    if name
-        .chars()
-        .any(|c| !c.is_ascii_alphanumeric() && !matches!(c, '-' | '_'))
-    {
-        return Err(ValidationError::InvalidCharacters {
-            input: name.to_string(),
-        });
-    }
-
-    // Cannot be empty or start with numbers
-    if name.chars().next().is_none_or(|c| c.is_ascii_digit()) {
-        return Err(ValidationError::InvalidFormat {
-            reason: "Cargo package names cannot start with numbers".to_string(),
-        });
-    }
-
-    Ok(name.to_string())
-}
 
 /// Validate version strings according to semantic versioning principles.
 ///
@@ -157,7 +21,7 @@ fn validate_cargo_package_name(name: &str) -> ValidationResult<String> {
 /// # Returns
 ///
 /// `Ok(String)` with the validated version, `Err(ValidationError)` if invalid
-pub fn validate_version(version: &str) -> ValidationResult<String> {
+pub fn validate_registry_version(version: &str) -> ValidationResult<String> {
     if version.is_empty() {
         return Err(ValidationError::TooShort { actual: 0, min: 1 });
     }
@@ -253,34 +117,15 @@ mod tests {
     use crate::validation::limits::MAX_VERSION_LENGTH;
 
     #[test]
-    fn test_validate_package_name() {
-        // npm tests
-        assert!(validate_package_name("express", "npm").is_ok());
-        assert!(validate_package_name("@scope/package", "npm").is_ok());
-        assert!(validate_package_name("@scope/../package", "npm").is_err());
-        assert!(validate_package_name("Express", "npm").is_err()); // must be lowercase
-
-        // PyPI tests
-        assert!(validate_package_name("django", "pypi").is_ok());
-        assert!(validate_package_name("django-rest-framework", "pypi").is_ok());
-        assert!(validate_package_name("123invalid", "pypi").is_err()); // cannot start with number
-
-        // Cargo tests
-        assert!(validate_package_name("serde", "cargo").is_ok());
-        assert!(validate_package_name("serde_json", "cargo").is_ok());
-        assert!(validate_package_name("123invalid", "cargo").is_err()); // cannot start with number
-    }
-
-    #[test]
-    fn test_validate_version() {
-        assert!(validate_version("1.0.0").is_ok());
-        assert!(validate_version("2.1.0-beta.1").is_ok());
-        assert!(validate_version("").is_err());
-        assert!(validate_version("version\0with\0nulls").is_err());
+    fn test_validate_registry_version() {
+        assert!(validate_registry_version("1.0.0").is_ok());
+        assert!(validate_registry_version("2.1.0-beta.1").is_ok());
+        assert!(validate_registry_version("").is_err());
+        assert!(validate_registry_version("version\0with\0nulls").is_err());
 
         // Test length limit
         let long_version = "1.0.0-".to_string() + &"a".repeat(MAX_VERSION_LENGTH);
-        assert!(validate_version(&long_version).is_err());
+        assert!(validate_registry_version(&long_version).is_err());
     }
 
     #[test]
