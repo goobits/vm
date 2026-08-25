@@ -14,7 +14,9 @@ mod runtime;
 mod tart_install;
 
 pub(in crate::commands) use runtime::{
-    codex_expected, codex_state, reconcile_codex, reconcile_codex_in_background, CodexState,
+    is_vendor_tool, reconcile_vendor_tools, reconcile_vendor_tools_in_background,
+    update_vendor_tools, vendor_tool_info, vendor_tool_statuses, vendor_tools_expected,
+    VendorToolState,
 };
 
 const DOCKER_BASE_NAME: &str = "@vibe-image";

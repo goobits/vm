@@ -39,6 +39,12 @@ pub(super) async fn handle(
             branch,
             kind,
         } => {
+            if base::is_vendor_tool(&name) {
+                return Err(VmError::validation(
+                    format!("'{name}' is reserved for a VM-owned vendor tool"),
+                    Some(format!("Use `vm tools update {name}`")),
+                ));
+            }
             let kind = match kind.as_str() {
                 "binary" => ToolKind::Binary,
                 "collection" => ToolKind::Collection,
@@ -60,25 +66,39 @@ pub(super) async fn handle(
         ToolsSubcommand::List => {
             let client = tooling::client()?;
             let definitions = client.tools().await?;
-            if definitions.is_empty() {
-                vm_println!("No tools are registered");
-            } else {
-                vm_println!("NAME\tKIND\tREGISTERED\tPUBLISHED\tINSTALLED\tCONSUMABLE\tSOURCE");
-                for definition in definitions {
-                    let published = !client.tool(&definition.name).await?.artifacts.is_empty();
-                    vm_println!(
-                        "{}\t{}\tyes\t{}\tn/a\t{}\t{}",
-                        definition.name,
-                        kind_name(definition.kind),
-                        yes_no(published),
-                        "n/a",
-                        definition.repository
-                    );
-                }
+            vm_println!("NAME\tKIND\tREGISTERED\tPUBLISHED\tINSTALLED\tCONSUMABLE\tSOURCE");
+            for definition in base::vendor_tool_info() {
+                vm_println!(
+                    "{}\tvendor\tn/a\tn/a\tn/a\tn/a\t{}",
+                    definition.name,
+                    definition.installer_url
+                );
+            }
+            for definition in definitions
+                .into_iter()
+                .filter(|definition| !base::is_vendor_tool(&definition.name))
+            {
+                let published = !client.tool(&definition.name).await?.artifacts.is_empty();
+                vm_println!(
+                    "{}\t{}\tyes\t{}\tn/a\t{}\t{}",
+                    definition.name,
+                    kind_name(definition.kind),
+                    yes_no(published),
+                    "n/a",
+                    definition.repository
+                );
             }
             Ok(())
         }
         ToolsSubcommand::Show { name } => {
+            if let Some(definition) = base::vendor_tool_info().find(|tool| tool.name == name) {
+                vm_println!(
+                    "{} (vendor)\n  source: {}\n  owner: VM base runtime",
+                    definition.name,
+                    definition.installer_url
+                );
+                return Ok(());
+            }
             let inventory = tooling::client()?.tool(&name).await?;
             vm_println!(
                 "{} ({})\n  source: {}\n  branch: {}",
@@ -166,6 +186,23 @@ fn apply_global_selection(
     names: &[String],
     enabled: bool,
 ) -> VmResult<()> {
+    let vendor_tools = names
+        .iter()
+        .filter(|name| base::is_vendor_tool(name))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !vendor_tools.is_empty() {
+        return Err(VmError::validation(
+            format!(
+                "VM-owned vendor tools do not require global selection: {}",
+                vendor_tools.join(", ")
+            ),
+            Some(format!(
+                "Use `vm tools update {}` to update them",
+                vendor_tools.join(" ")
+            )),
+        ));
+    }
     let proposed = names
         .iter()
         .map(|name| (name.clone(), ToolConfig::default()))
@@ -206,7 +243,7 @@ fn reconcile_environment(subject: &RuntimeSubject) -> VmResult<()> {
         .reconcile_runtime(Some(&subject.target), &context)
         .map_err(VmError::from)?;
     reconcile_guest_settings(subject.provider.as_ref(), &subject.target, &subject.config)?;
-    base::reconcile_codex(subject.provider.as_ref(), &subject.target, &subject.config)
+    base::reconcile_vendor_tools(subject.provider.as_ref(), &subject.target, &subject.config)
 }
 
 fn reconcile_guest_settings(
@@ -435,5 +472,16 @@ mod tests {
         apply_global_selection(&mut global, &["typemill".into()], false).unwrap();
         assert!(global.tools.contains_key("codeatlas"));
         assert!(!global.tools.contains_key("typemill"));
+    }
+
+    #[test]
+    fn vendor_tools_are_updated_without_global_selection() {
+        let mut global = GlobalConfig::default();
+        let error = apply_global_selection(&mut global, &["codex".into()], true).unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("do not require global selection"));
+        assert!(global.tools.is_empty());
     }
 }

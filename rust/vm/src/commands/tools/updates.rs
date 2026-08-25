@@ -10,6 +10,7 @@ use vm_provider::InstanceInfo;
 use super::guest::{InstallMode, InstalledTool};
 use super::{apply_updates, catalog, reconcile_subject};
 use crate::cli::FleetArgs;
+use crate::commands::base;
 use crate::commands::command_context::{load_runtime_subject_for_instance, RuntimeSubject};
 use crate::commands::vm_ops::{self, FleetProgress, InstanceStateFilter};
 use crate::error::{VmError, VmResult};
@@ -22,7 +23,11 @@ pub(super) async fn run(
     include_stopped: bool,
     mode: InstallMode,
 ) -> VmResult<()> {
-    let (instances, requested_tools) = resolve_request(&tools, &environments, include_stopped)?;
+    let update_all = tools.is_empty();
+    let (vendor_tools, managed_tools) = partition_update_request(tools);
+    let update_managed = update_all || !managed_tools.is_empty();
+    let (instances, requested_tools) =
+        resolve_request(&managed_tools, &environments, include_stopped)?;
     if instances.is_empty() {
         vm_println!("No managed environments found");
         return Ok(());
@@ -36,7 +41,10 @@ pub(super) async fn run(
     for instance in instances {
         match load_runtime_subject_for_instance(config_path.clone(), profile.clone(), &instance) {
             Ok(mut subject) => {
-                configured.extend(select_configured_tools(&mut subject.config, &requested));
+                remove_stale_vendor_selections(&mut subject.config);
+                if update_managed {
+                    configured.extend(select_configured_tools(&mut subject.config, &requested));
+                }
                 subjects.push(subject);
             }
             Err(error) => {
@@ -46,16 +54,28 @@ pub(super) async fn run(
         }
     }
 
-    validate_configured_selection(&requested, &configured, load_failed)?;
+    if update_managed {
+        validate_configured_selection(&requested, &configured, load_failed)?;
+    }
 
     let configs = subjects
         .iter()
         .map(|subject| subject.config.clone())
         .collect::<Vec<_>>();
-    catalog::prepare(&configs).await?;
+    if update_managed {
+        catalog::prepare(&configs).await?;
+    }
     for subject in subjects {
         let name = subject.target.clone();
-        let result = update_subject(&subject, mode, !requested.is_empty()).await;
+        let result = update_subject(
+            &subject,
+            mode,
+            update_managed,
+            !requested.is_empty(),
+            &vendor_tools,
+            update_all,
+        )
+        .await;
         match result {
             Ok(()) => progress.success(&name),
             Err(error) => progress.failure(&name, &error),
@@ -64,21 +84,47 @@ pub(super) async fn run(
     progress.finish()
 }
 
+fn partition_update_request(tools: Vec<String>) -> (Vec<String>, Vec<String>) {
+    tools
+        .into_iter()
+        .partition(|name| base::is_vendor_tool(name))
+}
+
+fn remove_stale_vendor_selections(config: &mut VmConfig) {
+    config
+        .tools
+        .entries
+        .retain(|name, _| !base::is_vendor_tool(name));
+}
+
 async fn update_subject(
     subject: &RuntimeSubject,
     mode: InstallMode,
-    explicitly_selected: bool,
+    update_managed: bool,
+    managed_explicitly_selected: bool,
+    vendor_tools: &[String],
+    update_all_vendor_tools: bool,
 ) -> VmResult<()> {
-    if explicitly_selected && subject.config.tools.entries.is_empty() {
+    reconcile_subject(subject).await?;
+    if update_all_vendor_tools || !vendor_tools.is_empty() {
+        base::update_vendor_tools(
+            subject.provider.as_ref(),
+            &subject.target,
+            &subject.config,
+            vendor_tools,
+            update_all_vendor_tools,
+            mode != InstallMode::Wait,
+        )?;
+    }
+    if !update_managed || (managed_explicitly_selected && subject.config.tools.entries.is_empty()) {
         return Ok(());
     }
-    reconcile_subject(subject).await?;
     apply_updates(
         subject.provider.as_ref(),
         &subject.target,
         &subject.config,
         mode,
-        explicitly_selected,
+        managed_explicitly_selected,
     )
 }
 
@@ -91,7 +137,7 @@ pub(super) async fn activate_tool(subject: &mut RuntimeSubject, tool: &str) -> V
         ));
     }
     catalog::prepare(std::slice::from_ref(&subject.config)).await?;
-    update_subject(subject, InstallMode::Wait, true).await
+    update_subject(subject, InstallMode::Wait, true, true, &[], false).await
 }
 
 fn resolve_request(
@@ -333,6 +379,40 @@ mod tests {
             tools,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn update_request_separates_vm_owned_and_package_tools() {
+        let (vendor, managed) = partition_update_request(vec![
+            "agent-skills".into(),
+            "codex".into(),
+            "claude".into(),
+            "typemill".into(),
+            "antigravity".into(),
+        ]);
+
+        assert_eq!(vendor, ["codex", "claude", "antigravity"]);
+        assert_eq!(managed, ["agent-skills", "typemill"]);
+    }
+
+    #[test]
+    fn stale_vendor_entries_never_enter_the_package_catalog() {
+        let mut config = VmConfig::default();
+        config
+            .tools
+            .entries
+            .insert("codex".into(), ToolConfig::default());
+        config
+            .tools
+            .entries
+            .insert("agent-skills".into(), ToolConfig::default());
+
+        remove_stale_vendor_selections(&mut config);
+
+        assert_eq!(
+            config.tools.entries.keys().collect::<Vec<_>>(),
+            ["agent-skills"]
+        );
     }
 
     #[test]

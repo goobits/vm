@@ -148,30 +148,30 @@ pub enum ToolsSubcommand {
         #[arg(long, default_value = "binary", value_parser = ["binary", "collection"])]
         kind: String,
     },
-    /// List registered tools and whether an artifact has been published
+    /// List VM-owned vendor tools and registered package tools
     List,
-    /// Show one registered tool and its published releases
+    /// Show one vendor definition or package tool and its published releases
     Show { name: String },
     /// Refresh the appliance-generated tool catalog cache
     Refresh {
         #[arg(long, hide = true)]
         quiet: bool,
     },
-    /// Show registered, published, installed, and consumable tool state
+    /// Show vendor, registered, published, installed, and consumable tool state
     Status { environment: Option<String> },
-    /// Select tools globally and activate them in running managed Docker environments
+    /// Select package tools globally and activate them in running managed Docker environments
     Enable {
         #[arg(required = true, value_name = "TOOL")]
         tools: Vec<String>,
     },
-    /// Stop selecting tools globally; existing managed files are retained
+    /// Stop selecting package tools globally; existing managed files are retained
     Disable {
         #[arg(required = true, value_name = "TOOL")]
         tools: Vec<String>,
     },
-    /// Update configured tools across running managed environments
+    /// Update VM-owned vendor tools and configured package tools across managed environments
     Update {
-        /// Tool names to filter; omit to update every configured tool
+        /// Vendor or package tool names to filter; omit to update all eligible tools
         #[arg(value_name = "TOOL")]
         tools: Vec<String>,
         /// Update only these managed environments
@@ -180,7 +180,7 @@ pub enum ToolsSubcommand {
         /// Include stopped environments and start them in place
         #[arg(long)]
         include_stopped: bool,
-        /// Reconcile prerequisites, then return after launching managed-tool downloads
+        /// Reconcile prerequisites, then return after launching tool updates
         #[arg(long)]
         background: bool,
     },

@@ -20,8 +20,9 @@ use vm_provider::{
 };
 
 use super::{
-    codex_expected, parse_codex_state, reconcile_codex, reconcile_codex_in_background, CodexState,
-    CODEX_PROBE, CODEX_RECONCILE_LAUNCHER, CODEX_RECONCILE_WORKER, CODEX_REPAIR,
+    parse_vendor_tool_status, reconcile_vendor_tools, reconcile_vendor_tools_in_background,
+    update_vendor_tools, vendor_tool_info, vendor_tools_expected, VendorToolState, VENDOR_PROBE,
+    VENDOR_RECONCILE_LAUNCHER, VENDOR_RECONCILE_WORKER, VENDOR_REPAIR,
 };
 
 #[derive(Clone)]
@@ -67,7 +68,7 @@ impl CommandProvider for FakeProvider {
     ) -> vm_core::error::Result<String> {
         self.calls.lock().unwrap().push("probe");
         let state = self.states.lock().unwrap().pop_front().unwrap();
-        Ok(format!("VM_CODEX_STATE={state}\n"))
+        Ok(format!("VM_VENDOR_TOOL_STATE={state}\n"))
     }
 
     fn logs(&self, _container: Option<&str>) -> vm_core::error::Result<()> {
@@ -196,9 +197,10 @@ fn fake_codex_installer(directory: &TempDir) -> std::path::PathBuf {
         &installer,
         r#"#!/bin/sh
 set -eu
-target="$HOME/.local/share/codex-package"
-mkdir -p "$target" "$HOME/.local/bin"
+target="$HOME/.codex/packages/standalone/releases/test"
+mkdir -p "$target" "$HOME/.codex/packages/standalone" "$HOME/.local/bin"
 cp -R "$VM_FAKE_CODEX_PACKAGE/." "$target/"
+ln -s "$target" "$HOME/.codex/packages/standalone/current"
 ln -s "$target/bin/codex" "$HOME/.local/bin/codex"
 "#,
     );
@@ -219,10 +221,19 @@ fn run_codex_repair(
     command
         .args([
             "-c",
-            CODEX_REPAIR,
-            "vm-codex-repair-test",
+            VENDOR_REPAIR,
+            "vm-vendor-repair-test",
+            "codex",
+            "codex",
+            ".codex/packages/standalone/current/bin/codex",
+            "package",
+            "codex-package.json",
+            "codex,codex-code-mode-host",
             prefix.to_str().unwrap(),
             installer.to_str().unwrap(),
+            "https://example.test/codex.sh",
+            "sh",
+            "symlink:.codex/packages/standalone",
         ])
         .env("HOME", directory.path().join("home"))
         .env("TMPDIR", temporary)
@@ -233,17 +244,58 @@ fn run_codex_repair(
     command.output().unwrap()
 }
 
+#[cfg(unix)]
+fn run_binary_repair(
+    directory: &TempDir,
+    prefix: &Path,
+    name: &str,
+    executable: &str,
+    installer: &Path,
+    legacy_scope: &str,
+) -> Output {
+    let temporary = directory.path().join("tmp");
+    let installed_path = format!(".local/bin/{executable}");
+    fs::create_dir_all(&temporary).unwrap();
+    Command::new("/bin/sh")
+        .args([
+            "-c",
+            VENDOR_REPAIR,
+            "vm-vendor-binary-repair-test",
+            name,
+            executable,
+            &installed_path,
+            "binary",
+            "",
+            executable,
+            prefix.to_str().unwrap(),
+            installer.to_str().unwrap(),
+            "https://example.test/tool.sh",
+            "sh",
+            legacy_scope,
+        ])
+        .env("HOME", directory.path().join("home"))
+        .env("TMPDIR", temporary)
+        .output()
+        .unwrap()
+}
+
 #[test]
-fn parses_only_explicit_codex_probe_states() {
+fn parses_only_explicit_vendor_probe_states() {
     assert_eq!(
-        parse_codex_state("shell noise\nVM_CODEX_STATE=consumable\n").unwrap(),
-        CodexState::Consumable
+        parse_vendor_tool_status(
+            "shell noise\nVM_VENDOR_TOOL_STATE=consumable\nVM_VENDOR_TOOL_VERSION=codex 1.0.0\n"
+        )
+        .unwrap()
+        .state,
+        VendorToolState::Consumable
     );
     assert_eq!(
-        parse_codex_state("VM_CODEX_STATE=incomplete").unwrap(),
-        CodexState::Incomplete
+        parse_vendor_tool_status("VM_VENDOR_TOOL_STATE=incomplete")
+            .unwrap()
+            .state,
+        VendorToolState::Incomplete
     );
-    assert!(parse_codex_state("maybe").is_err());
+    assert!(parse_vendor_tool_status("maybe").is_err());
 }
 
 #[test]
@@ -252,24 +304,28 @@ fn detects_vibe_runtimes_and_validates_reconciliation_scripts() {
         preset: Some("base,vibe".into()),
         ..Default::default()
     };
-    assert!(codex_expected(&config));
+    assert!(vendor_tools_expected(&config));
 
     config.preset = None;
     config.vm = Some(VmSettings {
         image: Some(ImageSpec::String("vibe-tart-linux-base".into())),
         ..Default::default()
     });
-    assert!(codex_expected(&config));
+    assert!(vendor_tools_expected(&config));
 
-    assert!(CODEX_REPAIR.contains("vm-codex-reconcile.XXXXXX"));
-    assert!(CODEX_REPAIR.contains(".codex-stage.XXXXXX"));
-    assert!(!CODEX_REPAIR.contains("$HOME/.codex"));
+    assert_eq!(
+        vendor_tool_info().map(|tool| tool.name).collect::<Vec<_>>(),
+        ["antigravity", "claude", "codex"]
+    );
+    assert!(VENDOR_REPAIR.contains("vm-vendor-$name.XXXXXX"));
+    assert!(VENDOR_REPAIR.contains(".$name-stage.XXXXXX"));
+    assert!(!VENDOR_REPAIR.contains("rm -rf"));
     #[cfg(unix)]
     for script in [
-        CODEX_PROBE,
-        CODEX_REPAIR,
-        CODEX_RECONCILE_WORKER,
-        CODEX_RECONCILE_LAUNCHER,
+        VENDOR_PROBE,
+        VENDOR_REPAIR,
+        VENDOR_RECONCILE_WORKER,
+        VENDOR_RECONCILE_LAUNCHER,
     ] {
         assert!(Command::new("/bin/sh")
             .args(["-n", "-c", script])
@@ -287,15 +343,21 @@ fn foreground_and_background_modes_use_one_guest_launch() {
         ..Default::default()
     };
 
-    reconcile_codex(&provider, "demo", &config).unwrap();
-    assert!(reconcile_codex_in_background(&provider, "demo", &config).unwrap());
+    reconcile_vendor_tools(&provider, "demo", &config).unwrap();
+    assert!(reconcile_vendor_tools_in_background(&provider, "demo", &config).unwrap());
 
-    assert_eq!(provider.calls(), ["exec", "exec"]);
+    assert_eq!(
+        provider.calls(),
+        ["exec", "exec", "exec", "exec", "exec", "exec"]
+    );
     let commands = provider.commands();
     assert_eq!(commands[0][7], "wait");
-    assert_eq!(commands[1][7], "background");
-    assert_eq!(commands[0][8], "yes");
-    assert_eq!(commands[0][9], "demo");
+    assert_eq!(commands[3][7], "background");
+    assert_eq!(commands[0][8], "repair");
+    assert_eq!(commands[0][9], "yes");
+    assert_eq!(commands[0][10], "demo");
+    assert_eq!(commands[0][11], "antigravity");
+    assert_eq!(commands[2][11], "codex");
     assert!(commands[0][2].contains("nohup"));
 }
 
@@ -303,8 +365,31 @@ fn foreground_and_background_modes_use_one_guest_launch() {
 fn background_reconciliation_skips_non_vibe_environments() {
     let provider = FakeProvider::new([]);
 
-    assert!(!reconcile_codex_in_background(&provider, "demo", &VmConfig::default()).unwrap());
+    assert!(
+        !reconcile_vendor_tools_in_background(&provider, "demo", &VmConfig::default()).unwrap()
+    );
     assert!(provider.calls().is_empty());
+}
+
+#[test]
+fn explicit_vendor_updates_need_no_project_selection() {
+    let provider = FakeProvider::new([]);
+
+    update_vendor_tools(
+        &provider,
+        "demo",
+        &VmConfig::default(),
+        &["claude".into()],
+        false,
+        false,
+    )
+    .unwrap();
+
+    let commands = provider.commands();
+    assert_eq!(commands.len(), 1);
+    assert_eq!(commands[0][7], "wait");
+    assert_eq!(commands[0][8], "update");
+    assert_eq!(commands[0][11], "claude");
 }
 
 #[cfg(unix)]
@@ -325,17 +410,19 @@ fn background_launcher_reuses_active_and_recent_reconciliation() {
         Command::new("/bin/sh")
             .args([
                 "-c",
-                CODEX_RECONCILE_LAUNCHER,
-                "vm-codex-launcher-test",
+                VENDOR_RECONCILE_LAUNCHER,
+                "vm-vendor-launcher-test",
                 "#!/bin/sh\nexit 0",
                 "#!/bin/sh\nexit 0",
-                "#!/bin/sh\n: > \"$VM_CODEX_TEST_LAUNCHED\"",
+                "#!/bin/sh\n: > \"$VM_VENDOR_TEST_LAUNCHED\"",
                 mode,
+                "repair",
                 "yes",
                 "demo",
+                "codex",
             ])
             .env("XDG_STATE_HOME", &state_home)
-            .env("VM_CODEX_TEST_LAUNCHED", &launched)
+            .env("VM_VENDOR_TEST_LAUNCHED", &launched)
             .output()
             .unwrap()
     };
@@ -367,12 +454,12 @@ fn worker_lock_makes_concurrent_and_repeated_repairs_idempotent() {
     fs::write(&state, "incomplete\n").unwrap();
     fs::write(&repairs, "").unwrap();
     write_executable(
-        &root.join("codex-probe.sh"),
-        "#!/bin/sh\nprintf 'VM_CODEX_STATE=%s\\n' \"$(cat \"$VM_CODEX_TEST_STATE\")\"\n",
+        &root.join("vendor-probe.sh"),
+        "#!/bin/sh\nprintf 'VM_VENDOR_TOOL_STATE=%s\\n' \"$(cat \"$VM_VENDOR_TEST_STATE\")\"\n",
     );
     write_executable(
-        &root.join("codex-repair.sh"),
-        "#!/bin/sh\nprintf x >> \"$VM_CODEX_TEST_REPAIRS\"\nsleep 1\nprintf '%s\\n' consumable > \"$VM_CODEX_TEST_STATE\"\n",
+        &root.join("vendor-repair.sh"),
+        "#!/bin/sh\nprintf x >> \"$VM_VENDOR_TEST_REPAIRS\"\nsleep 1\nprintf '%s\\n' consumable > \"$VM_VENDOR_TEST_STATE\"\n",
     );
 
     let worker = || {
@@ -380,15 +467,22 @@ fn worker_lock_makes_concurrent_and_repeated_repairs_idempotent() {
         command
             .args([
                 "-c",
-                CODEX_RECONCILE_WORKER,
-                "vm-codex-worker-test",
+                VENDOR_RECONCILE_WORKER,
+                "vm-vendor-worker-test",
                 root.to_str().unwrap(),
                 "yes",
                 "demo",
                 "wait",
+                "repair",
+                "codex",
+                "codex",
+                ".codex/packages/standalone/current/bin/codex",
+                "package",
+                "codex-package.json",
+                "codex,codex-code-mode-host",
             ])
-            .env("VM_CODEX_TEST_STATE", &state)
-            .env("VM_CODEX_TEST_REPAIRS", &repairs);
+            .env("VM_VENDOR_TEST_STATE", &state)
+            .env("VM_VENDOR_TEST_REPAIRS", &repairs);
         command
     };
 
@@ -452,6 +546,22 @@ fn codex_repair_is_consumable_and_rolls_back_the_complete_runtime() {
         String::from_utf8_lossy(&repeated.stderr)
     );
 
+    for executable in ["codex", "codex-code-mode-host"] {
+        let root_launcher = managed_root.join(executable);
+        fs::remove_file(&root_launcher).unwrap();
+        fs::copy(
+            installed_package.join("bin").join(executable),
+            root_launcher,
+        )
+        .unwrap();
+    }
+    let legacy_root = run_codex_repair(&directory, &prefix, &installer, &first_package, None);
+    assert!(
+        legacy_root.status.success(),
+        "{}",
+        String::from_utf8_lossy(&legacy_root.stderr)
+    );
+
     let second_package = fake_codex_package(&directory, "2.0.0");
     let launcher = prefix.join("bin/codex");
     let second = run_codex_repair(
@@ -479,6 +589,57 @@ fn codex_repair_is_consumable_and_rolls_back_the_complete_runtime() {
             .to_string_lossy()
             .starts_with(".codex-")
     }));
+}
+
+#[cfg(unix)]
+#[test]
+fn binary_vendor_repair_adopts_the_declared_base_installer_layout() {
+    let directory = TempDir::new().unwrap();
+    let prefix = directory.path().join("prefix");
+    let home_bin = directory.path().join("home/.local/bin");
+    fs::create_dir_all(&prefix).unwrap();
+    fs::create_dir_all(&home_bin).unwrap();
+    write_executable(
+        &home_bin.join("agy"),
+        "#!/bin/sh\nprintf '%s\\n' 'agy 0.9.0'\n",
+    );
+    let installer = directory.path().join("install-agy.sh");
+    write_executable(
+        &installer,
+        "#!/bin/sh\nset -eu\nmkdir -p \"$HOME/.local/bin\"\nprintf '%s\\n' '#!/bin/sh' \"printf '%s\\\\n' 'agy 1.0.0'\" > \"$HOME/.local/bin/agy\"\nchmod +x \"$HOME/.local/bin/agy\"\n",
+    );
+
+    let output = run_binary_repair(
+        &directory,
+        &prefix,
+        "antigravity",
+        "agy",
+        &installer,
+        "file:.local/bin/agy",
+    );
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let managed = prefix.join("lib/vm-ai-tools/antigravity-package/bin/agy");
+    assert!(managed.is_file());
+    assert_eq!(
+        fs::read_link(home_bin.join("agy")).unwrap(),
+        prefix.join("lib/vm-ai-tools/agy")
+    );
+    assert_eq!(
+        String::from_utf8(
+            Command::new(prefix.join("bin/agy"))
+                .arg("--version")
+                .output()
+                .unwrap()
+                .stdout
+        )
+        .unwrap(),
+        "agy 1.0.0\n"
+    );
 }
 
 #[cfg(unix)]

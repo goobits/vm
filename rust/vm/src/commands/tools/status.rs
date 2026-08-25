@@ -54,15 +54,23 @@ pub(super) async fn show(subject: &RuntimeSubject) -> VmResult<()> {
             None
         }
     };
-    let codex = base::codex_state(subject.provider.as_ref(), &subject.target)?;
+    let vendor_tools = base::vendor_tool_statuses(subject.provider.as_ref(), &subject.target)?;
 
     vm_println!("Guest tools ({target})");
     vm_println!("NAME\tOWNER\tREGISTERED\tPUBLISHED\tINSTALLED\tCONSUMABLE\tPROJECT_COPY\tVERSION");
-    if base::codex_expected(&subject.config) || codex != base::CodexState::Absent {
+    for info in base::vendor_tool_info() {
+        let state = &vendor_tools[info.name];
+        if !base::vendor_tools_expected(&subject.config)
+            && state.state == base::VendorToolState::Absent
+        {
+            continue;
+        }
         vm_println!(
-            "codex\tbase\tn/a\tn/a\t{}\t{}\tn/a\t-",
-            yes_no(codex != base::CodexState::Absent),
-            yes_no(codex == base::CodexState::Consumable)
+            "{}\tbase\tn/a\tn/a\t{}\t{}\tn/a\t{}",
+            info.name,
+            yes_no(state.state != base::VendorToolState::Absent),
+            yes_no(state.state == base::VendorToolState::Consumable),
+            state.version.as_deref().unwrap_or("-")
         );
     }
     for name in tool_status_names(
@@ -109,6 +117,7 @@ fn tool_status_names(
     }
     names.extend(installed.keys().cloned());
     names.extend(consumable.keys().cloned());
+    names.retain(|name| !base::is_vendor_tool(name));
     names
 }
 

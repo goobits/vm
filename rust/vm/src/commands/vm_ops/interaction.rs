@@ -61,10 +61,12 @@ pub async fn handle_ssh(
         &config,
         &global_config,
     )?;
-    if let Err(error) =
-        crate::commands::base::reconcile_codex_in_background(provider.as_ref(), vm_name, &config)
-    {
-        debug!(%error, "Could not start background Codex reconciliation");
+    if let Err(error) = crate::commands::base::reconcile_vendor_tools_in_background(
+        provider.as_ref(),
+        vm_name,
+        &config,
+    ) {
+        debug!(%error, "Could not start background vendor-tool reconciliation");
     }
     crate::commands::tools::before_shell(provider.as_ref(), vm_name, &config);
     provider
