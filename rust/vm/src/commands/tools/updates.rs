@@ -7,8 +7,9 @@ use vm_core::vm_println;
 use vm_packages::ToolArtifactRecord;
 use vm_provider::InstanceInfo;
 
+use super::catalog;
 use super::guest::{InstallMode, InstalledTool};
-use super::{apply_updates, catalog, reconcile_subject};
+use super::reconcile::{apply_updates, reconcile_subject};
 use crate::cli::FleetArgs;
 use crate::commands::base;
 use crate::commands::command_context::{load_runtime_subject_for_instance, RuntimeSubject};

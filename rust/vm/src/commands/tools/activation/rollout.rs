@@ -15,7 +15,7 @@ use crate::commands::packages::tooling;
 use crate::commands::vm_ops::{self, InstanceStateFilter};
 use crate::error::{VmError, VmResult};
 
-use super::super::{reconcile_subject, updates};
+use super::super::{reconcile::reconcile_subject, updates};
 use super::worker::worker_id;
 
 const TARGET_RETRY_INTERVAL: Duration = Duration::from_secs(2);

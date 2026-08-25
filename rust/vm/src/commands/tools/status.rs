@@ -8,7 +8,10 @@ use crate::error::VmResult;
 use super::super::command_context::RuntimeSubject;
 use super::super::{base, packages::tooling};
 use super::guest::{self, InstalledTool};
-use super::{project_workspace, report_project_overrides, yes_no};
+use super::{
+    command::yes_no,
+    reconcile::{project_workspace, report_project_overrides},
+};
 
 #[derive(Debug, Clone, Copy, Default)]
 struct ControllerToolState {

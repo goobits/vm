@@ -164,6 +164,10 @@ None.
   client provisioning, guest identity and execution, and managed checkout files
   live in separate modules with no compatibility facade. All 77 package command
   tests and strict all-target Clippy passed.
+- 2026-08-24: Managed tool command routing and guest reconciliation now have
+  separate owners. Update and activation paths call reconciliation directly
+  instead of reaching through their parent module. All 33 focused tool tests
+  and strict all-target Clippy passed.
 
 ## Related Context
 
