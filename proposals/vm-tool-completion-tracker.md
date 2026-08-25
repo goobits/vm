@@ -128,6 +128,12 @@ None.
   evidence. Formatting, strict workspace Clippy, unit tests, integration tests,
   shell syntax, and focused failure tests passed. Docker and `jscpd` were not
   available for their environment-dependent gates.
+- 2026-08-24: Dependency consolidation removed nineteen unused declarations,
+  the redundant `futures` facade, a duplicate SHA-1 version, and parallel
+  bounded-command, digest, and async atomic-write owners. RustSec findings for
+  `anyhow`, `crossbeam-epoch`, `quinn-proto`, and `spin` were resolved. Workspace
+  formatting, all-target checks, strict Clippy, RustSec audit, unit tests, and
+  integration tests passed.
 
 ## Related Context
 
