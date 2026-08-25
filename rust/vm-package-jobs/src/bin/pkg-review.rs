@@ -3,7 +3,7 @@ use std::process::ExitCode;
 use anyhow::{Context, Result};
 use vm_logging::init_service_subscriber;
 use vm_package_jobs::review_submission;
-use vm_package_jobs::runtime::{worker_main, QueueMonitor};
+use vm_package_jobs::runtime::{worker_main, JobMonitor, QueueMonitor, POLL_INTERVAL};
 use vm_packages::{PackageInfrastructureClient, RegistryEndpoints};
 
 #[tokio::main]
@@ -19,25 +19,29 @@ async fn run() -> Result<()> {
     let client = PackageInfrastructureClient::new(RegistryEndpoints::new(gateway)?)
         .with_reviewer_token(&token);
     let mut queue = QueueMonitor::new("poll_review_queue");
+    let mut jobs = JobMonitor::new("review");
 
     loop {
-        match client.next_review().await {
+        let delay = match client.next_review().await {
             Ok(Some(submission)) => {
                 queue.available();
-                if let Err(error) =
-                    review_submission(&client, &token, &submission.submission_id).await
-                {
-                    tracing::error!(
-                        operation = "review",
-                        submission_id = %submission.submission_id,
-                        error = ?error,
-                        "package review failed"
-                    );
+                match review_submission(&client, &token, &submission.submission_id).await {
+                    Ok(()) => {
+                        jobs.succeeded(&submission.submission_id);
+                        POLL_INTERVAL
+                    }
+                    Err(error) => jobs.failed(&submission.submission_id, &error),
                 }
             }
-            Ok(None) => queue.available(),
-            Err(error) => queue.unavailable(&error),
-        }
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            Ok(None) => {
+                queue.available();
+                POLL_INTERVAL
+            }
+            Err(error) => {
+                queue.unavailable(&error);
+                POLL_INTERVAL
+            }
+        };
+        tokio::time::sleep(delay).await;
     }
 }

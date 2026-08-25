@@ -31,6 +31,9 @@ vm-core = { path = "../vm-core" }
 vm-logging = { path = "../vm-logging", features = ["http"] }
 vm-packages = { path = "../vm-packages" }
 
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true, features = ["signal"] }
+
 [dev-dependencies]
 axum-test = "20.1"
 tempfile = { workspace = true }

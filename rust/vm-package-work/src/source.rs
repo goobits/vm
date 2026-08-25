@@ -1,14 +1,21 @@
 use std::collections::HashMap;
+use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Output;
+use std::process::{Output, Stdio};
 use std::sync::Arc;
+use std::time::Duration;
 
+use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::Command;
 use tokio::sync::Mutex;
 use tracing::warn;
 use vm_packages::{sha256_hex, CheckoutRecord};
 
 use crate::{WorkError, WorkResult};
+
+const SOURCE_COMMAND_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+const MAX_SOURCE_STDOUT: usize = 16 * 1024 * 1024;
+const MAX_SOURCE_STDERR: usize = 64 * 1024;
 
 mod integration;
 mod rollout;
@@ -166,16 +173,138 @@ fn managed_component<'a>(field: &str, value: &'a str) -> WorkResult<&'a str> {
 }
 
 async fn run(command: &mut Command, operation: &str) -> WorkResult<Output> {
-    let output = command
-        .output()
-        .await
+    run_with_limits(
+        command,
+        operation,
+        SOURCE_COMMAND_TIMEOUT,
+        MAX_SOURCE_STDOUT,
+        MAX_SOURCE_STDERR,
+    )
+    .await
+}
+
+async fn run_with_limits(
+    command: &mut Command,
+    operation: &str,
+    timeout: Duration,
+    stdout_limit: usize,
+    stderr_limit: usize,
+) -> WorkResult<Output> {
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(unix)]
+    command.process_group(0);
+    let mut child = command
+        .spawn()
         .map_err(|error| WorkError::Internal(format!("{operation}: {error}")))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| WorkError::Internal(format!("{operation}: stdout was not captured")))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| WorkError::Internal(format!("{operation}: stderr was not captured")))?;
+    let stdout_reader = tokio::spawn(read_bounded(stdout, stdout_limit));
+    let stderr_reader = tokio::spawn(read_bounded(stderr, stderr_limit));
+
+    let status = match tokio::time::timeout(timeout, child.wait()).await {
+        Ok(result) => result
+            .map_err(|error| WorkError::Internal(format!("{operation}: wait failed: {error}")))?,
+        Err(_) => {
+            terminate(&mut child).await;
+            let _ = stdout_reader.await;
+            let _ = stderr_reader.await;
+            return Err(WorkError::Conflict(format!(
+                "{operation}: command timed out after {timeout:?}"
+            )));
+        }
+    };
+    let stdout = join_reader(stdout_reader, operation).await?;
+    let stderr = join_reader(stderr_reader, operation).await?;
+    if stdout.exceeded {
+        return Err(WorkError::Conflict(format!(
+            "{operation}: stdout exceeded {stdout_limit} bytes"
+        )));
+    }
+    if stderr.exceeded {
+        return Err(WorkError::Conflict(format!(
+            "{operation}: stderr exceeded {stderr_limit} bytes"
+        )));
+    }
+    let output = Output {
+        status,
+        stdout: stdout.bytes,
+        stderr: stderr.bytes,
+    };
     if output.status.success() {
         Ok(output)
     } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stderr = sanitized_diagnostic(&output.stderr);
         Err(WorkError::Conflict(format!("{operation}: {stderr}")))
     }
+}
+
+struct BoundedOutput {
+    bytes: Vec<u8>,
+    exceeded: bool,
+}
+
+async fn read_bounded(
+    mut reader: impl AsyncRead + Unpin,
+    limit: usize,
+) -> io::Result<BoundedOutput> {
+    let mut bytes = Vec::with_capacity(limit.min(64 * 1024));
+    let mut exceeded = false;
+    let mut buffer = [0_u8; 8 * 1024];
+    loop {
+        let read = reader.read(&mut buffer).await?;
+        if read == 0 {
+            break;
+        }
+        let remaining = limit.saturating_sub(bytes.len());
+        bytes.extend_from_slice(&buffer[..read.min(remaining)]);
+        exceeded |= read > remaining;
+    }
+    Ok(BoundedOutput { bytes, exceeded })
+}
+
+async fn join_reader(
+    reader: tokio::task::JoinHandle<io::Result<BoundedOutput>>,
+    operation: &str,
+) -> WorkResult<BoundedOutput> {
+    reader
+        .await
+        .map_err(|error| WorkError::Internal(format!("{operation}: output task failed: {error}")))?
+        .map_err(|error| WorkError::Internal(format!("{operation}: output read failed: {error}")))
+}
+
+fn sanitized_diagnostic(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes)
+        .chars()
+        .map(|character| {
+            if character.is_control() && !matches!(character, '\n' | '\r' | '\t') {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
+async fn terminate(child: &mut tokio::process::Child) {
+    #[cfg(unix)]
+    {
+        use nix::sys::signal::{killpg, Signal};
+        use nix::unistd::Pid;
+
+        if let Some(id) = child.id() {
+            let _ = killpg(Pid::from_raw(id as i32), Signal::SIGKILL);
+        }
+    }
+    let _ = child.kill().await;
+    let _ = child.wait().await;
 }
 
 async fn git_output(command: &mut Command, operation: &str) -> WorkResult<String> {

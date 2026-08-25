@@ -5,7 +5,8 @@ use anyhow::{anyhow, bail, Context, Error, Result};
 use vm_logging::init_service_subscriber;
 use vm_package_jobs::runtime::{
     authorization_header, command_text as text, download_bundle, operation_key,
-    required_secret as secret, run_command as run, worker_main, QueueMonitor,
+    required_secret as secret, run_command as run, worker_main, JobMonitor, QueueMonitor,
+    POLL_INTERVAL,
 };
 use vm_packages::{
     PackageEcosystem, PackageInfrastructureClient, RegistryEndpoints, RolloutState,
@@ -25,23 +26,29 @@ async fn run_worker() -> Result<()> {
     let client = PackageInfrastructureClient::new(RegistryEndpoints::new(gateway)?)
         .with_rollout_token(token.clone());
     let mut queue = QueueMonitor::new("poll_rollout_queue");
+    let mut jobs = JobMonitor::new("rollout");
     loop {
-        match client.reconcile_rollout_queue().await {
+        let delay = match client.reconcile_rollout_queue().await {
             Ok(Some(rollout)) => {
                 queue.available();
-                if let Err(error) = run_rollout(&client, &token, &rollout.rollout_id).await {
-                    tracing::error!(
-                        operation = "rollout",
-                        rollout_id = %rollout.rollout_id,
-                        error = ?error,
-                        "package rollout failed"
-                    );
+                match run_rollout(&client, &token, &rollout.rollout_id).await {
+                    Ok(()) => {
+                        jobs.succeeded(&rollout.rollout_id);
+                        POLL_INTERVAL
+                    }
+                    Err(error) => jobs.failed(&rollout.rollout_id, &error),
                 }
             }
-            Ok(None) => queue.available(),
-            Err(error) => queue.unavailable(&error),
-        }
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            Ok(None) => {
+                queue.available();
+                POLL_INTERVAL
+            }
+            Err(error) => {
+                queue.unavailable(&error);
+                POLL_INTERVAL
+            }
+        };
+        tokio::time::sleep(delay).await;
     }
 }
 

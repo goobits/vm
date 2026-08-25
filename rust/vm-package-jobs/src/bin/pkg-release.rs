@@ -3,7 +3,9 @@ use std::process::ExitCode;
 use anyhow::Result;
 use vm_logging::init_service_subscriber;
 use vm_package_jobs::release::package::{release, PackageReleaseOptions};
-use vm_package_jobs::runtime::{required_secret, worker_main, QueueMonitor};
+use vm_package_jobs::runtime::{
+    required_secret, worker_main, JobMonitor, QueueMonitor, POLL_INTERVAL,
+};
 use vm_packages::{PackageInfrastructureClient, RegistryEndpoints};
 
 #[tokio::main]
@@ -18,26 +20,32 @@ async fn run() -> Result<()> {
     let client = PackageInfrastructureClient::new(RegistryEndpoints::new(gateway)?)
         .with_release_token(required_secret("PKG_RELEASE_TOKEN_FILE")?);
     let mut queue = QueueMonitor::new("poll_release_queue");
+    let mut jobs = JobMonitor::new("release");
     loop {
-        match client.next_release().await {
+        let delay = match client.next_release().await {
             Ok(Some(submission)) => {
                 queue.available();
-                if let Err(error) = release(PackageReleaseOptions {
+                match release(PackageReleaseOptions {
                     submission: submission.submission_id.clone(),
                 })
                 .await
                 {
-                    tracing::error!(
-                        operation = "release",
-                        submission_id = %submission.submission_id,
-                        error = ?error,
-                        "package release failed"
-                    );
+                    Ok(()) => {
+                        jobs.succeeded(&submission.submission_id);
+                        POLL_INTERVAL
+                    }
+                    Err(error) => jobs.failed(&submission.submission_id, &error),
                 }
             }
-            Ok(None) => queue.available(),
-            Err(error) => queue.unavailable(&error),
-        }
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            Ok(None) => {
+                queue.available();
+                POLL_INTERVAL
+            }
+            Err(error) => {
+                queue.unavailable(&error);
+                POLL_INTERVAL
+            }
+        };
+        tokio::time::sleep(delay).await;
     }
 }
