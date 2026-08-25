@@ -68,6 +68,7 @@ impl Store {
             return Ok(CheckoutLease {
                 checkout,
                 lease_token: Some(request.lease_token),
+                package_context: None,
             });
         }
 
@@ -168,6 +169,7 @@ impl Store {
         Ok(CheckoutLease {
             checkout: record,
             lease_token: Some(request.lease_token),
+            package_context: None,
         })
     }
 

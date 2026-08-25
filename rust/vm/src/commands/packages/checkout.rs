@@ -1,7 +1,7 @@
 use vm_core::{vm_hint, vm_println, vm_progress, vm_success};
 use vm_packages::{
     CleanupRequest, CreateCheckout, PackageEcosystem, PackageInfrastructureClient,
-    RegistryEndpoints, SourceKind, ToolKind, TransitionRequest, WorkflowState,
+    RegistryEndpoints, SourceKind, TransitionRequest, WorkflowState,
 };
 
 use crate::error::{VmError, VmResult};
@@ -13,18 +13,17 @@ use super::{
 
 const GUEST_WORK_TASK: &str = "managed guest package work";
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EditableSource {
     Package(PackageEcosystem),
-    Tool(ToolKind),
+    Tool(SourceKind),
 }
 
 impl EditableSource {
     fn kind(self) -> SourceKind {
         match self {
             Self::Package(_) => SourceKind::Package,
-            Self::Tool(ToolKind::Binary) => SourceKind::ToolBinary,
-            Self::Tool(ToolKind::Collection) => SourceKind::ToolCollection,
+            Self::Tool(kind) => kind,
         }
     }
 }
@@ -58,8 +57,6 @@ pub(super) async fn handle_guest(package: String) -> VmResult<()> {
     let subject = GuestRuntime::discover()?;
     let consumer = subject.consumer().to_string();
     let client = subject.client()?;
-    let editable_source = editable_source(&client, &package).await?;
-    let pinned_version = pinned_version(&client, &package, &consumer, editable_source).await?;
     let lease_token = vm_core::secrets::generate_random_password(48);
 
     vm_progress!(
@@ -81,11 +78,7 @@ pub(super) async fn handle_guest(package: String) -> VmResult<()> {
             idempotency_key: uuid::Uuid::new_v4().to_string(),
         })
         .await?;
-    let pinned_version = if checkout.checkout.source_only {
-        None
-    } else {
-        pinned_version
-    };
+    let (editable_source, pinned_version) = editable_source(&checkout)?;
     let lease_token = checkout.lease_token.as_deref().ok_or_else(|| {
         VmError::validation(
             "Package infrastructure did not return a checkout lease",
@@ -316,52 +309,76 @@ fn print_source(checkout: &vm_packages::CheckoutRecord, source: &str, resumed: b
     vm_hint!("Continue with: cd {source}");
 }
 
-async fn editable_source(
-    client: &PackageInfrastructureClient,
-    name: &str,
-) -> VmResult<EditableSource> {
-    let (packages, tools) = tokio::try_join!(client.package_definitions(), client.tools())?;
-    if let Some(package) = packages.iter().find(|package| package.name == name) {
-        return Ok(EditableSource::Package(package.ecosystem));
+fn editable_source(
+    checkout: &vm_packages::CheckoutLease,
+) -> VmResult<(EditableSource, Option<String>)> {
+    match checkout.checkout.source_kind {
+        SourceKind::Package => {
+            let context = checkout.package_context.as_ref().ok_or_else(|| {
+                VmError::validation(
+                    "Package infrastructure did not return package checkout context",
+                    Some("Run `vm tools update` on the controller host, then retry the checkout"),
+                )
+            })?;
+            let pinned_version = if checkout.checkout.source_only {
+                None
+            } else {
+                Some(context.pinned_version.clone().ok_or_else(|| {
+                    VmError::validation(
+                        "Package infrastructure did not return the consumer's pinned version",
+                        Some("Run `vm packages doctor --fix` on the controller host"),
+                    )
+                })?)
+            };
+            Ok((EditableSource::Package(context.ecosystem), pinned_version))
+        }
+        kind @ (SourceKind::ToolBinary | SourceKind::ToolCollection) => {
+            Ok((EditableSource::Tool(kind), None))
+        }
     }
-    match tools.iter().find(|tool| tool.name == name) {
-        Some(tool) => Ok(EditableSource::Tool(tool.kind)),
-        None => Err(VmError::validation(
-            format!("No package or managed tool named '{name}' is registered"),
-            Some("Run `vm packages doctor --fix` on the controller host"),
-        )),
-    }
-}
-
-async fn pinned_version(
-    client: &PackageInfrastructureClient,
-    package: &str,
-    consumer: &str,
-    source: EditableSource,
-) -> VmResult<Option<String>> {
-    let EditableSource::Package(_) = source else {
-        return Ok(None);
-    };
-    Ok(consumer_version(
-        &client.package_consumers(package).await?,
-        consumer,
-    ))
-}
-
-pub(super) fn consumer_version(
-    usages: &[vm_packages::ConsumerUsage],
-    consumer: &str,
-) -> Option<String> {
-    usages
-        .iter()
-        .find(|usage| usage.consumer == consumer)
-        .map(|usage| usage.version.clone())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{cleanup_ready, consumer_version};
-    use vm_packages::WorkflowState;
+    use chrono::Utc;
+
+    use super::{cleanup_ready, editable_source, EditableSource};
+    use vm_packages::{
+        CheckoutLease, CheckoutRecord, PackageCheckoutContext, PackageEcosystem, SourceKind,
+        WorkflowState,
+    };
+
+    fn checkout(
+        source_kind: SourceKind,
+        source_only: bool,
+        package_context: Option<PackageCheckoutContext>,
+    ) -> CheckoutLease {
+        let now = Utc::now();
+        CheckoutLease {
+            checkout: CheckoutRecord {
+                checkout_id: "checkout-1".into(),
+                package: "shared".into(),
+                source_kind,
+                agent: "project-a".into(),
+                consumers: vec!["project-a".into()],
+                task: "managed guest package work".into(),
+                workspace_release: false,
+                source_only,
+                initial_release: false,
+                state: WorkflowState::CheckedOut,
+                base_branch: Some("main".into()),
+                base_commit: Some("a".repeat(40)),
+                branch: Some("agents/project-a/checkout-1".into()),
+                worktree: None,
+                lease: None,
+                created_at: now,
+                updated_at: now,
+                transitions: Vec::new(),
+            },
+            lease_token: Some("lease-token".into()),
+            package_context,
+        }
+    }
 
     #[test]
     fn rejected_checkout_can_be_cleaned_without_an_invalid_cancel_transition() {
@@ -379,18 +396,45 @@ mod tests {
     }
 
     #[test]
-    fn source_only_checkout_does_not_require_a_consumer_dependency() {
-        let usages = [vm_packages::ConsumerUsage {
-            consumer: "project-a".into(),
-            version: "1.2.3".into(),
-            pending_version: None,
-            rollout_id: None,
-        }];
-
-        assert_eq!(
-            consumer_version(&usages, "project-a").as_deref(),
-            Some("1.2.3")
+    fn package_checkout_context_preserves_override_inputs() {
+        let assigned = checkout(
+            SourceKind::Package,
+            false,
+            Some(PackageCheckoutContext {
+                ecosystem: PackageEcosystem::Cargo,
+                pinned_version: Some("1.2.3".into()),
+            }),
         );
-        assert_eq!(consumer_version(&usages, "source-only-project"), None);
+        let source_only = checkout(
+            SourceKind::Package,
+            true,
+            Some(PackageCheckoutContext {
+                ecosystem: PackageEcosystem::Python,
+                pinned_version: None,
+            }),
+        );
+        assert_eq!(
+            editable_source(&assigned).unwrap(),
+            (
+                EditableSource::Package(PackageEcosystem::Cargo),
+                Some("1.2.3".into())
+            )
+        );
+        assert_eq!(
+            editable_source(&source_only).unwrap(),
+            (EditableSource::Package(PackageEcosystem::Python), None)
+        );
+    }
+
+    #[test]
+    fn tool_checkout_needs_no_package_context() {
+        assert_eq!(
+            editable_source(&checkout(SourceKind::ToolBinary, false, None)).unwrap(),
+            (EditableSource::Tool(SourceKind::ToolBinary), None)
+        );
+        assert_eq!(
+            editable_source(&checkout(SourceKind::ToolCollection, false, None)).unwrap(),
+            (EditableSource::Tool(SourceKind::ToolCollection), None)
+        );
     }
 }

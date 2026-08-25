@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::PackageEcosystem;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceKind {
@@ -95,6 +97,16 @@ pub struct CheckoutLease {
     pub checkout: CheckoutRecord,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lease_token: Option<String>,
+    /// Package-only metadata needed to activate the assigned consumer override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_context: Option<PackageCheckoutContext>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PackageCheckoutContext {
+    pub ecosystem: PackageEcosystem,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pinned_version: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -5,7 +5,7 @@ use axum::{
 };
 use vm_packages::{
     CheckoutLease, CleanupRequest, CreateCheckout, IntegrationRequest, LeaseRequest,
-    SubmissionRecord, TransitionRequest, ValidationRequest, WorkflowState,
+    PackageCheckoutContext, SubmissionRecord, TransitionRequest, ValidationRequest, WorkflowState,
 };
 
 use super::{
@@ -24,21 +24,23 @@ pub(super) async fn create_checkout(
 ) -> WorkResult<(StatusCode, Json<CheckoutLease>)> {
     let source = state.store.source(&request.package).await?;
     ensure_workspace_source_access(&access, request.workspace_release, &source.repository)?;
+    let mut package_context = None;
     if let Some(consumer) = access.consumer() {
         request.agent = consumer.to_string();
         request.consumers = vec![consumer.to_string()];
         request.task = "managed guest package work".into();
-        request.source_only =
-            if source.kind == vm_packages::SourceKind::Package && !request.workspace_release {
-                source_only_checkout(
-                    source.kind,
-                    request.workspace_release,
-                    consumer,
-                    &state.store.package_consumers(&request.package).await?,
-                )
-            } else {
-                false
-            };
+        if source.kind == vm_packages::SourceKind::Package && !request.workspace_release {
+            let consumers = state.store.package_consumers(&request.package).await?;
+            request.source_only =
+                source_only_checkout(source.kind, request.workspace_release, consumer, &consumers);
+            package_context = Some(package_checkout_context(
+                state.store.package(&request.package).await?.ecosystem,
+                consumer,
+                &consumers,
+            ));
+        } else {
+            request.source_only = false;
+        }
         let matching = state
             .store
             .list_checkouts()
@@ -74,6 +76,7 @@ pub(super) async fn create_checkout(
             let mut lease = CheckoutLease {
                 checkout,
                 lease_token: Some(request.lease_token),
+                package_context: package_context.clone(),
             };
             if !lease.checkout.workspace_release {
                 lease.checkout = state.source.prepare(&state.store, &lease).await?;
@@ -87,6 +90,7 @@ pub(super) async fn create_checkout(
     if !checkout.checkout.workspace_release {
         checkout.checkout = state.source.prepare(&state.store, &checkout).await?;
     }
+    checkout.package_context = package_context;
     Ok((StatusCode::CREATED, Json(checkout)))
 }
 
@@ -214,10 +218,24 @@ fn source_only_checkout(
         && !consumers.iter().any(|usage| usage.consumer == consumer)
 }
 
+fn package_checkout_context(
+    ecosystem: vm_packages::PackageEcosystem,
+    consumer: &str,
+    consumers: &[vm_packages::ConsumerUsage],
+) -> PackageCheckoutContext {
+    PackageCheckoutContext {
+        ecosystem,
+        pinned_version: consumers
+            .iter()
+            .find(|usage| usage.consumer == consumer)
+            .map(|usage| usage.version.clone()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::source_only_checkout;
-    use vm_packages::{ConsumerUsage, SourceKind};
+    use super::{package_checkout_context, source_only_checkout};
+    use vm_packages::{ConsumerUsage, PackageEcosystem, SourceKind};
 
     #[test]
     fn source_only_status_is_derived_from_registered_consumer_usage() {
@@ -246,5 +264,17 @@ mod tests {
             "source-maintainer",
             &consumers
         ));
+
+        assert_eq!(
+            package_checkout_context(PackageEcosystem::Cargo, "project-a", &consumers)
+                .pinned_version
+                .as_deref(),
+            Some("1.2.3")
+        );
+        assert_eq!(
+            package_checkout_context(PackageEcosystem::Cargo, "project-b", &consumers)
+                .pinned_version,
+            None
+        );
     }
 }

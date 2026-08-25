@@ -71,5 +71,6 @@ pub use validation::{
 };
 pub use workflow::{
     CheckoutLease, CheckoutRecord, CleanupRequest, CreateCheckout, LeaseRecord, LeaseRequest,
-    ReceiptKind, SourceKind, TransitionRequest, WorkflowReceipt, WorkflowState, WorkflowTransition,
+    PackageCheckoutContext, ReceiptKind, SourceKind, TransitionRequest, WorkflowReceipt,
+    WorkflowState, WorkflowTransition,
 };
