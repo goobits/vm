@@ -92,7 +92,7 @@ pub(crate) async fn create_from_dockerfile(
 
     let project_dir = std::env::current_dir()
         .map_err(|error| VmError::filesystem(error, "current_dir", "get"))?;
-    let total_size_bytes = directory_size(&snapshot_dir);
+    let total_size_bytes = directory_size(&snapshot_dir)?;
     SnapshotMetadata {
         name: snapshot_name.to_string(),
         created_at: Utc::now(),

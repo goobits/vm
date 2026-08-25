@@ -10,14 +10,13 @@ use crate::optimal_concurrency;
 use crate::volumes::backup_volumes;
 use chrono::Utc;
 use futures::stream::{self, StreamExt};
+use std::path::Path;
 use vm_config::AppConfig;
 use vm_core::error::{Result, VmError};
 
 /// Get git repository information
 /// Optimized to use a single git command instead of 3 separate spawns (3x faster)
-async fn get_git_info(
-    project_dir: &std::path::Path,
-) -> Result<(Option<String>, bool, Option<String>)> {
+async fn get_git_info(project_dir: &Path) -> Result<(Option<String>, bool, Option<String>)> {
     // Use single git status command to get all info at once
     let output = tokio::process::Command::new("git")
         .args(["status", "--porcelain=v2", "--branch"])
@@ -161,64 +160,32 @@ pub async fn handle_create(
         // Quiesce containers if requested
         if quiesce {
             tracing::info!("Pausing containers for consistent snapshot...");
-            execute_docker_compose(executable, &["pause"], &project_dir).await?;
-        }
-
-        // Discover services
-        tracing::info!("Discovering services...");
-        let services_output =
-            execute_docker_compose(executable, &["ps", "--services"], &project_dir).await?;
-        let service_names: Vec<String> = services_output
-            .lines()
-            .filter(|line| !line.is_empty())
-            .map(|s| s.to_string())
-            .collect();
-
-        // Parallelize service snapshots for 3-10x faster creation
-        tracing::info!("Snapshotting services in parallel...");
-        let snapshot_futures = service_names.iter().map(|service| {
-            let service = service.clone();
-            let project_name = project_name.clone();
-            let snapshot_name = snapshot_name.to_string();
-            let images_dir = images_dir.clone();
-            let project_dir = project_dir.clone();
-
-            async move {
-                let container_id =
-                    execute_docker_compose(executable, &["ps", "-q", &service], &project_dir)
-                        .await?;
-                if container_id.is_empty() {
-                    tracing::warn!("Service '{}' has no running container, skipping", service);
-                    return Ok::<Option<ServiceSnapshot>, VmError>(None);
-                }
-
-                snapshot_container(
-                    executable,
-                    &project_name,
-                    &snapshot_name,
-                    &service,
-                    &container_id,
-                    &images_dir,
-                )
-                .await
-                .map(Some)
+            if let Err(error) = execute_docker_compose(executable, &["pause"], &project_dir).await {
+                let resume = execute_docker_compose(executable, &["unpause"], &project_dir)
+                    .await
+                    .map(|_| ());
+                return finish_quiesce(Err(error), resume);
             }
-        });
-
-        let services: Vec<ServiceSnapshot> = stream::iter(snapshot_futures)
-            .buffer_unordered(optimal_concurrency())
-            .collect::<Vec<_>>()
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        if quiesce {
-            tracing::info!("Unpausing containers...");
-            execute_docker_compose(executable, &["unpause"], &project_dir).await?;
         }
+
+        let snapshot_result = snapshot_compose_services(
+            executable,
+            &project_name,
+            snapshot_name,
+            &project_dir,
+            &images_dir,
+        )
+        .await;
+
+        let resume_result = if quiesce {
+            tracing::info!("Unpausing containers...");
+            execute_docker_compose(executable, &["unpause"], &project_dir)
+                .await
+                .map(|_| ())
+        } else {
+            Ok(())
+        };
+        let services = finish_quiesce(snapshot_result, resume_result)?;
 
         // Discover volumes
         tracing::info!("Discovering volumes...");
@@ -267,47 +234,29 @@ pub async fn handle_create(
             ));
         }
 
-        if quiesce {
+        let paused_containers = if quiesce {
             tracing::info!("Pausing containers for consistent snapshot...");
-            for (container_id, _) in &containers {
-                execute_docker_with_output(executable, &["pause", container_id]).await?;
-            }
-        }
+            pause_containers(executable, &containers).await?
+        } else {
+            Vec::new()
+        };
 
-        tracing::info!("Snapshotting containers in parallel...");
-        let snapshot_futures = containers.iter().map(|(container_id, container_name)| {
-            let project_name = project_name.clone();
-            let snapshot_name = snapshot_name.to_string();
-            let images_dir = images_dir.clone();
-            let service_name = container_name.clone();
-            let container_id = container_id.clone();
+        let snapshot_result = snapshot_containers(
+            executable,
+            &project_name,
+            snapshot_name,
+            &containers,
+            &images_dir,
+        )
+        .await;
 
-            async move {
-                snapshot_container(
-                    executable,
-                    &project_name,
-                    &snapshot_name,
-                    &service_name,
-                    &container_id,
-                    &images_dir,
-                )
-                .await
-            }
-        });
-
-        let services: Vec<ServiceSnapshot> = stream::iter(snapshot_futures)
-            .buffer_unordered(optimal_concurrency())
-            .collect::<Vec<_>>()
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>>>()?;
-
-        if quiesce {
+        let resume_result = if quiesce {
             tracing::info!("Unpausing containers...");
-            for (container_id, _) in &containers {
-                execute_docker_with_output(executable, &["unpause", container_id]).await?;
-            }
-        }
+            resume_containers(executable, &paused_containers).await
+        } else {
+            Ok(())
+        };
+        let services = finish_quiesce(snapshot_result, resume_result)?;
 
         (services, Vec::new())
     };
@@ -339,7 +288,7 @@ pub async fn handle_create(
     let (git_commit, git_dirty, git_branch) = get_git_info(&project_dir).await?;
 
     // Calculate total size
-    let total_size_bytes = directory_size(&snapshot_dir);
+    let total_size_bytes = directory_size(&snapshot_dir)?;
 
     // Build and save metadata
     let metadata = SnapshotMetadata {
@@ -368,4 +317,130 @@ pub async fn handle_create(
     );
 
     Ok(())
+}
+
+async fn snapshot_compose_services(
+    executable: &str,
+    project_name: &str,
+    snapshot_name: &str,
+    project_dir: &Path,
+    images_dir: &Path,
+) -> Result<Vec<ServiceSnapshot>> {
+    tracing::info!("Discovering services...");
+    let services_output =
+        execute_docker_compose(executable, &["ps", "--services"], project_dir).await?;
+    let service_names: Vec<String> = services_output
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect();
+
+    tracing::info!("Snapshotting services in parallel...");
+    let futures = service_names.iter().map(|service| {
+        let service = service.clone();
+        let project_name = project_name.to_string();
+        let snapshot_name = snapshot_name.to_string();
+        let images_dir = images_dir.to_path_buf();
+        let project_dir = project_dir.to_path_buf();
+        async move {
+            let container_id =
+                execute_docker_compose(executable, &["ps", "-q", &service], &project_dir).await?;
+            if container_id.is_empty() {
+                tracing::warn!("Service '{}' has no running container, skipping", service);
+                return Ok::<Option<ServiceSnapshot>, VmError>(None);
+            }
+            snapshot_container(
+                executable,
+                &project_name,
+                &snapshot_name,
+                &service,
+                &container_id,
+                &images_dir,
+            )
+            .await
+            .map(Some)
+        }
+    });
+    stream::iter(futures)
+        .buffer_unordered(optimal_concurrency())
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>>>()
+        .map(|services| services.into_iter().flatten().collect())
+}
+
+async fn snapshot_containers(
+    executable: &str,
+    project_name: &str,
+    snapshot_name: &str,
+    containers: &[(String, String)],
+    images_dir: &Path,
+) -> Result<Vec<ServiceSnapshot>> {
+    tracing::info!("Snapshotting containers in parallel...");
+    let futures = containers.iter().map(|(container_id, container_name)| {
+        let project_name = project_name.to_string();
+        let snapshot_name = snapshot_name.to_string();
+        let images_dir = images_dir.to_path_buf();
+        let service_name = container_name.clone();
+        let container_id = container_id.clone();
+        async move {
+            snapshot_container(
+                executable,
+                &project_name,
+                &snapshot_name,
+                &service_name,
+                &container_id,
+                &images_dir,
+            )
+            .await
+        }
+    });
+    stream::iter(futures)
+        .buffer_unordered(optimal_concurrency())
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect()
+}
+
+async fn pause_containers(
+    executable: &str,
+    containers: &[(String, String)],
+) -> Result<Vec<String>> {
+    let mut paused = Vec::new();
+    for (container_id, _) in containers {
+        match execute_docker_with_output(executable, &["pause", container_id]).await {
+            Ok(_) => paused.push(container_id.clone()),
+            Err(error) => {
+                return finish_quiesce(Err(error), resume_containers(executable, &paused).await);
+            }
+        }
+    }
+    Ok(paused)
+}
+
+async fn resume_containers(executable: &str, containers: &[String]) -> Result<()> {
+    let mut result = Ok(());
+    for container_id in containers {
+        if let Err(error) = execute_docker_with_output(executable, &["unpause", container_id]).await
+        {
+            result = Err(error);
+        }
+    }
+    result
+}
+
+fn finish_quiesce<T>(snapshot: Result<T>, resume: Result<()>) -> Result<T> {
+    match (snapshot, resume) {
+        (Ok(value), Ok(())) => Ok(value),
+        (Err(error), Ok(())) => Err(error),
+        (Ok(_), Err(error)) => Err(error),
+        (Err(snapshot_error), Err(resume_error)) => Err(VmError::general(
+            resume_error,
+            format!(
+                "Snapshot failed ({snapshot_error}) and paused containers could not be resumed"
+            ),
+        )),
+    }
 }

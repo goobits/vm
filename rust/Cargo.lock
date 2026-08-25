@@ -3818,7 +3818,6 @@ dependencies = [
  "chrono",
  "flate2",
  "futures",
- "rayon",
  "serde",
  "serde_json",
  "tar",

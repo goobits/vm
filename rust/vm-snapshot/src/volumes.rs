@@ -3,7 +3,10 @@ use std::path::Path;
 use futures::stream::{self, StreamExt};
 use vm_core::error::{Result, VmError};
 
-use crate::docker::{execute_docker, execute_docker_streaming, execute_docker_with_output};
+use crate::docker::{
+    execute_docker, execute_docker_streaming, execute_docker_with_output,
+    remove_docker_volume_if_present,
+};
 use crate::metadata::VolumeSnapshot;
 use crate::optimal_concurrency;
 
@@ -70,9 +73,9 @@ pub(crate) async fn restore_volumes(
             tracing::info!("  Restoring volume: {}", volume.name);
             let full_volume_name = format!("{project_name}_{}", volume.name);
             if force {
-                let _ = execute_docker(executable, &["volume", "rm", &full_volume_name]).await;
+                remove_docker_volume_if_present(executable, &full_volume_name).await?;
             }
-            let _ = execute_docker(executable, &["volume", "create", &full_volume_name]).await;
+            execute_docker(executable, &["volume", "create", &full_volume_name]).await?;
 
             let restore_command = if volume.archive_file.ends_with(".tar.zst") {
                 "zstd -d -c \"/backup/$1\" | tar -x -C /data"

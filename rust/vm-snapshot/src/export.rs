@@ -1,7 +1,6 @@
 //! Snapshot export functionality
 
-use crate::archive::{copy_directory, create_gzip_archive};
-use crate::images::export_service_images;
+use crate::archive::{copy_directory, create_gzip_archive, validate_snapshot_files};
 use crate::manager::{SnapshotManager, SnapshotScope};
 use crate::metadata::SnapshotMetadata;
 use std::path::Path;
@@ -62,6 +61,7 @@ pub async fn handle_export(
     let snapshot_dir = manager.get_snapshot_dir(scope, clean_name)?;
     let metadata_path = snapshot_dir.join("metadata.json");
     let metadata = SnapshotMetadata::load(&metadata_path)?;
+    validate_snapshot_files(&snapshot_dir, &metadata)?;
 
     // Determine output file path
     let output_file = output_path.map(|p| p.to_path_buf()).unwrap_or_else(|| {
@@ -106,14 +106,10 @@ pub async fn handle_export(
         .await
         .map_err(|e| VmError::filesystem(e, manifest_path.display().to_string(), "write"))?;
 
-    // Create images directory and export Docker images
+    // Export the immutable image archives recorded by snapshot creation.
     let images_dir = export_build_dir.join("images");
-    tokio::fs::create_dir_all(&images_dir)
-        .await
-        .map_err(|e| VmError::filesystem(e, images_dir.display().to_string(), "create_dir_all"))?;
-
-    tracing::info!("Exporting service images in parallel...");
-    export_service_images(executable, &images_dir, &metadata.services).await?;
+    tracing::info!("Copying recorded service images...");
+    copy_directory(&snapshot_dir.join("images"), &images_dir).await?;
 
     // Copy metadata.json
     let metadata_dest = export_build_dir.join("metadata.json");
@@ -141,8 +137,8 @@ pub async fn handle_export(
 
     // Get final file size
     let file_size = std::fs::metadata(&output_file)
-        .map(|m| m.len())
-        .unwrap_or(0);
+        .map_err(|error| VmError::filesystem(error, output_file.display(), "metadata"))?
+        .len();
 
     tracing::info!("Snapshot exported successfully: {}", output_file.display());
     tracing::info!("  Size: {:.2} MB", file_size as f64 / (1024.0 * 1024.0));

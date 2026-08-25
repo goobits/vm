@@ -175,11 +175,19 @@ impl SnapshotManager {
                 VmError::filesystem(e, self.snapshots_dir.to_string_lossy(), "read_dir")
             })?;
 
-            read_dir
-                .filter_map(|entry| entry.ok())
-                .filter(|entry| entry.path().is_dir())
-                .map(|entry| entry.path())
-                .collect()
+            let mut directories = Vec::new();
+            for entry in read_dir {
+                let entry = entry.map_err(|error| {
+                    VmError::filesystem(error, self.snapshots_dir.display(), "read_dir entry")
+                })?;
+                let file_type = entry.file_type().map_err(|error| {
+                    VmError::filesystem(error, entry.path().display(), "file_type")
+                })?;
+                if file_type.is_dir() {
+                    directories.push(entry.path());
+                }
+            }
+            directories
         };
 
         // Scan each project directory
@@ -191,7 +199,10 @@ impl SnapshotManager {
             let read_dir = std::fs::read_dir(&project_dir)
                 .map_err(|e| VmError::filesystem(e, project_dir.to_string_lossy(), "read_dir"))?;
 
-            for entry in read_dir.filter_map(|e| e.ok()) {
+            for entry in read_dir {
+                let entry = entry.map_err(|error| {
+                    VmError::filesystem(error, project_dir.display(), "read_dir entry")
+                })?;
                 let file_name = entry.file_name();
                 let file_name = file_name.to_string_lossy();
                 if file_name.starts_with(".snapshot-staging-")
@@ -200,7 +211,13 @@ impl SnapshotManager {
                     continue;
                 }
                 let snapshot_dir = entry.path();
-                if !snapshot_dir.is_dir() {
+                if !entry
+                    .file_type()
+                    .map_err(|error| {
+                        VmError::filesystem(error, snapshot_dir.display(), "file_type")
+                    })?
+                    .is_dir()
+                {
                     continue;
                 }
 

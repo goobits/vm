@@ -35,55 +35,6 @@ pub(crate) async fn snapshot_container(
     })
 }
 
-pub(crate) async fn export_service_images(
-    executable: &str,
-    images_dir: &Path,
-    services: &[ServiceSnapshot],
-) -> Result<()> {
-    let export_futures = services.iter().map(|service| {
-        let service = service.clone();
-        let images_dir = images_dir.to_path_buf();
-        async move {
-            tracing::info!("  Exporting image for service '{}'...", service.name);
-            let current_digest = image_digest(executable, &service.image_tag)
-                .await
-                .ok()
-                .flatten();
-            if current_digest.is_none() {
-                tracing::error!(
-                    "Image '{}' not found, skipping. You may need to recreate this snapshot.",
-                    service.image_tag
-                );
-                return Ok::<(), VmError>(());
-            }
-
-            let destination = images_dir.join(&service.image_file);
-            if destination.exists()
-                && matches!(
-                    (&service.image_digest, &current_digest),
-                    (Some(stored), Some(current)) if stored == current
-                )
-            {
-                tracing::info!(
-                    "  Image '{}' unchanged (digest matches), skipping export",
-                    service.name
-                );
-                return Ok(());
-            }
-
-            save_image(executable, &service.image_tag, &destination).await
-        }
-    });
-
-    stream::iter(export_futures)
-        .buffer_unordered(optimal_concurrency())
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>>>()?;
-    Ok(())
-}
-
 pub(crate) async fn load_service_images(
     executable: &str,
     images_dir: &Path,

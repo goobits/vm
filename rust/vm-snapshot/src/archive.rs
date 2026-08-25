@@ -1,21 +1,33 @@
 use std::path::Path;
 
-use rayon::prelude::*;
 use vm_core::error::{Result, VmError};
 use walkdir::WalkDir;
 
 use crate::manager::snapshot_file_path;
 use crate::metadata::SnapshotMetadata;
 
-pub(crate) fn directory_size(path: &Path) -> u64 {
-    WalkDir::new(path)
-        .into_iter()
-        .par_bridge()
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| entry.file_type().is_file())
-        .filter_map(|entry| entry.metadata().ok())
-        .map(|metadata| metadata.len())
-        .sum()
+pub(crate) fn directory_size(path: &Path) -> Result<u64> {
+    let mut total = 0_u64;
+    for entry in WalkDir::new(path) {
+        let entry = entry.map_err(|error| {
+            VmError::general(
+                error,
+                format!("Failed to walk snapshot directory {}", path.display()),
+            )
+        })?;
+        if entry.file_type().is_file() {
+            let metadata = entry.metadata().map_err(|error| {
+                VmError::general(
+                    error,
+                    format!("Failed to inspect snapshot file {}", entry.path().display()),
+                )
+            })?;
+            total = total.checked_add(metadata.len()).ok_or_else(|| {
+                VmError::validation("Snapshot size exceeds supported range", None::<String>)
+            })?;
+        }
+    }
+    Ok(total)
 }
 
 pub(crate) async fn copy_directory(src: &Path, dst: &Path) -> Result<()> {
@@ -189,4 +201,20 @@ fn temporary_archive_path(output: &Path) -> Result<std::path::PathBuf> {
         })?;
     name.push(".tmp");
     Ok(output.with_file_name(name))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::directory_size;
+
+    #[test]
+    fn directory_size_counts_every_file_and_reports_missing_roots() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::create_dir(directory.path().join("nested")).unwrap();
+        std::fs::write(directory.path().join("one"), b"123").unwrap();
+        std::fs::write(directory.path().join("nested/two"), b"4567").unwrap();
+
+        assert_eq!(directory_size(directory.path()).unwrap(), 7);
+        assert!(directory_size(&directory.path().join("missing")).is_err());
+    }
 }

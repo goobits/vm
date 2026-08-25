@@ -10,7 +10,6 @@ description = "Snapshot management for Goobits VM"
 chrono = { workspace = true }
 flate2 = { workspace = true }
 futures = "0.3"
-rayon = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tar = { workspace = true }
