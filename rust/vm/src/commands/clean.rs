@@ -7,7 +7,7 @@
 //! - VM-managed dangling images
 
 use crate::error::{VmError, VmResult};
-use std::process::Command as StdCommand;
+use std::process::{Command as StdCommand, Output};
 use std::time::{Duration, SystemTime};
 use tracing::debug;
 use vm_config::AppConfig;
@@ -24,9 +24,7 @@ pub struct CleanupResults {
 
 /// Handle cleanup for `vm doctor --clean`
 pub async fn handle_clean() -> VmResult<()> {
-    let provider = AppConfig::load(None, None, None)
-        .map(|config| config.container_provider())
-        .unwrap_or_default();
+    let provider = AppConfig::load(None, None, None)?.container_provider();
     let executable = provider.as_str();
     vm_progress!("Cleaning unused resources...");
 
@@ -64,17 +62,9 @@ fn clean_dangling_volumes(executable: &str) -> VmResult<u32> {
     for filter in MANAGED_DISPOSABLE_VOLUME_FILTERS {
         command.args(["--filter", filter]);
     }
-    let output = command
-        .arg("--quiet")
-        .output()
-        .map_err(|e| VmError::general(e, "Failed to list dangling volumes"))?;
+    let output = command_output(command.arg("--quiet"), "list dangling volumes")?;
 
-    if !output.status.success() {
-        return Ok(0);
-    }
-
-    let volumes: Vec<&str> = std::str::from_utf8(&output.stdout)
-        .unwrap_or("")
+    let volumes: Vec<&str> = output_text(&output, "list dangling volumes")?
         .lines()
         .filter(|s| !s.is_empty())
         .collect();
@@ -85,15 +75,11 @@ fn clean_dangling_volumes(executable: &str) -> VmResult<u32> {
 
     let mut removed = 0;
     for volume in volumes {
-        let Ok(output) = StdCommand::new(executable)
-            .args(["volume", "rm", volume])
-            .output()
-        else {
-            continue;
-        };
-        if output.status.success() {
-            removed += 1;
-        }
+        command_output(
+            StdCommand::new(executable).args(["volume", "rm", volume]),
+            &format!("remove managed volume '{volume}'"),
+        )?;
+        removed += 1;
     }
     if removed > 0 {
         vm_println!(
@@ -113,17 +99,12 @@ fn clean_stopped_temp_containers(executable: &str) -> VmResult<u32> {
     for filter in STOPPED_TEMP_CONTAINER_FILTERS {
         command.args(["--filter", filter]);
     }
-    let output = command
-        .args(["--format", "{{.ID}}\t{{.Names}}"])
-        .output()
-        .map_err(|e| VmError::general(e, "Failed to list stopped temp containers"))?;
+    let output = command_output(
+        command.args(["--format", "{{.ID}}\t{{.Names}}"]),
+        "list stopped temporary containers",
+    )?;
 
-    if !output.status.success() {
-        return Ok(0);
-    }
-
-    let containers: Vec<(&str, &str)> = std::str::from_utf8(&output.stdout)
-        .unwrap_or("")
+    let containers: Vec<(&str, &str)> = output_text(&output, "list stopped temporary containers")?
         .lines()
         .filter(|s| !s.is_empty())
         .filter_map(|line| {
@@ -142,13 +123,11 @@ fn clean_stopped_temp_containers(executable: &str) -> VmResult<u32> {
 
     let mut removed = 0;
     for (id, _) in containers {
-        if StdCommand::new(executable)
-            .args(["rm", id])
-            .output()
-            .is_ok_and(|output| output.status.success())
-        {
-            removed += 1;
-        }
+        command_output(
+            StdCommand::new(executable).args(["rm", id]),
+            &format!("remove managed temporary container '{id}'"),
+        )?;
+        removed += 1;
     }
     if removed > 0 {
         vm_println!("  Temp containers: Removed {removed} container(s)");
@@ -214,17 +193,9 @@ fn clean_dangling_images(executable: &str) -> VmResult<u32> {
     for filter in MANAGED_DANGLING_IMAGE_FILTERS {
         command.args(["--filter", filter]);
     }
-    let output = command
-        .arg("--quiet")
-        .output()
-        .map_err(|e| VmError::general(e, "Failed to list VM-managed dangling images"))?;
+    let output = command_output(command.arg("--quiet"), "list VM-managed dangling images")?;
 
-    if !output.status.success() {
-        return Ok(0);
-    }
-
-    let images = std::str::from_utf8(&output.stdout)
-        .unwrap_or("")
+    let images = output_text(&output, "list VM-managed dangling images")?
         .lines()
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>();
@@ -235,18 +206,40 @@ fn clean_dangling_images(executable: &str) -> VmResult<u32> {
 
     let mut removed = 0;
     for image in images {
-        if StdCommand::new(executable)
-            .args(["image", "rm", image])
-            .output()
-            .is_ok_and(|output| output.status.success())
-        {
-            removed += 1;
-        }
+        command_output(
+            StdCommand::new(executable).args(["image", "rm", image]),
+            &format!("remove VM-managed dangling image '{image}'"),
+        )?;
+        removed += 1;
     }
     if removed > 0 {
         vm_println!("  Images: Removed {removed} VM-managed dangling image(s)");
     }
     Ok(removed)
+}
+
+fn command_output(command: &mut StdCommand, operation: &str) -> VmResult<Output> {
+    let output = command
+        .output()
+        .map_err(|error| VmError::general(error, format!("Failed to {operation}")))?;
+    if output.status.success() {
+        return Ok(output);
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let detail = stderr.trim();
+    let message = if detail.is_empty() {
+        format!("Could not {operation} ({})", output.status)
+    } else {
+        format!("Could not {operation}: {detail}")
+    };
+    Err(VmError::validation(message, None::<String>))
+}
+
+fn output_text<'a>(output: &'a Output, operation: &str) -> VmResult<&'a str> {
+    std::str::from_utf8(&output.stdout).map_err(|error| {
+        VmError::general(error, format!("Invalid output while trying to {operation}"))
+    })
 }
 
 /// Print cleanup summary
@@ -271,9 +264,10 @@ fn print_cleanup_summary(results: &CleanupResults) {
 #[cfg(test)]
 mod tests {
     use super::{
-        MANAGED_DANGLING_IMAGE_FILTERS, MANAGED_DISPOSABLE_VOLUME_FILTERS,
+        command_output, MANAGED_DANGLING_IMAGE_FILTERS, MANAGED_DISPOSABLE_VOLUME_FILTERS,
         STOPPED_TEMP_CONTAINER_FILTERS,
     };
+    use std::process::Command;
 
     #[test]
     fn volume_cleanup_requires_vm_ownership_and_disposable_retention() {
@@ -301,5 +295,17 @@ mod tests {
             MANAGED_DANGLING_IMAGE_FILTERS,
             ["dangling=true", "label=com.vm.managed=true"]
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cleanup_command_failures_are_not_reported_as_empty_results() {
+        let error = command_output(
+            Command::new("sh").args(["-c", "printf 'engine unavailable' >&2; exit 7"]),
+            "list managed resources",
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("engine unavailable"));
     }
 }

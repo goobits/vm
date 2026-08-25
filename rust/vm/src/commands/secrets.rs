@@ -17,9 +17,7 @@ pub(super) async fn handle_command(
     config_path: Option<std::path::PathBuf>,
     profile: Option<String>,
 ) -> VmResult<()> {
-    let global_config = AppConfig::load(config_path, profile, None)
-        .map(|config| config.global)
-        .unwrap_or_default();
+    let global_config = AppConfig::load(config_path, profile, None)?.global;
     handle_secrets_command(command, global_config).await
 }
 

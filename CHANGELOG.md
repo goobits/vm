@@ -64,6 +64,7 @@
 
 ### 🐛 Fixed
 
+- 🪟 Secret and cleanup commands now stop on invalid configuration or failed engine operations instead of silently switching to defaults or reporting an empty cleanup.
 - 🌐 Port allocation locks a stable sidecar across atomic registry replacement, so concurrent project initialization preserves every reservation and cannot select duplicate ranges.
 - ☁️ Worktree creation refuses pre-existing non-worktree directories, rejects sibling-prefix escapes, and preserves failed partial worktrees for explicit inspection instead of recursively deleting them.
 - 🪟 Source installation fails closed when the official Rust installer checksum is unavailable or malformed instead of executing a size-only-verified download.
