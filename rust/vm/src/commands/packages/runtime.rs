@@ -108,10 +108,6 @@ impl GuestRuntime {
         &self.consumer
     }
 
-    pub(super) fn gateway(&self) -> &str {
-        &self.gateway
-    }
-
     pub(super) fn canonical_workspace(&self) -> VmResult<&Path> {
         self.canonical_workspace.as_deref().ok_or_else(|| {
             VmError::validation(

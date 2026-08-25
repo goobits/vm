@@ -70,7 +70,11 @@ pub(super) async fn handle_guest() -> VmResult<()> {
     let checkout_id = resolved_checkout_id.as_str();
     let client = subject.client()?;
     let checkout = client.checkout(checkout_id).await?;
-    if !checkout.consumers.contains(&subject.consumer().to_string()) {
+    if !checkout
+        .consumers
+        .iter()
+        .any(|consumer| consumer == subject.consumer())
+    {
         return Err(VmError::validation(
             "Checkout is not assigned to this managed environment",
             None::<String>,
@@ -178,7 +182,6 @@ pub(super) async fn handle_guest() -> VmResult<()> {
         wait_for_tool_activation(&client, release_id).await?;
     }
     if managed_checkout {
-        let checkout = client.checkout(checkout_id).await?;
         if let Err(error) = checkout::cleanup_guest(&subject, &checkout) {
             vm_hint!("Published successfully; local checkout cleanup was skipped: {error}");
         }

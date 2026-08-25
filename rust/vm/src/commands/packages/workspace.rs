@@ -117,11 +117,11 @@ pub(super) async fn prepare(subject: &GuestRuntime) -> VmResult<WorkspacePrepara
         Some(_) => {
             state = new_state(&registered.name, &repository, &head);
             save_state(subject, &state_path, &state)?;
-            create_checkout(subject, &registered, &mut state, &state_path).await?
+            create_checkout(subject, &client, &registered, &mut state, &state_path).await?
         }
         None => {
             save_state(subject, &state_path, &state)?;
-            create_checkout(subject, &registered, &mut state, &state_path).await?
+            create_checkout(subject, &client, &registered, &mut state, &state_path).await?
         }
     };
     validate_checkout(subject, &checkout, &registered)?;
@@ -229,12 +229,12 @@ fn matching_release(
 
 async fn create_checkout(
     subject: &GuestRuntime,
+    client: &vm_packages::PackageInfrastructureClient,
     registered: &RegisteredSource,
     state: &mut WorkspaceReleaseState,
     state_path: &Path,
 ) -> VmResult<CheckoutRecord> {
-    let created = subject
-        .client()?
+    let created = client
         .create_checkout(&CreateCheckout {
             package: registered.name.clone(),
             agent: "workspace-agent".into(),

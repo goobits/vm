@@ -1,6 +1,7 @@
 use vm_core::{vm_hint, vm_println, vm_progress, vm_success};
 use vm_packages::{
-    CleanupRequest, CreateCheckout, PackageEcosystem, SourceKind, TransitionRequest, WorkflowState,
+    CleanupRequest, CreateCheckout, PackageEcosystem, PackageInfrastructureClient, SourceKind,
+    TransitionRequest, WorkflowState,
 };
 
 use crate::error::{VmError, VmResult};
@@ -106,6 +107,7 @@ pub(super) async fn handle_guest(package: String) -> VmResult<()> {
     }
     attach(
         &subject,
+        &client,
         &checkout.checkout,
         lease_token,
         &consumer,
@@ -147,7 +149,11 @@ pub(super) async fn cancel_guest() -> VmResult<()> {
     })?;
     let client = subject.client()?;
     let checkout = client.checkout(&checkout_id).await?;
-    if !checkout.consumers.contains(&subject.consumer().to_string()) {
+    if !checkout
+        .consumers
+        .iter()
+        .any(|consumer| consumer == subject.consumer())
+    {
         return Err(VmError::validation(
             "Checkout is not assigned to this managed environment",
             None::<String>,
@@ -201,6 +207,7 @@ fn cleanup_ready(state: WorkflowState) -> bool {
 
 fn attach(
     subject: &GuestRuntime,
+    client: &PackageInfrastructureClient,
     checkout: &vm_packages::CheckoutRecord,
     lease_token: &str,
     consumer: &str,
@@ -220,8 +227,7 @@ fn attach(
         .branch
         .as_deref()
         .ok_or_else(|| VmError::validation("Checkout branch is missing", None::<String>))?;
-    let archive_client = subject.client()?;
-    let url = archive_client.checkout_archive_url(&checkout.checkout_id, consumer);
+    let url = client.checkout_archive_url(&checkout.checkout_id, consumer);
     create_directory(&root)?;
     refresh_checkout_access(subject, &root, lease_token)?;
     exec(

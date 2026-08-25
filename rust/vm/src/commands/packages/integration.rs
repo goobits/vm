@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use vm_core::{vm_progress, vm_success};
 use vm_packages::{
-    CheckOutcome, IntegrationRequest, PackageEcosystem, PackageInfrastructureClient,
-    RegistryEndpoints, SourceKind, ValidationRequest, WorkflowState,
+    CheckOutcome, IntegrationRequest, PackageEcosystem, PackageInfrastructureClient, SourceKind,
+    ValidationRequest, WorkflowState,
 };
 
 use crate::error::{VmError, VmResult};
@@ -71,10 +71,7 @@ pub(super) async fn handle_guest(
     let source = format!("{root}/source");
     let bundle = format!("{root}/integration.bundle");
     create_directory(&root)?;
-    let download_client = PackageInfrastructureClient::new(
-        RegistryEndpoints::new(subject.gateway()).map_err(VmError::from)?,
-    );
-    let url = download_client.integration_bundle_url(&integrating.submission_id, &consumer);
+    let url = client.integration_bundle_url(&integrating.submission_id, &consumer);
     exec(
         subject,
         [

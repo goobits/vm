@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use vm_core::vm_progress;
 use vm_packages::{
-    CheckOutcome, PackageEcosystem, PackageInfrastructureClient, RegistryEndpoints, SourceKind,
-    ValidationRequest, WorkflowState,
+    CheckOutcome, PackageEcosystem, PackageInfrastructureClient, SourceKind, ValidationRequest,
+    WorkflowState,
 };
 
 use crate::error::{VmError, VmResult};
@@ -160,7 +160,14 @@ async fn submit(
             "--all",
         ],
     )?;
-    let submission = upload_bundle(subject, &checkout.checkout_id, &consumer, &root, &bundle)?;
+    let submission = upload_bundle(
+        subject,
+        client,
+        &checkout.checkout_id,
+        &consumer,
+        &root,
+        &bundle,
+    )?;
     remove_file(&bundle)?;
 
     validate(client, submission, consumers, actor).await
@@ -323,6 +330,7 @@ async fn submit_workspace_commit(
         } else {
             upload_bundle(
                 subject,
+                client,
                 &checkout.checkout_id,
                 subject.consumer(),
                 &root,
@@ -342,15 +350,13 @@ async fn submit_workspace_commit(
 
 fn upload_bundle(
     subject: &GuestRuntime,
+    client: &PackageInfrastructureClient,
     checkout_id: &str,
     consumer: &str,
     root: &str,
     bundle: &str,
 ) -> VmResult<vm_packages::SubmissionRecord> {
-    let upload_client = PackageInfrastructureClient::new(
-        RegistryEndpoints::new(subject.gateway()).map_err(VmError::from)?,
-    );
-    let upload_url = upload_client.submission_upload_url(checkout_id, consumer);
+    let upload_url = client.submission_upload_url(checkout_id, consumer);
     let response = exec_output(
         subject,
         [
