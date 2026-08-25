@@ -49,6 +49,7 @@ test: test-shell test-unit test-integration-conditional
 
 test-shell:
 	@./scripts/internal/test-install-checksum.sh
+	@./scripts/internal/test-vm-worktree.sh
 
 test-unit:
 	@command -v cargo-nextest >/dev/null 2>&1 && \

@@ -101,14 +101,18 @@ validate_worktree_path() {
         return 1
     fi
 
-    # Check if resolved path starts with base path
-    if [[ "$resolved" != "$base_resolved"* ]]; then
-        echo -e "${RED}Error: Path escapes worktrees directory${NC}" >&2
-        echo "  Attempted: $path" >&2
-        echo "  Resolved: $resolved" >&2
-        echo "  Expected under: $base_resolved" >&2
-        return 1
-    fi
+    # Require an exact path component boundary, not just a matching prefix.
+    case "$resolved" in
+        "$base_resolved"|"$base_resolved"/*)
+            ;;
+        *)
+            echo -e "${RED}Error: Path escapes worktrees directory${NC}" >&2
+            echo "  Attempted: $path" >&2
+            echo "  Resolved: $resolved" >&2
+            echo "  Expected under: $base_resolved" >&2
+            return 1
+            ;;
+    esac
 
     return 0
 }
@@ -153,9 +157,12 @@ safe_exec_shell() {
 
 # Cleanup function for interrupted operations
 cleanup_partial_worktree() {
-    if [ -n "${WORKTREE_PATH:-}" ] && [ -d "$WORKTREE_PATH" ]; then
+    if [ "${CLEANUP_PARTIAL_WORKTREE:-no}" = "yes" ] && [ -n "${WORKTREE_PATH:-}" ] && [ -d "$WORKTREE_PATH" ]; then
         echo -e "${YELLOW}Cleaning up partial worktree...${NC}" >&2
-        git worktree remove --force "$WORKTREE_PATH" 2>/dev/null || rm -rf "$WORKTREE_PATH"
+        if ! git worktree remove --force "$WORKTREE_PATH" 2>/dev/null; then
+            echo -e "${YELLOW}Warning: Leaving partial worktree in place: $WORKTREE_PATH${NC}" >&2
+            echo "Remove it after inspection with: git worktree remove --force '$WORKTREE_PATH'" >&2
+        fi
     fi
 }
 
@@ -189,36 +196,29 @@ case "${1:-help}" in
             exit 1
         fi
 
-        # Set up cleanup trap for CTRL+C or errors
-        trap cleanup_partial_worktree EXIT INT TERM
-
         # Edge case: Worktree already exists
         if [ -d "$WORKTREE_PATH" ]; then
             if git worktree list | grep -q "$WORKTREE_PATH"; then
                 echo -e "${GREEN}✓ Worktree '$NAME' already exists${NC}"
                 echo "  Navigating to: $WORKTREE_PATH"
-                trap - EXIT INT TERM  # Clear trap
                 safe_exec_shell "$WORKTREE_PATH"
                 exit 0
             else
-                echo -e "${YELLOW}Warning: Directory exists but not a worktree${NC}"
-                if is_interactive; then
-                    read -p "Remove and recreate? (y/N): " -n 1 -r
-                    echo
-                    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                        echo "Cancelled"
-                        trap - EXIT INT TERM
-                        exit 0
-                    fi
-                fi
-                rm -rf "$WORKTREE_PATH"
+                echo -e "${RED}Error: Directory exists but is not a registered worktree: $WORKTREE_PATH${NC}" >&2
+                echo "Move or remove it explicitly before retrying." >&2
+                exit 1
             fi
         fi
+
+        # Arm cleanup only after proving this invocation owns an absent target.
+        CLEANUP_PARTIAL_WORKTREE=yes
+        trap cleanup_partial_worktree EXIT INT TERM
 
         # Try to create worktree (use -- to separate branch name from flags)
         echo "Creating worktree: $NAME (branch: $BRANCH)"
         if git worktree add "$WORKTREE_PATH" -- "$BRANCH" 2>&1; then
             echo -e "${GREEN}✓ Worktree created: $NAME${NC}"
+            CLEANUP_PARTIAL_WORKTREE=no
             trap - EXIT INT TERM  # Clear trap on success
             safe_exec_shell "$WORKTREE_PATH"
         else

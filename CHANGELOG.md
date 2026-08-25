@@ -60,6 +60,7 @@
 
 ### 🐛 Fixed
 
+- ☁️ Worktree creation refuses pre-existing non-worktree directories, rejects sibling-prefix escapes, and preserves failed partial worktrees for explicit inspection instead of recursively deleting them.
 - 🪟 Source installation fails closed when the official Rust installer checksum is unavailable or malformed instead of executing a size-only-verified download.
 - 🪟 Source installation atomically copies `vm` into the stable user binary directory and keeps reusable Cargo artifacts in the platform cache, so temporary-build cleanup cannot break the installed CLI.
 - ☁️ Vendor-tool migration safely adopts broken symlinks inside a declared legacy installer scope while continuing to refuse unrelated launchers.
