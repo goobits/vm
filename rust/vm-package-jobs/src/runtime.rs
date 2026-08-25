@@ -110,6 +110,48 @@ impl QueueMonitor {
     }
 }
 
+pub async fn run_job_worker<J, Poll, PollFuture, Execute, ExecuteFuture, JobId>(
+    queue_operation: &'static str,
+    job_operation: &'static str,
+    mut poll: Poll,
+    mut execute: Execute,
+    job_id: JobId,
+) -> Result<()>
+where
+    Poll: FnMut() -> PollFuture,
+    PollFuture: Future<Output = Result<Option<J>>>,
+    Execute: FnMut(J) -> ExecuteFuture,
+    ExecuteFuture: Future<Output = Result<()>>,
+    JobId: Fn(&J) -> String,
+{
+    let mut queue = QueueMonitor::new(queue_operation);
+    let mut jobs = JobMonitor::new(job_operation);
+    loop {
+        let delay = match poll().await {
+            Ok(Some(job)) => {
+                queue.available();
+                let id = job_id(&job);
+                match execute(job).await {
+                    Ok(()) => {
+                        jobs.succeeded(&id);
+                        POLL_INTERVAL
+                    }
+                    Err(error) => jobs.failed(&id, &error),
+                }
+            }
+            Ok(None) => {
+                queue.available();
+                POLL_INTERVAL
+            }
+            Err(error) => {
+                queue.unavailable(&error);
+                POLL_INTERVAL
+            }
+        };
+        tokio::time::sleep(delay).await;
+    }
+}
+
 pub async fn worker_main<F>(component: &'static str, worker: F) -> ExitCode
 where
     F: Future<Output = Result<()>>,

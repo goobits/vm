@@ -5,8 +5,7 @@ use anyhow::{anyhow, bail, Context, Error, Result};
 use vm_logging::init_service_subscriber;
 use vm_package_jobs::runtime::{
     authorization_header, command_text as text, download_bundle, operation_key,
-    required_secret as secret, run_command as run, worker_main, JobMonitor, QueueMonitor,
-    POLL_INTERVAL,
+    required_secret as secret, run_command as run, run_job_worker, worker_main,
 };
 use vm_packages::{
     PackageEcosystem, PackageInfrastructureClient, RegistryEndpoints, RolloutState,
@@ -25,31 +24,18 @@ async fn run_worker() -> Result<()> {
     let token = secret("PKG_ROLLOUT_TOKEN_FILE")?;
     let client = PackageInfrastructureClient::new(RegistryEndpoints::new(gateway)?)
         .with_rollout_token(token.clone());
-    let mut queue = QueueMonitor::new("poll_rollout_queue");
-    let mut jobs = JobMonitor::new("rollout");
-    loop {
-        let delay = match client.reconcile_rollout_queue().await {
-            Ok(Some(rollout)) => {
-                queue.available();
-                match run_rollout(&client, &token, &rollout.rollout_id).await {
-                    Ok(()) => {
-                        jobs.succeeded(&rollout.rollout_id);
-                        POLL_INTERVAL
-                    }
-                    Err(error) => jobs.failed(&rollout.rollout_id, &error),
-                }
-            }
-            Ok(None) => {
-                queue.available();
-                POLL_INTERVAL
-            }
-            Err(error) => {
-                queue.unavailable(&error);
-                POLL_INTERVAL
-            }
-        };
-        tokio::time::sleep(delay).await;
-    }
+    run_job_worker(
+        "poll_rollout_queue",
+        "rollout",
+        || client.reconcile_rollout_queue(),
+        |rollout| {
+            let client = &client;
+            let token = &token;
+            async move { run_rollout(client, token, &rollout.rollout_id).await }
+        },
+        |rollout| rollout.rollout_id.clone(),
+    )
+    .await
 }
 
 async fn run_rollout(
