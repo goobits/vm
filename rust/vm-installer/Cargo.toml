@@ -9,7 +9,6 @@ description = "Installer for the VM development tool."
 [dependencies]
 clap = { workspace = true }
 tracing = { workspace = true }
-serde_json = { workspace = true }
 vm-messages = { path = "../vm-messages" }
 vm-core = { path = "../vm-core" }
 vm-logging = { path = "../vm-logging" }
@@ -22,6 +21,3 @@ anyhow = { workspace = true }
 [features]
 default = []
 integration = []
-
-[package.metadata.cargo-machete]
-ignored = ["serde_json"]

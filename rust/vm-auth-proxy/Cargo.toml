@@ -21,10 +21,10 @@ reqwest = { workspace = true }
 vm-logging = { path = "../vm-logging", features = ["http"] }
 
 # Cryptography
-aes-gcm = "0.10"
-pbkdf2 = "0.13"
+aes-gcm = { workspace = true }
+pbkdf2 = { workspace = true }
 sha2 = { workspace = true }
-subtle = "2"
+subtle = { workspace = true }
 
 # System integration
 dirs = { workspace = true }
@@ -36,4 +36,4 @@ base64 = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-axum-test = "20.1"
+axum-test = { workspace = true }

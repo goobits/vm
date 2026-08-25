@@ -50,4 +50,4 @@ vm-packages = { path = "../vm-packages" }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-axum-test = "20.1"
+axum-test = { workspace = true }

@@ -33,7 +33,6 @@ vm-plugin = { path = "../vm-plugin" }
 vm-logging = { path = "../vm-logging" }
 vm-platform = { path = "../vm-platform" }
 which = { workspace = true }
-chrono = { workspace = true }
 git2 = { workspace = true }
 
 [features]
@@ -42,7 +41,7 @@ test-helpers = []
 
 [dev-dependencies]
 tempfile = { workspace = true }
-assert_cmd = "2.2"
-predicates = "3.1"
+assert_cmd = { workspace = true }
+predicates = { workspace = true }
 tracing-subscriber = { workspace = true }
-serial_test = "3.5"
+serial_test = { workspace = true }

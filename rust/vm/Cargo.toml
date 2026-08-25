@@ -16,7 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-async-trait = "0.1"
+async-trait = { workspace = true }
 clap = { workspace = true }
 clap_complete = { workspace = true }
 shellexpand = { workspace = true }
@@ -42,14 +42,10 @@ vm-temp = { path = "../vm-temp" }
 vm-snapshot = { path = "../vm-snapshot" }
 vm-packages = { path = "../vm-packages" }
 vm-auth-proxy = { path = "../vm-auth-proxy" }
-futures = "0.3.32"
-chrono = "0.4.45"
-rand = { workspace = true }
+futures = { workspace = true }
+chrono = { workspace = true }
 semver = { workspace = true }
-rayon = { workspace = true }
 walkdir = { workspace = true }
-flate2 = { workspace = true }
-tar = { workspace = true }
 fs2 = { workspace = true }
 url = { workspace = true }
 git2 = { workspace = true }
@@ -64,10 +60,7 @@ default = []
 integration = []
 tart = ["vm-provider/tart"]
 
-[package.metadata.cargo-machete]
-ignored = []
-
 [dev-dependencies]
-assert_cmd = "2.2"
-predicates = "3.1"
+assert_cmd = { workspace = true }
+predicates = { workspace = true }
 vm-provider = { path = "../vm-provider", features = ["test-helpers"] }

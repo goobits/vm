@@ -25,4 +25,3 @@ url = { workspace = true }
 
 [dev-dependencies]
 serde_yaml_ng = { workspace = true }
-tempfile = { workspace = true }

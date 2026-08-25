@@ -35,5 +35,5 @@ vm-packages = { path = "../vm-packages" }
 nix = { workspace = true, features = ["signal"] }
 
 [dev-dependencies]
-axum-test = "20.1"
+axum-test = { workspace = true }
 tempfile = { workspace = true }
