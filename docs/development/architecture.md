@@ -20,8 +20,8 @@ vm/
 - `rust/vm/src/cli/` owns command parsing and the public command shape.
 - `rust/vm/src/commands/` owns one exhaustive command dispatcher. Individual
   command modules own their preparation, and `dry_run` owns dry-run wording.
-- `rust/vm-config/` owns configuration loading, validation, profiles, schema
-  behavior, and the single preset-to-project initialization path. Preset command
+- `rust/vm-config/` is a library that owns configuration loading, validation,
+  profiles, schema behavior, and the single preset-to-project initialization path. Preset command
   IO is separate from private preset resolution/materialization.
 - `rust/vm-plugin/` owns plugin discovery and the validation facade; metadata,
   preset-content, and service-content rules remain separate private concerns.

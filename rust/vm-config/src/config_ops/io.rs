@@ -41,7 +41,7 @@ pub fn read_config_or_init(path: &Path, allow_init: bool) -> Result<VmConfig> {
         vm_println!("✨ Initializing project...");
     }
 
-    crate::cli::init_config_file(Some(path.to_path_buf()), None, None, None)?;
+    super::init_config_file(Some(path.to_path_buf()), None, None, None)?;
     vm_println!();
     VmConfig::from_file(&path.to_path_buf())
 }

@@ -6,7 +6,7 @@
 //! ## Main Features
 //! - Configuration loading and validation
 //! - Configuration merging and preset management
-//! - CLI utilities for configuration initialization
+//! - Project configuration initialization
 //! - Resource limit parsing and validation
 //!
 //! ## Preset System
@@ -25,7 +25,6 @@
 //!
 //! Preset loading and discovery is handled internally by the `preset` module.
 
-mod cli;
 pub mod config;
 mod config_ops;
 pub mod detector;
@@ -52,10 +51,10 @@ mod global_config_tests;
 mod config_tests;
 
 // Re-export commonly needed path utilities
-pub use paths::{get_config_dir, get_presets_dir, get_tool_dir, resolve_tool_path};
+pub use paths::{get_config_dir, get_presets_dir, get_tool_dir};
 
 // Re-export config operations for use by main vm binary
-pub use config_ops::{find_local_config, load_global_config, ConfigOps};
+pub use config_ops::{find_local_config, init_config_file, load_global_config, ConfigOps};
 
 // Re-export global config for use by other crates
 pub use global_config::{
@@ -64,17 +63,11 @@ pub use global_config::{
     PostgresSettings, RedisSettings, SnapshotSettings, WorktreesGlobalSettings,
 };
 
-// Re-export CLI utilities
-pub use cli::{
-    execute as execute_cli, init_config_file, load_and_merge_config, Args as CliArgs, ArrayCmd,
-    Command as CliCommand, ConfigCmd, FileCmd, OutputFormat, PortsCmd, ProjectCmd, QueryCmd,
-    TransformFormat,
-};
 pub use detector::{detect_worktrees, detect_worktrees_in};
 
 // Re-export ConfigLoader for relative path detection
 pub use limit_parser::{parse_limit_value, LimitVisitor, ParsedLimit};
-pub use loader::ConfigLoader;
+pub use loader::{load_and_merge_config, ConfigLoader};
 pub use merge::{apply_profile, merge_configs, ConfigMerger};
 pub use preset::{PresetDetector, PresetFile, PresetMetadata};
 pub use preset_cache::{
@@ -82,10 +75,7 @@ pub use preset_cache::{
     load_preset_cached, CacheStats,
 };
 pub use schema::{lookup_field_type, parse_value_with_schema, SchemaType};
-pub use yaml::{
-    ArrayOperations, CoreOperations, FieldOperations, QueryOperations, TransformOperations,
-    YamlOperations,
-};
+pub use yaml::CoreOperations;
 
 use std::path::PathBuf;
 use vm_core::error::Result;

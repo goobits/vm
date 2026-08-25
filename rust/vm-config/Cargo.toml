@@ -4,20 +4,15 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "High-performance YAML configuration processor for VM Tool"
+description = "Configuration loading and management library for VM Tool"
 
 [lib]
 name = "vm_config"
 path = "src/lib.rs"
 
-[[bin]]
-name = "vm-config"
-path = "src/main.rs"
-
 [dependencies]
 anyhow = { workspace = true }
 tracing = { workspace = true }
-clap = { workspace = true }
 fs2 = { workspace =true }
 glob = { workspace = true }
 indexmap = { workspace = true }
@@ -30,7 +25,6 @@ serde_yaml_ng = { workspace = true }
 vm-core = { path = "../vm-core" }
 vm-messages = { path = "../vm-messages" }
 vm-plugin = { path = "../vm-plugin" }
-vm-logging = { path = "../vm-logging" }
 vm-platform = { path = "../vm-platform" }
 which = { workspace = true }
 git2 = { workspace = true }
@@ -41,7 +35,5 @@ test-helpers = []
 
 [dev-dependencies]
 tempfile = { workspace = true }
-assert_cmd = { workspace = true }
-predicates = { workspace = true }
 tracing-subscriber = { workspace = true }
 serial_test = { workspace = true }

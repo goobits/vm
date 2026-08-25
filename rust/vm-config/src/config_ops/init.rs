@@ -40,7 +40,7 @@ fn get_consecutive_hyphens_regex() -> &'static Regex {
 }
 
 #[instrument(skip(file_path, services, ports, preset))]
-pub fn execute(
+pub fn init_config_file(
     file_path: Option<PathBuf>,
     services: Option<String>,
     ports: Option<u16>,
@@ -52,7 +52,10 @@ pub fn execute(
     // Check if vm.yaml already exists
     if target_path.exists() {
         print_already_exists_message(&target_path);
-        std::process::exit(1);
+        return Err(VmError::Config(format!(
+            "Configuration already exists: {}",
+            target_path.display()
+        )));
     }
 
     // Get current directory name for project name
@@ -119,9 +122,9 @@ fn print_already_exists_message(target_path: &Path) {
     info!("   📁 {}", target_path.display());
     info!("");
     info!("{}", MESSAGES.service.init_options_hint);
-    info!("   rm vm.yaml && vm-config init           # Start fresh");
-    info!("   vm-config init --file other.yaml        # Create elsewhere");
-    info!("   vm run linux                    # Use existing config");
+    info!("   rm vm.yaml && vm run linux              # Start fresh");
+    info!("   vm --config other.yaml run linux         # Create elsewhere");
+    info!("   vm run linux                             # Use existing config");
 }
 
 /// Sanitize directory name for use as project name
@@ -151,7 +154,7 @@ fn sanitize_project_name(current_dir: &std::path::Path) -> Result<String> {
 
 /// Build initial config from embedded defaults
 fn build_initial_config(sanitized_name: &str) -> Result<VmConfig> {
-    const EMBEDDED_DEFAULTS: &str = include_str!("../../../../../configs/defaults.yaml");
+    const EMBEDDED_DEFAULTS: &str = include_str!("../../../../configs/defaults.yaml");
     let mut config: VmConfig = crate::yaml::CoreOperations::parse_yaml_with_diagnostics(
         EMBEDDED_DEFAULTS,
         "embedded defaults",
@@ -300,10 +303,10 @@ fn apply_service_configurations(
 
 fn embedded_service_config(service: &str) -> Option<&'static str> {
     match service {
-        "postgresql" => Some(include_str!("../../../resources/services/postgresql.yaml")),
-        "redis" => Some(include_str!("../../../resources/services/redis.yaml")),
-        "mongodb" => Some(include_str!("../../../resources/services/mongodb.yaml")),
-        "docker" => Some(include_str!("../../../resources/services/docker.yaml")),
+        "postgresql" => Some(include_str!("../../resources/services/postgresql.yaml")),
+        "redis" => Some(include_str!("../../resources/services/redis.yaml")),
+        "mongodb" => Some(include_str!("../../resources/services/mongodb.yaml")),
+        "docker" => Some(include_str!("../../resources/services/docker.yaml")),
         _ => None,
     }
 }

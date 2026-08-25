@@ -123,11 +123,11 @@ fn apply_preset_to_config(
             VmConfig::default()
         }
     } else {
-        // If no vm.yaml exists, reuse the vm-config initialization path.
+        // If no vm.yaml exists, reuse the canonical initialization path.
         if !config_existed {
             vm_println!("⚠️  No vm.yaml found. Initializing project first...");
             vm_println!("");
-            crate::cli::init_config_file(Some(config_path.clone()), None, None, None)?;
+            super::init_config_file(Some(config_path.clone()), None, None, None)?;
             vm_println!("");
             called_init = true;
         }

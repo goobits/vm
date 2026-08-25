@@ -7,6 +7,7 @@
 
 // Internal module declarations
 mod get;
+mod init;
 mod io;
 pub(crate) mod preset;
 mod set;
@@ -16,6 +17,7 @@ mod unset;
 pub mod port_placeholders;
 
 // Re-export the public API functions for direct use
+pub use init::init_config_file;
 pub use io::{find_local_config, load_global_config};
 
 // Internal imports

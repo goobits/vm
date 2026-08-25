@@ -109,7 +109,7 @@ pub struct VmConfig {
 
 impl VmConfig {
     pub fn load(file: Option<PathBuf>) -> Result<Self> {
-        let mut config = crate::cli::load_and_merge_config(file)?;
+        let mut config = crate::loader::load_and_merge_config(file)?;
         config.apply_default_backup_settings();
         Ok(config)
     }

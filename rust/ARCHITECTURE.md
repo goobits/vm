@@ -20,7 +20,7 @@ Goobits VM is built using a **layered architecture** designed around the princip
 | Foundation | `vm-core` | Shared errors, output primitives, FS and command utilities | `cargo test -p vm-core` |
 | Foundation | `vm-messages` | Reusable config, plugin, and service message templates | `cargo test -p vm-messages` |
 | Foundation | `vm-logging` | Tracing profiles, log routing, and HTTP request context | `cargo test -p vm-logging` |
-| Configuration | `vm-config` | Configuration schema, detectors, CLI helpers | `cargo test -p vm-config` |
+| Configuration | `vm-config` | Configuration schema, loading, initialization, and detectors | `cargo test -p vm-config` |
 | Configuration | `vm-plugin` | Plugin discovery, validation, and preset/service loading | `cargo test -p vm-plugin` |
 | Provider | `vm-provider` | Provider traits plus Docker/Podman/Tart implementations | `cargo test -p vm-provider` |
 | Provider | `vm-temp` | Temporary VM lifecycle, mount management, CLI glue | `cargo test -p vm-temp` |
@@ -82,10 +82,10 @@ to `vm-core`; the executable renders each fatal error once.
 - Project type detection (Node.js, Python, Docker, etc.)
 - Port management and allocation
 - Global settings and user preferences
-- Configuration-specific CLI helpers
+- The library-owned initialization path used by the main `vm` CLI
 
 **Key Exports**: `config::VmConfig`, `AppConfig`, `GlobalConfig`, project detectors,
-and root CLI/config-operation facades
+and configuration-operation facades
 
 Preset command validation and file IO stay in `config_ops::preset`; declared-preset
 resolution and minimal project-config materialization live in its private

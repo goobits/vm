@@ -1,7 +1,7 @@
 //! Integration tests for preset system
 //!
 //! This test suite validates the preset refactor, specifically:
-//! 1. Image preset initialization (vm-config init with preset)
+//! 1. Image preset initialization (`vm run` with a preset)
 //! 2. Provision preset merging (vm config preset apply)
 //! 3. Preset filtering in different contexts
 //! 4. Project name derivation from directory
@@ -202,11 +202,11 @@ fn test_init_with_image_preset() -> Result<()> {
     // Arrange: Create vibe image preset plugin
     fixture.create_vibe_preset_plugin()?;
 
-    // Act: Simulate 'vm-config init vibe' - load the preset and apply image preset logic
+    // Act: Simulate project initialization with vibe.
     let detector = fixture.create_detector();
     let vibe_config = detector.load_preset("vibe")?;
 
-    // Build minimal config as vm-config init would for an image preset
+    // Build minimal config as project initialization would for an image preset.
     // Set project name from directory
     let mut config = VmConfig {
         project: Some(ProjectConfig {
@@ -463,7 +463,7 @@ fn test_image_preset_not_in_config_list() -> Result<()> {
 
 #[test]
 fn test_image_preset_in_init_list() -> Result<()> {
-    // Validates that list_all_presets() (used by 'vm-config init')
+    // Validates that list_all_presets() (used during project initialization)
     // Includes both image and provision presets
 
     let _guard = TEST_MUTEX

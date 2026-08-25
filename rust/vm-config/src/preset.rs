@@ -224,7 +224,7 @@ impl PresetDetector {
     ///
     /// This is used by `vm config preset` to show presets that can be merged
     /// into existing configurations. Image presets are excluded because they
-    /// are only used during `vm-config init`.
+    /// are only used during project initialization.
     ///
     /// # Returns
     ///
@@ -303,7 +303,7 @@ impl PresetDetector {
 
     /// Lists all available presets including both image and provision types.
     ///
-    /// This is used by `vm-config init` to validate preset names.
+    /// This is used by project initialization to validate preset names.
     /// For filtering to provision-only presets, use [`list_presets`](Self::list_presets).
     ///
     /// # Returns

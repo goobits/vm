@@ -42,6 +42,7 @@
 
 ### 🔧 Changed
 
+- 📦 Configuration initialization and loading now have library-owned implementations used by `vm`; the redundant standalone `vm-config` executable and its generic YAML query/transform surface are removed.
 - 🚀 Docker vibe base builds stage the definition embedded in the installed binary, and the repository-only provider validation workflow is no longer exposed as a public CLI command.
 - ☁️ Vibe base builds replace deprecated Gemini CLI with Antigravity and use one shared native installer contract for Antigravity, Claude Code, and Codex; `agent-skills` remains managed by `vm tools`.
 - ☁️ Vibe presets no longer attach projects to the `spacebase` network unless explicitly configured.

@@ -5,12 +5,6 @@ use std::path::{Path, PathBuf};
 fn derive_tool_dir_from_target(target: &Path) -> Option<PathBuf> {
     let parent = target.parent()?;
 
-    // Case: .../rust/vm-config/target
-    if parent.file_name() == Some(std::ffi::OsStr::new("vm-config")) {
-        let rust = parent.parent()?;
-        return rust.parent().map(|root| root.to_path_buf());
-    }
-
     // Case: .../rust/target
     if parent.file_name() == Some(std::ffi::OsStr::new("rust")) {
         return parent.parent().map(|root| root.to_path_buf());
@@ -22,7 +16,7 @@ fn derive_tool_dir_from_target(target: &Path) -> Option<PathBuf> {
 /// Get the VM tool installation directory
 /// Priority order:
 /// 1. VM_TOOL_DIR environment variable
-/// 2. Directory containing the vm-config binary (../../ from binary)
+/// 2. Repository root derived from a workspace build of the `vm` binary
 /// 3. Current directory as fallback
 pub fn get_tool_dir() -> PathBuf {
     // Check environment variable first - this should always work in tests
@@ -38,11 +32,10 @@ pub fn get_tool_dir() -> PathBuf {
         }
 
         // Binaries are typically located at one of:
-        // - VM_TOOL_DIR/rust/vm-config/target/(<platform>/)?{release,debug}/vm-config
         // - VM_TOOL_DIR/rust/target/(<platform>/)?{release,debug}/vm
         // We walk up until we find a directory named "target" (allowing for
         // an optional platform directory like "darwin-aarch64" between release/debug and target),
-        // then detect whether we're under rust/vm-config/target or rust/target to derive VM_TOOL_DIR.
+        // then derive VM_TOOL_DIR from rust/target.
         if let Some(mut dir) = exe_path.parent() {
             // Search upwards up to a few levels for a directory named "target"
             let mut target_dir: Option<PathBuf> = None;
@@ -98,16 +91,4 @@ pub fn get_default_workspace_path() -> PathBuf {
     env::current_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
         .join("workspace")
-}
-
-/// Resolve a path that might be relative to VM_TOOL_DIR
-pub fn resolve_tool_path<P: AsRef<Path>>(path: P) -> PathBuf {
-    let path = path.as_ref();
-
-    if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        let tool_dir = get_tool_dir();
-        tool_dir.join(path)
-    }
 }

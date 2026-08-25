@@ -3543,14 +3543,11 @@ name = "vm-config"
 version = "5.0.1"
 dependencies = [
  "anyhow",
- "assert_cmd",
- "clap",
  "fs2",
  "git2",
  "glob",
  "indexmap",
  "once_cell",
- "predicates",
  "regex",
  "semver",
  "serde",
@@ -3561,7 +3558,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "vm-core",
- "vm-logging",
  "vm-messages",
  "vm-platform",
  "vm-plugin",

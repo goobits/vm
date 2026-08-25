@@ -226,6 +226,24 @@ impl ConfigLoader {
     }
 }
 
+/// Load a discovered or explicit configuration and resolve its declared presets.
+pub fn load_and_merge_config(file: Option<PathBuf>) -> vm_core::error::Result<VmConfig> {
+    let loader = ConfigLoader::new();
+    let loaded = if let Some(path) = file {
+        loader.load_from_path(&path)
+    } else {
+        loader.load()
+    };
+    let config = loaded.map_err(|error| vm_core::error::VmError::Config(error.to_string()))?;
+    let source_path = config.source_path.clone();
+    let project_dir = std::env::current_dir().map_err(|error| {
+        vm_core::error::VmError::Config(format!("Failed to resolve current directory: {error}"))
+    })?;
+    let mut merged = crate::config_ops::preset::resolve_declared_presets(config, &project_dir)?;
+    merged.source_path = source_path;
+    Ok(merged)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
