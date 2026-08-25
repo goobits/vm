@@ -173,6 +173,9 @@ None.
   point only bootstraps dependencies and launches that installer; duplicate
   setup, verification, standalone-server, and legacy flag paths were removed.
   Installer tests, strict Clippy, and shell syntax passed.
+- 2026-08-24: Doctor is now a thin diagnostic orchestrator over dedicated
+  configuration, provider, host-resource, and SSH owners. Focused doctor tests,
+  all-target checks, and strict Clippy passed in an isolated build cache.
 
 ## Related Context
 
