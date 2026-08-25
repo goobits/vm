@@ -22,7 +22,7 @@ pub trait ManagedService: Send + Sync {
     async fn start(&self, global_config: &GlobalConfig) -> Result<()>;
 
     /// Stop the service
-    async fn stop(&self) -> Result<()>;
+    async fn stop(&self, global_config: &GlobalConfig) -> Result<()>;
 
     /// Check if the service is healthy
     async fn check_health(&self, global_config: &GlobalConfig) -> bool;
@@ -39,13 +39,4 @@ pub async fn get_or_generate_password(service_name: &str) -> Result<String> {
     vm_core::secrets::get_or_generate_password(service_name)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to get password: {}", e))
-}
-
-pub fn container_runtime(global_config: &GlobalConfig) -> &str {
-    global_config
-        .defaults
-        .provider
-        .as_deref()
-        .filter(|provider| matches!(*provider, "docker" | "podman"))
-        .unwrap_or("docker")
 }

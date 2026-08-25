@@ -63,7 +63,7 @@ impl ManagedService for AuthProxyService {
         Ok(())
     }
 
-    async fn stop(&self) -> Result<()> {
+    async fn stop(&self, _global_config: &GlobalConfig) -> Result<()> {
         tracing::debug!("Auth proxy stop requested");
 
         // Get shutdown handle

@@ -101,6 +101,16 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
+    /// Container provider effective for commands in the current project.
+    pub fn container_provider(&self) -> config::ProviderName {
+        self.vm
+            .provider
+            .as_ref()
+            .filter(|provider| provider.is_container())
+            .cloned()
+            .unwrap_or_else(|| self.global.container_provider())
+    }
+
     /// Resolve the effective profile without prompting or mutating configuration.
     pub fn resolve_profile_name(
         vm: &config::VmConfig,
@@ -197,9 +207,25 @@ impl AppConfig {
 #[cfg(test)]
 mod app_config_tests {
     use super::AppConfig;
-    use crate::{config::ToolConfig, GlobalConfig};
+    use crate::{config::ProviderName, config::ToolConfig, GlobalConfig};
     use serial_test::serial;
     use vm_core::error::Result;
+
+    #[test]
+    fn project_container_provider_overrides_the_global_default() {
+        let mut config = AppConfig {
+            global: GlobalConfig::default(),
+            vm: Default::default(),
+        };
+        config.global.defaults.provider = Some("podman".to_string());
+        assert_eq!(config.container_provider(), ProviderName::Podman);
+
+        config.vm.provider = Some(ProviderName::Docker);
+        assert_eq!(config.container_provider(), ProviderName::Docker);
+
+        config.vm.provider = Some(ProviderName::Tart);
+        assert_eq!(config.container_provider(), ProviderName::Podman);
+    }
 
     fn with_temp_home<T>(test: impl FnOnce(&tempfile::TempDir) -> Result<T>) -> Result<T> {
         let temp_dir = tempfile::TempDir::new()?;

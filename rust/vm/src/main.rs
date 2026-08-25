@@ -22,7 +22,6 @@ mod cli;
 mod commands;
 mod error;
 mod services;
-mod utils;
 
 use cli::Args;
 use commands::execute_command;

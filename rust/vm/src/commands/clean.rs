@@ -10,6 +10,7 @@ use crate::error::{VmError, VmResult};
 use std::process::Command as StdCommand;
 use std::time::{Duration, SystemTime};
 use tracing::debug;
+use vm_config::AppConfig;
 use vm_core::{vm_println, vm_progress, vm_success};
 
 /// Results from cleanup operations
@@ -23,14 +24,17 @@ pub struct CleanupResults {
 
 /// Handle cleanup for `vm doctor --clean`
 pub async fn handle_clean() -> VmResult<()> {
-    let executable = crate::utils::configured_container_runtime();
+    let provider = AppConfig::load(None, None, None)
+        .map(|config| config.container_provider())
+        .unwrap_or_default();
+    let executable = provider.as_str();
     vm_progress!("Cleaning unused resources...");
 
     let results = CleanupResults {
-        volumes: clean_dangling_volumes(&executable)?,
-        temp_containers: clean_stopped_temp_containers(&executable)?,
+        volumes: clean_dangling_volumes(executable)?,
+        temp_containers: clean_stopped_temp_containers(executable)?,
         log_files: clean_old_logs(30)?,
-        dangling_images: clean_dangling_images(&executable)?,
+        dangling_images: clean_dangling_images(executable)?,
     };
 
     print_cleanup_summary(&results);

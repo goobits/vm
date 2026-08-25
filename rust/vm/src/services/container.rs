@@ -3,7 +3,7 @@ use serde_json::Value;
 use tracing::{info, warn};
 use vm_config::GlobalConfig;
 
-use super::{container_runtime, get_or_generate_password, ManagedService};
+use super::{get_or_generate_password, ManagedService};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ManagedContainerService {
@@ -97,7 +97,8 @@ impl ManagedContainerService {
 
     async fn start_container(self, config: &GlobalConfig) -> Result<()> {
         let settings = self.settings(config);
-        let executable = container_runtime(config);
+        let provider = config.container_provider();
+        let executable = provider.as_str();
         let spec = ManagedContainerSpec {
             name: self.container_name(),
             service: self.service_name(),
@@ -173,9 +174,9 @@ impl ManagedService for ManagedContainerService {
         self.start_container(global_config).await
     }
 
-    async fn stop(&self) -> Result<()> {
-        let executable = crate::utils::configured_container_runtime();
-        stop_managed_container(&executable, self.container_name()).await
+    async fn stop(&self, global_config: &GlobalConfig) -> Result<()> {
+        let provider = global_config.container_provider();
+        stop_managed_container(provider.as_str(), self.container_name()).await
     }
 
     async fn check_health(&self, global_config: &GlobalConfig) -> bool {

@@ -2,6 +2,7 @@
 
 use crate::error::{VmError, VmResult};
 use crate::services::service_lifecycle;
+use vm_config::GlobalConfig;
 
 pub async fn execute_psql_command(command: &str) -> VmResult<String> {
     let lifecycle = service_lifecycle().map_err(|e| {
@@ -22,8 +23,9 @@ pub async fn execute_psql_command(command: &str) -> VmResult<String> {
         ));
     }
 
-    let executable = crate::utils::configured_container_runtime();
-    let output = tokio::process::Command::new(&executable)
+    let global_config = GlobalConfig::load()?;
+    let provider = global_config.container_provider();
+    let output = tokio::process::Command::new(provider.as_str())
         .arg("exec")
         .arg("-i")
         .arg("vm-postgres-global")

@@ -132,6 +132,12 @@ impl From<std::io::Error> for VmError {
     }
 }
 
+impl From<dialoguer::Error> for VmError {
+    fn from(error: dialoguer::Error) -> Self {
+        Self::with_source("Failed to read user selection", error)
+    }
+}
+
 impl From<serde_json::Error> for VmError {
     fn from(error: serde_json::Error) -> Self {
         Self::with_source("Invalid package infrastructure metadata", error)

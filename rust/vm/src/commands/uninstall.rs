@@ -1,5 +1,4 @@
 use crate::error::VmError;
-use crate::utils::confirm_select;
 use std::path::PathBuf;
 use vm_core::{vm_hint, vm_println, vm_progress, vm_success, vm_warning};
 
@@ -59,7 +58,7 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
     // Confirm with user unless --yes flag is provided
     if !yes {
         vm_warning!("This action cannot be undone!");
-        if !confirm_select("Uninstall vm?", false)? {
+        if !vm_core::prompts::confirm_select("Uninstall vm?", false)? {
             vm_progress!("Uninstall cancelled");
             return Ok(());
         }

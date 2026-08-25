@@ -9,7 +9,7 @@ use crate::cli::PackageInfrastructureEngine;
 use crate::error::{VmError, VmResult};
 
 use super::{container, files::ApplianceFiles, process, state::ApplianceState};
-use vm_config::config::ProviderName;
+use vm_config::{config::ProviderName, AppConfig};
 
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(60);
 const HEALTH_INTERVAL: Duration = Duration::from_millis(500);
@@ -288,14 +288,9 @@ fn resolve_engine(
 }
 
 fn first_run_engine() -> ProviderName {
-    first_run_engine_for(&crate::utils::configured_container_runtime())
-}
-
-fn first_run_engine_for(provider: &str) -> ProviderName {
-    match provider {
-        "podman" => ProviderName::Podman,
-        _ => ProviderName::Docker,
-    }
+    AppConfig::load(None, None, None)
+        .map(|config| config.container_provider())
+        .unwrap_or_default()
 }
 
 fn default_registry_image() -> String {
@@ -369,7 +364,7 @@ fn workflow_client(
 
 #[cfg(test)]
 mod tests {
-    use super::{default_registry_image, first_run_engine_for, resolve_engine, resolve_image};
+    use super::{default_registry_image, resolve_engine, resolve_image};
     use crate::cli::PackageInfrastructureEngine;
     use vm_config::config::ProviderName;
 
@@ -382,12 +377,6 @@ mod tests {
             ),
             ProviderName::Podman
         );
-    }
-
-    #[test]
-    fn first_run_follows_the_configured_container_engine() {
-        assert_eq!(first_run_engine_for("podman"), ProviderName::Podman);
-        assert_eq!(first_run_engine_for("tart"), ProviderName::Docker);
     }
 
     #[test]

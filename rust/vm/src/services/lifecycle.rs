@@ -95,7 +95,7 @@ impl ServiceLifecycle {
     pub(crate) async fn unregister_vm_services(
         &self,
         vm_name: &str,
-        _global_config: &GlobalConfig,
+        global_config: &GlobalConfig,
     ) -> Result<()> {
         info!(vm_name, "Unregistering services for environment");
         let services_to_stop = self.state.update(|states| {
@@ -123,7 +123,7 @@ impl ServiceLifecycle {
         future::join_all(services_to_stop.into_iter().map(|service_name| {
             let lifecycle = self.clone();
             async move {
-                if let Err(error) = lifecycle.stop_service(&service_name).await {
+                if let Err(error) = lifecycle.stop_service(&service_name, global_config).await {
                     warn!(service_name, %error, "Failed to stop service");
                 }
             }
@@ -183,17 +183,17 @@ impl ServiceLifecycle {
                 sleep(self.readiness_interval).await;
             }
         }
-        if let Err(error) = service.stop().await {
+        if let Err(error) = service.stop(global_config).await {
             warn!(service_name, %error, "Failed to stop unhealthy service");
         }
         anyhow::bail!("Service '{service_name}' failed to start properly")
     }
 
-    async fn stop_service(&self, service_name: &str) -> Result<()> {
+    async fn stop_service(&self, service_name: &str, global_config: &GlobalConfig) -> Result<()> {
         let service = self.service(service_name)?;
         info!(service_name, "Stopping service");
         vm_progress!("Stopping {}...", service.name());
-        service.stop().await?;
+        service.stop(global_config).await?;
         self.state.update(|states| {
             if let Some(state) = states.get_mut(service_name) {
                 state.is_running = false;
@@ -302,7 +302,7 @@ mod tests {
             Ok(())
         }
 
-        async fn stop(&self) -> Result<()> {
+        async fn stop(&self, _global_config: &GlobalConfig) -> Result<()> {
             self.stops.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }

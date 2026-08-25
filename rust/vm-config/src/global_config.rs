@@ -6,7 +6,7 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
-use crate::config::ToolConfig;
+use crate::config::{ProviderName, ToolConfig};
 
 /// Root structure for global VM tool configuration
 ///
@@ -542,6 +542,16 @@ fn default_true() -> bool {
 }
 
 impl GlobalConfig {
+    /// Container provider used by controller-managed infrastructure.
+    pub fn container_provider(&self) -> ProviderName {
+        self.defaults
+            .provider
+            .as_deref()
+            .map(ProviderName::from)
+            .filter(ProviderName::is_container)
+            .unwrap_or_default()
+    }
+
     /// Load global configuration from the standard location
     ///
     /// If the config file doesn't exist, creates it with default values automatically.

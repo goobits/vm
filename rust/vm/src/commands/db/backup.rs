@@ -1,6 +1,5 @@
 //! DB backup and restore logic
 use crate::error::{VmError, VmResult};
-use crate::utils::confirm_select;
 use chrono::Local;
 use std::path::{Component, Path, PathBuf};
 use uuid::Uuid;
@@ -21,8 +20,9 @@ fn get_backup_dir() -> VmResult<PathBuf> {
 
 /// Execute a command in the postgres docker container
 async fn execute_docker_command(args: &[&str], input: Option<&[u8]>) -> VmResult<Vec<u8>> {
-    let executable = crate::utils::configured_container_runtime();
-    let mut cmd = tokio::process::Command::new(&executable);
+    let global_config = GlobalConfig::load()?;
+    let provider = global_config.container_provider();
+    let mut cmd = tokio::process::Command::new(provider.as_str());
     cmd.arg("exec").arg("-i").arg("vm-postgres-global");
     cmd.args(args);
 
@@ -318,7 +318,7 @@ pub async fn import_db(db_name: &str, file: &Path) -> VmResult<()> {
 pub async fn reset_db(db_name: &str, force: bool) -> VmResult<()> {
     if !force {
         vm_core::vm_warning!("This will permanently delete all data in the '{db_name}' database");
-        if !confirm_select("Continue?", false)? {
+        if !vm_core::prompts::confirm_select("Continue?", false)? {
             vm_core::vm_println!("Database reset cancelled.");
             return Ok(());
         }

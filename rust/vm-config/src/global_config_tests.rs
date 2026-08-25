@@ -1,4 +1,5 @@
 use super::global_config::*;
+use crate::config::ProviderName;
 use vm_core::error::Result;
 
 #[test]
@@ -75,6 +76,18 @@ fn test_global_defaults_is_default() {
     assert!(defaults.is_default());
     defaults.provider = Some("docker".to_string());
     assert!(!defaults.is_default());
+}
+
+#[test]
+fn global_container_provider_uses_only_container_defaults() {
+    let mut config = GlobalConfig::default();
+    assert_eq!(config.container_provider(), ProviderName::Docker);
+
+    config.defaults.provider = Some("podman".to_string());
+    assert_eq!(config.container_provider(), ProviderName::Podman);
+
+    config.defaults.provider = Some("tart".to_string());
+    assert_eq!(config.container_provider(), ProviderName::Docker);
 }
 
 #[test]
