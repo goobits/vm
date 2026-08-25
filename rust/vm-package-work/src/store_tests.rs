@@ -2,8 +2,8 @@ use super::*;
 use crate::ImportedSubmission;
 use chrono::{Duration, Utc};
 use vm_packages::{
-    CleanupRequest, CreateCheckout, LeaseRequest, PackageEcosystem, RegisterPackage,
-    TransitionRequest, WorkflowState,
+    CleanupRequest, CreateCheckout, LeaseRequest, PackageEcosystem, RegisterConsumer,
+    RegisterPackage, TransitionRequest, WorkflowState,
 };
 
 fn request(key: &str, agent: &str) -> CreateCheckout {
@@ -54,6 +54,63 @@ async fn concurrent_checkouts_are_isolated_and_idempotent() {
     assert_ne!(first.checkout.checkout_id, second.checkout.checkout_id);
     assert_ne!(first.checkout.lease, second.checkout.lease);
     assert_eq!(first.checkout.consumers, ["project-a", "project-b"]);
+}
+
+#[tokio::test]
+async fn guest_checkout_preparation_scopes_context_and_active_work() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::open(directory.path()).await.unwrap();
+    store
+        .register_package(RegisterPackage {
+            name: "auth".into(),
+            ecosystem: PackageEcosystem::Cargo,
+            repository: "https://example.com/auth.git".into(),
+            default_branch: "main".into(),
+            workspace_release: false,
+        })
+        .await
+        .unwrap();
+    store
+        .register_consumer(RegisterConsumer {
+            name: "project-a".into(),
+            repository: "https://example.com/project-a.git".into(),
+            default_branch: "main".into(),
+            dependencies: std::collections::BTreeMap::from([("auth".into(), "1.2.3".into())]),
+        })
+        .await
+        .unwrap();
+
+    let context = store
+        .package_checkout_context("auth", "project-a")
+        .await
+        .unwrap();
+    assert_eq!(context.ecosystem, PackageEcosystem::Cargo);
+    assert_eq!(context.pinned_version.as_deref(), Some("1.2.3"));
+    assert!(store
+        .package_checkout_context("auth", "source-maintainer")
+        .await
+        .unwrap()
+        .pinned_version
+        .is_none());
+
+    let mut matching_request = request("matching", "project-a");
+    matching_request.consumers = vec!["project-a".into()];
+    let matching_id = store
+        .create_checkout(matching_request)
+        .await
+        .unwrap()
+        .checkout
+        .checkout_id;
+    let mut unrelated_request = request("unrelated", "project-b");
+    unrelated_request.consumers = vec!["project-b".into()];
+    store.create_checkout(unrelated_request).await.unwrap();
+
+    let matches = store
+        .matching_active_checkouts("auth", "project-a", false)
+        .await
+        .unwrap();
+    assert_eq!(matches.len(), 1);
+    assert_eq!(matches[0].checkout_id, matching_id);
 }
 
 #[tokio::test]

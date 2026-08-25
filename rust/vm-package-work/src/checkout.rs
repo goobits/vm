@@ -1,7 +1,7 @@
 use chrono::{Duration, Utc};
 use vm_packages::{
     sha256_hex, validate_label, CheckoutLease, CheckoutRecord, CreateCheckout, LeaseRecord,
-    ReceiptKind, SourceKind, WorkflowState, WorkflowTransition,
+    PackageCheckoutContext, ReceiptKind, SourceKind, WorkflowState, WorkflowTransition,
 };
 
 use crate::catalog::source_definition;
@@ -295,6 +295,51 @@ impl Store {
             .await
             .checkouts
             .values()
+            .cloned()
+            .collect())
+    }
+
+    pub async fn package_checkout_context(
+        &self,
+        package: &str,
+        consumer: &str,
+    ) -> WorkResult<PackageCheckoutContext> {
+        let database = self.database.lock().await;
+        let definition = database
+            .packages
+            .get(package)
+            .ok_or_else(|| WorkError::NotFound(format!("package {package}")))?;
+        let pinned_version = database
+            .consumers
+            .get(consumer)
+            .and_then(|record| record.dependencies.get(package))
+            .cloned();
+        Ok(PackageCheckoutContext {
+            ecosystem: definition.ecosystem,
+            pinned_version,
+        })
+    }
+
+    pub async fn matching_active_checkouts(
+        &self,
+        package: &str,
+        consumer: &str,
+        workspace_release: bool,
+    ) -> WorkResult<Vec<CheckoutRecord>> {
+        self.expire_leases().await?;
+        Ok(self
+            .database
+            .lock()
+            .await
+            .checkouts
+            .values()
+            .filter(|checkout| {
+                checkout.package == package
+                    && checkout.workspace_release == workspace_release
+                    && checkout.consumers.len() == 1
+                    && checkout.consumers[0] == consumer
+                    && !checkout.state.revokes_lease()
+            })
             .cloned()
             .collect())
     }

@@ -5,7 +5,7 @@ use axum::{
 };
 use vm_packages::{
     CheckoutLease, CleanupRequest, CreateCheckout, IntegrationRequest, LeaseRequest,
-    PackageCheckoutContext, SubmissionRecord, TransitionRequest, ValidationRequest, WorkflowState,
+    SubmissionRecord, TransitionRequest, ValidationRequest, WorkflowState,
 };
 
 use super::{
@@ -30,30 +30,19 @@ pub(super) async fn create_checkout(
         request.consumers = vec![consumer.to_string()];
         request.task = "managed guest package work".into();
         if source.kind == vm_packages::SourceKind::Package && !request.workspace_release {
-            let consumers = state.store.package_consumers(&request.package).await?;
-            request.source_only =
-                source_only_checkout(source.kind, request.workspace_release, consumer, &consumers);
-            package_context = Some(package_checkout_context(
-                state.store.package(&request.package).await?.ecosystem,
-                consumer,
-                &consumers,
-            ));
+            let context = state
+                .store
+                .package_checkout_context(&request.package, consumer)
+                .await?;
+            request.source_only = context.pinned_version.is_none();
+            package_context = Some(context);
         } else {
             request.source_only = false;
         }
         let matching = state
             .store
-            .list_checkouts()
-            .await?
-            .into_iter()
-            .filter(|checkout| {
-                checkout.package == request.package
-                    && checkout.workspace_release == request.workspace_release
-                    && checkout.consumers.len() == 1
-                    && checkout.consumers[0] == consumer
-                    && !checkout.state.revokes_lease()
-            })
-            .collect::<Vec<_>>();
+            .matching_active_checkouts(&request.package, consumer, request.workspace_release)
+            .await?;
         if matching.len() > 1 {
             return Err(WorkError::Conflict(format!(
                 "{} active checkouts match this consumer and source; run `vm packages doctor --fix` on the controller host",
@@ -205,76 +194,4 @@ pub(super) async fn complete_integration(
         state.source.compact_integrated_checkout(&completed).await?;
     }
     Ok(Json(completed))
-}
-
-fn source_only_checkout(
-    kind: vm_packages::SourceKind,
-    workspace_release: bool,
-    consumer: &str,
-    consumers: &[vm_packages::ConsumerUsage],
-) -> bool {
-    kind == vm_packages::SourceKind::Package
-        && !workspace_release
-        && !consumers.iter().any(|usage| usage.consumer == consumer)
-}
-
-fn package_checkout_context(
-    ecosystem: vm_packages::PackageEcosystem,
-    consumer: &str,
-    consumers: &[vm_packages::ConsumerUsage],
-) -> PackageCheckoutContext {
-    PackageCheckoutContext {
-        ecosystem,
-        pinned_version: consumers
-            .iter()
-            .find(|usage| usage.consumer == consumer)
-            .map(|usage| usage.version.clone()),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{package_checkout_context, source_only_checkout};
-    use vm_packages::{ConsumerUsage, PackageEcosystem, SourceKind};
-
-    #[test]
-    fn source_only_status_is_derived_from_registered_consumer_usage() {
-        let consumers = [ConsumerUsage {
-            consumer: "project-a".into(),
-            version: "1.2.3".into(),
-            pending_version: None,
-            rollout_id: None,
-        }];
-
-        assert!(!source_only_checkout(
-            SourceKind::Package,
-            false,
-            "project-a",
-            &consumers
-        ));
-        assert!(source_only_checkout(
-            SourceKind::Package,
-            false,
-            "source-maintainer",
-            &consumers
-        ));
-        assert!(!source_only_checkout(
-            SourceKind::ToolCollection,
-            false,
-            "source-maintainer",
-            &consumers
-        ));
-
-        assert_eq!(
-            package_checkout_context(PackageEcosystem::Cargo, "project-a", &consumers)
-                .pinned_version
-                .as_deref(),
-            Some("1.2.3")
-        );
-        assert_eq!(
-            package_checkout_context(PackageEcosystem::Cargo, "project-b", &consumers)
-                .pinned_version,
-            None
-        );
-    }
 }
