@@ -15,23 +15,27 @@ use super::{
 
 pub(super) async fn handle_guest(
     subject: &GuestRuntime,
-    checkout_id: &str,
+    client: &PackageInfrastructureClient,
+    checkout: &vm_packages::CheckoutRecord,
+    package_ecosystem: Option<PackageEcosystem>,
 ) -> VmResult<vm_packages::SubmissionRecord> {
     submit(
         subject,
-        &subject.client()?,
-        subject.gateway(),
-        checkout_id,
+        client,
+        checkout,
         subject.consumer().to_string(),
         "package-agent",
+        package_ecosystem,
     )
     .await
 }
 
 pub(super) async fn handle_workspace(
     subject: &GuestRuntime,
+    client: &PackageInfrastructureClient,
     checkout: &vm_packages::CheckoutRecord,
     source: &str,
+    package_ecosystem: Option<PackageEcosystem>,
 ) -> VmResult<vm_packages::SubmissionRecord> {
     if !checkout.workspace_release
         || !matches!(
@@ -46,32 +50,45 @@ pub(super) async fn handle_workspace(
     }
     ensure_tracked_clean(subject, source, "Canonical workspace")?;
     let commit = exec_output(subject, ["git", "-C", source, "rev-parse", "HEAD"])?;
-    submit_workspace_commit(subject, checkout, source, commit.trim(), true).await
+    submit_workspace_commit(
+        subject,
+        client,
+        checkout,
+        source,
+        commit.trim(),
+        None,
+        package_ecosystem,
+    )
+    .await
 }
 
 pub(super) async fn resume_workspace(
     subject: &GuestRuntime,
+    client: &PackageInfrastructureClient,
     checkout: &vm_packages::CheckoutRecord,
     source: &str,
+    package_ecosystem: Option<PackageEcosystem>,
 ) -> VmResult<vm_packages::SubmissionRecord> {
-    let client = subject.client()?;
     let submission = client.checkout_submission(&checkout.checkout_id).await?;
+    let submitted_commit = submission.submitted_commit.clone();
     submit_workspace_commit(
         subject,
+        client,
         checkout,
         source,
-        &submission.submitted_commit,
-        false,
+        &submitted_commit,
+        Some(submission),
+        package_ecosystem,
     )
     .await
 }
 
 pub(super) async fn resume_guest(
     subject: &GuestRuntime,
-    checkout_id: &str,
+    client: &PackageInfrastructureClient,
+    checkout: &vm_packages::CheckoutRecord,
+    package_ecosystem: Option<PackageEcosystem>,
 ) -> VmResult<vm_packages::SubmissionRecord> {
-    let client = subject.client()?;
-    let checkout = client.checkout(checkout_id).await?;
     if checkout.state != WorkflowState::Submitted
         || !checkout
             .consumers
@@ -83,24 +100,29 @@ pub(super) async fn resume_guest(
             Some("Inspect it with `vm packages show <checkout-id>`"),
         ));
     }
-    let root = checkout_root(subject, checkout_id)?;
+    let root = checkout_root(subject, &checkout.checkout_id)?;
     let source = format!("{root}/source");
     ensure_clean(subject, &source, "Managed checkout")?;
     vm_progress!("Rerunning package and consumer checks for submitted changes...");
-    let consumers = run_checks(subject, &client, &checkout, &source, subject.consumer()).await?;
-    let submission = client.checkout_submission(checkout_id).await?;
-    validate(&client, submission, consumers, "package-agent").await
+    let consumers = run_checks(
+        subject,
+        checkout,
+        &source,
+        subject.consumer(),
+        package_ecosystem,
+    )?;
+    let submission = client.checkout_submission(&checkout.checkout_id).await?;
+    validate(client, submission, consumers, "package-agent").await
 }
 
 async fn submit(
     subject: &GuestRuntime,
     client: &PackageInfrastructureClient,
-    gateway: &str,
-    checkout_id: &str,
+    checkout: &vm_packages::CheckoutRecord,
     consumer: String,
     actor: &str,
+    package_ecosystem: Option<PackageEcosystem>,
 ) -> VmResult<vm_packages::SubmissionRecord> {
-    let checkout = client.checkout(checkout_id).await?;
     if !matches!(
         checkout.state,
         WorkflowState::Active | WorkflowState::NeedsChanges
@@ -114,12 +136,12 @@ async fn submit(
             Some("Inspect it with `vm packages show <checkout-id>`"),
         ));
     }
-    let root = checkout_root(subject, checkout_id)?;
+    let root = checkout_root(subject, &checkout.checkout_id)?;
     let source = format!("{root}/source");
     ensure_clean(subject, &source, "Managed checkout")?;
 
     vm_progress!("Running package and consumer checks...");
-    let consumers = run_checks(subject, client, &checkout, &source, &consumer).await?;
+    let consumers = run_checks(subject, checkout, &source, &consumer, package_ecosystem)?;
 
     let bundle = format!("{root}/submission.bundle");
     exec(subject, ["rm", "-f", bundle.as_str()])?;
@@ -135,28 +157,32 @@ async fn submit(
             "--all",
         ],
     )?;
-    upload_bundle(subject, gateway, checkout_id, &consumer, &root, &bundle)?;
+    let submission = upload_bundle(subject, &checkout.checkout_id, &consumer, &root, &bundle)?;
     exec(subject, ["rm", "-f", bundle.as_str()])?;
 
-    let submission = client.checkout_submission(checkout_id).await?;
     validate(client, submission, consumers, actor).await
 }
 
-async fn run_checks(
+fn run_checks(
     subject: &GuestRuntime,
-    client: &PackageInfrastructureClient,
     checkout: &vm_packages::CheckoutRecord,
     source: &str,
     consumer: &str,
+    package_ecosystem: Option<PackageEcosystem>,
 ) -> VmResult<BTreeMap<String, CheckOutcome>> {
     match checkout.source_kind {
         SourceKind::Package => {
-            let definition = client.package_definition(&checkout.package).await?;
-            run_package_check(subject, definition.ecosystem, source)?;
+            let ecosystem = package_ecosystem.ok_or_else(|| {
+                VmError::validation(
+                    "Package release context has no ecosystem",
+                    Some("Rerun `vm packages release` after repairing package infrastructure"),
+                )
+            })?;
+            run_package_check(subject, ecosystem, source)?;
             if checkout.workspace_release || checkout.source_only {
                 Ok(BTreeMap::new())
             } else {
-                run_consumer_check(subject, definition.ecosystem, &checkout.package, source)?;
+                run_consumer_check(subject, ecosystem, &checkout.package, source)?;
                 Ok(BTreeMap::from([(
                     consumer.to_string(),
                     CheckOutcome::Passed,
@@ -248,12 +274,13 @@ fn ensure_tracked_clean(subject: &GuestRuntime, source: &str, label: &str) -> Vm
 
 async fn submit_workspace_commit(
     subject: &GuestRuntime,
+    client: &PackageInfrastructureClient,
     checkout: &vm_packages::CheckoutRecord,
     source: &str,
     commit: &str,
-    upload: bool,
+    existing_submission: Option<vm_packages::SubmissionRecord>,
+    package_ecosystem: Option<PackageEcosystem>,
 ) -> VmResult<vm_packages::SubmissionRecord> {
-    let client = subject.client()?;
     let current = exec_output(subject, ["git", "-C", source, "rev-parse", "HEAD"])?;
     if current.trim() != commit {
         return Err(VmError::validation(
@@ -281,19 +308,24 @@ async fn submit_workspace_commit(
         )?;
         exec(subject, ["git", "clone", bundle.as_str(), scratch.as_str()])?;
         vm_progress!("Running checks from an isolated copy of the canonical workspace...");
-        let consumers =
-            run_checks(subject, &client, checkout, &scratch, subject.consumer()).await?;
-        if upload {
+        let consumers = run_checks(
+            subject,
+            checkout,
+            &scratch,
+            subject.consumer(),
+            package_ecosystem,
+        )?;
+        let submission = if let Some(submission) = existing_submission {
+            submission
+        } else {
             upload_bundle(
                 subject,
-                subject.gateway(),
                 &checkout.checkout_id,
                 subject.consumer(),
                 &root,
                 &bundle,
-            )?;
-        }
-        let submission = client.checkout_submission(&checkout.checkout_id).await?;
+            )?
+        };
         Ok::<_, VmError>((submission, consumers))
     }
     .await;
@@ -302,21 +334,21 @@ async fn submit_workspace_commit(
     let (submission, consumers) = result?;
     scratch_cleanup?;
     bundle_cleanup?;
-    validate(&client, submission, consumers, "workspace-agent").await
+    validate(client, submission, consumers, "workspace-agent").await
 }
 
 fn upload_bundle(
     subject: &GuestRuntime,
-    gateway: &str,
     checkout_id: &str,
     consumer: &str,
     root: &str,
     bundle: &str,
-) -> VmResult<()> {
-    let upload_client =
-        PackageInfrastructureClient::new(RegistryEndpoints::new(gateway).map_err(VmError::from)?);
+) -> VmResult<vm_packages::SubmissionRecord> {
+    let upload_client = PackageInfrastructureClient::new(
+        RegistryEndpoints::new(subject.gateway()).map_err(VmError::from)?,
+    );
     let upload_url = upload_client.submission_upload_url(checkout_id, consumer);
-    exec(
+    let response = exec_output(
         subject,
         [
             "curl",
@@ -335,7 +367,17 @@ fn upload_bundle(
             &format!("@{bundle}"),
             &upload_url,
         ],
-    )
+    )?;
+    decode_submission(&response)
+}
+
+fn decode_submission(response: &str) -> VmResult<vm_packages::SubmissionRecord> {
+    serde_json::from_str(response).map_err(|error| {
+        VmError::general(
+            error,
+            "Package infrastructure returned an invalid submission response",
+        )
+    })
 }
 
 pub(super) fn run_package_check(
@@ -391,5 +433,37 @@ pub(super) fn run_consumer_check(
             exec_in_workspace(subject, ["cargo", "test", "--config", &patch])
         }
         PackageEcosystem::Python => exec_in_workspace(subject, ["python", "-m", "pytest"]),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+
+    use super::decode_submission;
+    use vm_packages::{SubmissionRecord, WorkflowState};
+
+    #[test]
+    fn submission_upload_response_is_reused_directly() {
+        let expected = SubmissionRecord {
+            submission_id: "submission-1".into(),
+            checkout_id: "checkout-1".into(),
+            package: "shared".into(),
+            branch: "agents/project-a/checkout-1".into(),
+            base_commit: "a".repeat(40),
+            submitted_commit: "b".repeat(40),
+            diff_digest: "c".repeat(64),
+            state: WorkflowState::Submitted,
+            validation: None,
+            review: None,
+            integration: None,
+            release_id: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let response = serde_json::to_string(&expected).unwrap();
+
+        assert_eq!(decode_submission(&response).unwrap(), expected);
+        assert!(decode_submission("not-json").is_err());
     }
 }

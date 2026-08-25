@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use vm_core::{vm_progress, vm_success};
 use vm_packages::{
-    CheckOutcome, IntegrationRequest, PackageInfrastructureClient, RegistryEndpoints, SourceKind,
-    ValidationRequest, WorkflowState,
+    CheckOutcome, IntegrationRequest, PackageEcosystem, PackageInfrastructureClient,
+    RegistryEndpoints, SourceKind, ValidationRequest, WorkflowState,
 };
 
 use crate::error::{VmError, VmResult};
@@ -15,30 +15,19 @@ use super::{
 
 pub(super) async fn handle_guest(
     subject: &GuestRuntime,
-    submission_id: &str,
-) -> VmResult<vm_packages::SubmissionRecord> {
-    integrate(
-        subject,
-        &subject.client()?,
-        subject.gateway(),
-        submission_id,
-        subject.consumer().to_string(),
-        "rebase".into(),
-        "package-agent",
-    )
-    .await
-}
-
-async fn integrate(
-    subject: &GuestRuntime,
     client: &PackageInfrastructureClient,
-    gateway: &str,
-    submission_id: &str,
-    consumer: String,
-    strategy: String,
-    actor: &str,
+    checkout: &vm_packages::CheckoutRecord,
+    submission: &vm_packages::SubmissionRecord,
+    package_ecosystem: Option<PackageEcosystem>,
 ) -> VmResult<vm_packages::SubmissionRecord> {
-    let submission = client.submission(submission_id).await?;
+    let consumer = subject.consumer().to_string();
+    let actor = "package-agent";
+    if submission.checkout_id != checkout.checkout_id || submission.package != checkout.package {
+        return Err(VmError::validation(
+            "Submission does not belong to the active checkout",
+            Some("Inspect it with `vm packages show <checkout-id>`"),
+        ));
+    }
     if !matches!(
         submission.state,
         WorkflowState::Approved | WorkflowState::Integrating
@@ -48,7 +37,6 @@ async fn integrate(
             Some("Submit it and resolve any integration-review feedback first"),
         ));
     }
-    let checkout = client.checkout(&submission.checkout_id).await?;
     if !checkout
         .consumers
         .iter()
@@ -65,7 +53,7 @@ async fn integrate(
             &submission.submission_id,
             &IntegrationRequest {
                 actor: actor.into(),
-                strategy,
+                strategy: "rebase".into(),
                 idempotency_key: format!(
                     "integrate-{}-{}",
                     submission.submission_id,
@@ -83,8 +71,9 @@ async fn integrate(
     let source = format!("{root}/source");
     let bundle = format!("{root}/integration.bundle");
     exec(subject, ["mkdir", "-p", root.as_str()])?;
-    let download_client =
-        PackageInfrastructureClient::new(RegistryEndpoints::new(gateway).map_err(VmError::from)?);
+    let download_client = PackageInfrastructureClient::new(
+        RegistryEndpoints::new(subject.gateway()).map_err(VmError::from)?,
+    );
     let url = download_client.integration_bundle_url(&integrating.submission_id, &consumer);
     exec(
         subject,
@@ -117,12 +106,17 @@ async fn integrate(
     vm_progress!("Rerunning integrated package and consumer checks...");
     let consumers = match checkout.source_kind {
         SourceKind::Package => {
-            let definition = client.package_definition(&submission.package).await?;
-            run_package_check(subject, definition.ecosystem, &source)?;
+            let ecosystem = package_ecosystem.ok_or_else(|| {
+                VmError::validation(
+                    "Package integration context has no ecosystem",
+                    Some("Rerun `vm packages release` after repairing package infrastructure"),
+                )
+            })?;
+            run_package_check(subject, ecosystem, &source)?;
             if checkout.workspace_release || checkout.source_only {
                 BTreeMap::new()
             } else {
-                run_consumer_check(subject, definition.ecosystem, &submission.package, &source)?;
+                run_consumer_check(subject, ecosystem, &submission.package, &source)?;
                 BTreeMap::from([(consumer, CheckOutcome::Passed)])
             }
         }

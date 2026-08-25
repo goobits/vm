@@ -1,6 +1,7 @@
 use vm_core::{vm_hint, vm_success, vm_warning};
 use vm_packages::{
-    LeaseRequest, SourceKind, ToolActivationState, ToolActivationTargetState, WorkflowState,
+    LeaseRequest, PackageEcosystem, SourceKind, ToolActivationState, ToolActivationTargetState,
+    WorkflowState,
 };
 
 use crate::error::{VmError, VmResult};
@@ -48,6 +49,16 @@ pub(super) async fn handle_guest() -> VmResult<()> {
         ));
     }
     renew_release_lease(&subject, &client, &checkout).await?;
+    let mut package_ecosystem = if matches!(
+        checkout.state,
+        WorkflowState::Active | WorkflowState::NeedsChanges | WorkflowState::Submitted
+    ) || (checkout.state == WorkflowState::Created
+        && checkout.workspace_release)
+    {
+        checkout_package_ecosystem(&client, &checkout).await?
+    } else {
+        None
+    };
     let mut current = match checkout.state {
         WorkflowState::Created if checkout.workspace_release => {
             let workspace = workspace.as_ref().ok_or_else(|| {
@@ -56,19 +67,44 @@ pub(super) async fn handle_guest() -> VmResult<()> {
                     Some("Run `vm packages release` from the canonical workspace"),
                 )
             })?;
-            submission::handle_workspace(&subject, &checkout, &workspace.source).await?
+            submission::handle_workspace(
+                &subject,
+                &client,
+                &checkout,
+                &workspace.source,
+                package_ecosystem,
+            )
+            .await?
         }
         WorkflowState::Active | WorkflowState::NeedsChanges => match workspace.as_ref() {
             Some(workspace) => {
-                submission::handle_workspace(&subject, &checkout, &workspace.source).await?
+                submission::handle_workspace(
+                    &subject,
+                    &client,
+                    &checkout,
+                    &workspace.source,
+                    package_ecosystem,
+                )
+                .await?
             }
-            None => submission::handle_guest(&subject, checkout_id).await?,
+            None => {
+                submission::handle_guest(&subject, &client, &checkout, package_ecosystem).await?
+            }
         },
         WorkflowState::Submitted => match workspace.as_ref() {
             Some(workspace) => {
-                submission::resume_workspace(&subject, &checkout, &workspace.source).await?
+                submission::resume_workspace(
+                    &subject,
+                    &client,
+                    &checkout,
+                    &workspace.source,
+                    package_ecosystem,
+                )
+                .await?
             }
-            None => submission::resume_guest(&subject, checkout_id).await?,
+            None => {
+                submission::resume_guest(&subject, &client, &checkout, package_ecosystem).await?
+            }
         },
         WorkflowState::Validating
         | WorkflowState::Reviewing
@@ -93,7 +129,12 @@ pub(super) async fn handle_guest() -> VmResult<()> {
         current.state,
         WorkflowState::Approved | WorkflowState::Integrating
     ) {
-        current = integration::handle_guest(&subject, &current.submission_id).await?;
+        if package_ecosystem.is_none() {
+            package_ecosystem = checkout_package_ecosystem(&client, &checkout).await?;
+        }
+        current =
+            integration::handle_guest(&subject, &client, &checkout, &current, package_ecosystem)
+                .await?;
     }
     let published = wait_for_publication(&client, current, checkout.workspace_release).await?;
     let release_id = published.release_id.as_deref().ok_or_else(|| {
@@ -115,6 +156,21 @@ pub(super) async fn handle_guest() -> VmResult<()> {
         }
     }
     Ok(())
+}
+
+async fn checkout_package_ecosystem(
+    client: &vm_packages::PackageInfrastructureClient,
+    checkout: &vm_packages::CheckoutRecord,
+) -> VmResult<Option<PackageEcosystem>> {
+    if checkout.source_kind != SourceKind::Package {
+        return Ok(None);
+    }
+    Ok(Some(
+        client
+            .package_definition(&checkout.package)
+            .await?
+            .ecosystem,
+    ))
 }
 
 async fn wait_for_tool_activation(
