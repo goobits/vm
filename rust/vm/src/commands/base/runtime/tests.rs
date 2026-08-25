@@ -690,6 +690,54 @@ fn codex_repair_refuses_an_unmanaged_user_launcher() {
 
 #[cfg(unix)]
 #[test]
+fn codex_repair_adopts_a_broken_declared_legacy_symlink() {
+    let directory = TempDir::new().unwrap();
+    let prefix = directory.path().join("prefix");
+    let user_bin = directory.path().join("home/.local/bin");
+    let legacy = directory
+        .path()
+        .join("home/.codex/packages/standalone/current/bin/codex");
+    fs::create_dir_all(&user_bin).unwrap();
+    std::os::unix::fs::symlink(&legacy, user_bin.join("codex")).unwrap();
+    let installer = fake_codex_installer(&directory);
+    let package = fake_codex_package(&directory, "1.0.0");
+
+    let output = run_codex_repair(&directory, &prefix, &installer, &package, None);
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_link(user_bin.join("codex")).unwrap(),
+        prefix.join("lib/vm-ai-tools/codex")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn codex_repair_refuses_a_broken_symlink_outside_the_legacy_scope() {
+    let directory = TempDir::new().unwrap();
+    let prefix = directory.path().join("prefix");
+    let user_bin = directory.path().join("home/.local/bin");
+    let unmanaged = directory.path().join("home/custom/missing-codex");
+    fs::create_dir_all(&user_bin).unwrap();
+    std::os::unix::fs::symlink(&unmanaged, user_bin.join("codex")).unwrap();
+    let installer = fake_codex_installer(&directory);
+    let package = fake_codex_package(&directory, "1.0.0");
+
+    let output = run_codex_repair(&directory, &prefix, &installer, &package, None);
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8(output.stderr)
+        .unwrap()
+        .contains("Refusing to replace unmanaged launcher"));
+    assert_eq!(fs::read_link(user_bin.join("codex")).unwrap(), unmanaged);
+}
+
+#[cfg(unix)]
+#[test]
 fn failed_initial_codex_repair_leaves_no_partial_runtime() {
     let directory = TempDir::new().unwrap();
     let prefix = directory.path().join("prefix");

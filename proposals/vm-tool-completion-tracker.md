@@ -72,6 +72,9 @@ None.
 
 ## Verification Log
 
+- 2026-08-24: Fleet-wide tool update completed for all nine running Docker
+  environments. One broken Codex launcher was safely refused, verified inside
+  its declared legacy scope, repaired generically, and then updated successfully.
 - 2026-08-24: The generic vendor updater adopted the proven legacy base layout
   in `vm-dev`, updated Codex 0.149.1, Claude 2.1.231, and Antigravity 1.1.19
   through their declared installers, reported every runtime consumable, kept

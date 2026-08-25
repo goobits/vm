@@ -121,9 +121,15 @@ legacy_user_launcher() {
       case "$relative" in
         /*|*..*) return 1 ;;
       esac
-      resolved=$(resolve_path "$launcher") || return 1
       allowed="$user_home/$relative"
-      case "$resolved" in
+      resolved=$(resolve_path "$launcher" 2>/dev/null || true)
+      if test -n "$resolved"; then
+        case "$resolved" in
+          "$allowed"/*) return 0 ;;
+        esac
+      fi
+      launcher_target=$(run_install readlink "$launcher") || return 1
+      case "$launcher_target" in
         "$allowed"/*) return 0 ;;
         *) return 1 ;;
       esac
