@@ -1,4 +1,4 @@
-.PHONY: help build build-no-bump test test-unit test-integration test-network clippy fmt fmt-fix check-duplicates check bump-version quality-gates deny watch dev udeps
+.PHONY: help build build-no-bump test test-shell test-unit test-integration test-network clippy fmt fmt-fix check-duplicates check bump-version quality-gates deny watch dev udeps
 
 CARGO_JOBS ?= 1
 CARGO_TARGET_DIR ?= /tmp/vm-rust-target
@@ -17,6 +17,7 @@ help:
 	@echo "  make bump-version     - Bump version without building"
 	@echo ""
 	@echo "  make test             - Run all tests (unit + integration, no network)"
+	@echo "  make test-shell       - Run shell regression tests"
 	@echo "  make test-unit        - Run unit tests"
 	@echo "  make test-integration - Run integration tests"
 	@echo "  make test-network     - Run network tests (requires TLS/Keychain access)"
@@ -44,7 +45,10 @@ build-no-bump:
 	cd rust && cargo build --workspace -j $(CARGO_JOBS)
 
 # Test (using nextest for faster execution)
-test: test-unit test-integration-conditional
+test: test-shell test-unit test-integration-conditional
+
+test-shell:
+	@./scripts/internal/test-install-checksum.sh
 
 test-unit:
 	@command -v cargo-nextest >/dev/null 2>&1 && \

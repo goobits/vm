@@ -241,26 +241,16 @@ verify_rustup_checksum() {
 
     local expected_hash
     if ! expected_hash=$(timeout "$TIMEOUT_SECONDS" curl --proto '=https' --tlsv1.2 -sSf "$checksum_url" 2>/dev/null | awk '{print $1}'); then
-        log_warning "Could not fetch official checksum from $checksum_url"
-        log_warning "Falling back to size verification only"
-
-        # Fallback to basic size check
-        local file_size
-        file_size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo "0")
-
-        if [[ "$file_size" -lt 1000 ]]; then
-            log_error "Downloaded file too small ($file_size bytes), likely corrupted"
-            return 1
-        fi
-
-        log_warning "Size verification passed ($file_size bytes) but checksum not verified"
-        return 0
-    fi
-
-    if [[ -z "$expected_hash" ]]; then
-        log_error "Retrieved empty checksum from $checksum_url"
+        log_error "Could not fetch official checksum from $checksum_url"
+        log_error "Refusing to execute an unverified Rust installer"
         return 1
     fi
+
+    if [[ ! "$expected_hash" =~ ^[[:xdigit:]]{64}$ ]]; then
+        log_error "Retrieved malformed checksum from $checksum_url"
+        return 1
+    fi
+    expected_hash=$(printf '%s' "$expected_hash" | tr '[:upper:]' '[:lower:]')
 
     # Calculate actual hash of downloaded file
     local actual_hash
