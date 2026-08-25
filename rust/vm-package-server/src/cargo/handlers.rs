@@ -36,7 +36,13 @@ pub async fn get_crate_versions(
 
                     // Validate the constructed filename for security
                     if let Err(e) = validation::validate_safe_path(&filename) {
-                        warn!(filename = %filename, error = %e, "Skipping invalid filename in index");
+                        warn!(
+                            operation = "read_index",
+                            ecosystem = "cargo",
+                            filename = %filename,
+                            error = %e,
+                            "invalid persisted package filename skipped"
+                        );
                         continue;
                     }
 
@@ -57,7 +63,12 @@ pub async fn get_crate_versions_api(
     AxumPath(crate_name): AxumPath<String>,
     State(state): State<Arc<AppState>>,
 ) -> AppResult<Json<Vec<String>>> {
-    debug!(crate_name = %crate_name, "Getting crate versions via API");
+    debug!(
+        operation = "list_versions",
+        ecosystem = "cargo",
+        package = %crate_name,
+        "package versions requested"
+    );
     let versions_data = get_crate_versions(&state, &crate_name).await?;
 
     // Extract just the version strings
@@ -75,7 +86,6 @@ pub async fn config(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> AppResult<Json<Value>> {
-    debug!("Incoming Cargo config request");
     let host = state.public_base_url(&headers);
 
     Ok(Json(json!({
@@ -90,15 +100,12 @@ pub async fn download_crate(
     AxumPath((crate_name, version)): AxumPath<(String, String)>,
     State(state): State<Arc<AppState>>,
 ) -> AppResult<Vec<u8>> {
-    debug!(crate_name = %crate_name, version = %version, "Incoming Cargo crate download request");
-
     // Validate crate name and version for security
     validation::validate_package_name(&crate_name, "cargo")
         .map_err(|e| AppError::BadRequest(format!("Invalid crate name '{crate_name}': {e}")))?;
     validation::validate_version(&version)
         .map_err(|e| AppError::BadRequest(format!("Invalid version '{version}': {e}")))?;
 
-    info!(crate_name = %crate_name, version = %version, "Downloading Cargo crate");
     let filename = format!("{crate_name}-{version}.crate");
 
     // Validate the constructed filename for security
@@ -149,7 +156,14 @@ pub async fn download_crate(
         Ok(bytes.to_vec())
     })
     .await?;
-    info!(crate_name = %crate_name, version = %version, size = data.len(), "Serving Cargo crate");
+    debug!(
+        operation = "download",
+        ecosystem = "cargo",
+        package = %crate_name,
+        version = %version,
+        size = data.len(),
+        "package artifact served"
+    );
     Ok(data)
 }
 
@@ -161,14 +175,9 @@ pub async fn publish_crate(
 ) -> AppResult<Json<SuccessResponse>> {
     crate::auth::validate_publish_headers(&state.config, &headers)?;
 
-    debug!(payload_size = body.len(), "Incoming Cargo publish request");
-    info!("Processing Cargo crate publish");
-
     // Parse and validate the upload payload
     let (metadata, crate_data) = parse_crate_upload(body)?;
     let _publish_guard = storage::publish_guard().await;
-
-    info!(crate_name = %metadata.name, version = %metadata.version, "Publishing Cargo crate");
 
     // Save the crate file
     save_crate_file(
@@ -186,10 +195,14 @@ pub async fn publish_crate(
     update_crate_index(&metadata, &cksum, &state.data_dir).await?;
 
     info!(
-        crate_name = %metadata.name,
+        operation = "publish",
+        ecosystem = "cargo",
+        package = %metadata.name,
         version = %metadata.version,
-        checksum = %cksum,
-        "Cargo crate published successfully"
+        artifact_digest = %cksum,
+        size = crate_data.len(),
+        outcome = "published",
+        "package publication completed"
     );
     Ok(Json(SuccessResponse {
         message: "Crate published successfully".to_string(),

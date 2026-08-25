@@ -155,7 +155,12 @@ impl ResolverService {
             } => match tokio::time::timeout(CATALOG_FETCH_TIMEOUT, client.catalog()).await {
                 Ok(Ok(catalog)) => {
                     if let Err(error) = persist_catalog(cache_path, &catalog).await {
-                        warn!(path = %cache_path.display(), error = %error, "could not persist package catalog snapshot");
+                        warn!(
+                            operation = "persist_catalog",
+                            path = %cache_path.display(),
+                            error = %error,
+                            "package catalog snapshot persistence failed"
+                        );
                     }
                     Ok(catalog)
                 }

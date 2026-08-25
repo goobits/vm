@@ -33,8 +33,10 @@ impl SourceManager {
     async fn sync_mirror(&self, mirror: &Path, repository: &str) -> WorkResult<()> {
         if let Err(error) = cleanup_temporary_mirrors(mirror).await {
             warn!(
+                operation = "cleanup_mirrors",
                 mirror = %mirror.display(),
-                "Failed to clean abandoned package mirror state: {error}"
+                error = ?error,
+                "abandoned package mirror cleanup failed"
             );
         }
         if mirror.is_dir() {

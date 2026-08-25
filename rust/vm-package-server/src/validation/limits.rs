@@ -6,7 +6,7 @@
 use crate::validation::error::ValidationError;
 use crate::validation::result::ValidationResult;
 use crate::{AppError, AppResult};
-use tracing::{debug, info, warn};
+use tracing::debug;
 
 /// Maximum allowed file size for uploads (100 MB)
 pub const MAX_UPLOAD_SIZE: u64 = 100 * 1024 * 1024;
@@ -81,33 +81,14 @@ pub fn validate_package_upload(data: &[u8], filename: &str, registry: &str) -> A
         registry,
         "validating package upload"
     );
-    validate_file_size(data.len() as u64, Some(MAX_PACKAGE_FILE_SIZE)).map_err(|error| {
-        warn!(
-            filename,
-            size = data.len(),
-            registry,
-            "package file too large"
-        );
-        AppError::UploadError(format!("Package file too large: {error}"))
-    })?;
-    info!(
-        filename,
-        size = data.len(),
-        registry,
-        "package upload validated"
-    );
+    validate_file_size(data.len() as u64, Some(MAX_PACKAGE_FILE_SIZE))
+        .map_err(|error| AppError::UploadError(format!("Package file too large: {error}")))?;
     Ok(())
 }
 
 /// Validate the aggregate size of a request or append operation.
 pub fn validate_total_upload_size(total_size: u64, registry: &str) -> AppResult<()> {
     if total_size > MAX_UPLOAD_SIZE {
-        warn!(
-            total_size,
-            max_size = MAX_UPLOAD_SIZE,
-            registry,
-            "upload exceeds limit"
-        );
         return Err(AppError::UploadError(format!(
             "Total upload size ({total_size} bytes) exceeds maximum allowed ({MAX_UPLOAD_SIZE} bytes)"
         )));

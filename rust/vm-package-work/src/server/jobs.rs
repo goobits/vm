@@ -50,14 +50,23 @@ async fn prepare_rollout_queue(state: &AppState) {
         .collect::<Vec<_>>();
     match state.store.ensure_automatic_rollouts().await {
         Ok(created) => rollouts.extend(created),
-        Err(error) => tracing::warn!(%error, "failed to reconcile automatic package rollouts"),
+        Err(error) => tracing::warn!(
+            operation = "reconcile_rollouts",
+            error = ?error,
+            "automatic package rollout reconciliation failed"
+        ),
     }
     rollouts.sort_by_key(|rollout| rollout.created_at);
     let mut seen = std::collections::HashSet::new();
     rollouts.retain(|rollout| seen.insert(rollout.rollout_id.clone()));
     for rollout in rollouts {
         if let Err(error) = state.source.prepare_rollout(&state.store, &rollout).await {
-            tracing::warn!(rollout_id = %rollout.rollout_id, %error, "failed to prepare package rollout");
+            tracing::warn!(
+                operation = "prepare_rollout",
+                rollout_id = %rollout.rollout_id,
+                error = ?error,
+                "package rollout preparation failed"
+            );
         }
     }
 }

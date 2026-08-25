@@ -9,7 +9,7 @@ use axum::{
     Router,
 };
 use serde::Deserialize;
-use tracing::{error, info};
+use tracing::error;
 
 use crate::{cargo, npm, pypi, state::AppState};
 
@@ -113,7 +113,6 @@ async fn index_handler() -> Html<&'static str> {
 
 async fn status_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let data_dir = state.data_dir.to_string_lossy();
-    info!(%data_dir, "reporting package server status");
     let response = serde_json::json!({
         "status": "ok",
         "service": "goobits-pkg-server",

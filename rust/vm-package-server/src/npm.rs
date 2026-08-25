@@ -8,7 +8,7 @@ use axum::{
 use base64::{engine::general_purpose, Engine as _};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::validation;
 use crate::{
@@ -119,11 +119,8 @@ pub async fn package_metadata(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> AppResult<Json<Value>> {
-    debug!(package = %package, "Incoming npm metadata request");
     let host = state.public_base_url(&headers);
     let metadata_path = metadata_path(&state.data_dir, &package)?;
-
-    info!(package = %package, "Fetching npm package metadata");
 
     // Check if metadata file exists
     match storage::read_file_string(&metadata_path).await {
@@ -191,7 +188,13 @@ pub async fn package_metadata(
     )
     .await?;
     let metadata = serde_json::from_slice(&metadata)?;
-    info!(package = %package, source = ?source, "Resolved npm package metadata");
+    debug!(
+        operation = "resolve_metadata",
+        ecosystem = "npm",
+        package = %package,
+        source = ?source,
+        "package metadata resolved"
+    );
     Ok(Json(
         state
             .upstream_client
@@ -252,8 +255,6 @@ async fn download_tarball_inner(
     // Validate filename to prevent path traversal
     validate_filename(&filename)?;
 
-    debug!(package = %package, filename = %filename, "Incoming npm tarball download request");
-    info!(package = %package, filename = %filename, "Downloading npm tarball");
     let local_path = state.data_dir.join("npm/tarballs").join(&filename);
     let source = state
         .resolver
@@ -297,7 +298,14 @@ async fn download_tarball_inner(
         Ok(bytes.to_vec())
     })
     .await?;
-    info!(package = %package, filename = %filename, size = data.len(), "Serving npm tarball");
+    debug!(
+        operation = "download",
+        ecosystem = "npm",
+        package = %package,
+        filename = %filename,
+        size = data.len(),
+        "package artifact served"
+    );
     Ok(data)
 }
 
@@ -367,14 +375,10 @@ pub async fn publish_package(
         ));
     }
 
-    debug!(package = %package, "Incoming npm publish request");
-    info!(package = %package, "Publishing npm package");
-
     // Extract attachments containing the tarball
     let attachments = payload["_attachments"]
         .as_object()
         .ok_or_else(|| {
-            warn!(package = %package, "npm publish payload _attachments field is not an object");
             AppError::BadRequest(format!(
                 "Package '{package}': '_attachments' field is not an object"
             ))
@@ -385,34 +389,25 @@ pub async fn publish_package(
         if filename.ends_with(".tgz") {
             validate_filename(filename)?;
 
-            let data_b64 = attachment["data"].as_str()
-                .ok_or_else(|| {
-                    warn!(package = %package, filename = %filename, "npm attachment data field is not a string");
-                    AppError::UploadError("Attachment 'data' field is not a string".to_string())
-                })?;
+            let data_b64 = attachment["data"].as_str().ok_or_else(|| {
+                AppError::UploadError("Attachment 'data' field is not a string".to_string())
+            })?;
 
             debug!(filename = %filename, "Validating and decoding base64 tarball data");
 
             // Comprehensive validation before processing base64 data
             validation::validate_base64_size(data_b64, None, None).map_err(|e| {
-                warn!(package = %package, filename = %filename, error = %e,
-                      "Base64 size validation failed");
                 AppError::UploadError(format!("Base64 data size validation failed: {e}"))
             })?;
 
             // Validate base64 character format
-            validation::validate_base64_characters(data_b64).map_err(|e| {
-                warn!(package = %package, filename = %filename, error = %e,
-                      "Base64 character validation failed");
-                AppError::UploadError(format!("Invalid base64 format: {e}"))
-            })?;
+            validation::validate_base64_characters(data_b64)
+                .map_err(|e| AppError::UploadError(format!("Invalid base64 format: {e}")))?;
 
             // Decode base64 tarball with comprehensive error handling
-            let tarball_data = general_purpose::STANDARD.decode(data_b64).map_err(|e| {
-                warn!(package = %package, filename = %filename, error = %e,
-                      "Failed to decode base64 data");
-                AppError::UploadError(format!("Invalid base64 encoding: {e}"))
-            })?;
+            let tarball_data = general_purpose::STANDARD
+                .decode(data_b64)
+                .map_err(|e| AppError::UploadError(format!("Invalid base64 encoding: {e}")))?;
 
             // Use centralized validation for decoded tarball size
             validation::validate_package_upload(&tarball_data, filename, "NPM")?;
@@ -446,14 +441,21 @@ pub async fn publish_package(
             let metadata_str = serde_json::to_string_pretty(&merged)?;
             storage::save_file(metadata_path, metadata_str.as_bytes()).await?;
 
-            info!(package = %package, filename = %filename, size = tarball_data.len(), "npm package published successfully");
+            info!(
+                operation = "publish",
+                ecosystem = "npm",
+                package = %package,
+                filename = %filename,
+                size = tarball_data.len(),
+                outcome = "published",
+                "package publication completed"
+            );
             return Ok(Json(SuccessResponse {
                 message: "Package published successfully".to_string(),
             }));
         }
     }
 
-    warn!(package = %package, "No valid tarball found in npm publish payload");
     Err(AppError::UploadError(
         "No valid .tgz attachment found".to_string(),
     ))

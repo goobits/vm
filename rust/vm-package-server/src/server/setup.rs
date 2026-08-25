@@ -67,15 +67,28 @@ fn start_catalog_refresh(resolver: Arc<ResolverService>) {
             interval.tick().await;
             match resolver.refresh().await {
                 Ok(()) if unavailable => {
-                    info!("package catalog connection recovered");
+                    info!(
+                        operation = "refresh_catalog",
+                        outcome = "recovered",
+                        "package catalog connection recovered"
+                    );
                     unavailable = false;
                 }
                 Ok(()) => {}
                 Err(error) if unavailable => {
-                    debug!(error = %error, "package catalog remains unavailable");
+                    debug!(
+                        operation = "refresh_catalog",
+                        error = %error,
+                        "package catalog remains unavailable"
+                    );
                 }
                 Err(error) => {
-                    warn!(error = %error, "package catalog is unavailable; using the last known snapshot");
+                    warn!(
+                        operation = "refresh_catalog",
+                        error = %error,
+                        outcome = "using_snapshot",
+                        "package catalog is unavailable"
+                    );
                     unavailable = true;
                 }
             }
@@ -206,7 +219,10 @@ echo "🚀 You can now install packages from your private registry!"
 "#
         ),
         _ => {
-            warn!(registry, "unknown registry type requested");
+            debug!(
+                operation = "render_setup",
+                registry, "unsupported registry setup requested"
+            );
             format!(
                 r#"#!/bin/bash
 # Goobits Package Server - Setup Script

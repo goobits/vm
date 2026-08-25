@@ -3,7 +3,7 @@ use crate::{AppError, AppResult};
 use reqwest::Client;
 use serde_json::Value;
 use std::time::Duration;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 use url::Url;
 
 /// Configuration for upstream package registries.
@@ -201,24 +201,36 @@ impl UpstreamClient {
         }
 
         let url = format!("{}/simple/{}/", self.config.pypi_url, package_name);
-        debug!(url = %url, "Fetching PyPI simple index");
-
         let response = self
             .get_client()?
             .get(&url)
             .header("Accept", "text/html,application/vnd.pypi.simple.v1+html")
             .send()
             .await
-            .map_err(|e| {
-                warn!(error = %e, "Failed to fetch from PyPI");
+            .map_err(|error| {
+                warn!(
+                    operation = "fetch_metadata",
+                    ecosystem = "python",
+                    package = %package_name,
+                    error = ?error.without_url(),
+                    "upstream package request failed"
+                );
                 AppError::NotFound(format!("Package not found on PyPI: {package_name}"))
             })?;
 
         if response.status().is_success() {
-            let content = response.text().await.map_err(|e| {
-                AppError::InternalError(format!("Failed to read PyPI response: {e}"))
+            let content = response.text().await.map_err(|error| {
+                AppError::InternalError(format!(
+                    "Failed to read PyPI response: {}",
+                    error.without_url()
+                ))
             })?;
-            info!(package = %package_name, "Successfully fetched from PyPI");
+            debug!(
+                operation = "fetch_metadata",
+                ecosystem = "python",
+                package = %package_name,
+                "upstream package metadata fetched"
+            );
             Ok(content)
         } else {
             Err(AppError::NotFound(format!(
@@ -236,10 +248,13 @@ impl UpstreamClient {
         }
 
         let url = format!("https://files.pythonhosted.org/packages/{filename}");
-        debug!(url = %url, "Streaming file from PyPI");
-
-        let response = self.get_client()?.get(&url).send().await.map_err(|e| {
-            warn!(error = %e, "Failed to fetch file from PyPI");
+        let response = self.get_client()?.get(&url).send().await.map_err(|error| {
+            warn!(
+                operation = "download",
+                ecosystem = "python",
+                error = ?error.without_url(),
+                "upstream package request failed"
+            );
             AppError::NotFound(format!("File not found on PyPI: {filename}"))
         })?;
 
@@ -276,24 +291,36 @@ impl UpstreamClient {
         }
 
         let url = format!("{}/{}", self.config.npm_url, package_name);
-        debug!(url = %url, "Fetching NPM metadata");
-
         let response = self
             .get_client()?
             .get(&url)
             .header("Accept", "application/vnd.npm.install-v1+json")
             .send()
             .await
-            .map_err(|e| {
-                warn!(error = %e, "Failed to fetch from NPM");
+            .map_err(|error| {
+                warn!(
+                    operation = "fetch_metadata",
+                    ecosystem = "npm",
+                    package = %package_name,
+                    error = ?error.without_url(),
+                    "upstream package request failed"
+                );
                 AppError::NotFound(format!("Package not found on NPM: {package_name}"))
             })?;
 
         if response.status().is_success() {
-            let metadata = response.json().await.map_err(|e| {
-                AppError::InternalError(format!("Failed to parse NPM response: {e}"))
+            let metadata = response.json().await.map_err(|error| {
+                AppError::InternalError(format!(
+                    "Failed to parse NPM response: {}",
+                    error.without_url()
+                ))
             })?;
-            info!(package = %package_name, "Successfully fetched from NPM");
+            debug!(
+                operation = "fetch_metadata",
+                ecosystem = "npm",
+                package = %package_name,
+                "upstream package metadata fetched"
+            );
             Ok(metadata)
         } else {
             Err(AppError::NotFound(format!(
@@ -317,15 +344,18 @@ impl UpstreamClient {
             format!("{}{}", self.config.npm_url, tarball_url)
         };
 
-        debug!(url = %full_url, "Streaming tarball from NPM");
-
         let response = self
             .get_client()?
             .get(&full_url)
             .send()
             .await
-            .map_err(|e| {
-                warn!(error = %e, "Failed to fetch tarball from NPM");
+            .map_err(|error| {
+                warn!(
+                    operation = "download",
+                    ecosystem = "npm",
+                    error = ?error.without_url(),
+                    "upstream package request failed"
+                );
                 AppError::NotFound("Tarball not found on NPM".to_string())
             })?;
 
@@ -346,18 +376,30 @@ impl UpstreamClient {
         }
 
         let url = format!("{}/{}", self.config.cargo_url, index_path);
-        debug!(url = %url, "Fetching Cargo index");
-
-        let response = self.get_client()?.get(&url).send().await.map_err(|e| {
-            warn!(error = %e, "Failed to fetch from Cargo index");
+        let response = self.get_client()?.get(&url).send().await.map_err(|error| {
+            warn!(
+                operation = "fetch_metadata",
+                ecosystem = "cargo",
+                package = %crate_name,
+                error = ?error.without_url(),
+                "upstream package request failed"
+            );
             AppError::NotFound(format!("Crate not found on crates.io: {crate_name}"))
         })?;
 
         if response.status().is_success() {
-            let content = response.text().await.map_err(|e| {
-                AppError::InternalError(format!("Failed to read Cargo response: {e}"))
+            let content = response.text().await.map_err(|error| {
+                AppError::InternalError(format!(
+                    "Failed to read Cargo response: {}",
+                    error.without_url()
+                ))
             })?;
-            info!(crate_name = %crate_name, "Successfully fetched from crates.io");
+            debug!(
+                operation = "fetch_metadata",
+                ecosystem = "cargo",
+                package = %crate_name,
+                "upstream package metadata fetched"
+            );
             Ok(content)
         } else {
             Err(AppError::NotFound(format!(
@@ -380,10 +422,15 @@ impl UpstreamClient {
 
         // Construct download URL from crates.io
         let url = format!("https://crates.io/api/v1/crates/{crate_name}/{version}/download");
-        debug!(url = %url, "Streaming crate from crates.io");
-
-        let response = self.get_client()?.get(&url).send().await.map_err(|e| {
-            warn!(error = %e, "Failed to fetch crate from crates.io");
+        let response = self.get_client()?.get(&url).send().await.map_err(|error| {
+            warn!(
+                operation = "download",
+                ecosystem = "cargo",
+                package = %crate_name,
+                version = %version,
+                error = ?error.without_url(),
+                "upstream package request failed"
+            );
             AppError::NotFound(format!("Crate not found: {crate_name}-{version}"))
         })?;
 

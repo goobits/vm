@@ -11,7 +11,7 @@ use axum::{
 };
 use serde_json::json;
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::debug;
 
 /// Calculate Cargo index path for a crate name according to Cargo's index structure
 /// Names are organized in directories: 1/a, 2/ab, 3/a/abc, ab/cd/abcd...
@@ -128,8 +128,7 @@ pub async fn index_file(
         ))
     })?;
 
-    debug!(crate_name = %crate_name, path = %path, "Incoming Cargo index request");
-    info!(crate_name = %crate_name, "Fetching Cargo index file");
+    debug!(crate_name = %crate_name, path = %path, "resolving Cargo index request");
     let index_path_str = index_path(crate_name)?;
     let index_file_path = state.data_dir.join("cargo/index").join(&index_path_str);
 

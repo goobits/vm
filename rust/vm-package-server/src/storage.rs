@@ -6,7 +6,7 @@ use std::time::Duration;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{Mutex, MutexGuard};
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 static PUBLISH_LOCK: Mutex<()> = Mutex::const_new(());
 pub const METADATA_CACHE_TTL: Duration = Duration::from_secs(5);
@@ -61,7 +61,6 @@ pub async fn save_file<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C) -> A
     // Ensure parent directory exists
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).await?;
-        debug!(parent = %parent.display(), "Created parent directory");
     }
 
     let content = content.as_ref().to_vec();
@@ -70,10 +69,11 @@ pub async fn save_file<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C) -> A
     tokio::task::spawn_blocking(move || vm_core::file_system::atomic_write(&owned_path, &content))
         .await
         .map_err(|error| AppError::InternalError(format!("atomic write task failed: {error}")))??;
-    info!(
+    debug!(
+        operation = "write_file",
         path = %path.display(),
         size = content_len,
-        "File saved successfully"
+        "registry file saved"
     );
     Ok(())
 }
@@ -142,13 +142,24 @@ where
     match fetch().await {
         Ok(content) => {
             if let Err(error) = save_file(path, &content).await {
-                warn!(path = %path.display(), error = %error, "could not refresh metadata cache");
+                warn!(
+                    operation = "refresh_cache",
+                    path = %path.display(),
+                    error = %error,
+                    "registry metadata cache refresh failed"
+                );
             }
             Ok(content)
         }
         Err(fetch_error) => match read_file(path).await {
             Ok(content) => {
-                warn!(path = %path.display(), error = %fetch_error, "using stale registry metadata");
+                warn!(
+                    operation = "refresh_cache",
+                    path = %path.display(),
+                    error = %fetch_error,
+                    outcome = "using_stale",
+                    "registry metadata refresh failed"
+                );
                 Ok(content)
             }
             Err(AppError::NotFound(_)) => Err(fetch_error),
@@ -180,7 +191,6 @@ pub async fn read_file_string<P: AsRef<Path>>(path: P) -> AppResult<String> {
 async fn validate_read_size(path: &Path) -> AppResult<()> {
     let metadata = fs::metadata(path).await.map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
-            warn!(path = %path.display(), "file not found");
             AppError::NotFound(format!("File not found: {}", path.display()))
         } else {
             error.into()
@@ -197,7 +207,6 @@ pub async fn append_to_file<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C)
     // Ensure parent directory exists
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).await?;
-        debug!(parent = %parent.display(), "Created parent directory");
     }
 
     let content = content.as_ref();
@@ -231,10 +240,11 @@ pub async fn append_to_file<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C)
     new_content.push('\n');
 
     save_file(path, new_content.as_bytes()).await?;
-    info!(
+    debug!(
+        operation = "append_file",
         path = %path.display(),
         appended_size = content.len(),
-        "Content appended to file successfully"
+        "registry file appended"
     );
     Ok(())
 }

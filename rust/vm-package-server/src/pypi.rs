@@ -44,7 +44,6 @@ async fn list_package_files(pypi_dir: &Path) -> AppResult<Vec<PathBuf>> {
 /// </html>
 /// ```
 pub async fn simple_index(State(state): State<Arc<AppState>>) -> AppResult<Html<String>> {
-    info!("Generating PyPI simple index");
     let pypi_dir = state.data_dir.join("pypi/packages");
 
     let mut packages = std::collections::HashSet::new();
@@ -105,7 +104,6 @@ pub async fn package_index(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> AppResult<Html<String>> {
-    info!(package = %package, "Generating PyPI package index");
     let normalized_package = PackageIdentity::new(PackageEcosystem::Python, &package)
         .map_err(|error| AppError::BadRequest(error.to_string()))?
         .name;
@@ -123,10 +121,15 @@ pub async fn package_index(
                     match storage::read_file_string(&meta_path).await {
                         Ok(hash) => {
                             files.push((name.to_string(), hash.trim().to_string()));
-                            debug!(filename = %name, hash = %hash.trim(), "Added file to package index from meta");
                         }
                         Err(_) => {
-                            warn!(package = %package, path = %path.display(), meta_path = %meta_path.display(), "Meta file not found for package, skipping hash");
+                            warn!(
+                                operation = "build_index",
+                                ecosystem = "python",
+                                package = %package,
+                                filename = %name,
+                                "package artifact metadata missing"
+                            );
                         }
                     }
                 }
@@ -144,7 +147,13 @@ pub async fn package_index(
                 state.internal_client.is_some(),
             )
             .await?;
-        debug!(package = %package, source = ?source, "No local files found, resolving Python source");
+        debug!(
+            operation = "resolve_index",
+            ecosystem = "python",
+            package = %package,
+            source = ?source,
+            "package index cache miss"
+        );
         let cache_scope = match source {
             vm_packages::ResolutionSource::InternalRegistry => "internal",
             vm_packages::ResolutionSource::PublicUpstream => "public",
@@ -195,7 +204,13 @@ pub async fn package_index(
             }
             _ => unreachable!("local releases are checked before source resolution"),
         };
-        info!(package = %package, source = ?source, "Resolved Python package index");
+        debug!(
+            operation = "resolve_index",
+            ecosystem = "python",
+            package = %package,
+            source = ?source,
+            "package index resolved"
+        );
         return Ok(Html(html));
     }
 
@@ -262,9 +277,14 @@ pub async fn download_file(
     // Validate filename to prevent path traversal
     validate_filename(&filename)?;
 
-    info!(filename = %filename, "Downloading PyPI package file");
     let data = storage::read_file(state.data_dir.join("pypi/packages").join(&filename)).await?;
-    info!(filename = %filename, size = data.len(), "Serving PyPI package file");
+    debug!(
+        operation = "download",
+        ecosystem = "python",
+        filename = %filename,
+        size = data.len(),
+        "package artifact served"
+    );
     Ok(data)
 }
 
@@ -291,7 +311,14 @@ pub async fn download_upstream_file(
             .map(|bytes| bytes.to_vec())
     })
     .await?;
-    info!(path = %path, size = data.len(), "Serving cached upstream PyPI artifact");
+    debug!(
+        operation = "download",
+        ecosystem = "python",
+        source = "public",
+        path = %path,
+        size = data.len(),
+        "package artifact served"
+    );
     Ok(data)
 }
 
@@ -349,7 +376,6 @@ pub async fn upload_package(
 ) -> AppResult<axum::Json<SuccessResponse>> {
     crate::auth::validate_publish_headers(&state.config, &headers)?;
 
-    info!("Processing PyPI package upload");
     let pypi_dir = state.data_dir.join("pypi/packages");
 
     let mut field_count = 0;
@@ -358,11 +384,9 @@ pub async fn upload_package(
     while let Some(field) = multipart.next_field().await? {
         field_count += 1;
         let name = field.name().unwrap_or("").to_string();
-        debug!(field_name = %name, "Processing multipart field");
 
         // Validate multipart limits early to prevent resource exhaustion
         if field_count > validation::MAX_MULTIPART_FIELDS {
-            warn!(field_count = %field_count, "Too many multipart fields");
             return Err(AppError::UploadError(format!(
                 "Too many multipart fields: {} (max: {})",
                 field_count,
@@ -379,11 +403,8 @@ pub async fn upload_package(
             // Validate filename for security
             validate_filename(&filename)?;
 
-            info!(filename = %filename, "Uploading PyPI package");
-
             // Only accept .whl and .tar.gz files
             if !package_utils::validate_file_extension(&filename, &[".whl", ".tar.gz"]) {
-                warn!(filename = %filename, "Rejected file with invalid extension");
                 return Err(AppError::BadRequest(
                     "Only .whl and .tar.gz files are allowed".to_string(),
                 ));
@@ -391,8 +412,6 @@ pub async fn upload_package(
 
             // Read the data with size constraints to prevent memory exhaustion
             let data = field.bytes().await?;
-            debug!(size = data.len(), "Read package data");
-
             // Use centralized validation for package uploads
             validation::validate_package_upload(&data, &filename, "PyPI")?;
 
@@ -400,7 +419,6 @@ pub async fn upload_package(
 
             // Validate total multipart upload size
             validation::validate_multipart_limits(field_count, total_size, None).map_err(|e| {
-                warn!(total_size = %total_size, field_count = %field_count, "Multipart limits exceeded");
                 AppError::UploadError(format!("Multipart upload limits exceeded: {e}"))
             })?;
 
@@ -422,7 +440,14 @@ pub async fn upload_package(
             ));
             storage::save_immutable(meta_path, hash.as_bytes()).await?;
 
-            info!(filename = %filename, size = data.len(), "PyPI package uploaded successfully");
+            info!(
+                operation = "publish",
+                ecosystem = "python",
+                filename = %filename,
+                size = data.len(),
+                outcome = "published",
+                "package publication completed"
+            );
             return Ok(axum::Json(SuccessResponse {
                 message: "Upload successful".to_string(),
             }));
@@ -433,12 +458,9 @@ pub async fn upload_package(
 
             // Use centralized validation for total upload size
             validation::validate_total_upload_size(total_size, "PyPI")?;
-
-            debug!(field_name = %name, size = field_data.len(), "Processed non-content field");
         }
     }
 
-    warn!("No content field found in multipart upload");
     Err(AppError::BadRequest("No content field found".to_string()))
 }
 

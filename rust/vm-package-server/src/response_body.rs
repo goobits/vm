@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use reqwest::Response;
-use tracing::info;
+use tracing::debug;
 
 use crate::{validation, AppError, AppResult};
 
@@ -21,11 +21,12 @@ pub(crate) async fn read_bounded_response(
     validation::validate_file_size(bytes.len() as u64, Some(validation::MAX_UPLOAD_SIZE))
         .map_err(|error| AppError::BadRequest(format!("{registry} file too large: {error}")))?;
 
-    info!(
+    debug!(
+        operation = "read_upstream_body",
         filename,
         size = bytes.len(),
         registry,
-        "streamed package body"
+        "upstream package body read"
     );
     Ok(bytes)
 }
