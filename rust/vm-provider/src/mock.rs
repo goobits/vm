@@ -15,17 +15,33 @@ impl CommandProvider for MockProvider {
     }
 
     fn exec(&self, _container: Option<&str>, cmd: &[String]) -> Result<()> {
-        tracing::info!("Mock exec successful: {}", cmd.join(" "));
+        tracing::debug!(
+            component = "mock_provider",
+            operation = "exec",
+            argument_count = cmd.len(),
+            outcome = "success",
+            "mock provider operation completed"
+        );
         Ok(())
     }
 
     fn logs(&self, _container: Option<&str>) -> Result<()> {
-        tracing::info!("Mock log line 1");
+        tracing::debug!(
+            component = "mock_provider",
+            operation = "logs",
+            outcome = "success",
+            "mock provider operation completed"
+        );
         Ok(())
     }
 
     fn copy(&self, _source: &str, _destination: &str, _container: Option<&str>) -> Result<()> {
-        tracing::info!("Mock copy successful");
+        tracing::debug!(
+            component = "mock_provider",
+            operation = "copy",
+            outcome = "success",
+            "mock provider operation completed"
+        );
         Ok(())
     }
 }

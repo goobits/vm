@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
-use tracing::instrument;
+use tracing::{instrument, warn};
 
 use crate::types::{Plugin, PluginInfo, PluginType, PresetContent, ServiceContent};
 
@@ -34,8 +34,14 @@ pub fn discover_plugins_in_directory(plugins_dir: &Path) -> Result<Vec<Plugin>> 
             if path.is_dir() {
                 match load_plugin(&path, PluginType::Preset) {
                     Ok(plugin) => plugins.push(plugin),
-                    Err(e) => {
-                        eprintln!("Warning: Failed to load preset plugin from {path:?}: {e}");
+                    Err(error) => {
+                        warn!(
+                            component = "plugin_discovery",
+                            operation = "load_preset",
+                            path = %path.display(),
+                            error = ?error,
+                            "plugin load failed"
+                        );
                     }
                 }
             }
@@ -52,8 +58,14 @@ pub fn discover_plugins_in_directory(plugins_dir: &Path) -> Result<Vec<Plugin>> 
             if path.is_dir() {
                 match load_plugin(&path, PluginType::Service) {
                     Ok(plugin) => plugins.push(plugin),
-                    Err(e) => {
-                        eprintln!("Warning: Failed to load service plugin from {path:?}: {e}");
+                    Err(error) => {
+                        warn!(
+                            component = "plugin_discovery",
+                            operation = "load_service",
+                            path = %path.display(),
+                            error = ?error,
+                            "plugin load failed"
+                        );
                     }
                 }
             }

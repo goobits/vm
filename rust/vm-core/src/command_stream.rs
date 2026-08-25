@@ -64,7 +64,7 @@ where
 
 /// Stream command output with optional timeout (in seconds).
 /// If timeout is None, command runs indefinitely.
-/// If timeout is exceeded, returns VmError with the full command for debugging.
+/// Diagnostics name only the executable so arguments cannot leak credentials.
 pub fn stream_command_with_timeout<A: AsRef<OsStr>>(
     command: &str,
     args: &[A],
@@ -126,15 +126,6 @@ pub fn stream_command_with_progress_and_timeout<A: AsRef<OsStr>>(
     mut parser: Option<Box<dyn ProgressParser>>,
     timeout_secs: Option<u64>,
 ) -> Result<()> {
-    let full_command = format!(
-        "{} {}",
-        command,
-        args.iter()
-            .map(|a| a.as_ref().to_string_lossy())
-            .collect::<Vec<_>>()
-            .join(" ")
-    );
-
     match timeout_secs {
         None => {
             // No timeout - original behavior
@@ -162,7 +153,7 @@ pub fn stream_command_with_progress_and_timeout<A: AsRef<OsStr>>(
                 args,
                 &mut parser,
                 Duration::from_secs(secs),
-                &full_command,
+                command,
             )?;
             if let Some(parser) = parser.take() {
                 parser.finish();
@@ -182,7 +173,7 @@ fn run_with_timeout<A: AsRef<OsStr>>(
     args: &[A],
     parser: &mut Option<Box<dyn ProgressParser>>,
     timeout: Duration,
-    full_command: &str,
+    executable_label: &str,
 ) -> Result<()> {
     let mut command = Command::new(executable);
     command
@@ -194,13 +185,13 @@ fn run_with_timeout<A: AsRef<OsStr>>(
     let Some(stdout) = child.stdout.take() else {
         terminate_and_wait(&mut child);
         return Err(VmError::Internal(format!(
-            "Could not capture stdout for {full_command}"
+            "Could not capture stdout for '{executable_label}'"
         )));
     };
     let Some(stderr) = child.stderr.take() else {
         terminate_and_wait(&mut child);
         return Err(VmError::Internal(format!(
-            "Could not capture stderr for {full_command}"
+            "Could not capture stderr for '{executable_label}'"
         )));
     };
     let (sender, receiver) = mpsc::channel();
@@ -223,37 +214,35 @@ fn run_with_timeout<A: AsRef<OsStr>>(
             Ok(status) => status,
             Err(error) => {
                 terminate_and_wait(&mut child);
-                join_readers(stdout_reader, stderr_reader, full_command)?;
+                join_readers(stdout_reader, stderr_reader, executable_label)?;
                 return Err(error.into());
             }
         };
         if let Some(status) = status {
-            join_readers(stdout_reader, stderr_reader, full_command)?;
+            join_readers(stdout_reader, stderr_reader, executable_label)?;
             drain_remaining(&receiver, parser, &mut recent, &mut stream_error);
             if let Some(error) = stream_error {
                 return Err(VmError::Internal(format!(
-                    "Command output failed for {full_command}: {error}"
+                    "Command output failed for '{executable_label}': {error}"
                 )));
             }
             if status.success() {
                 return Ok(());
             }
             return Err(VmError::Command(format!(
-                "Command failed with {status}: {full_command}\n\nOutput (last 50 lines):\n{}",
+                "Command '{executable_label}' failed with {status}\n\nOutput (last 50 lines):\n{}",
                 recent.iter().cloned().collect::<Vec<_>>().join("\n")
             )));
         }
 
         if Instant::now() >= deadline {
             terminate_and_wait(&mut child);
-            join_readers(stdout_reader, stderr_reader, full_command)?;
+            join_readers(stdout_reader, stderr_reader, executable_label)?;
             drain_remaining(&receiver, parser, &mut recent, &mut stream_error);
             return Err(VmError::Timeout(format!(
-                "Command timed out after {}s: {}\n\nOutput (last 50 lines):\n{}\n\nTo debug, try running manually:\n  {}",
+                "Command '{executable_label}' timed out after {}s\n\nOutput (last 50 lines):\n{}",
                 timeout.as_secs(),
-                full_command,
-                recent.iter().cloned().collect::<Vec<_>>().join("\n"),
-                full_command
+                recent.iter().cloned().collect::<Vec<_>>().join("\n")
             )));
         }
     }
@@ -339,13 +328,13 @@ fn terminate_and_wait(child: &mut Child) {
 fn join_readers(
     stdout: thread::JoinHandle<()>,
     stderr: thread::JoinHandle<()>,
-    full_command: &str,
+    executable_label: &str,
 ) -> Result<()> {
     let stdout_result = stdout.join();
     let stderr_result = stderr.join();
     if stdout_result.is_err() || stderr_result.is_err() {
         return Err(VmError::Internal(format!(
-            "Output reader panicked while running {full_command}"
+            "Output reader panicked while running '{executable_label}'"
         )));
     }
     Ok(())
@@ -369,6 +358,22 @@ mod tests {
 
         assert!(started.elapsed() < Duration::from_secs(3));
         assert!(error.to_string().contains("timed out"));
+    }
+
+    #[test]
+    fn failure_diagnostics_omit_command_arguments() {
+        let secret_argument = "credential-that-must-not-appear";
+        let error = stream_command_with_progress_and_timeout(
+            "/bin/sh",
+            &["-c", "exit 9", secret_argument],
+            None,
+            Some(1),
+        )
+        .unwrap_err();
+
+        let message = error.to_string();
+        assert!(message.contains("/bin/sh"));
+        assert!(!message.contains(secret_argument));
     }
 }
 
