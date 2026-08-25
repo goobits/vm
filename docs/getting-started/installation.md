@@ -35,3 +35,9 @@ vm system uninstall --keep-config
 ```
 
 Shell completions are installed by the installer when supported by your shell.
+
+Source installations atomically copy the finished executable into the stable
+user binary directory (`~/.local/bin` on macOS and Linux). Reusable Cargo
+artifacts live in the platform VM cache, never underneath the installed
+executable, so pruning the build cache cannot break `vm`. Set
+`CARGO_TARGET_DIR` to override the source-build cache location.

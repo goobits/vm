@@ -597,7 +597,13 @@ install_vm_tool() {
     current_dir=$(pwd)
     cd "$rust_dir" || handle_error $ERR_INSTALL_FAILED "Could not change to rust directory"
 
-    local source_target_dir="${CARGO_TARGET_DIR:-/tmp/vm-rust-target}"
+    local default_target_dir
+    if [[ "$OS_TYPE" == "macos" ]]; then
+        default_target_dir="$HOME/Library/Caches/vm/cargo-target"
+    else
+        default_target_dir="${XDG_CACHE_HOME:-$HOME/.cache}/vm/cargo-target"
+    fi
+    local source_target_dir="${CARGO_TARGET_DIR:-$default_target_dir}"
     local cargo_failed=false
     if ! timeout "$CARGO_TIMEOUT_SECONDS" env CARGO_TARGET_DIR="$source_target_dir" cargo run \
         --package vm-installer \

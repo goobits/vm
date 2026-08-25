@@ -60,6 +60,7 @@
 
 ### 🐛 Fixed
 
+- 🪟 Source installation atomically copies `vm` into the stable user binary directory and keeps reusable Cargo artifacts in the platform cache, so temporary-build cleanup cannot break the installed CLI.
 - ☁️ Vendor-tool migration safely adopts broken symlinks inside a declared legacy installer scope while continuing to refuse unrelated launchers.
 - 🪟 Existing `vm.box` configurations remain readable as a deprecated alias for canonical `vm.image`.
 - 📦 Deterministic package review permits only bounded, comment-only `.env.example` templates while continuing to reject environment values, credentials, private keys, and other sensitive paths.

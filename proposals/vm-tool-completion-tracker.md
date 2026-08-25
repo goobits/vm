@@ -72,6 +72,11 @@ None.
 
 ## Verification Log
 
+- 2026-08-25: Source installation atomically copied the host CLI into
+  `~/.local/bin/vm`; the executable remained usable after scoped Cargo cleanup
+  removed 8.8 GiB from three validated temporary build targets. `pdx.fun`
+  validation and execution passed, tool state remained consumable, and the
+  checked environment and package-gateway container IDs remained unchanged.
 - 2026-08-24: Fleet-wide tool update completed for all nine running Docker
   environments. One broken Codex launcher was safely refused, verified inside
   its declared legacy scope, repaired generically, and then updated successfully.

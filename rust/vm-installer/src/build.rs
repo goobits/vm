@@ -6,7 +6,7 @@ use std::{
 
 use tracing::info_span;
 use vm_core::error::{Result, VmError};
-use vm_core::{vm_println, vm_progress, vm_success, vm_warning};
+use vm_core::{user_paths, vm_println, vm_progress, vm_success, vm_warning};
 use vm_messages::messages::MESSAGES;
 
 use crate::platform;
@@ -32,7 +32,13 @@ pub(super) fn project_root() -> Result<PathBuf> {
 fn target_directory() -> PathBuf {
     env::var_os("CARGO_TARGET_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(vm_core::MACHINE_CARGO_TARGET_DIR))
+        .unwrap_or_else(default_target_directory)
+}
+
+fn default_target_directory() -> PathBuf {
+    user_paths::user_cache_dir()
+        .map(|cache| cache.join("cargo-target"))
+        .unwrap_or_else(|_| PathBuf::from(vm_core::MACHINE_CARGO_TARGET_DIR))
 }
 
 pub(super) fn clean(project_root: &Path) -> Result<()> {
@@ -128,7 +134,7 @@ pub(super) fn workspace(project_root: &Path) -> Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::target_directory;
+    use super::{default_target_directory, target_directory};
 
     #[test]
     fn target_directory_honors_configuration_or_uses_the_machine_cache() {
@@ -137,7 +143,14 @@ mod tests {
         if let Some(configured) = std::env::var_os("CARGO_TARGET_DIR") {
             assert_eq!(target_dir, std::path::PathBuf::from(configured));
         } else {
-            assert!(target_dir.ends_with("vm-rust-target"));
+            assert_eq!(target_dir, default_target_directory());
         }
+    }
+
+    #[test]
+    fn default_target_directory_is_a_managed_user_cache() {
+        let target_dir = default_target_directory();
+        assert!(target_dir.is_absolute());
+        assert!(target_dir.ends_with("cargo-target"));
     }
 }
