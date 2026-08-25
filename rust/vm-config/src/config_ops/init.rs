@@ -14,7 +14,7 @@ use vm_messages::messages::MESSAGES;
 
 // Local module imports
 use crate::config::VmConfig;
-use crate::ports::{PortRange, PortRegistry};
+use crate::ports::PortRegistry;
 use crate::yaml::core::CoreOperations;
 
 mod preset;
@@ -216,38 +216,11 @@ fn allocate_and_register_ports(
     sanitized_name: &str,
     current_dir: &std::path::Path,
 ) -> Result<()> {
-    if let Ok(registry) = PortRegistry::load() {
-        // Check if this project already has ports registered
-        let (range_str, is_new_project) =
-            if let Some(existing_entry) = registry.get_entry(sanitized_name) {
-                // Project already has ports - reuse them
-                info!(
-                    "♻️  Reusing existing port range {} for project '{}'",
-                    existing_entry.range, sanitized_name
-                );
-                (Some(existing_entry.range.clone()), false)
-            } else {
-                // New project - suggest next available range
-                (registry.suggest_next_range(10, 3000), true)
-            };
-
-        if let Some(range_str) = range_str {
-            if let Ok(range) = PortRange::parse(&range_str) {
-                config.ports.range = Some(vec![range.start, range.end]);
-
-                // Register if this is a new project
-                if is_new_project {
-                    let mut registry = PortRegistry::load().unwrap_or_default();
-                    let _ = registry
-                        .register(sanitized_name, &range, &current_dir.to_string_lossy())
-                        .map_err(|e| warn!("Failed to register port range: {}", e));
-                }
-            }
-        } else {
-            warn!("Could not find available port range");
-        }
-    } else {
-        warn!("Failed to load port registry");
+    match PortRegistry::load().and_then(|mut registry| {
+        registry.reserve_next_range(sanitized_name, 10, 3000, &current_dir.to_string_lossy())
+    }) {
+        Ok(range) => config.ports.range = Some(vec![range.start, range.end]),
+        Err(error) => warn!("Failed to reserve port range: {}", error),
     }
 
     Ok(())

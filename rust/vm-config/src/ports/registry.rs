@@ -8,7 +8,8 @@
 use std::collections::HashMap;
 use std::fs;
 use std::fs::OpenOptions;
-use std::path::PathBuf;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 // External crates
@@ -55,21 +56,7 @@ impl PortRegistry {
             fs::create_dir_all(registry_dir)?;
         }
 
-        // Initialize empty registry file if it doesn't exist
-        if !registry_path.exists() {
-            fs::write(&registry_path, "{}")?;
-        }
-
-        // Load registry from file
-        // Note: File locking APIs (lock_shared/unlock) require Rust 1.89.0+
-        // For compatibility with MSRV 1.70.0, we use a simpler approach
-        let content = fs::read_to_string(&registry_path)?;
-        let entries: HashMap<String, ProjectEntry> =
-            if content.trim().is_empty() || content.trim() == "{}" {
-                HashMap::new()
-            } else {
-                serde_json::from_str(&content)?
-            };
+        let entries = Self::read_entries(&registry_path)?;
 
         Ok(PortRegistry {
             entries,
@@ -136,6 +123,71 @@ impl PortRegistry {
         })
     }
 
+    /// Atomically reuse or reserve the next available range for a project.
+    pub fn reserve_next_range(
+        &mut self,
+        project: &str,
+        size: u16,
+        start_from: u16,
+        path: &str,
+    ) -> Result<PortRange> {
+        self.atomic_update(|entries| {
+            if let Some(existing) = entries.get(project) {
+                return PortRange::parse(&existing.range);
+            }
+
+            let range =
+                Self::suggest_next_range_in(entries, size, start_from).ok_or_else(|| {
+                    VmError::Config(format!(
+                        "No available port range of size {size} at or above {start_from}"
+                    ))
+                })?;
+            entries.insert(
+                project.to_string(),
+                ProjectEntry {
+                    range: range.to_string(),
+                    path: path.to_string(),
+                },
+            );
+            Ok(range)
+        })
+    }
+
+    /// Atomically replace a project's allocation with the next distinct range.
+    pub fn replace_with_next_range(
+        &mut self,
+        project: &str,
+        previous: &PortRange,
+        size: u16,
+        start_from: u16,
+        path: &str,
+    ) -> Result<PortRange> {
+        self.atomic_update(|entries| {
+            if let Some(existing) = entries.get(project) {
+                let existing_range = PortRange::parse(&existing.range)?;
+                if existing_range != *previous {
+                    return Ok(existing_range);
+                }
+            }
+
+            let range =
+                Self::suggest_next_range_avoiding(entries, size, start_from, Some(previous))
+                    .ok_or_else(|| {
+                        VmError::Config(format!(
+                            "No available port range of size {size} at or above {start_from}"
+                        ))
+                    })?;
+            entries.insert(
+                project.to_string(),
+                ProjectEntry {
+                    range: range.to_string(),
+                    path: path.to_string(),
+                },
+            );
+            Ok(range)
+        })
+    }
+
     /// Unregisters a project's port range.
     ///
     /// # Arguments
@@ -197,28 +249,46 @@ impl PortRegistry {
     /// # Returns
     /// `Some(String)` containing the suggested range, or `None` if no range is available.
     pub fn suggest_next_range(&self, size: u16, start_from: u16) -> Option<String> {
+        Self::suggest_next_range_in(&self.entries, size, start_from).map(|range| range.to_string())
+    }
+
+    fn suggest_next_range_in(
+        entries: &HashMap<String, ProjectEntry>,
+        size: u16,
+        start_from: u16,
+    ) -> Option<PortRange> {
+        Self::suggest_next_range_avoiding(entries, size, start_from, None)
+    }
+
+    fn suggest_next_range_avoiding(
+        entries: &HashMap<String, ProjectEntry>,
+        size: u16,
+        start_from: u16,
+        excluded: Option<&PortRange>,
+    ) -> Option<PortRange> {
+        let step = size.checked_sub(1)?;
         let mut current = start_from;
 
-        while current + size - 1 < 65535 {
-            let candidate_range = PortRange::new(current, current + size - 1).ok()?;
-
-            // Check if this range conflicts
-            if self.check_conflicts(&candidate_range, None).is_none() {
-                return Some(candidate_range.to_string());
+        loop {
+            let end = current.checked_add(step)?;
+            let candidate = PortRange::new(current, end).ok()?;
+            let conflicts = entries.values().any(|entry| {
+                PortRange::parse(&entry.range)
+                    .map(|other| candidate.overlaps_with(&other))
+                    .unwrap_or(false)
+            });
+            if !conflicts && excluded.map_or(true, |range| !candidate.overlaps_with(range)) {
+                return Some(candidate);
             }
-
-            // Try next range
-            current += size;
+            current = current.checked_add(size)?;
         }
-
-        None
     }
 
     /// Performs an atomic update operation with proper file locking.
     /// This prevents race conditions during concurrent access to the registry file.
-    fn atomic_update<F>(&mut self, update_fn: F) -> Result<()>
+    fn atomic_update<T, F>(&mut self, update_fn: F) -> Result<T>
     where
-        F: FnOnce(&mut HashMap<String, ProjectEntry>) -> Result<()>,
+        F: FnOnce(&mut HashMap<String, ProjectEntry>) -> Result<T>,
     {
         // Ensure parent directory exists
         if let Some(parent) = self.registry_path.parent() {
@@ -231,22 +301,24 @@ impl PortRegistry {
             }
         }
 
-        // Open or create the registry file
-        let file = OpenOptions::new()
+        // Lock a stable sidecar inode. The registry itself is atomically
+        // replaced, so locking that file would not serialize later writers.
+        let lock_path = self.registry_path.with_extension("lock");
+        let lock_file = OpenOptions::new()
             .create(true)
             .read(true)
             .write(true)
             .truncate(false)
-            .open(&self.registry_path)
+            .open(&lock_path)
             .map_err(|e| {
                 VmError::Filesystem(format!(
-                    "Failed to open registry file: {:?}: {}",
-                    self.registry_path, e
+                    "Failed to open port registry lock {:?}: {e}",
+                    lock_path
                 ))
             })?;
 
-        // Acquire exclusive lock with timeout and retry logic
-        const MAX_RETRIES: u32 = 100; // More retries for lock acquisition
+        // fs2 supplies the MSRV-compatible locking API. Dropping lock_file
+        // releases the lock because explicit std unlock requires newer Rust.
         const RETRY_DELAY: Duration = Duration::from_millis(10);
         const LOCK_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -254,7 +326,7 @@ impl PortRegistry {
         let mut attempts = 0;
 
         loop {
-            match file.try_lock_exclusive() {
+            match lock_file.try_lock_exclusive() {
                 Ok(()) => break,
                 Err(e) => {
                     attempts += 1;
@@ -263,35 +335,15 @@ impl PortRegistry {
                             "Timeout waiting for exclusive lock on registry file after {attempts} attempts: {e}"
                         )));
                     }
-                    if attempts >= MAX_RETRIES {
-                        return Err(vm_core::error::VmError::Internal(format!(
-                            "Maximum retry attempts ({MAX_RETRIES}) exceeded for lock acquisition: {e}"
-                        )));
-                    }
                     std::thread::sleep(RETRY_DELAY);
                 }
             }
         }
 
-        // Note: File will be automatically unlocked when it goes out of scope
-        // Manual unlock is not available in MSRV 1.70.0
-
-        // Read current state
-        let content =
-            fs::read_to_string(&self.registry_path).unwrap_or_else(|_| String::from("{}"));
-
-        let mut entries: HashMap<String, ProjectEntry> =
-            if content.trim().is_empty() || content.trim() == "{}" {
-                HashMap::new()
-            } else {
-                serde_json::from_str(&content).map_err(|e| {
-                    VmError::Serialization(format!("Failed to parse registry JSON: {e}"))
-                })?
-            };
+        let mut entries = Self::read_entries(&self.registry_path)?;
 
         // Apply the update
-        update_fn(&mut entries)
-            .map_err(|e| VmError::Internal(format!("Update function failed: {e}")))?;
+        let result = update_fn(&mut entries)?;
 
         // Write back to file
         let json_content = if entries.is_empty() {
@@ -302,39 +354,40 @@ impl PortRegistry {
             })?
         };
 
-        // Write to a temporary file first, then atomically rename
-        // This provides protection against corruption during write operations
-        // Use thread ID to ensure unique temporary file names for concurrent access
-        let thread_id = std::thread::current().id();
-        let temp_path = self
-            .registry_path
-            .with_extension(format!("json.tmp.{thread_id:?}"));
-        fs::write(&temp_path, &json_content).map_err(|e| {
-            VmError::Filesystem(format!(
-                "Failed to write temporary file: {temp_path:?}: {e}"
-            ))
-        })?;
-        // If the rename step fails (e.g. cross-device, perms), drop the
-        // leftover temp file so we don't leak `port-registry.json.tmp.*`
-        // siblings into `~/.vm/` over time.
-        if let Err(e) = fs::rename(&temp_path, &self.registry_path) {
-            let _ = fs::remove_file(&temp_path);
-            return Err(VmError::Filesystem(format!(
-                "Failed to atomically rename temporary file: {e}"
-            )));
-        }
+        vm_core::file_system::atomic_write(&self.registry_path, json_content.as_bytes()).map_err(
+            |e| {
+                VmError::Filesystem(format!(
+                    "Failed to atomically write port registry {:?}: {e}",
+                    self.registry_path
+                ))
+            },
+        )?;
 
         // Update our local state
         self.entries = entries;
 
-        Ok(())
+        Ok(result)
+    }
+
+    fn read_entries(path: &Path) -> Result<HashMap<String, ProjectEntry>> {
+        let content = match fs::read_to_string(path) {
+            Ok(content) => content,
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(HashMap::new()),
+            Err(error) => return Err(error.into()),
+        };
+        if content.trim().is_empty() || content.trim() == "{}" {
+            Ok(HashMap::new())
+        } else {
+            serde_json::from_str(&content).map_err(|error| {
+                VmError::Serialization(format!("Failed to parse registry JSON: {error}"))
+            })
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::error::Error;
     use tempfile::tempdir;
 
     #[test]
@@ -398,151 +451,100 @@ mod tests {
         use std::sync::Arc;
         use std::thread;
 
-        let temp_dir =
-            tempdir().expect("Failed to create temporary directory for file locking test");
-        let registry_path = temp_dir.path().join("port-registry.json");
-
-        // Initialize an empty registry file
-        std::fs::write(&registry_path, "{}").expect("Failed to initialize empty registry file");
-
-        // Create multiple registries that point to the same file (simulating different processes)
-        let shared_path = Arc::new(registry_path);
-        let mut handles = vec![];
-        let num_threads = 10_usize;
-
-        for i in 0..num_threads {
-            let path = Arc::clone(&shared_path);
-            let handle = thread::spawn(move || {
-                // Each thread creates its own registry instance pointing to the same file
-                let mut registry = PortRegistry {
-                    entries: HashMap::new(),
-                    registry_path: (*path).clone(),
-                };
-
-                // Add our entry using the register method (now with proper file locking)
-                let range = PortRange::new(3000 + (i as u16) * 10, 3000 + (i as u16) * 10 + 9)
-                    .expect("Valid range for file locking test");
-
-                // Small delay to increase concurrency and test lock contention
-                std::thread::sleep(std::time::Duration::from_millis(1));
-
-                registry.register(&format!("project_{}", i), &range, &format!("/path_{}", i))
-            });
-            handles.push(handle);
-        }
-
-        // Wait for all threads to complete
-        let results: Vec<_> = handles
-            .into_iter()
-            .map(|h| h.join().expect("Thread should complete successfully"))
+        let temp_dir = tempdir().unwrap();
+        let registry_path = Arc::new(temp_dir.path().join("port-registry.json"));
+        let handles: Vec<_> = (0..10)
+            .map(|index| {
+                let path = Arc::clone(&registry_path);
+                thread::spawn(move || {
+                    let mut registry = PortRegistry {
+                        entries: HashMap::new(),
+                        registry_path: (*path).clone(),
+                    };
+                    let start = 3000 + index * 10;
+                    let range = PortRange::new(start, start + 9).unwrap();
+                    registry.register(
+                        &format!("project_{index}"),
+                        &range,
+                        &format!("/path_{index}"),
+                    )
+                })
+            })
             .collect();
 
-        // Count successful vs failed operations and print errors
-        let successful_registrations = results.iter().filter(|r| r.is_ok()).count();
-        let failed_registrations = results.iter().filter(|r| r.is_err()).count();
-
-        println!(
-            "Concurrent access test results with locking: {} succeeded, {} failed",
-            successful_registrations, failed_registrations
-        );
-
-        // Print detailed error information for debugging
-        for (i, result) in results.iter().enumerate() {
-            if let Err(e) = result {
-                println!("Thread {} failed with error: {}", i, e);
-                println!("Error chain:");
-                let mut current = e.source();
-                while let Some(err) = current {
-                    println!("  Caused by: {}", err);
-                    current = err.source();
-                }
-            }
+        for handle in handles {
+            handle.join().unwrap().unwrap();
         }
 
-        // Load final registry and check if all entries are present
-        let content =
-            std::fs::read_to_string(&*shared_path).expect("Failed to read final registry state");
-        let final_entries: HashMap<String, ProjectEntry> =
-            serde_json::from_str(&content).expect("Failed to parse final registry JSON");
-
-        let actual_count = final_entries.len();
-
-        println!("Final analysis with proper file locking:");
-        println!("  File operations succeeded: {}", successful_registrations);
-        println!("  File operations failed: {}", failed_registrations);
-        println!("  Final registry entries: {}", actual_count);
-
-        // Debug: print all actual entries
-        println!("Actual entries in registry:");
-        for (name, entry) in &final_entries {
-            println!("  {}: {} -> {}", name, entry.range, entry.path);
+        let entries = PortRegistry::read_entries(&registry_path).unwrap();
+        assert_eq!(entries.len(), 10);
+        for index in 0..10 {
+            let entry = &entries[&format!("project_{index}")];
+            assert_eq!(
+                entry.range,
+                format!("{}-{}", 3000 + index * 10, 3009 + index * 10)
+            );
+            assert_eq!(entry.path, format!("/path_{index}"));
         }
+    }
 
-        // Blocking file locks serialise writers, so every register() call must
-        // succeed even under heavy contention.
-        assert_eq!(
-            failed_registrations, 0,
-            "All concurrent register() calls should succeed under file locking, but {failed_registrations} failed",
-        );
+    #[test]
+    fn concurrent_reservations_are_preserved_and_unique() {
+        use std::collections::HashSet;
+        use std::sync::Arc;
+        use std::thread;
 
-        // NOTE: the number of *preserved* entries is intentionally not asserted.
-        // register() performs a read-modify-write, so under heavy concurrency a
-        // few updates can still be lost and the surviving count is therefore
-        // non-deterministic (and varies across platforms/CI runners). The
-        // deterministic guarantees we verify are: every call succeeds (above),
-        // the file stays valid JSON (parsed above), and every preserved entry is
-        // valid (checked below).
-        println!(
-            "Locking smoke test: {successful_registrations}/{num_threads} calls succeeded, {actual_count}/{num_threads} entries preserved",
-        );
+        let temp_dir = tempdir().expect("create registry directory");
+        let registry_path = Arc::new(temp_dir.path().join("port-registry.json"));
+        let handles: Vec<_> = (0..10)
+            .map(|index| {
+                let path = Arc::clone(&registry_path);
+                thread::spawn(move || {
+                    let mut registry = PortRegistry {
+                        entries: HashMap::new(),
+                        registry_path: (*path).clone(),
+                    };
+                    registry.reserve_next_range(
+                        &format!("project_{index}"),
+                        10,
+                        3000,
+                        &format!("/path_{index}"),
+                    )
+                })
+            })
+            .collect();
 
-        // Verify that all preserved entries are valid (don't require all to be present due to test non-determinism)
-        for (project_name, entry) in &final_entries {
-            // Verify range is valid
-            assert!(
-                PortRange::parse(&entry.range).is_ok(),
-                "Invalid range stored for project {}: {}",
-                project_name,
-                entry.range
-            );
+        let ranges: Vec<_> = handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap().unwrap().to_string())
+            .collect();
+        assert_eq!(ranges.iter().collect::<HashSet<_>>().len(), ranges.len());
 
-            // Verify the entry format is correct
-            assert!(
-                project_name.starts_with("project_"),
-                "Invalid project name format: {}",
-                project_name
-            );
-            assert!(
-                entry.path.starts_with("/path_"),
-                "Invalid path format for project {}: {}",
-                project_name,
-                entry.path
-            );
+        let entries = PortRegistry::read_entries(&registry_path).unwrap();
+        assert_eq!(entries.len(), ranges.len());
+        assert!(ranges
+            .iter()
+            .all(|range| entries.values().any(|entry| &entry.range == range)));
+    }
 
-            // Verify range matches expected pattern for this project
-            if let Some(project_id) = project_name.strip_prefix("project_") {
-                if let Ok(id) = project_id.parse::<u16>() {
-                    let expected_range = format!("{}-{}", 3000 + id * 10, 3000 + id * 10 + 9);
-                    let expected_path = format!("/path_{}", id);
+    #[test]
+    fn replacement_reuses_a_reserved_range_after_a_config_write_retry() {
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        let mut registry = PortRegistry {
+            entries: HashMap::new(),
+            registry_path: temp_file.path().to_path_buf(),
+        };
+        let previous = PortRange::new(3000, 3009).unwrap();
+        registry.register("project", &previous, "/project").unwrap();
 
-                    assert_eq!(
-                        entry.range, expected_range,
-                        "Range mismatch for project {}",
-                        project_name
-                    );
-                    assert_eq!(
-                        entry.path, expected_path,
-                        "Path mismatch for project {}",
-                        project_name
-                    );
-                }
-            }
-        }
+        let replacement = registry
+            .replace_with_next_range("project", &previous, 10, 3000, "/project")
+            .unwrap();
+        assert_eq!(replacement.to_string(), "3010-3019");
 
-        println!("File locking implementation successfully prevented major race conditions");
-        println!(
-            "Registry integrity maintained with {} entries preserved",
-            actual_count
-        );
+        let retried = registry
+            .replace_with_next_range("project", &previous, 10, 3000, "/project")
+            .unwrap();
+        assert_eq!(retried, replacement);
     }
 }

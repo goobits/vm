@@ -248,15 +248,21 @@ pub fn handle_ports_command(fix: bool) -> VmResult<()> {
     // Fix conflicts by finding a new port range
     vm_progress!("{}", MESSAGES.config.ports_fixing);
 
-    let registry = PortRegistry::load().context("Failed to load port registry")?;
-
     // Calculate range size from current range
     let range_size = current_range.size();
 
-    // Find next available range
-    let new_range_str = registry
-        .suggest_next_range(range_size, 3000)
-        .context("No available port ranges found")?;
+    let current_dir = std::env::current_dir()?;
+    let mut registry = PortRegistry::load().context("Failed to load port registry")?;
+    let new_range = registry
+        .replace_with_next_range(
+            project_name,
+            &current_range,
+            range_size,
+            3000,
+            &current_dir.to_string_lossy(),
+        )
+        .context("Failed to reserve a replacement port range")?;
+    let new_range_str = new_range.to_string();
 
     vm_println!(
         "{}",
@@ -265,17 +271,6 @@ pub fn handle_ports_command(fix: bool) -> VmResult<()> {
 
     // Update vm.yaml with new port range
     update_vm_config_ports(&new_range_str)?;
-
-    // Update port registry
-    let new_range = PortRange::parse(&new_range_str)?;
-    let mut registry = PortRegistry::load()?;
-
-    // Get current directory for registry path
-    let current_dir = std::env::current_dir()?;
-
-    registry
-        .register(project_name, &new_range, &current_dir.to_string_lossy())
-        .context("Failed to register new port range")?;
 
     vm_println!(
         "{}",
