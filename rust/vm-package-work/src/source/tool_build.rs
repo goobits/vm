@@ -20,7 +20,11 @@ impl SourceManager {
             .as_ref()
             .ok_or_else(|| WorkError::Conflict("integration is not prepared".into()))?;
         let integration_bundle = self.integration_bundle(submission)?;
-        let inspect_root = self.root.join("build-source-inspection");
+        // Coordinated build inputs belong to the writable source-mirrors
+        // volume. The workflow service's /data root is intentionally not
+        // writable by its unprivileged user.
+        let source_root = self.root.join("sources");
+        let inspect_root = source_root.join("build-source-inspection");
         tokio::fs::create_dir_all(&inspect_root).await?;
         let inspect = inspect_root.join(vm_core::secrets::generate_random_password(16));
         let inspect_result = async {
@@ -102,8 +106,7 @@ impl SourceManager {
         )
         .await?;
 
-        let directory = self
-            .root
+        let directory = source_root
             .join("build-sources")
             .join(source_key(&definition.name));
         tokio::fs::create_dir_all(&directory).await?;

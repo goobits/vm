@@ -65,6 +65,10 @@ None.
 
 ## Verification Log
 
+- 2026-08-24: Coordinated binary build inputs now keep both transient
+  inspection state and immutable bundles inside the writable source-mirrors
+  volume; the unprivileged workflow service no longer attempts to create paths
+  beneath its intentionally root-owned `/data` mount point.
 - 2026-08-24: Rejected and failed guest checkouts now proceed directly through
   supported terminal cleanup rather than attempting an invalid transition to
   `cancelled`; guest removal uses the validated checkout root without recursive

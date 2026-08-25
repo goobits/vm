@@ -154,6 +154,7 @@ async fn binary_build_sources_are_declared_registered_and_immutable() {
         .tool_build_source_bundle(&store, &submission, "hif")
         .await
         .unwrap();
+    assert!(bundle.starts_with(data.join("sources/build-sources")));
     assert_eq!(
         bundle,
         source
