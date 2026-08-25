@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
+use vm_logging::init_service_subscriber;
 
 #[derive(Parser)]
 #[command(
@@ -26,11 +27,7 @@ enum Command {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .with_target(false)
-        .without_time()
-        .init();
+    let _guard = init_service_subscriber();
 
     match Cli::parse().command {
         Command::Start { host, port, data } => {

@@ -3742,9 +3742,9 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "tracing-subscriber",
  "url",
  "vm-core",
+ "vm-logging",
  "vm-packages",
 ]
 
@@ -3766,9 +3766,9 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "tracing-subscriber",
  "url",
  "vm-core",
+ "vm-logging",
  "vm-packages",
 ]
 

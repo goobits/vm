@@ -26,9 +26,9 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 url = { workspace = true }
 vm-core = { path = "../vm-core" }
+vm-logging = { path = "../vm-logging" }
 vm-packages = { path = "../vm-packages" }
 
 [dev-dependencies]

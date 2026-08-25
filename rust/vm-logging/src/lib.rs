@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     env,
-    io::{self, Write},
+    io::{self, IsTerminal, Write},
     path::Path,
 };
 use tracing::{field::Visit, span, Metadata, Subscriber};
@@ -117,11 +117,100 @@ impl Visit for FieldVisitor<'_> {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LogOutput {
+    Console,
+    File,
+    Both,
+}
+
+impl LogOutput {
+    fn from_env(default: Self) -> Self {
+        let value = env::var("LOG_OUTPUT").ok();
+        Self::parse(value.as_deref(), default)
+    }
+
+    fn parse(value: Option<&str>, default: Self) -> Self {
+        match value.unwrap_or_default().to_ascii_lowercase().as_str() {
+            "console" => Self::Console,
+            "file" => Self::File,
+            "both" => Self::Both,
+            _ => default,
+        }
+    }
+
+    fn uses_console(self) -> bool {
+        matches!(self, Self::Console | Self::Both)
+    }
+
+    fn uses_file(self) -> bool {
+        matches!(self, Self::File | Self::Both)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LogFormat {
+    Human,
+    Json,
+}
+
+impl LogFormat {
+    fn from_env(default: Self) -> Self {
+        let value = env::var("LOG_FORMAT").ok();
+        Self::parse(value.as_deref(), default)
+    }
+
+    fn parse(value: Option<&str>, default: Self) -> Self {
+        match value.unwrap_or_default().to_ascii_lowercase().as_str() {
+            "human" => Self::Human,
+            "json" => Self::Json,
+            "auto" => Self::automatic(),
+            _ => default,
+        }
+    }
+
+    fn automatic() -> Self {
+        if io::stderr().is_terminal() {
+            Self::Human
+        } else {
+            Self::Json
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct LogDefaults {
+    level: &'static str,
+    output: LogOutput,
+    format: LogFormat,
+}
+
+const CLI_DEFAULTS: LogDefaults = LogDefaults {
+    level: "error",
+    output: LogOutput::File,
+    format: LogFormat::Human,
+};
+
+const SERVICE_DEFAULTS: LogDefaults = LogDefaults {
+    level: "info",
+    output: LogOutput::Console,
+    format: LogFormat::Json,
+};
+
 /// Initializes the global tracing subscriber based on environment variables.
 pub fn init_subscriber() -> Option<WorkerGuard> {
-    let log_level = env::var("LOG_LEVEL").unwrap_or_else(|_| "error".to_string());
-    let log_output = env::var("LOG_OUTPUT").unwrap_or_else(|_| "file".to_string());
-    let log_format = env::var("LOG_FORMAT").unwrap_or_else(|_| "human".to_string());
+    init_with_defaults(CLI_DEFAULTS)
+}
+
+/// Initializes container-friendly structured logging for a long-running service.
+pub fn init_service_subscriber() -> Option<WorkerGuard> {
+    init_with_defaults(SERVICE_DEFAULTS)
+}
+
+fn init_with_defaults(defaults: LogDefaults) -> Option<WorkerGuard> {
+    let log_level = env::var("LOG_LEVEL").unwrap_or_else(|_| defaults.level.to_string());
+    let log_output = LogOutput::from_env(defaults.output);
+    let log_format = LogFormat::from_env(defaults.format);
     let log_tags = env::var("LOG_TAGS").unwrap_or_else(|_| String::new());
     let log_file_path = env::var("LOG_FILE_PATH").unwrap_or_else(|_| "/tmp/vm.log".to_string());
 
@@ -155,9 +244,9 @@ pub fn init_subscriber() -> Option<WorkerGuard> {
         filters: tag_filters,
     };
 
-    let use_console = log_output == "console" || log_output == "both";
-    let use_file = log_output == "file" || log_output == "both";
-    let is_json = log_format == "json";
+    let use_console = log_output.uses_console();
+    let use_file = log_output.uses_file();
+    let is_json = log_format == LogFormat::Json;
 
     let mut guard: Option<WorkerGuard> = None;
 
@@ -210,7 +299,7 @@ pub fn init_subscriber() -> Option<WorkerGuard> {
 
 #[cfg(test)]
 mod tests {
-    use super::Tee;
+    use super::{LogFormat, LogOutput, Tee};
     use std::io::{self, Write};
 
     struct FailingWriter;
@@ -246,5 +335,39 @@ mod tests {
         };
 
         assert!(tee.write_all(b"event").is_err());
+    }
+
+    #[test]
+    fn output_modes_report_their_sinks() {
+        assert!(LogOutput::Console.uses_console());
+        assert!(!LogOutput::Console.uses_file());
+        assert!(!LogOutput::File.uses_console());
+        assert!(LogOutput::File.uses_file());
+        assert!(LogOutput::Both.uses_console());
+        assert!(LogOutput::Both.uses_file());
+    }
+
+    #[test]
+    fn output_parser_is_case_insensitive_and_falls_back_safely() {
+        assert_eq!(
+            LogOutput::parse(Some("CONSOLE"), LogOutput::File),
+            LogOutput::Console
+        );
+        assert_eq!(
+            LogOutput::parse(Some("invalid"), LogOutput::File),
+            LogOutput::File
+        );
+    }
+
+    #[test]
+    fn format_parser_is_case_insensitive_and_falls_back_safely() {
+        assert_eq!(
+            LogFormat::parse(Some("JSON"), LogFormat::Human),
+            LogFormat::Json
+        );
+        assert_eq!(
+            LogFormat::parse(Some("invalid"), LogFormat::Human),
+            LogFormat::Human
+        );
     }
 }

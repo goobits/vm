@@ -5,6 +5,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+use vm_logging::init_service_subscriber;
 use vm_package_server::run_server;
 
 #[derive(Parser)]
@@ -35,13 +36,7 @@ enum Commands {
 }
 
 fn main() -> Result<()> {
-    // Initialize tracing
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .with_target(false)
-        .with_level(false)
-        .without_time()
-        .init();
+    let _guard = init_service_subscriber();
 
     let cli = Cli::parse();
 

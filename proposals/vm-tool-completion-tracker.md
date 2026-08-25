@@ -19,11 +19,14 @@ owning Docker workspace without copying its repository or build tree. Live
 TypeMill 1.2.0 acceptance proved exactly-once retry behavior and stable
 container and volume identities. At owner direction, the previously listed
 equipped-host acceptance gates are no longer tracked as release requirements.
-No remaining tasks are recorded.
+Release behavior remains complete. Package-service logging is undergoing a
+bounded consistency and safety pass; no release semantics are changing.
 
 ## Remaining Tasks In Order
 
-None.
+- [ ] Standardize package services on structured, container-safe logging and
+  remove remaining unstructured worker output without logging credentials or
+  private payloads.
 
 ## Completed Foundations
 
