@@ -258,12 +258,12 @@ pub enum Command {
         #[command(subcommand)]
         command: SystemSubcommand,
     },
-    /// Plugin-backed database workflows
+    /// Database workflows
     Db {
         #[command(subcommand)]
         command: DbSubcommand,
     },
-    /// Plugin-backed secret workflows
+    /// Secret workflows
     Secret {
         #[command(subcommand)]
         command: SecretSubcommand,

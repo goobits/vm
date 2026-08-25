@@ -90,16 +90,16 @@ vm system update                       # update vm itself
 
 For the complete command surface, see [docs/user-guide/cli-reference.md](docs/user-guide/cli-reference.md).
 
-## Plugins
+## Plugins and built-in workflows
 
 ```bash
+vm plugin install ./plugins/vibe-dev
 vm db backup app_db
 vm secret interactive
-vm plugin install ./plugins/vibe-dev
 ```
 
-Plugin-backed workflows stay flat and user-facing. You use `vm db` or
-`vm secret`; the implementation can still come from plugins.
+Plugins provide reusable preset definitions and inspectable service manifests.
+Database and secret workflows remain focused built-in command groups.
 
 ## Configuration
 

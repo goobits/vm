@@ -407,7 +407,7 @@ pub enum PluginSubcommand {
     /// Create a new plugin
     New {
         plugin_name: String,
-        #[arg(long)]
+        #[arg(long, value_parser = ["preset", "service"], ignore_case = true)]
         r#type: String,
     },
     /// Check plugin configuration

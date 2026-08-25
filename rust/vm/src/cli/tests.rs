@@ -646,7 +646,18 @@ fn plugin_install_parses() {
 }
 
 #[test]
-fn db_remains_top_level_plugin_command() {
+fn plugin_new_accepts_only_supported_definition_types() {
+    assert!(matches!(
+        Args::parse_from(["vm", "plugin", "new", "demo", "--type", "preset"]).command,
+        Command::Plugin {
+            command: PluginSubcommand::New { plugin_name, r#type }
+        } if plugin_name == "demo" && r#type == "preset"
+    ));
+    assert!(Args::try_parse_from(["vm", "plugin", "new", "demo", "--type", "command"]).is_err());
+}
+
+#[test]
+fn db_remains_top_level_builtin_command() {
     assert!(matches!(
         Args::parse_from(["vm", "db", "ls"]).command,
         Command::Db {

@@ -335,7 +335,7 @@ fn handle_plugin_install(source_path: &str) -> Result<()> {
     // Check if plugin already exists
     if target.exists() {
         anyhow::bail!(
-            "Plugin '{}' is already installed. Remove it first with: vm plugin remove {}",
+            "Plugin '{}' is already installed. Remove it first with: vm plugin rm {}",
             info.name,
             info.name
         );

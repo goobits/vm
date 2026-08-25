@@ -4,17 +4,11 @@ use std::path::PathBuf;
 use vm_core::msg;
 use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
+use vm_plugin::is_valid_plugin_name;
 
 pub(super) fn handle_plugin_new(plugin_name: &str, plugin_type: &str) -> Result<()> {
     // Validate plugin name
-    if plugin_name.is_empty() {
-        anyhow::bail!("Plugin name cannot be empty");
-    }
-
-    if !plugin_name
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-    {
+    if !is_valid_plugin_name(plugin_name) {
         anyhow::bail!(
             "Plugin name must contain only alphanumeric characters, hyphens, and underscores"
         );
@@ -56,10 +50,10 @@ pub(super) fn handle_plugin_new(plugin_name: &str, plugin_type: &str) -> Result<
     fs::write(plugin_dir.join("README.md"), readme_content)
         .context("Failed to create README.md")?;
 
-    let type_cap = match plugin_type_lower.as_str() {
-        "preset" => "Preset",
-        "service" => "Service",
-        _ => "Plugin",
+    let type_cap = if plugin_type_lower == "preset" {
+        "Preset"
+    } else {
+        "Service"
     };
 
     vm_println!(
@@ -126,7 +120,7 @@ pip_packages:
 cargo_packages:
   - cargo-watch
 
-# Services to enable (must be defined in service plugins or built-in)
+# Built-in services to enable
 services:
   - postgres
   - redis
@@ -213,8 +207,11 @@ vm run linux as my-project
 Or add to your `vm.yaml`:
 
 ```yaml
-name: my-project
+version: '2.0'
+provider: docker
 preset: {plugin_name}
+project:
+  name: my-project
 ```
 
 ## What's Included
@@ -259,7 +256,7 @@ A custom service plugin for VM Tool.
 
 ## Description
 
-This service plugin provides a containerized service that can be used by VM presets.
+This plugin packages a containerized service definition for inspection and validation.
 
 ## Installation
 
@@ -269,12 +266,11 @@ vm plugin install /path/to/{plugin_name}
 
 ## Usage
 
-Reference this service in a preset or `vm.yaml`:
+Inspect and validate the installed definition:
 
-```yaml
-name: my-project
-services:
-  - {plugin_name}
+```bash
+vm plugin info {plugin_name}
+vm plugin validate {plugin_name}
 ```
 
 ## Configuration
@@ -306,5 +302,23 @@ The service provides a health check endpoint at `/health` for monitoring.
 MIT
 "#
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{generate_readme_template, generate_service_template};
+
+    #[test]
+    fn generated_plugin_docs_match_the_supported_surface() {
+        let preset = generate_readme_template("demo", "preset");
+        assert!(preset.contains("version: '2.0'"));
+        assert!(preset.contains("project:\n  name: my-project"));
+
+        let service = generate_readme_template("demo", "service");
+        assert!(service.contains("vm plugin info demo"));
+        assert!(service.contains("vm plugin validate demo"));
+        assert!(!service.contains("services:\n  - demo"));
+        assert!(generate_service_template().contains("image: redis:7-alpine"));
     }
 }
