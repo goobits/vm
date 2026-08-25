@@ -33,38 +33,6 @@ fn git_output(repository: &Path, args: &[&str]) -> String {
     String::from_utf8(output.stdout).unwrap().trim().to_string()
 }
 
-#[cfg(unix)]
-#[tokio::test]
-async fn source_commands_time_out() {
-    let started = std::time::Instant::now();
-    let error = run_with_limits(
-        Command::new("sh").args(["-c", "sleep 5"]),
-        "run test source command",
-        Duration::from_millis(100),
-        1024,
-        1024,
-    )
-    .await
-    .unwrap_err();
-    assert!(error.to_string().contains("timed out"));
-    assert!(started.elapsed() < Duration::from_secs(2));
-}
-
-#[cfg(unix)]
-#[tokio::test]
-async fn source_commands_reject_excess_output() {
-    let error = run_with_limits(
-        Command::new("sh").args(["-c", "head -c 2048 /dev/zero"]),
-        "run test source command",
-        Duration::from_secs(1),
-        512,
-        1024,
-    )
-    .await
-    .unwrap_err();
-    assert!(error.to_string().contains("stdout exceeded 512 bytes"));
-}
-
 #[tokio::test]
 async fn binary_build_sources_are_declared_registered_and_immutable() {
     let directory = tempfile::tempdir().unwrap();

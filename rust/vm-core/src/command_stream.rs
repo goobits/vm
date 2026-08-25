@@ -1,7 +1,7 @@
 // Standard library
 use std::ffi::OsStr;
 use std::io::{BufRead, BufReader};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -11,6 +11,8 @@ use crate::error::{Result, VmError};
 use duct::cmd;
 use tracing::info;
 use which::which;
+
+use crate::command_capture::{configure_process_group, terminate_sync};
 
 /// Trait for progress parsers (defined here to avoid circular dependencies)
 pub trait ProgressParser: Send + Sync {
@@ -181,15 +183,16 @@ fn run_with_timeout<A: AsRef<OsStr>>(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     apply_buildkit_environment(&mut command, executable);
+    configure_process_group(&mut command);
     let mut child = command.spawn()?;
     let Some(stdout) = child.stdout.take() else {
-        terminate_and_wait(&mut child);
+        terminate_sync(&mut child);
         return Err(VmError::Internal(format!(
             "Could not capture stdout for '{executable_label}'"
         )));
     };
     let Some(stderr) = child.stderr.take() else {
-        terminate_and_wait(&mut child);
+        terminate_sync(&mut child);
         return Err(VmError::Internal(format!(
             "Could not capture stderr for '{executable_label}'"
         )));
@@ -213,7 +216,7 @@ fn run_with_timeout<A: AsRef<OsStr>>(
         let status = match child.try_wait() {
             Ok(status) => status,
             Err(error) => {
-                terminate_and_wait(&mut child);
+                terminate_sync(&mut child);
                 join_readers(stdout_reader, stderr_reader, executable_label)?;
                 return Err(error.into());
             }
@@ -236,7 +239,7 @@ fn run_with_timeout<A: AsRef<OsStr>>(
         }
 
         if Instant::now() >= deadline {
-            terminate_and_wait(&mut child);
+            terminate_sync(&mut child);
             join_readers(stdout_reader, stderr_reader, executable_label)?;
             drain_remaining(&receiver, parser, &mut recent, &mut stream_error);
             return Err(VmError::Timeout(format!(
@@ -318,11 +321,6 @@ fn record_message(
         }
         StreamMessage::Error(error) => *stream_error = Some(error),
     }
-}
-
-fn terminate_and_wait(child: &mut Child) {
-    let _ = child.kill();
-    let _ = child.wait();
 }
 
 fn join_readers(

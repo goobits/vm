@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use vm_packages::{CheckoutRecord, PackageInfrastructureClient, SubmissionRecord};
 
 use crate::runtime::{command_text, download_bundle, run_command};
@@ -91,16 +91,27 @@ impl ReviewSource {
 }
 
 pub(super) fn file_at(repository: &Path, commit: &str, path: &str) -> Result<Option<String>> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(repository)
-        .args(["show", &format!("{commit}:{path}")])
-        .output()
-        .with_context(|| format!("failed to inspect {path} at {commit}"))?;
-    if !output.status.success() {
+    let present = command_text(
+        Command::new("git").arg("-C").arg(repository).args([
+            "ls-tree",
+            "--full-name",
+            "--name-only",
+            commit,
+            "--",
+            path,
+        ]),
+        "locate file in package review commit",
+    )?;
+    if !present.lines().any(|candidate| candidate == path) {
         return Ok(None);
     }
-    Ok(Some(String::from_utf8(output.stdout)?))
+    Ok(Some(command_text(
+        Command::new("git")
+            .arg("-C")
+            .arg(repository)
+            .args(["show", &format!("{commit}:{path}")]),
+        "inspect file in package review commit",
+    )?))
 }
 
 fn git_lines(repository: &Path, arguments: &[&str], operation: &str) -> Result<Vec<String>> {

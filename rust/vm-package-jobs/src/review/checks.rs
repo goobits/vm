@@ -1,8 +1,11 @@
 use std::path::{Component, Path};
 use std::process::Command;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
+use vm_core::command_capture::sanitized_diagnostic;
 use vm_packages::{PackageEcosystem, SourceKind, ToolKind, ToolSourceManifest};
+
+use crate::runtime::command_output;
 
 pub(super) fn run_required_checks(
     source_kind: SourceKind,
@@ -33,12 +36,17 @@ pub(super) fn run_required_checks(
         _ => bail!("source kind and package ecosystem do not match"),
     };
     for (program, arguments) in commands {
-        let status = Command::new(program)
-            .args(*arguments)
-            .current_dir(source)
-            .status()
-            .with_context(|| format!("failed to launch required check {program}"))?;
-        if !status.success() {
+        let output = command_output(
+            Command::new(program).args(*arguments).current_dir(source),
+            "run required package review check",
+        )?;
+        if !output.status.success() {
+            tracing::warn!(
+                operation = "review_check",
+                program,
+                error = %sanitized_diagnostic(&output.stderr),
+                "required package review check failed"
+            );
             return Ok(false);
         }
     }

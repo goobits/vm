@@ -14,4 +14,8 @@ dialoguer = { workspace = true }
 which = { workspace = true }
 tempfile = { workspace = true }
 rand = { workspace = true }
+tokio = { workspace = true, features = ["fs", "time", "rt", "sync"] }
 vm-platform = { path = "../vm-platform" }
+
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true, features = ["signal"] }
