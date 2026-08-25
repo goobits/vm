@@ -1,6 +1,7 @@
 //! User interaction with containers (SSH/exec/logs)
 use std::io::IsTerminal;
 use std::path::Path;
+use tracing::info;
 
 use super::LifecycleOperations;
 use crate::{container::UserConfig, security::SecurityValidator, shell_session};
@@ -8,7 +9,6 @@ use vm_core::msg;
 use vm_core::{
     command_stream::stream_command_visible,
     error::{Result, VmError},
-    vm_println, vm_progress,
 };
 use vm_messages::messages::MESSAGES;
 
@@ -135,7 +135,7 @@ impl<'a> LifecycleOperations<'a> {
         }
 
         if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
-            vm_println!(
+            info!(
                 "{}",
                 msg!(
                     MESSAGES.service.docker_ssh_info,
@@ -336,9 +336,9 @@ impl<'a> LifecycleOperations<'a> {
 
         // Show helpful header
         if follow {
-            vm_progress!("Following logs for '{target_container}' (press Ctrl+C to stop)");
+            info!("Following logs for '{target_container}' (press Ctrl+C to stop)");
         } else {
-            vm_progress!("Showing the last {tail} log lines for '{target_container}'");
+            info!("Showing the last {tail} log lines for '{target_container}'");
         }
 
         stream_command_visible(self.executable, &args)

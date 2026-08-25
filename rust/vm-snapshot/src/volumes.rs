@@ -2,7 +2,6 @@ use std::path::Path;
 
 use futures::stream::{self, StreamExt};
 use vm_core::error::{Result, VmError};
-use vm_core::vm_println;
 
 use crate::docker::{execute_docker, execute_docker_streaming, execute_docker_with_output};
 use crate::metadata::VolumeSnapshot;
@@ -18,7 +17,7 @@ pub(crate) async fn backup_volumes(
         let volume = volume.clone();
         let volumes_dir = volumes_dir.to_path_buf();
         async move {
-            vm_println!("  Backing up volume: {}", volume);
+            tracing::info!("  Backing up volume: {}", volume);
             let archive_file = format!("{volume}.tar.zst");
             let archive_path = volumes_dir.join(&archive_file);
             let full_volume_name = format!("{project_name}_{volume}");
@@ -68,7 +67,7 @@ pub(crate) async fn restore_volumes(
         let volume = volume.clone();
         let volumes_dir = volumes_dir.to_path_buf();
         async move {
-            vm_println!("  Restoring volume: {}", volume.name);
+            tracing::info!("  Restoring volume: {}", volume.name);
             let full_volume_name = format!("{project_name}_{}", volume.name);
             if force {
                 let _ = execute_docker(executable, &["volume", "rm", &full_volume_name]).await;

@@ -6,7 +6,6 @@ use crate::manager::{SnapshotManager, SnapshotScope};
 use crate::metadata::SnapshotMetadata;
 use std::path::Path;
 use vm_core::error::{Result, VmError};
-use vm_core::{vm_println, vm_success, vm_warning};
 
 /// Handle snapshot import
 pub async fn handle_import(
@@ -25,7 +24,7 @@ pub async fn handle_import(
         ));
     }
 
-    vm_println!("Importing snapshot from {}...", file_path.display());
+    tracing::info!("Importing snapshot from {}...", file_path.display());
 
     // Create temp directory for extraction
     let temp_dir = tempfile::tempdir().map_err(|e| VmError::filesystem(e, "tempdir", "create"))?;
@@ -34,7 +33,7 @@ pub async fn handle_import(
         .await
         .map_err(|e| VmError::filesystem(e, extract_dir.display().to_string(), "create_dir_all"))?;
 
-    vm_println!("  Extracting archive...");
+    tracing::info!("  Extracting archive...");
 
     extract_gzip_archive(file_path, &extract_dir)?;
 
@@ -84,9 +83,9 @@ pub async fn handle_import(
             .unwrap_or("default")
     };
 
-    vm_println!("  Snapshot name: {}", snapshot_name);
-    vm_println!("  Project: {}", project_name);
-    vm_println!(
+    tracing::info!("  Snapshot name: {}", snapshot_name);
+    tracing::info!("  Project: {}", project_name);
+    tracing::info!(
         "  Type: {}",
         if is_global {
             "global (base image)"
@@ -129,41 +128,41 @@ pub async fn handle_import(
     let metadata = SnapshotMetadata::load(&metadata_path)?;
     validate_import_contents(&manifest, &metadata, &extract_dir)?;
 
-    vm_println!("  Loading Docker images...");
+    tracing::info!("  Loading Docker images...");
 
     let images_dir = extract_dir.join("images");
     if images_dir.exists() {
-        vm_println!("Loading service images in parallel...");
+        tracing::info!("Loading service images in parallel...");
         load_service_images(executable, &images_dir, &metadata.services).await?;
     }
 
-    vm_println!("  Installing snapshot...");
+    tracing::info!("  Installing snapshot...");
     let staging = manager.create_staging_dir(scope, &snapshot_name)?;
     copy_directory(&extract_dir, staging.path()).await?;
     manager.install_staged_snapshot(staging, scope, &snapshot_name, force)?;
 
-    vm_success!("Snapshot '{}' imported successfully!", snapshot_name);
+    tracing::info!("Snapshot '{}' imported successfully!", snapshot_name);
 
     if is_global {
-        vm_println!("\nTo use this base image in any project:");
-        vm_println!("  1. Add to your vm.yaml:");
-        vm_println!("     vm:");
-        vm_println!("       box: @{}", snapshot_name);
-        vm_println!("  2. Run: vm run linux");
-        vm_println!("\nThe VM will start instantly using the imported base image!");
+        tracing::info!("\nTo use this base image in any project:");
+        tracing::info!("  1. Add to your vm.yaml:");
+        tracing::info!("     vm:");
+        tracing::info!("       box: @{}", snapshot_name);
+        tracing::info!("  2. Run: vm run linux");
+        tracing::info!("\nThe VM will start instantly using the imported base image!");
     } else {
-        vm_println!("\nTo restore this project snapshot:");
-        vm_println!("  vm snapshot restore {}", snapshot_name);
+        tracing::info!("\nTo restore this project snapshot:");
+        tracing::info!("  vm snapshot restore {}", snapshot_name);
     }
 
     Ok(())
 }
 
 fn validate_manifest_platform(manifest: &serde_json::Value) -> Result<()> {
-    vm_println!("  Verifying platform compatibility...");
+    tracing::info!("  Verifying platform compatibility...");
     let current_arch = vm_platform::platform::architecture();
     let current_os = vm_platform::platform::operating_system();
-    vm_println!("    Current platform: {}/{}", current_os, current_arch);
+    tracing::info!("    Current platform: {}/{}", current_os, current_arch);
 
     let manifest_os = manifest
         .get("platform")
@@ -187,7 +186,7 @@ fn validate_manifest_platform(manifest: &serde_json::Value) -> Result<()> {
             ));
         }
     } else {
-        vm_warning!("Snapshot manifest does not include platform metadata; proceeding without a compatibility guarantee.");
+        tracing::warn!("Snapshot manifest does not include platform metadata; proceeding without a compatibility guarantee.");
     }
 
     Ok(())

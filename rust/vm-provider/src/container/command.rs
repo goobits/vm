@@ -324,18 +324,16 @@ impl ContainerOps {
         context_dir: &std::path::Path,
         build_args: Option<&std::collections::HashMap<String, String>>,
     ) -> Result<()> {
-        use vm_core::command_stream::stream_command_visible;
-        use vm_core::vm_info;
+        use tracing::info;
+        use vm_core::command_stream::stream_command;
 
         let exec_name = executable.unwrap_or("docker");
 
-        vm_info!(
+        info!(
             "Building custom base image '{}' from {:?} using {}...",
-            image_name,
-            dockerfile_path,
-            exec_name
+            image_name, dockerfile_path, exec_name
         );
-        vm_info!("This may take 5-15 minutes on first build...");
+        info!("This may take 5-15 minutes on first build...");
 
         let mut args = vec![
             "build".to_string(),
@@ -355,10 +353,9 @@ impl ContainerOps {
 
         args.push(context_dir.to_string_lossy().to_string());
 
-        // Stream the build output directly to the user
-        stream_command_visible(exec_name, &args)?;
+        stream_command(exec_name, &args)?;
 
-        vm_info!("✓ Successfully built custom base image '{}'", image_name);
+        info!("Successfully built custom base image '{}'", image_name);
         Ok(())
     }
 }

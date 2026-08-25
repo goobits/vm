@@ -1,6 +1,5 @@
-use std::io::{self, Write};
 use std::path::PathBuf;
-use tracing::{error, info};
+use tracing::info;
 use vm_core::error::{Result, VmError};
 use vm_core::msg;
 use vm_messages::messages::MESSAGES;
@@ -55,26 +54,16 @@ pub(crate) fn parse_mount_strings(
 
 impl TempVmOps {
     /// Add a mount to the running temporary VM.
-    pub fn mount(
-        path: String,
-        yes: bool,
-        provider: Box<dyn Provider>,
-        config: vm_config::config::VmConfig,
-    ) -> Result<()> {
+    pub fn mount(path: String, yes: bool, provider: Box<dyn Provider>) -> Result<()> {
         let state_manager = StateManager::new().map_err(|error| {
             VmError::Internal(format!(
                 "Failed to initialize state manager for mount operation: {error}"
             ))
         })?;
         if !state_manager.state_exists() {
-            if Self::prompt_for_temp_vm_creation("with this mount") {
-                info!("\n🚀 Creating temporary VM...");
-                Self::create(vec![path.clone()], false, config, provider.clone())?;
-                info!("💡 Tip: Connect with 'vm temp ssh'");
-            } else {
-                info!("Cancelled. Create a temp VM with: vm temp create <directory>");
-            }
-            return Ok(());
+            return Err(VmError::NotFound(
+                "No temporary VM exists; create one before adding mounts".to_string(),
+            ));
         }
 
         let (source, target, permissions) = parse_mount_string(&path).map_err(|error| {
@@ -90,14 +79,10 @@ impl TempVmOps {
             )));
         }
         if !yes {
-            let message = msg!(
-                MESSAGES.service.temp_vm_confirm_add_mount,
-                source = source.display().to_string()
-            );
-            if !confirm_prompt(&message) {
-                error!("Mount operation cancelled");
-                return Ok(());
-            }
+            return Err(VmError::Conflict(format!(
+                "Adding mount '{}' requires explicit confirmation",
+                source.display()
+            )));
         }
 
         let permissions_display = permissions.to_string();
@@ -178,14 +163,9 @@ impl TempVmOps {
         if all {
             let mount_count = state.mount_count();
             if !yes {
-                let message = msg!(
-                    MESSAGES.service.temp_vm_confirm_remove_all_mounts,
-                    count = mount_count.to_string()
-                );
-                if !confirm_prompt(&message) {
-                    error!("Unmount operation cancelled");
-                    return Ok(());
-                }
+                return Err(VmError::Conflict(format!(
+                    "Removing all {mount_count} mounts requires explicit confirmation"
+                )));
             }
             state.clear_mounts();
             state_manager.save_state(&state).map_err(|error| {
@@ -232,14 +212,10 @@ impl TempVmOps {
             )));
         }
         if !yes {
-            let message = msg!(
-                MESSAGES.service.temp_vm_confirm_remove_mount,
-                source = source.display().to_string()
-            );
-            if !confirm_prompt(&message) {
-                error!("Unmount operation cancelled");
-                return Ok(());
-            }
+            return Err(VmError::Conflict(format!(
+                "Removing mount '{}' requires explicit confirmation",
+                source.display()
+            )));
         }
 
         let removed = state
@@ -319,15 +295,6 @@ impl TempVmOps {
         );
         Ok(())
     }
-}
-
-fn confirm_prompt(message: &str) -> bool {
-    print!("{message}");
-    let _ = io::stdout().flush();
-    let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .is_ok_and(|_| matches!(input.trim().to_lowercase().as_str(), "y" | "yes"))
 }
 
 #[cfg(test)]

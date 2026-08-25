@@ -14,12 +14,12 @@ mod pipx;
 pub mod provisioning;
 pub mod status;
 
-use crate::{progress::ProgressReporter, TempProvider, TempVmState};
+use crate::{TempProvider, TempVmState};
+use tracing::{info, warn};
 use vm_config::config::VmConfig;
 use vm_core::{
     command_stream::stream_command,
     error::{Result, VmError},
-    vm_warning,
 };
 
 use super::{
@@ -80,44 +80,36 @@ impl<'a> LifecycleOperations<'a> {
 // TempProvider trait implementation (delegates to creation/execution modules)
 impl<'a> TempProvider for LifecycleOperations<'a> {
     fn update_mounts(&self, state: &TempVmState) -> Result<()> {
-        let progress = ProgressReporter::new();
-        let main_phase = progress.start_phase("Updating container mounts");
-        ProgressReporter::task(&main_phase, "Checking container status...");
+        info!("Updating container mounts");
 
         if self.is_container_running(&state.container_name)? {
-            ProgressReporter::task(&main_phase, "Stopping container...");
+            info!("Stopping container before mount update");
             stream_command(self.executable, &["stop", &state.container_name])?;
         }
 
-        ProgressReporter::task(&main_phase, "Recreating container with new mounts...");
+        info!("Recreating container with new mounts");
         self.recreate_with_mounts(state)?;
 
-        ProgressReporter::task(&main_phase, "Starting container...");
+        info!("Starting container after mount update");
         let compose_path = compose_path(self.generated_dir, None);
         self.compose_runtime
             .command(self.executable, &compose_path, "up", &["-d"])?
             .stream()?;
 
-        ProgressReporter::task(&main_phase, "Checking container health...");
+        info!("Checking container health after mount update");
         if !self.check_container_health(&state.container_name)? {
-            ProgressReporter::finish_phase(
-                &main_phase,
-                "Mount update failed - container not healthy",
-            );
             return Err(VmError::Internal(format!(
                 "Container '{}' is not healthy after mount update. Check container logs for issues",
                 state.container_name
             )));
         }
 
-        ProgressReporter::finish_phase(&main_phase, "Mounts updated successfully");
+        info!("Container mounts updated successfully");
         Ok(())
     }
 
     fn recreate_with_mounts(&self, state: &TempVmState) -> Result<()> {
-        let progress = ProgressReporter::new();
-        let phase = progress.start_phase("Recreating container configuration");
-        ProgressReporter::task(&phase, "Generating updated docker-compose.yml...");
+        info!("Generating updated Compose configuration");
 
         let temp_config = self.prepare_temp_config()?;
         mountpoints::prepare(&temp_config, self.project_dir, Some(&state.mounts))?;
@@ -133,16 +125,15 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
         // file that the next `docker-compose up` would fail to parse.
         crate::container::artifacts::secure_write_if_changed(&compose_path, content.as_bytes())?;
 
-        ProgressReporter::task(&phase, "Removing old container...");
+        info!("Removing old container before applying mount configuration");
         if let Err(e) = stream_command(self.executable, &["rm", "-f", &state.container_name]) {
-            vm_warning!(
+            warn!(
                 "Failed to remove old container {}: {}",
-                &state.container_name,
-                e
+                &state.container_name, e
             );
         }
 
-        ProgressReporter::finish_phase(&phase, "Container configuration updated");
+        info!("Container mount configuration updated");
         Ok(())
     }
 

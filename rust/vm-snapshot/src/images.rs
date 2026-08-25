@@ -2,7 +2,6 @@ use std::path::Path;
 
 use futures::stream::{self, StreamExt};
 use vm_core::error::{Result, VmError};
-use vm_core::{vm_error, vm_println};
 
 use crate::docker::{execute_docker_streaming, execute_docker_with_output};
 use crate::manager::snapshot_file_path;
@@ -17,7 +16,7 @@ pub(crate) async fn snapshot_container(
     container_id: &str,
     images_dir: &Path,
 ) -> Result<ServiceSnapshot> {
-    vm_println!("  Snapshotting container: {}", service_name);
+    tracing::info!("  Snapshotting container: {}", service_name);
 
     let image_tag = format!(
         "vm-snapshot/{}/{}:{}",
@@ -45,13 +44,13 @@ pub(crate) async fn export_service_images(
         let service = service.clone();
         let images_dir = images_dir.to_path_buf();
         async move {
-            vm_println!("  Exporting image for service '{}'...", service.name);
+            tracing::info!("  Exporting image for service '{}'...", service.name);
             let current_digest = image_digest(executable, &service.image_tag)
                 .await
                 .ok()
                 .flatten();
             if current_digest.is_none() {
-                vm_error!(
+                tracing::error!(
                     "Image '{}' not found, skipping. You may need to recreate this snapshot.",
                     service.image_tag
                 );
@@ -65,7 +64,7 @@ pub(crate) async fn export_service_images(
                     (Some(stored), Some(current)) if stored == current
                 )
             {
-                vm_println!(
+                tracing::info!(
                     "  Image '{}' unchanged (digest matches), skipping export",
                     service.name
                 );
@@ -94,7 +93,7 @@ pub(crate) async fn load_service_images(
         let service = service.clone();
         let images_dir = images_dir.to_path_buf();
         async move {
-            vm_println!("  Loading image: {}", service.name);
+            tracing::info!("  Loading image: {}", service.name);
             let image_path = snapshot_file_path(&images_dir, &service.image_file, "image file")?;
             let image_path = path_argument(&image_path)?;
             execute_docker_streaming(executable, &["load", "-i", image_path]).await

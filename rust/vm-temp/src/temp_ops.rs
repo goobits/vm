@@ -111,7 +111,7 @@ impl TempVmOps {
     }
 
     /// SSH into the temporary VM
-    pub fn ssh(provider: Box<dyn Provider>, config: VmConfig) -> Result<()> {
+    pub fn ssh(provider: Box<dyn Provider>, _config: VmConfig) -> Result<()> {
         let state_manager = StateManager::new().map_err(|e| {
             VmError::Internal(format!(
                 "Failed to initialize state manager for SSH connection: {}",
@@ -120,24 +120,9 @@ impl TempVmOps {
         })?;
 
         if !state_manager.state_exists() {
-            // Prompt user to create temp VM
-            if Self::prompt_for_temp_vm_creation("now") {
-                info!("\n🚀 Creating temporary VM...");
-
-                // Create temp VM with current directory as mount
-                let project_dir = std::env::current_dir().map_err(|e| {
-                    VmError::Filesystem(format!("Failed to get current directory: {}", e))
-                })?;
-
-                let mounts = vec![project_dir.display().to_string()];
-                Self::create(mounts, false, config, provider.clone())?;
-
-                info!("Connecting to temporary VM...");
-            // Fall through to SSH connection below
-            } else {
-                info!("Cancelled. Create a temp VM with: vm temp create <directory>");
-                return Ok(());
-            }
+            return Err(VmError::NotFound(
+                "No temporary VM exists; create one before connecting".to_string(),
+            ));
         }
 
         let state = state_manager.load_state()?;
@@ -296,35 +281,6 @@ impl TempVmOps {
                 error!("   Error: {}", e);
                 Err(e)
             }
-        }
-    }
-
-    // Helper functions
-
-    /// Helper function to prompt for temp VM creation
-    /// Returns true if user wants to create, false otherwise
-    pub(super) fn prompt_for_temp_vm_creation(action_context: &str) -> bool {
-        use std::io::{self, IsTerminal, Write};
-
-        // Check if we're in an interactive terminal
-        if !io::stdin().is_terminal() {
-            return false;
-        }
-
-        println!("No temporary VM found.\n");
-        print!("Would you like to create one {}? [Y/n]: ", action_context);
-
-        // If stdout flush fails, continue anyway
-        let _ = io::stdout().flush();
-
-        let mut input = String::new();
-        match io::stdin().read_line(&mut input) {
-            Ok(_) => {
-                let input = input.trim().to_lowercase();
-                // Default to 'yes' on empty input (just pressing Enter)
-                input.is_empty() || input == "y" || input == "yes"
-            }
-            Err(_) => false,
         }
     }
 }

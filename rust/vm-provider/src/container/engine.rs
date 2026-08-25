@@ -3,7 +3,7 @@ use std::process::Command;
 use std::time::Duration;
 
 use vm_config::config::ProviderName;
-use vm_core::command_stream::{is_tool_installed, stream_command, stream_command_visible};
+use vm_core::command_stream::{is_tool_installed, stream_command};
 use vm_core::error::{Result, VmError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -266,11 +266,6 @@ impl ComposeInvocation {
     pub(crate) fn stream(&self) -> Result<()> {
         let args = self.args.iter().map(String::as_str).collect::<Vec<_>>();
         stream_command(&self.program, &args)
-    }
-
-    pub(crate) fn stream_visible(&self) -> Result<()> {
-        let args = self.args.iter().map(String::as_str).collect::<Vec<_>>();
-        stream_command_visible(&self.program, &args)
     }
 }
 

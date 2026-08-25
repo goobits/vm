@@ -4,10 +4,9 @@ use crate::{
 };
 use std::io::IsTerminal;
 use std::path::Path;
-use tracing::info;
+use tracing::{info, warn};
 use vm_core::error::Result;
 use vm_core::msg;
-use vm_core::{vm_println, vm_warning};
 use vm_messages::messages::MESSAGES;
 
 struct InteractiveTarget<'a> {
@@ -110,7 +109,7 @@ impl TartProvider {
                     })?
             }
             ShellTransport::Ssh(ip) => {
-                vm_warning!("Tart guest agent unavailable; connecting over SSH to {ip}");
+                warn!("Tart guest agent unavailable; connecting over SSH to {ip}");
                 let identity = TartSshIdentity::ensure()?;
                 identity.ensure_authorized(target.user, ip)?;
                 let recovery = self.shell_recovery_script(&target.instance, &target.sync_dir)?;
@@ -151,7 +150,7 @@ impl TartProvider {
         let target_path_quoted = shell_session::quote_posix_argument(&target_path);
 
         if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
-            vm_println!(
+            info!(
                 "{}",
                 msg!(
                     MESSAGES.service.docker_ssh_info,
@@ -186,7 +185,7 @@ impl TartProvider {
                     .map_err(|e| VmError::Provider(format!("Exec failed: {e}")))?
             }
             ShellTransport::Ssh(ip) => {
-                vm_warning!("Tart guest agent unavailable; connecting over SSH to {ip}");
+                warn!("Tart guest agent unavailable; connecting over SSH to {ip}");
                 let identity = TartSshIdentity::ensure()?;
                 identity.ensure_authorized(target.user, ip)?;
                 let recovery = self.shell_recovery_script(&target.instance, &target.sync_dir)?;

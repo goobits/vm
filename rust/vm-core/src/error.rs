@@ -9,6 +9,9 @@ pub enum VmError {
     #[error("Provider error: {0}")]
     Provider(String),
 
+    #[error("Conflict: {0}")]
+    Conflict(String),
+
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 

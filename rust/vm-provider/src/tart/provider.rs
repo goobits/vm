@@ -15,9 +15,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tracing::{error, info};
 use vm_config::config::VmConfig;
-use vm_core::command_stream::{
-    is_tool_installed, stream_command, stream_command_visible_with_env, stream_command_with_env,
-};
+use vm_core::command_stream::{is_tool_installed, stream_command, stream_command_with_env};
 use vm_core::error::Result;
 use vm_core::msg;
 use vm_messages::messages::MESSAGES;
@@ -80,14 +78,6 @@ impl TartProvider {
         }
     }
 
-    fn stream_tart_command_visible<A: AsRef<OsStr>>(&self, args: &[A]) -> Result<()> {
-        if let Some(tart_home) = self.tart_home() {
-            stream_command_visible_with_env("tart", args, &[("TART_HOME", tart_home.as_str())])
-        } else {
-            vm_core::command_stream::stream_command_visible("tart", args)
-        }
-    }
-
     pub(super) fn get_instance_state(&self, instance_name: &str) -> Result<Option<String>> {
         let output = self.tart_expr(&["list", "--format", "json"]).read()?;
         let vms: Vec<serde_json::Value> = serde_json::from_str(&output)?;
@@ -146,7 +136,7 @@ impl CommandProvider for TartProvider {
     fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()> {
         let args = self.guest_exec_args(container, cmd)?;
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        self.stream_tart_command_visible(&arg_refs)
+        self.stream_tart_command(&arg_refs)
     }
 
     fn exec_interactive(

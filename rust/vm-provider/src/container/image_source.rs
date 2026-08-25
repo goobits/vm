@@ -1,9 +1,10 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use tracing::info;
 
-use vm_core::command_stream::stream_command_visible;
+use vm_core::command_stream::stream_command;
 use vm_core::error::{Result, VmError};
-use vm_core::{vm_dbg, vm_info};
+use vm_core::vm_dbg;
 use vm_snapshot::{SnapshotManager, SnapshotScope};
 
 use super::{BuildOperations, ContainerOps};
@@ -56,13 +57,11 @@ impl<'a> BuildOperations<'a> {
         let mut last_stderr = String::new();
         for attempt in 1..=MAX_ATTEMPTS {
             if attempt == 1 {
-                vm_info!("Pulling image '{}'...", image);
+                info!("Pulling image '{}'...", image);
             } else {
-                vm_info!(
+                info!(
                     "Pulling image '{}' (attempt {}/{})...",
-                    image,
-                    attempt,
-                    MAX_ATTEMPTS
+                    image, attempt, MAX_ATTEMPTS
                 );
             }
 
@@ -89,7 +88,7 @@ impl<'a> BuildOperations<'a> {
 
             if attempt < MAX_ATTEMPTS && Self::is_transient_pull_error(&stderr) {
                 let delay = std::time::Duration::from_secs(1u64 << attempt);
-                vm_info!(
+                info!(
                     "Transient pull failure for '{}', retrying in {}s...",
                     image,
                     delay.as_secs()
@@ -164,8 +163,6 @@ impl<'a> BuildOperations<'a> {
     ///
     /// Returns a tuple of (build_context_path, base_image_name, is_snapshot)
     pub fn prepare_build_context(&self) -> Result<(PathBuf, String, bool)> {
-        use vm_core::vm_info;
-
         // Get box configuration
         let box_config = self.get_box_config()?;
 
@@ -192,7 +189,7 @@ impl<'a> BuildOperations<'a> {
                     )));
                 }
 
-                vm_info!("Building from custom Dockerfile: {}", path.display());
+                info!("Building from custom Dockerfile: {}", path.display());
 
                 // Build the image with a generated name
                 let image_name = self.get_custom_image_name();
@@ -210,9 +207,7 @@ impl<'a> BuildOperations<'a> {
             }
             BoxConfig::Snapshot(name) => {
                 // Load image from global snapshot
-                use vm_core::vm_println;
-
-                vm_println!("Loading base image from snapshot '@{}'...", name);
+                info!("Loading base image from snapshot '@{}'...", name);
 
                 let manager = SnapshotManager::new()?;
                 let snapshot_dir = manager.get_snapshot_dir(SnapshotScope::Global, name)?;
@@ -277,7 +272,7 @@ impl<'a> BuildOperations<'a> {
                 };
 
                 if !image_exists {
-                    vm_println!("  Image not loaded, loading from snapshot...");
+                    info!("  Image not loaded, loading from snapshot...");
 
                     // Load image from tar file
                     let image_file_path = snapshot_dir.join("images").join("base.tar");
@@ -289,8 +284,7 @@ impl<'a> BuildOperations<'a> {
                         )));
                     }
 
-                    // Stream output so user sees docker load progress
-                    stream_command_visible(
+                    stream_command(
                         self.executable,
                         &["load", "-i", Self::path_to_string(&image_file_path)?],
                     )
@@ -301,7 +295,7 @@ impl<'a> BuildOperations<'a> {
                         ))
                     })?;
 
-                    vm_println!("  ✓ Image loaded successfully");
+                    info!("  ✓ Image loaded successfully");
                 }
 
                 image_tag.to_string()

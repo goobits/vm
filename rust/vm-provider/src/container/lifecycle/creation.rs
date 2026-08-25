@@ -75,10 +75,9 @@ impl<'a> LifecycleOperations<'a> {
                 .map_err(|error| warn!("Failed to check existing containers: {error}"))
                 .unwrap_or(false);
         if container_exists {
-            return match instance_name {
-                Some(name) => self.handle_existing_container_with_instance(name, context),
-                None => self.handle_existing_container(context),
-            };
+            return Err(VmError::Conflict(format!(
+                "Container '{container_name}' already exists; start it or remove it before creating a replacement"
+            )));
         }
 
         if self
@@ -158,7 +157,7 @@ impl<'a> LifecycleOperations<'a> {
                 );
             }
 
-            command.stream_visible().map_err(|error| match instance_name {
+            command.stream().map_err(|error| match instance_name {
                 Some(name) => VmError::Internal(format!(
                     "Docker build failed for project '{}' instance '{}'. Check that Docker is running and build context is valid: {}",
                     self.project_name(),
@@ -178,7 +177,7 @@ impl<'a> LifecycleOperations<'a> {
         } else {
             self.compose_runtime
                 .command(self.executable, &compose_path, "up", &["-d"])?
-                .stream_visible()
+                .stream()
                 .map_err(|error| {
                     let error_message = error.to_string();
                     self.handle_compose_start_error(error, error_message, instance_name)

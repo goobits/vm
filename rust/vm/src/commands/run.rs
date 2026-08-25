@@ -6,7 +6,7 @@ use vm_config::{
     config::{BoxSpec, CpuLimit, MemoryLimit, TartConfig, VmConfig},
     AppConfig,
 };
-use vm_core::{vm_hint, vm_success};
+use vm_core::{vm_hint, vm_progress, vm_success};
 use vm_provider::{get_provider, InstanceState, VmError as ProviderError};
 
 use super::{environment::mac_profile, vm_ops};
@@ -129,7 +129,10 @@ fn handle_ephemeral(intent: RunIntent) -> VmResult<()> {
     let mut config = load_config_lenient(intent.config_path)?;
     config.provider = provider_override.map(Into::into);
     let provider = get_provider(config.clone()).map_err(VmError::from)?;
-    TempVmOps::create(intent.mounts, intent.ephemeral, config, provider).map_err(VmError::from)
+    vm_progress!("Creating temporary environment...");
+    TempVmOps::create(intent.mounts, intent.ephemeral, config, provider).map_err(VmError::from)?;
+    vm_success!("Temporary environment created");
+    Ok(())
 }
 
 fn load_config_lenient(config_path: Option<PathBuf>) -> VmResult<VmConfig> {

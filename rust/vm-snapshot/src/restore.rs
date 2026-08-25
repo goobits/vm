@@ -69,19 +69,19 @@ pub async fn handle_restore(
     } else {
         format!("for project '{}'", project_name)
     };
-    vm_core::vm_println!("Restoring snapshot '{}' {}...", snapshot_name, scope_desc);
+    tracing::info!("Restoring snapshot '{}' {}...", snapshot_name, scope_desc);
 
     // Get project directory
     let project_dir =
         std::env::current_dir().map_err(|e| VmError::filesystem(e, "current_dir", "get"))?;
 
     // Stop current compose environment
-    vm_core::vm_println!("Stopping current environment...");
+    tracing::info!("Stopping current environment...");
     execute_docker_compose_status(executable, &["down"], &project_dir).await?;
 
     // Restore volumes
     if !metadata.volumes.is_empty() {
-        vm_core::vm_println!("Restoring volumes in parallel...");
+        tracing::info!("Restoring volumes in parallel...");
         let volumes_dir = snapshot_dir.join("volumes");
 
         restore_volumes(
@@ -96,14 +96,14 @@ pub async fn handle_restore(
 
     // Load images
     if !metadata.services.is_empty() {
-        vm_core::vm_println!("Loading service images in parallel...");
+        tracing::info!("Loading service images in parallel...");
         let images_dir = snapshot_dir.join("images");
 
         load_service_images(executable, &images_dir, &metadata.services).await?;
     }
 
     // Restore configuration files
-    vm_core::vm_println!("Restoring configuration files...");
+    tracing::info!("Restoring configuration files...");
     let compose_dir = snapshot_dir.join("compose");
 
     // Backup current files
@@ -120,22 +120,22 @@ pub async fn handle_restore(
                 tokio::fs::copy(&dest, &backup_path)
                     .await
                     .map_err(|e| VmError::filesystem(e, dest.to_string_lossy(), "copy"))?;
-                vm_core::vm_println!("  Backed up {} to {}.bak", config_file, config_file);
+                tracing::info!("  Backed up {} to {}.bak", config_file, config_file);
             }
 
             // Restore from snapshot
             tokio::fs::copy(&source, &dest)
                 .await
                 .map_err(|e| VmError::filesystem(e, dest.to_string_lossy(), "copy"))?;
-            vm_core::vm_println!("  Restored {}", config_file);
+            tracing::info!("  Restored {}", config_file);
         }
     }
 
     // Start compose environment
-    vm_core::vm_println!("Starting restored environment...");
+    tracing::info!("Starting restored environment...");
     execute_docker_compose_status(executable, &["up", "-d"], &project_dir).await?;
 
-    vm_core::vm_success!("Snapshot '{}' restored successfully", snapshot_name);
+    tracing::info!("Snapshot '{}' restored successfully", snapshot_name);
 
     // Show git info if available
     if let Some(branch) = &metadata.git_branch {
@@ -144,7 +144,7 @@ pub async fn handle_restore(
         } else {
             ""
         };
-        vm_core::vm_println!(
+        tracing::info!(
             "\nSnapshot was created from git branch '{}' @ {}{}",
             branch,
             metadata.git_commit.as_deref().unwrap_or("unknown"),

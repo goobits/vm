@@ -1,7 +1,7 @@
 use super::{GuestCommand, TartProvisioner};
 use crate::shell_session::quote_posix_argument;
+use tracing::warn;
 use vm_config::config::VmConfig;
-use vm_core::vm_warning;
 
 impl TartProvisioner {
     pub(crate) fn reconcile_runtime(&self, config: &VmConfig) -> vm_core::error::Result<()> {
@@ -38,7 +38,7 @@ impl TartProvisioner {
         }
 
         if self.is_macos_guest(config) {
-            vm_warning!(
+            warn!(
                 "Docker in a macOS Tart guest uses Colima with QEMU software emulation and will be much slower. Prefer the Linux Tart profile for Docker workloads."
             );
             return Some(self.macos_docker_tools_command());

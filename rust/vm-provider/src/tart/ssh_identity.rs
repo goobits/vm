@@ -5,10 +5,10 @@ use std::io::IsTerminal;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
+use tracing::{info, warn};
 
 use crate::{shell_session, VmError};
 use vm_core::error::Result;
-use vm_core::{vm_println, vm_warning};
 
 const KEY_FILE: &str = "tart_ed25519";
 const KEY_COMMENT: &str = "vm-tart";
@@ -81,7 +81,7 @@ chmod 600 "$HOME/.ssh/authorized_keys""#
             )));
         }
 
-        vm_warning!(
+        warn!(
             "Tart guest agent unavailable; one guest password is required to install the managed SSH key"
         );
         let mut command = self.base_command(false, false);
@@ -105,7 +105,7 @@ chmod 600 "$HOME/.ssh/authorized_keys""#
                     .to_string(),
             ));
         }
-        vm_println!("Managed Tart SSH key installed");
+        info!("Managed Tart SSH key installed");
         Ok(())
     }
 

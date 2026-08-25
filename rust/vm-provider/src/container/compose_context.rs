@@ -4,11 +4,9 @@ use std::path::Path;
 use std::process::Command;
 
 use tera::Context as TeraContext;
+use tracing::warn;
 use vm_config::{config::VmConfig, detect_worktrees_in};
-use vm_core::{
-    error::{Result, VmError},
-    vm_warning,
-};
+use vm_core::error::{Result, VmError};
 
 use crate::user_home::resolve_home_dir;
 use crate::ProviderContext;
@@ -129,7 +127,7 @@ pub(super) fn process_dotfiles(config: &VmConfig, username: &str) -> Vec<(String
         .filter_map(|configured_path| {
             let expanded = expand_tilde(configured_path)?;
             if !Path::new(expanded.as_ref()).exists() {
-                vm_warning!("Dotfile not found, skipping: {expanded}");
+                warn!("Dotfile not found, skipping: {expanded}");
                 return None;
             }
             let target = if let Some(relative) = configured_path.strip_prefix("~/") {
@@ -219,7 +217,7 @@ fn worktree_mount_plan_with_root(
     let managed_root = if !create_directory || fs::create_dir_all(&root).is_ok() {
         Some(root)
     } else {
-        vm_warning!("Failed to create worktrees directory {}", root.display());
+        warn!("Failed to create worktrees directory {}", root.display());
         None
     };
     let mounts = resolve_worktree_mounts(

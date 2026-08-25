@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use super::command_context::load_runtime_subject;
 use crate::error::{VmError, VmResult};
 use vm_config::AppConfig;
+use vm_core::{vm_progress, vm_success};
 
 pub(super) async fn save(
     config_path: Option<PathBuf>,
@@ -20,6 +21,7 @@ pub(super) async fn save(
         global: subject.global_config,
         vm: subject.config,
     };
+    vm_progress!("Saving '{target}' as snapshot '{snapshot}'...");
     vm_snapshot::create::handle_create(
         &config,
         &provider,
@@ -33,7 +35,9 @@ pub(super) async fn save(
         force,
     )
     .await
-    .map_err(VmError::from)
+    .map_err(VmError::from)?;
+    vm_success!("Saved snapshot '{snapshot}'");
+    Ok(())
 }
 
 pub(super) async fn revert(
@@ -50,9 +54,12 @@ pub(super) async fn revert(
         global: subject.global_config,
         vm: subject.config,
     };
+    vm_progress!("Reverting '{target}' to snapshot '{snapshot}'...");
     vm_snapshot::restore::handle_restore(&config, &provider, &snapshot, Some(&target), force)
         .await
-        .map_err(VmError::from)
+        .map_err(VmError::from)?;
+    vm_success!("Reverted '{target}' to snapshot '{snapshot}'");
+    Ok(())
 }
 
 pub(super) async fn package(
@@ -88,6 +95,7 @@ pub(super) async fn package(
         .await?;
     }
 
+    vm_progress!("Packaging snapshot '{snapshot}'...");
     vm_snapshot::export::handle_export(
         &provider,
         snapshot,
@@ -96,7 +104,9 @@ pub(super) async fn package(
         Some(&target),
     )
     .await
-    .map_err(VmError::from)
+    .map_err(VmError::from)?;
+    vm_success!("Packaged snapshot '{snapshot}'");
+    Ok(())
 }
 
 pub(super) fn parse_save(words: &[String]) -> VmResult<(Option<String>, String)> {

@@ -1,7 +1,6 @@
-use tracing::info;
+use tracing::{info, warn};
 use vm_config::config::VmConfig;
 use vm_core::error::Result;
-use vm_core::vm_warning;
 use vm_platform::platform;
 
 use super::provider::TartProvider;
@@ -50,12 +49,12 @@ impl TartProvider {
         let requested = ResolvedResources::resolve(config)?;
         let cpus = requested.cpus.map(|value| {
             let adjusted = Self::adjust_cpu_count(value);
-            if adjusted != value { vm_warning!("Tart requested {value} CPUs, but the host can safely apply {adjusted}; using {adjusted}"); }
+            if adjusted != value { warn!("Tart requested {value} CPUs, but the host can safely apply {adjusted}; using {adjusted}"); }
             adjusted
         });
         let memory_mb = requested.memory_mb.map(|value| {
             let adjusted = Self::adjust_memory_mb(value);
-            if adjusted != value { vm_warning!("Tart requested {value} MB RAM, but the host can safely apply {adjusted} MB; using {adjusted} MB"); }
+            if adjusted != value { warn!("Tart requested {value} MB RAM, but the host can safely apply {adjusted} MB; using {adjusted} MB"); }
             adjusted
         });
         let host_cpus = platform::cpu_core_count().unwrap_or(2);
@@ -63,7 +62,7 @@ impl TartProvider {
             .unwrap_or(4)
             .saturating_mul(1024);
         if Self::uses_most_of_host(cpus, memory_mb, host_cpus, host_memory_mb) {
-            vm_warning!("Tart is configured for at least 75% of this host; Docker Desktop or another VM may oversubscribe macOS");
+            warn!("Tart is configured for at least 75% of this host; Docker Desktop or another VM may oversubscribe macOS");
         }
         Ok(ResolvedResources { memory_mb, cpus })
     }

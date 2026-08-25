@@ -129,7 +129,7 @@ pub async fn handle_create(
         format!("for project '{}'", project_name)
     };
 
-    vm_core::vm_println!("Creating snapshot '{}' {}...", snapshot_name, display_scope);
+    tracing::info!("Creating snapshot '{}' {}...", snapshot_name, display_scope);
 
     // Get project directory
     let project_dir =
@@ -160,12 +160,12 @@ pub async fn handle_create(
     let (services, volumes) = if has_compose_file {
         // Quiesce containers if requested
         if quiesce {
-            vm_core::vm_println!("Pausing containers for consistent snapshot...");
+            tracing::info!("Pausing containers for consistent snapshot...");
             execute_docker_compose(executable, &["pause"], &project_dir).await?;
         }
 
         // Discover services
-        vm_core::vm_println!("Discovering services...");
+        tracing::info!("Discovering services...");
         let services_output =
             execute_docker_compose(executable, &["ps", "--services"], &project_dir).await?;
         let service_names: Vec<String> = services_output
@@ -175,7 +175,7 @@ pub async fn handle_create(
             .collect();
 
         // Parallelize service snapshots for 3-10x faster creation
-        vm_core::vm_println!("Snapshotting services in parallel...");
+        tracing::info!("Snapshotting services in parallel...");
         let snapshot_futures = service_names.iter().map(|service| {
             let service = service.clone();
             let project_name = project_name.clone();
@@ -188,10 +188,7 @@ pub async fn handle_create(
                     execute_docker_compose(executable, &["ps", "-q", &service], &project_dir)
                         .await?;
                 if container_id.is_empty() {
-                    vm_core::vm_warning!(
-                        "Service '{}' has no running container, skipping",
-                        service
-                    );
+                    tracing::warn!("Service '{}' has no running container, skipping", service);
                     return Ok::<Option<ServiceSnapshot>, VmError>(None);
                 }
 
@@ -219,12 +216,12 @@ pub async fn handle_create(
             .collect();
 
         if quiesce {
-            vm_core::vm_println!("Unpausing containers...");
+            tracing::info!("Unpausing containers...");
             execute_docker_compose(executable, &["unpause"], &project_dir).await?;
         }
 
         // Discover volumes
-        vm_core::vm_println!("Discovering volumes...");
+        tracing::info!("Discovering volumes...");
         let volumes_output =
             execute_docker_compose(executable, &["config", "--volumes"], &project_dir).await?;
         let volume_names: Vec<String> = volumes_output
@@ -233,13 +230,13 @@ pub async fn handle_create(
             .map(|s| s.to_string())
             .collect();
 
-        vm_core::vm_println!("Backing up volumes in parallel...");
+        tracing::info!("Backing up volumes in parallel...");
         let volumes =
             backup_volumes(executable, &project_name, &volumes_dir, &volume_names).await?;
 
         (services, volumes)
     } else {
-        vm_core::vm_println!("Discovering VM-managed containers...");
+        tracing::info!("Discovering VM-managed containers...");
         let project_filter = format!("label=com.vm.project={project_name}");
         let containers_output = execute_docker_with_output(
             executable,
@@ -271,13 +268,13 @@ pub async fn handle_create(
         }
 
         if quiesce {
-            vm_core::vm_println!("Pausing containers for consistent snapshot...");
+            tracing::info!("Pausing containers for consistent snapshot...");
             for (container_id, _) in &containers {
                 execute_docker_with_output(executable, &["pause", container_id]).await?;
             }
         }
 
-        vm_core::vm_println!("Snapshotting containers in parallel...");
+        tracing::info!("Snapshotting containers in parallel...");
         let snapshot_futures = containers.iter().map(|(container_id, container_name)| {
             let project_name = project_name.clone();
             let snapshot_name = snapshot_name.to_string();
@@ -306,7 +303,7 @@ pub async fn handle_create(
             .collect::<Result<Vec<_>>>()?;
 
         if quiesce {
-            vm_core::vm_println!("Unpausing containers...");
+            tracing::info!("Unpausing containers...");
             for (container_id, _) in &containers {
                 execute_docker_with_output(executable, &["unpause", container_id]).await?;
             }
@@ -316,7 +313,7 @@ pub async fn handle_create(
     };
 
     // Copy configuration files
-    vm_core::vm_println!("Copying configuration files...");
+    tracing::info!("Copying configuration files...");
     let compose_file = "docker-compose.yml";
     let vm_config_file = "vm.yaml";
 
@@ -364,7 +361,7 @@ pub async fn handle_create(
     metadata.save(snapshot_dir.join("metadata.json"))?;
     manager.install_staged_snapshot(staging, scope, snapshot_name, force)?;
 
-    vm_core::vm_success!(
+    tracing::info!(
         "Snapshot '{}' created successfully ({:.2} MB)",
         name,
         total_size_bytes as f64 / (1024.0 * 1024.0)

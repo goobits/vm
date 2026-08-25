@@ -108,10 +108,10 @@ impl<'a> LifecycleOperations<'a> {
         if let Some(memory) = &vm_config.memory {
             match memory.to_mb() {
                 Some(mb) if mb > HIGH_MEMORY_THRESHOLD => {
-                    vm_core::vm_hint!("High memory allocation detected ({}MB). Ensure your system has sufficient RAM.", mb);
+                    tracing::warn!("High memory allocation detected ({}MB). Ensure your system has sufficient RAM.", mb);
                 }
                 None => {
-                    vm_core::vm_hint!(
+                    tracing::warn!(
                         "Unlimited memory detected. Monitor system resources during development."
                     );
                 }
@@ -141,7 +141,7 @@ impl<'a> LifecycleOperations<'a> {
         };
 
         if available_gb < 2 {
-            vm_core::vm_warning!(
+            tracing::warn!(
                 "Low disk space: {}GB available. Docker builds may fail with insufficient storage.",
                 available_gb
             );
@@ -175,7 +175,7 @@ impl<'a> LifecycleOperations<'a> {
         };
 
         if available_gb < 2.0 {
-            vm_core::vm_warning!("Low disk space: {:.1}GB available. Docker builds may fail with insufficient storage.", available_gb);
+            tracing::warn!("Low disk space: {:.1}GB available. Docker builds may fail with insufficient storage.", available_gb);
         }
     }
 

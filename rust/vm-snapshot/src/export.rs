@@ -6,7 +6,6 @@ use crate::manager::{SnapshotManager, SnapshotScope};
 use crate::metadata::SnapshotMetadata;
 use std::path::Path;
 use vm_core::error::{Result, VmError};
-use vm_core::{vm_println, vm_success};
 
 /// Handle snapshot export
 pub async fn handle_export(
@@ -53,7 +52,7 @@ pub async fn handle_export(
         ));
     }
 
-    vm_println!(
+    tracing::info!(
         "Exporting snapshot '{}' from project '{}'...",
         clean_name,
         project_name
@@ -71,7 +70,7 @@ pub async fn handle_export(
             .join(format!("{}.snapshot.tar.gz", clean_name))
     });
 
-    vm_println!("  Creating export tarball...");
+    tracing::info!("  Creating export tarball...");
 
     // Create temp directory for export
     let temp_dir = tempfile::tempdir().map_err(|e| VmError::filesystem(e, "tempdir", "create"))?;
@@ -113,7 +112,7 @@ pub async fn handle_export(
         .await
         .map_err(|e| VmError::filesystem(e, images_dir.display().to_string(), "create_dir_all"))?;
 
-    vm_println!("Exporting service images in parallel...");
+    tracing::info!("Exporting service images in parallel...");
     export_service_images(executable, &images_dir, &metadata.services).await?;
 
     // Copy metadata.json
@@ -136,7 +135,7 @@ pub async fn handle_export(
         copy_directory(&compose_src, &compose_dest).await?;
     }
 
-    vm_println!("  Compressing snapshot...");
+    tracing::info!("  Compressing snapshot...");
 
     create_gzip_archive(&export_build_dir, &output_file, compress_level)?;
 
@@ -145,17 +144,17 @@ pub async fn handle_export(
         .map(|m| m.len())
         .unwrap_or(0);
 
-    vm_success!("Snapshot exported successfully: {}", output_file.display());
-    vm_println!("  Size: {:.2} MB", file_size as f64 / (1024.0 * 1024.0));
+    tracing::info!("Snapshot exported successfully: {}", output_file.display());
+    tracing::info!("  Size: {:.2} MB", file_size as f64 / (1024.0 * 1024.0));
 
     if is_global {
-        vm_println!("\nTo import on another machine:");
-        vm_println!("  vm snapshot import {}", output_file.display());
-        vm_println!("\nThen use in any project with:");
-        vm_println!("  vm.box: @{}", clean_name);
+        tracing::info!("\nTo import on another machine:");
+        tracing::info!("  vm snapshot import {}", output_file.display());
+        tracing::info!("\nThen use in any project with:");
+        tracing::info!("  vm.box: @{}", clean_name);
     } else {
-        vm_println!("\nTo import on another machine:");
-        vm_println!("  vm snapshot import {}", output_file.display());
+        tracing::info!("\nTo import on another machine:");
+        tracing::info!("  vm snapshot import {}", output_file.display());
     }
 
     Ok(())

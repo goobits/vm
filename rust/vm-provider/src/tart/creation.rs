@@ -2,7 +2,7 @@ use std::{fs::File, path::PathBuf, process::Stdio};
 
 use tracing::{info, warn};
 use vm_config::config::VmConfig;
-use vm_core::{error::Result, vm_warning};
+use vm_core::error::Result;
 use vm_messages::messages::MESSAGES;
 
 use super::{
@@ -12,8 +12,8 @@ use super::{
     provisioner::TartProvisioner,
 };
 use crate::{
-    common::instance::extract_project_name, progress::ProgressReporter, project_plan::ProjectPlan,
-    tart_base, BoxConfig, VmError,
+    common::instance::extract_project_name, project_plan::ProjectPlan, tart_base, BoxConfig,
+    VmError,
 };
 
 const DEFAULT_TART_IMAGE: &str = "ghcr.io/cirruslabs/macos-sequoia-base:latest";
@@ -128,15 +128,14 @@ impl TartProvider {
         config: &VmConfig,
         extra: &[TartDirShare],
     ) -> Result<()> {
-        let progress = ProgressReporter::new();
-        let main = progress.start_phase(&label.map_or_else(
+        let operation = label.map_or_else(
             || "Creating Tart VM".to_string(),
             |label| format!("Creating Tart VM instance '{label}'"),
-        ));
-        ProgressReporter::task(&main, "Checking if VM exists...");
+        );
+        info!("{operation}");
+        info!("Checking whether Tart VM exists");
         if self.get_instance_state(name)?.is_some() {
-            ProgressReporter::finish_phase(&main, "VM already exists.");
-            return Err(VmError::Provider(format!(
+            return Err(VmError::Conflict(format!(
                 "Tart VM '{name}' already exists"
             )));
         }
@@ -150,7 +149,7 @@ impl TartProvider {
             .collect::<Vec<_>>();
         if !orphans.is_empty() {
             warn!("Found potential orphaned VMs from previous runs/instances");
-            vm_warning!(
+            warn!(
                 "Other Tart environments exist for this project: {}",
                 orphans.join(", ")
             );
@@ -161,19 +160,16 @@ impl TartProvider {
         {
             return Err(VmError::Config(format!("Tart vibe base '{image}' was not found. Run `vm system base build vibe --provider tart` first.")));
         }
-        ProgressReporter::task(&main, &format!("Cloning image '{image}'..."));
-        if let Err(error) = self.stream_tart_command(&["clone", &image, name]) {
-            ProgressReporter::finish_phase(&main, "Creation failed.");
-            return Err(error);
-        }
+        info!("Cloning Tart image '{image}'");
+        self.stream_tart_command(&["clone", &image, name])?;
         self.command.remember_instance(name)?;
         let resources = Self::resolved_tart_resources(config)?;
         if let Some(memory) = resources.memory_mb {
-            ProgressReporter::task(&main, &format!("Setting memory to {memory} MB..."));
+            info!("Setting Tart memory to {memory} MB");
             self.stream_tart_command(&["set", name, "--memory", &memory.to_string()])?;
         }
         if let Some(cpus) = resources.cpus {
-            ProgressReporter::task(&main, &format!("Setting CPUs to {cpus}..."));
+            info!("Setting Tart CPUs to {cpus}");
             self.stream_tart_command(&["set", name, "--cpu", &cpus.to_string()])?;
         }
         if let Some(disk) = config
@@ -182,12 +178,12 @@ impl TartProvider {
             .and_then(|config| config.disk_size.as_ref())
             .and_then(|limit| limit.to_gb())
         {
-            ProgressReporter::task(&main, &format!("Setting disk size to {disk} GB..."));
+            info!("Setting Tart disk size to {disk} GB");
             self.stream_tart_command(&["set", name, "--disk-size", &disk.to_string()])?;
         }
-        ProgressReporter::task(&main, "Starting VM...");
+        info!("Starting Tart VM");
         self.start_vm_background_with_dir_shares(name, extra)?;
-        ProgressReporter::task(&main, "Running initial provisioning...");
+        info!("Running initial Tart provisioning");
         let provisioner = TartProvisioner::new(
             name.to_string(),
             self.effective_sync_directory(),
@@ -195,7 +191,6 @@ impl TartProvider {
         );
         let plan = ProjectPlan::detect(&self.host_workspace_path()?, config);
         if let Err(error) = provisioner.provision(config, &plan) {
-            ProgressReporter::finish_phase(&main, "Provisioning failed.");
             return Err(VmError::Provider(format!(
                 "{error}. Tart run log: {}",
                 tart_run_log_path(name)
@@ -204,10 +199,10 @@ impl TartProvider {
         let mut shares = self.configured_dir_shares()?;
         shares.extend_from_slice(extra);
         if !shares.is_empty() {
-            ProgressReporter::task(&main, "Mounting shared directories...");
+            info!("Mounting Tart shared directories");
             self.mount_tart_dir_shares_in_guest(name, &shares)?;
         }
-        ProgressReporter::finish_phase(&main, "Environment ready.");
+        info!("Tart environment is ready");
         info!("{}", MESSAGES.service.provider_tart_created_success);
         info!("{}", MESSAGES.service.provider_tart_connect_hint);
         Ok(())

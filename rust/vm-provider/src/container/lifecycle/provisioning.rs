@@ -2,12 +2,9 @@
 use super::LifecycleOperations;
 use crate::container::UserConfig;
 use crate::context::ProviderContext;
-use crate::progress::{AnsibleProgressParser, ProgressParser};
 use std::collections::HashSet;
 use std::sync::{Mutex, OnceLock};
-use vm_core::command_stream::{
-    stream_command_with_progress_and_timeout, ProgressParser as CoreProgressParser,
-};
+use vm_core::command_stream::stream_command_with_timeout;
 use vm_core::error::{Result, VmError};
 
 use super::{
@@ -19,18 +16,6 @@ use super::{
 const DEFAULT_ANSIBLE_TIMEOUT_SECS: u64 = 300;
 
 static REPAIRED_HOMES: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-
-/// Adapter to convert AnsibleProgressParser to CoreProgressParser trait
-struct AnsibleParserAdapter(AnsibleProgressParser);
-
-impl CoreProgressParser for AnsibleParserAdapter {
-    fn parse_line(&mut self, line: &str) {
-        ProgressParser::parse_line(&mut self.0, line);
-    }
-    fn finish(&self) {
-        ProgressParser::finish(&self.0);
-    }
-}
 
 impl<'a> LifecycleOperations<'a> {
     /// Apply the shared, versioned guest-home repair before provisioning or use.
@@ -85,15 +70,6 @@ impl<'a> LifecycleOperations<'a> {
         container_name: &str,
         context: &ProviderContext,
     ) -> Result<()> {
-        let parser = if context.is_verbose() {
-            None
-        } else {
-            Some(
-                Box::new(AnsibleParserAdapter(AnsibleProgressParser::new(false)))
-                    as Box<dyn CoreProgressParser>,
-            )
-        };
-
         // Allow timeout override via environment variable for debugging
         let timeout_secs = std::env::var("ANSIBLE_TIMEOUT")
             .ok()
@@ -130,10 +106,9 @@ impl<'a> LifecycleOperations<'a> {
             ansible_cmd
         );
 
-        stream_command_with_progress_and_timeout(
+        stream_command_with_timeout(
             executable,
             &["exec", container_name, "bash", "-c", &ansible_cmd_with_fix],
-            parser,
             Some(timeout_secs),
         )
         .map_err(|e| {

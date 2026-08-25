@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use chrono::Utc;
-use vm_core::command_stream::stream_command_visible;
+use vm_core::command_stream::stream_command;
 use vm_core::error::{Result, VmError};
 
 use crate::archive::directory_size;
@@ -40,16 +40,16 @@ pub(crate) async fn create_from_dockerfile(
     }
 
     let image_tag = format!("vm-snapshot/global/{snapshot_name}:latest");
-    vm_core::vm_println!("Building snapshot '{}' from Dockerfile...", name);
+    tracing::info!("Building snapshot '{}' from Dockerfile...", name);
     if let Some(description) = description {
-        vm_core::vm_println!("Description: {}", description);
+        tracing::info!("Description: {}", description);
     }
 
     let build_args = parse_build_args(build_args)?;
-    vm_core::vm_println!("Build context: {}", build_context.display());
-    vm_core::vm_println!("Dockerfile: {}", dockerfile_path.display());
+    tracing::info!("Build context: {}", build_context.display());
+    tracing::info!("Dockerfile: {}", dockerfile_path.display());
     if !build_args.is_empty() {
-        vm_core::vm_println!("Build arguments: {:?}", build_args);
+        tracing::info!("Build arguments: {:?}", build_args);
     }
 
     let mut args = vec![
@@ -64,7 +64,7 @@ pub(crate) async fn create_from_dockerfile(
         args.push(format!("{key}={value}"));
     }
     args.push(build_context.to_string_lossy().to_string());
-    stream_command_visible(executable, &args).map_err(|error| {
+    stream_command(executable, &args).map_err(|error| {
         VmError::general(
             error,
             format!(
@@ -83,7 +83,7 @@ pub(crate) async fn create_from_dockerfile(
             VmError::filesystem(error, images_dir.to_string_lossy(), "create_dir_all")
         })?;
 
-    vm_core::vm_println!("Saving snapshot to disk...");
+    tracing::info!("Saving snapshot to disk...");
     let image_file = "base.tar";
     save_image_streaming(executable, &image_tag, &images_dir.join(image_file)).await?;
 
@@ -113,14 +113,14 @@ pub(crate) async fn create_from_dockerfile(
     .save(snapshot_dir.join("metadata.json"))?;
     manager.install_staged_snapshot(staging, scope, snapshot_name, force)?;
 
-    vm_core::vm_success!(
+    tracing::info!(
         "Snapshot '{}' created successfully ({:.2} MB)",
         name,
         total_size_bytes as f64 / (1024.0 * 1024.0)
     );
-    vm_core::vm_println!("\nYou can now use this snapshot in vm.yaml:");
-    vm_core::vm_println!("  vm:");
-    vm_core::vm_println!("    box: @{}", snapshot_name);
+    tracing::info!("\nYou can now use this snapshot in vm.yaml:");
+    tracing::info!("  vm:");
+    tracing::info!("    box: @{}", snapshot_name);
     Ok(())
 }
 
