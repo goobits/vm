@@ -183,10 +183,16 @@ impl ContainerOps {
         Ok(output.lines().any(|line| line.trim() == container_name))
     }
 
-    /// Check if a container is currently running.
-    pub fn is_container_running(executable: Option<&str>, container_name: &str) -> Result<bool> {
-        let output = Self::list_containers(executable, false, "{{.Names}}")?;
-        Ok(output.lines().any(|line| line.trim() == container_name))
+    /// Return the names of all currently running containers.
+    pub fn running_container_names(
+        executable: Option<&str>,
+    ) -> Result<std::collections::HashSet<String>> {
+        Ok(Self::list_containers(executable, false, "{{.Names}}")?
+            .lines()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(str::to_string)
+            .collect())
     }
 
     /// Return the immutable image reference recorded on an existing container.

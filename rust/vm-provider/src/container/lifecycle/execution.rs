@@ -155,11 +155,10 @@ impl<'a> LifecycleOperations<'a> {
         self.reconcile_package_edge(container_name)?;
         let expected_services =
             ContainerOps::list_managed_service_containers(Some(self.executable), container_name)?;
+        let running =
+            ContainerOps::running_container_names(Some(self.executable)).unwrap_or_default();
         for service in expected_services {
-            if !ContainerOps::container_exists(Some(self.executable), &service).unwrap_or(false)
-                || ContainerOps::is_container_running(Some(self.executable), &service)
-                    .unwrap_or(false)
-            {
+            if running.contains(&service) {
                 continue;
             }
             ContainerOps::start_container(Some(self.executable), &service)?;
@@ -238,6 +237,32 @@ mod tests {
         fake_runtime_with_edge(temp_dir, inspect_state, None)
     }
 
+    fn fake_service_runtime(temp_dir: &TempDir) -> (PathBuf, PathBuf) {
+        let executable = temp_dir.path().join("runtime");
+        let log = temp_dir.path().join("commands.log");
+        fs::write(
+            &executable,
+            format!(
+                r#"#!/bin/sh
+echo "$@" >> '{}'
+if [ "$1" = ps ]; then
+  case "$*" in
+    *--filter*) printf 'demo-dev\ndemo-cache\ndemo-db\n' ;;
+    *-a*) printf 'demo-dev\ndemo-cache\ndemo-db\n' ;;
+    *) printf 'demo-cache\n' ;;
+  esac
+fi
+"#,
+                log.display()
+            ),
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&executable).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&executable, permissions).unwrap();
+        (executable, log)
+    }
+
     fn config() -> VmConfig {
         VmConfig {
             project: Some(ProjectConfig {
@@ -271,6 +296,68 @@ mod tests {
         assert!(commands.starts_with("inspect "));
         assert!(!commands.contains(" up "));
         assert!(!commands.contains("start "));
+    }
+
+    #[test]
+    fn compose_start_inventories_services_once_per_state() {
+        let temp_dir = TempDir::new().unwrap();
+        let (executable, log) = fake_service_runtime(&temp_dir);
+        let config = config();
+        let generated_dir = temp_dir.path().join("generated");
+        let project_dir = temp_dir.path().join("project");
+        let ops = LifecycleOperations::new(
+            &config,
+            &generated_dir,
+            &project_dir,
+            executable.to_str().unwrap(),
+        );
+
+        ops.start_named_with_compose("demo-dev").unwrap();
+
+        let commands = fs::read_to_string(log).unwrap();
+        assert_eq!(
+            commands
+                .lines()
+                .filter(|line| line.starts_with("ps "))
+                .count(),
+            3
+        );
+        assert!(commands.lines().any(|line| line == "start demo-db"));
+        assert!(!commands.lines().any(|line| line == "start demo-cache"));
+        assert_eq!(commands.lines().last(), Some("start demo-dev"));
+    }
+
+    #[test]
+    fn orphan_recovery_inventories_services_once_per_state() {
+        let temp_dir = TempDir::new().unwrap();
+        let (executable, log) = fake_service_runtime(&temp_dir);
+        let config = config();
+        let generated_dir = temp_dir.path().join("generated");
+        let project_dir = temp_dir.path().join("project");
+        let compose_path = generated_dir.join("docker-compose.yml");
+        let ops = LifecycleOperations::new(
+            &config,
+            &generated_dir,
+            &project_dir,
+            executable.to_str().unwrap(),
+        );
+
+        ops.start_orphaned_services_and_dev_container(&compose_path, "demo-dev")
+            .unwrap();
+
+        let commands = fs::read_to_string(log).unwrap();
+        assert_eq!(
+            commands
+                .lines()
+                .filter(|line| line.starts_with("ps "))
+                .count(),
+            2
+        );
+        assert!(commands.lines().any(|line| line == "start demo-db"));
+        assert!(!commands.lines().any(|line| line == "start demo-cache"));
+        assert!(commands
+            .lines()
+            .any(|line| line.ends_with("up -d --no-deps --no-recreate demo-dev")));
     }
 
     #[test]

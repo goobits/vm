@@ -14,14 +14,10 @@ impl<'a> LifecycleOperations<'a> {
     ) -> Result<()> {
         let expected_services =
             ContainerOps::list_managed_service_containers(Some(self.executable), container_name)?;
+        let running =
+            ContainerOps::running_container_names(Some(self.executable)).unwrap_or_default();
         for service in &expected_services {
-            if !ContainerOps::container_exists(Some(self.executable), service).unwrap_or(false) {
-                continue;
-            }
-
-            let running =
-                ContainerOps::is_container_running(Some(self.executable), service).unwrap_or(false);
-            if running {
+            if running.contains(service) {
                 continue;
             }
 
