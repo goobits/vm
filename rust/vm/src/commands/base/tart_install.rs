@@ -204,7 +204,7 @@ fn write_receipt(
     let mut content = serde_json::to_vec_pretty(&receipt)?;
     content.push(b'\n');
     vm_core::file_system::atomic_write(&path, &content)?;
-    set_mode(&path, 0o600)
+    vm_core::file_system::set_permissions_mode(&path, 0o600).map_err(VmError::from)
 }
 
 fn receipt_path(base_name: &str, tart_home: Option<&Path>) -> VmResult<PathBuf> {
@@ -213,7 +213,7 @@ fn receipt_path(base_name: &str, tart_home: Option<&Path>) -> VmResult<PathBuf> 
         .join("tart")
         .join("bases");
     fs::create_dir_all(&directory)?;
-    set_mode(&directory, 0o700)?;
+    vm_core::file_system::set_permissions_mode(&directory, 0o700).map_err(VmError::from)?;
     Ok(directory.join(name))
 }
 
@@ -238,18 +238,6 @@ fn fnv1a(bytes: &[u8]) -> u64 {
     bytes.iter().fold(0xcbf29ce484222325, |hash, byte| {
         (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
     })
-}
-
-#[cfg(unix)]
-fn set_mode(path: &Path, mode: u32) -> VmResult<()> {
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(mode))?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn set_mode(_path: &Path, _mode: u32) -> VmResult<()> {
-    Ok(())
 }
 
 #[cfg(test)]

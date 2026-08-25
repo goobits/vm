@@ -39,6 +39,20 @@ pub async fn atomic_write_async(path: PathBuf, content: Vec<u8>) -> io::Result<(
         })?
 }
 
+/// Apply a Unix permission mode while remaining a no-op on other platforms.
+#[cfg(unix)]
+pub fn set_permissions_mode(path: &Path, mode: u32) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::set_permissions(path, fs::Permissions::from_mode(mode))
+}
+
+/// Apply a Unix permission mode while remaining a no-op on other platforms.
+#[cfg(not(unix))]
+pub fn set_permissions_mode(_path: &Path, _mode: u32) -> io::Result<()> {
+    Ok(())
+}
+
 /// Check if a file exists in a directory
 pub fn has_file(dir: &Path, filename: &str) -> bool {
     dir.join(filename).exists()

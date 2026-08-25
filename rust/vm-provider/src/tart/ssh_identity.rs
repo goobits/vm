@@ -23,7 +23,7 @@ impl TartSshIdentity {
     pub(super) fn ensure() -> Result<Self> {
         let directory = vm_core::user_paths::vm_state_dir()?.join("ssh");
         fs::create_dir_all(&directory)?;
-        set_mode(&directory, 0o700)?;
+        vm_core::file_system::set_permissions_mode(&directory, 0o700)?;
         let lock = key_lock(&directory)?;
         let private_key = directory.join(KEY_FILE);
         let public_key = private_key.with_extension("pub");
@@ -46,9 +46,9 @@ impl TartSshIdentity {
             }
         }
 
-        set_mode(&private_key, 0o600)?;
+        vm_core::file_system::set_permissions_mode(&private_key, 0o600)?;
         let key = read_or_derive_public_key(&private_key, &public_key)?;
-        set_mode(&public_key, 0o644)?;
+        vm_core::file_system::set_permissions_mode(&public_key, 0o644)?;
         FileExt::unlock(&lock)?;
         Ok(Self {
             private_key,
@@ -178,7 +178,7 @@ fn key_lock(directory: &Path) -> Result<File> {
         .read(true)
         .write(true)
         .open(&path)?;
-    set_mode(&path, 0o600)?;
+    vm_core::file_system::set_permissions_mode(&path, 0o600)?;
     file.lock_exclusive()?;
     Ok(file)
 }
@@ -224,18 +224,6 @@ fn reject_symlink(path: &Path) -> Result<()> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error.into()),
     }
-}
-
-#[cfg(unix)]
-fn set_mode(path: &Path, mode: u32) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(mode))?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn set_mode(_path: &Path, _mode: u32) -> Result<()> {
-    Ok(())
 }
 
 #[cfg(test)]

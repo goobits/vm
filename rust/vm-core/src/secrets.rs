@@ -104,7 +104,7 @@ fn secure_directory(path: &Path) -> io::Result<()> {
             ),
         ));
     }
-    set_mode(path, 0o700)
+    crate::file_system::set_permissions_mode(path, 0o700)
 }
 
 fn read_secret(path: &Path) -> io::Result<Option<String>> {
@@ -119,7 +119,7 @@ fn read_secret(path: &Path) -> io::Result<Option<String>> {
             format!("Secret path is not a regular file: {}", path.display()),
         ));
     }
-    set_mode(path, 0o600)?;
+    crate::file_system::set_permissions_mode(path, 0o600)?;
     let password = fs::read_to_string(path)?.trim().to_string();
     if password.is_empty() {
         return Err(io::Error::new(
@@ -144,23 +144,12 @@ fn create_secret(path: &Path, value: &[u8]) -> io::Result<()> {
         let _ = fs::remove_file(path);
         return Err(error);
     }
-    set_mode(path, 0o600)
+    crate::file_system::set_permissions_mode(path, 0o600)
 }
 
 fn write_secret(file: &mut File, value: &[u8]) -> io::Result<()> {
     file.write_all(value)?;
     file.sync_all()
-}
-
-#[cfg(unix)]
-fn set_mode(path: &Path, mode: u32) -> io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(mode))
-}
-
-#[cfg(not(unix))]
-fn set_mode(_path: &Path, _mode: u32) -> io::Result<()> {
-    Ok(())
 }
 
 #[cfg(test)]

@@ -2,7 +2,7 @@ use std::fs::{File, OpenOptions};
 
 use crate::error::{VmError, VmResult};
 
-use super::{set_mode, ApplianceFiles};
+use super::ApplianceFiles;
 
 const MAINTENANCE_LOCK_FILE: &str = "maintenance.lock";
 
@@ -58,7 +58,7 @@ impl ApplianceFiles {
                     "open package maintenance lock",
                 )
             })?;
-        set_mode(&path, 0o600)?;
+        vm_core::file_system::set_permissions_mode(&path, 0o600).map_err(VmError::from)?;
         Ok(file)
     }
 }

@@ -6,7 +6,7 @@ use std::{
 
 use crate::error::{VmError, VmResult};
 
-use super::{set_mode, write_private, ApplianceFiles};
+use super::{write_private, ApplianceFiles};
 
 const TOOL_CACHE_LOCK_FILE: &str = "tool-cache.lock";
 
@@ -29,7 +29,7 @@ impl ApplianceFiles {
                     "open tool catalog cache lock",
                 )
             })?;
-        set_mode(&path, 0o600)?;
+        vm_core::file_system::set_permissions_mode(&path, 0o600).map_err(VmError::from)?;
         match file.try_lock_exclusive() {
             Ok(()) => Ok(Some(file)),
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
@@ -67,7 +67,7 @@ impl ApplianceFiles {
         let path = self.root.join("tool-cache").join(name);
         let parent = path.parent().expect("tool cache path has a parent");
         fs::create_dir_all(parent).map_err(VmError::from)?;
-        set_mode(parent, 0o700)?;
+        vm_core::file_system::set_permissions_mode(parent, 0o700).map_err(VmError::from)?;
         write_private(&path, content)
     }
 }

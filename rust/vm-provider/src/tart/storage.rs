@@ -66,7 +66,7 @@ pub(super) fn remember_instance(
     validate_instance(instance)?;
     let state_dir = state_dir()?;
     fs::create_dir_all(&state_dir)?;
-    set_mode(&state_dir, 0o700)?;
+    vm_core::file_system::set_permissions_mode(&state_dir, 0o700)?;
     let lock = lock(&state_dir)?;
     let path = state_dir.join(STATE_FILE);
     let mut state = read_state_at(&path)?;
@@ -84,7 +84,7 @@ pub(super) fn remember_instance(
     let mut content = serde_json::to_vec_pretty(&state)?;
     content.push(b'\n');
     vm_core::file_system::atomic_write(&path, &content)?;
-    set_mode(&path, 0o600)?;
+    vm_core::file_system::set_permissions_mode(&path, 0o600)?;
     FileExt::unlock(&lock)?;
     Ok(())
 }
@@ -94,7 +94,7 @@ fn remember_home(instance: &str, home: &Path) -> Result<()> {
     validate_instance(instance)?;
     let state_dir = state_dir()?;
     fs::create_dir_all(&state_dir)?;
-    set_mode(&state_dir, 0o700)?;
+    vm_core::file_system::set_permissions_mode(&state_dir, 0o700)?;
     let lock = lock(&state_dir)?;
     let path = state_dir.join(STATE_FILE);
     let mut state = read_state_at(&path)?;
@@ -104,7 +104,7 @@ fn remember_home(instance: &str, home: &Path) -> Result<()> {
     let mut content = serde_json::to_vec_pretty(&state)?;
     content.push(b'\n');
     vm_core::file_system::atomic_write(&path, &content)?;
-    set_mode(&path, 0o600)?;
+    vm_core::file_system::set_permissions_mode(&path, 0o600)?;
     FileExt::unlock(&lock)?;
     Ok(())
 }
@@ -127,7 +127,7 @@ pub(super) fn forget_instance(instance: &str) -> Result<()> {
         let mut content = serde_json::to_vec_pretty(&state)?;
         content.push(b'\n');
         vm_core::file_system::atomic_write(&path, &content)?;
-        set_mode(&path, 0o600)?;
+        vm_core::file_system::set_permissions_mode(&path, 0o600)?;
     }
     FileExt::unlock(&lock)?;
     Ok(())
@@ -199,7 +199,7 @@ fn lock(state_dir: &Path) -> Result<File> {
         .read(true)
         .write(true)
         .open(&path)?;
-    set_mode(&path, 0o600)?;
+    vm_core::file_system::set_permissions_mode(&path, 0o600)?;
     file.lock_exclusive()?;
     Ok(file)
 }
@@ -271,18 +271,6 @@ fn parse_tart_home_from_lsof(output: &str, instance: &str) -> Option<PathBuf> {
         }
         path.parent()?.parent().map(Path::to_path_buf)
     })
-}
-
-#[cfg(unix)]
-fn set_mode(path: &Path, mode: u32) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(mode))?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn set_mode(_path: &Path, _mode: u32) -> Result<()> {
-    Ok(())
 }
 
 #[cfg(test)]

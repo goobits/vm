@@ -69,7 +69,7 @@ impl ApplianceFiles {
                 "create package infrastructure directory",
             )
         })?;
-        set_mode(&self.root, 0o700)
+        vm_core::file_system::set_permissions_mode(&self.root, 0o700).map_err(VmError::from)
     }
 }
 
@@ -81,16 +81,5 @@ fn write_private(path: &Path, content: &[u8]) -> VmResult<()> {
             "write package infrastructure state",
         )
     })?;
-    set_mode(path, 0o600)
-}
-
-#[cfg(unix)]
-fn set_mode(path: &Path, mode: u32) -> VmResult<()> {
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(mode)).map_err(VmError::from)
-}
-
-#[cfg(not(unix))]
-fn set_mode(_path: &Path, _mode: u32) -> VmResult<()> {
-    Ok(())
+    vm_core::file_system::set_permissions_mode(path, 0o600).map_err(VmError::from)
 }
