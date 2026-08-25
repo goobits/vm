@@ -11,10 +11,7 @@ use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 
 use crate::validation;
-use crate::{
-    sha1_hash, sha256_hash, storage, validate_filename, AppError, AppResult, AppState,
-    SuccessResponse,
-};
+use crate::{sha1_hash, sha256_hash, storage, AppError, AppResult, AppState, SuccessResponse};
 
 fn validate_package(package: &str) -> AppResult<String> {
     validation::validate_package_name(package, "npm")
@@ -253,7 +250,7 @@ async fn download_tarball_inner(
 ) -> AppResult<Vec<u8>> {
     let package = validate_package(&package)?;
     // Validate filename to prevent path traversal
-    validate_filename(&filename)?;
+    crate::validation::validate_filename(&filename)?;
 
     let local_path = state.data_dir.join("npm/tarballs").join(&filename);
     let source = state
@@ -387,7 +384,7 @@ pub async fn publish_package(
 
     for (filename, attachment) in &attachments {
         if filename.ends_with(".tgz") {
-            validate_filename(filename)?;
+            crate::validation::validate_filename(filename)?;
 
             let data_b64 = attachment["data"].as_str().ok_or_else(|| {
                 AppError::UploadError("Attachment 'data' field is not a string".to_string())

@@ -1,14 +1,13 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::{Query, State},
+    extract::State,
     http::{header, HeaderMap, StatusCode},
     middleware,
-    response::{Html, IntoResponse, Response},
+    response::{IntoResponse, Response},
     routing::{get, post, put},
     Router,
 };
-use serde::Deserialize;
 use tracing::error;
 
 use crate::{cargo, npm, pypi, state::AppState};
@@ -19,10 +18,9 @@ pub(super) fn app_router(state: AppState) -> Router {
     let is_worker_edge = state.internal_client.is_some();
     let config = state.config.clone();
     let reads = Router::new()
-        .route("/", get(index_handler))
+        .route("/", get(status_handler))
         .route("/status", get(status_handler))
         .route("/api/status", get(status_handler))
-        .route("/setup.sh", get(setup_script_handler))
         .route("/vm-client", get(guest_client_handler))
         .route("/vm-client.sha256", get(guest_client_digest_handler))
         .route("/api/packages", get(list_packages_handler))
@@ -107,10 +105,6 @@ fn guest_client_error(error: std::io::Error) -> Response {
         .into_response()
 }
 
-async fn index_handler() -> Html<&'static str> {
-    Html(include_str!("../../static/index.html"))
-}
-
 async fn status_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let data_dir = state.data_dir.to_string_lossy();
     let response = serde_json::json!({
@@ -166,26 +160,4 @@ fn json_headers() -> HeaderMap {
             .expect("static header value is valid"),
     );
     headers
-}
-
-#[derive(Deserialize)]
-struct SetupQuery {
-    registry: Option<String>,
-    port: Option<u16>,
-}
-
-async fn setup_script_handler(Query(params): Query<SetupQuery>) -> Response {
-    let registry = params.registry.as_deref().unwrap_or("npm");
-    let port = params.port.unwrap_or(8080);
-    (
-        [
-            (header::CONTENT_TYPE, "text/plain"),
-            (
-                header::CONTENT_DISPOSITION,
-                "attachment; filename=\"setup.sh\"",
-            ),
-        ],
-        super::setup::client_script(registry, port),
-    )
-        .into_response()
 }

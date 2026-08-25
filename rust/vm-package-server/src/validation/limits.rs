@@ -29,17 +29,11 @@ pub const MAX_METADATA_SIZE: usize = 1024 * 1024;
 /// Maximum allowed number of multipart fields
 pub const MAX_MULTIPART_FIELDS: usize = 10;
 
-/// Memory threshold for streaming vs loading into memory (10 MB)
-pub const MEMORY_THRESHOLD: usize = 10 * 1024 * 1024;
-
 /// Maximum allowed package name length
 pub const MAX_PACKAGE_NAME_LENGTH: usize = 214;
 
 /// Maximum allowed version string length
 pub const MAX_VERSION_LENGTH: usize = 64;
-
-/// Maximum allowed description length
-pub const MAX_DESCRIPTION_LENGTH: usize = 4096;
 
 /// Maximum allowed filename length
 pub const MAX_FILENAME_LENGTH: usize = 255;

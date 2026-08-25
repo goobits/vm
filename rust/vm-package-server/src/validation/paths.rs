@@ -23,20 +23,6 @@ use std::path::{Path, PathBuf};
 ///
 /// `Ok(PathBuf)` if the path is safe, `Err(ValidationError)` otherwise
 ///
-/// # Examples
-///
-/// ```rust
-/// use vm_package_server::validate_safe_path;
-///
-/// // Safe relative path
-/// // assert!(validate_safe_path("packages/mypackage/1.0.0").is_ok());
-///
-/// // Path traversal attempt
-/// // assert!(validate_safe_path("../../../etc/passwd").is_err());
-///
-/// // Absolute path
-/// // assert!(validate_safe_path("/etc/passwd").is_err());
-/// ```
 pub fn validate_safe_path<P: AsRef<Path>>(path: P) -> ValidationResult<PathBuf> {
     let path = path.as_ref();
     let path_str = path.to_string_lossy();

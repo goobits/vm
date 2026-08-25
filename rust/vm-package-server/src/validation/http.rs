@@ -1,78 +1,13 @@
 //! # Input Validation: HTTP
 //!
 //! This module provides validation helpers for HTTP-related data, such as
-//! hostnames, base64 encoded data, and multipart uploads.
+//! base64 encoded data and multipart uploads.
 
 use crate::validation::error::ValidationError;
 use crate::validation::limits::{
     MAX_BASE64_DECODED_SIZE, MAX_BASE64_ENCODED_SIZE, MAX_MULTIPART_FIELDS, MAX_UPLOAD_SIZE,
 };
 use crate::validation::result::ValidationResult;
-use once_cell::sync::Lazy;
-use regex::Regex;
-
-/// Regex for validating hostnames (RFC 1123 compliant)
-static HOSTNAME_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
-        .expect("Hostname regex should compile - this is a static RFC 1123 pattern")
-});
-
-/// Validate and sanitize hostnames for network operations.
-///
-/// This function validates hostnames according to RFC 1123 to ensure they
-/// are safe for network operations and don't contain injection patterns.
-///
-/// # Arguments
-///
-/// * `hostname` - The hostname to validate
-///
-/// # Returns
-///
-/// `Ok(String)` with the validated hostname, `Err(ValidationError)` if invalid
-pub fn validate_hostname(hostname: &str) -> ValidationResult<String> {
-    if hostname.is_empty() {
-        return Err(ValidationError::TooShort { actual: 0, min: 1 });
-    }
-
-    if hostname.len() > 253 {
-        return Err(ValidationError::TooLong {
-            actual: hostname.len(),
-            max: 253,
-        });
-    }
-
-    // Check for null bytes and control characters
-    if hostname.contains('\0') {
-        return Err(ValidationError::NullBytes);
-    }
-
-    if hostname.chars().any(|c| c.is_control()) {
-        return Err(ValidationError::ControlCharacters);
-    }
-
-    // Validate hostname format
-    if !HOSTNAME_REGEX.is_match(hostname) {
-        return Err(ValidationError::InvalidCharacters {
-            input: hostname.to_string(),
-        });
-    }
-
-    // Additional checks
-    if hostname.starts_with('-') || hostname.ends_with('-') {
-        return Err(ValidationError::InvalidFormat {
-            reason: "Hostnames cannot start or end with hyphens".to_string(),
-        });
-    }
-
-    if hostname.starts_with('.') || hostname.ends_with('.') {
-        return Err(ValidationError::InvalidFormat {
-            reason: "Hostnames cannot start or end with dots".to_string(),
-        });
-    }
-
-    Ok(hostname.to_string())
-}
-
 /// Validate base64 encoded data size before decoding to prevent base64 bombs.
 ///
 /// This function checks the size of base64 encoded data before attempting to decode
@@ -189,19 +124,6 @@ mod tests {
     use crate::validation::limits::{
         MAX_BASE64_DECODED_SIZE, MAX_BASE64_ENCODED_SIZE, MAX_MULTIPART_FIELDS, MAX_UPLOAD_SIZE,
     };
-
-    #[test]
-    fn test_validate_hostname() {
-        assert!(validate_hostname("example.com").is_ok());
-        assert!(validate_hostname("sub.example.com").is_ok());
-        assert!(validate_hostname("localhost").is_ok());
-
-        assert!(validate_hostname("").is_err());
-        assert!(validate_hostname("-invalid.com").is_err());
-        assert!(validate_hostname("invalid-.com").is_err());
-        assert!(validate_hostname(".invalid.com").is_err());
-        assert!(validate_hostname("invalid.com.").is_err());
-    }
 
     #[test]
     fn test_validate_base64_size() {

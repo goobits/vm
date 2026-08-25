@@ -6,51 +6,22 @@
 //!
 //! ## Security Features
 //!
-//! - Shell command injection prevention through proper escaping
 //! - Path traversal attack prevention with strict validation
-//! - Docker parameter sanitization for secure container operations
 //! - Size limits and bounds checking to prevent resource exhaustion
 //!
-//! ## Usage
-//!
-//! ```rust
-//! use vm_package_server::{sanitize_docker_name, validate_safe_path};
-//!
-//! assert!(validate_safe_path("safe/relative/path").is_ok());
-//! assert_eq!(
-//!     sanitize_docker_name("my-app-container").unwrap(),
-//!     "my-app-container"
-//! );
-//! ```
-
-pub mod docker;
 pub mod error;
 pub mod http;
 pub mod limits;
 pub mod manifests;
 pub mod paths;
 pub mod result;
-pub mod shell;
 
 pub use self::{
-    docker::{
-        sanitize_docker_name, validate_docker_image_name, validate_docker_port,
-        validate_docker_volume_path,
-    },
-    error::ValidationError,
-    http::{
-        validate_base64_characters, validate_base64_size, validate_hostname,
-        validate_multipart_limits,
-    },
+    http::{validate_base64_characters, validate_base64_size, validate_multipart_limits},
     limits::{
-        validate_file_size, validate_package_upload, validate_total_upload_size,
-        MAX_BASE64_DECODED_SIZE, MAX_BASE64_ENCODED_SIZE, MAX_DESCRIPTION_LENGTH,
-        MAX_FILENAME_LENGTH, MAX_METADATA_SIZE, MAX_MULTIPART_FIELDS, MAX_PACKAGE_FILE_SIZE,
-        MAX_PACKAGE_NAME_LENGTH, MAX_PATH_DEPTH, MAX_REQUEST_BODY_SIZE, MAX_UPLOAD_SIZE,
-        MAX_VERSION_LENGTH, MEMORY_THRESHOLD,
+        validate_file_size, validate_package_upload, validate_total_upload_size, MAX_METADATA_SIZE,
+        MAX_MULTIPART_FIELDS, MAX_REQUEST_BODY_SIZE, MAX_UPLOAD_SIZE,
     },
     manifests::{validate_cargo_upload_structure, validate_package_name, validate_version},
     paths::{validate_filename, validate_safe_path},
-    result::ValidationResult,
-    shell::escape_shell_arg,
 };

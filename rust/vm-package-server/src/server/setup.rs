@@ -16,18 +16,16 @@ use crate::{
 pub(super) fn app_state(host: &str, port: u16, data_dir: &Path) -> Result<AppState> {
     vm_core::validation::validate_hostname(host)
         .map_err(|error| anyhow::anyhow!("Invalid host parameter: {error}"))?;
-    crate::validation::validate_docker_port(port)
-        .map_err(|error| anyhow::anyhow!("Invalid port parameter: {error}"))?;
+    if port == 0 {
+        anyhow::bail!("invalid package registry port 0");
+    }
 
     let data_dir = absolute_data_dir(data_dir)?;
     let internal_client = InternalRegistryClient::from_environment()?.map(Arc::new);
     let config = Arc::new(configure_security(
         host,
         std::env::var("PKG_SERVER_READ_TOKEN").ok().as_deref(),
-        std::env::var("PKG_SERVER_PUBLISH_TOKEN")
-            .ok()
-            .or_else(|| std::env::var("PKG_SERVER_AUTH_TOKEN").ok())
-            .as_deref(),
+        std::env::var("PKG_SERVER_PUBLISH_TOKEN").ok().as_deref(),
         internal_client.is_some(),
     )?);
     let resolver = Arc::new(ResolverService::from_environment(
@@ -132,124 +130,4 @@ fn is_loopback_host(host: &str) -> bool {
         || host
             .parse::<IpAddr>()
             .is_ok_and(|address| address.is_loopback())
-}
-
-pub(super) fn client_script(registry: &str, port: u16) -> String {
-    let server_url = format!("http://$(hostname -I | cut -d' ' -f1):{port}");
-
-    match registry {
-        "npm" => format!(
-            r#"#!/bin/bash
-# Goobits Package Server - NPM Setup Script
-# This script configures npm to use your private package registry
-
-echo "🔧 Configuring npm to use Goobits Package Server..."
-echo "📡 Registry URL: {server_url}/npm/"
-
-# Set npm registry
-npm config set registry {server_url}/npm/
-
-echo "✅ npm configured successfully!"
-echo ""
-echo "📋 Useful commands:"
-echo "   npm whoami          # Check current user"
-echo "   npm config list     # View configuration"
-echo "   npm config set registry https://registry.npmjs.org/  # Reset to default"
-echo ""
-echo "🚀 You can now install packages from your private registry!"
-"#
-        ),
-        "pypi" => format!(
-            r#"#!/bin/bash
-# Goobits Package Server - PyPI Setup Script
-# This script configures pip to use your private package registry
-
-echo "🔧 Configuring pip to use Goobits Package Server..."
-echo "📡 Registry URL: {server_url}/pypi/simple/"
-
-# Create pip config directory
-mkdir -p ~/.config/pip
-
-# Configure pip
-cat > ~/.config/pip/pip.conf << EOF
-[global]
-index-url = {server_url}/pypi/simple/
-trusted-host = $(echo {server_url} | cut -d'/' -f3 | cut -d':' -f1)
-EOF
-
-echo "✅ pip configured successfully!"
-echo ""
-echo "📋 Useful commands:"
-echo "   pip config list     # View configuration"
-echo "   pip install --index-url https://pypi.org/simple/ <package>  # Install from PyPI"
-echo ""
-echo "🚀 You can now install packages from your private registry!"
-"#
-        ),
-        "cargo" => format!(
-            r#"#!/bin/bash
-# Goobits Package Server - Cargo Setup Script
-# This script configures cargo to use your private package registry
-
-echo "🔧 Configuring cargo to use Goobits Package Server..."
-echo "📡 Registry URL: {server_url}/cargo/"
-
-# Create cargo config directory
-mkdir -p ~/.cargo
-
-# Configure cargo
-cat > ~/.cargo/config.toml << EOF
-[registries]
-goobits = {{ index = "{server_url}/cargo/" }}
-
-[source.crates-io]
-replace-with = "goobits"
-
-[source.goobits]
-registry = "{server_url}/cargo/"
-EOF
-
-echo "✅ cargo configured successfully!"
-echo ""
-echo "📋 Useful commands:"
-echo "   cargo search <package>    # Search for packages"
-echo "   cargo install <package>   # Install a package"
-echo ""
-echo "🚀 You can now install packages from your private registry!"
-"#
-        ),
-        _ => {
-            debug!(
-                operation = "render_setup",
-                registry, "unsupported registry setup requested"
-            );
-            format!(
-                r#"#!/bin/bash
-# Goobits Package Server - Setup Script
-# Unknown registry type: {registry}
-
-echo "❌ Unknown registry type: {registry}"
-echo "📋 Supported registries: npm, pypi, cargo"
-echo ""
-echo "🔧 Usage examples:"
-echo "   curl {server_url}/setup.sh?registry=npm | bash"
-echo "   curl {server_url}/setup.sh?registry=pypi | bash"
-echo "   curl {server_url}/setup.sh?registry=cargo | bash"
-"#
-            )
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::client_script;
-
-    #[test]
-    fn pypi_script_writes_only_the_canonical_config() {
-        let script = client_script("pypi", 3080);
-
-        assert!(script.contains("~/.config/pip/pip.conf"));
-        assert!(!script.contains("~/.pip"));
-    }
 }

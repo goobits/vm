@@ -10,10 +10,7 @@ use tracing::{debug, info, warn};
 use vm_packages::{PackageEcosystem, PackageIdentity};
 
 use crate::validation;
-use crate::{
-    package_utils, sha256_hash, storage, validate_filename, AppError, AppResult, AppState,
-    SuccessResponse,
-};
+use crate::{package_utils, sha256_hash, storage, AppError, AppResult, AppState, SuccessResponse};
 
 /// Helper to list valid package files (.whl, .tar.gz) in the PyPI packages directory
 async fn list_package_files(pypi_dir: &Path) -> AppResult<Vec<PathBuf>> {
@@ -275,7 +272,7 @@ pub async fn download_file(
     State(state): State<Arc<AppState>>,
 ) -> AppResult<Vec<u8>> {
     // Validate filename to prevent path traversal
-    validate_filename(&filename)?;
+    crate::validation::validate_filename(&filename)?;
 
     let data = storage::read_file(state.data_dir.join("pypi/packages").join(&filename)).await?;
     debug!(
@@ -299,7 +296,7 @@ pub async fn download_upstream_file(
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| AppError::BadRequest("PyPI artifact path has no filename".into()))?;
-    validate_filename(filename)?;
+    crate::validation::validate_filename(filename)?;
 
     let cache_path = state.data_dir.join("cache/public/pypi").join(&safe_path);
     let upstream = Arc::clone(&state.upstream_client);
@@ -401,7 +398,7 @@ pub async fn upload_package(
                 .to_string();
 
             // Validate filename for security
-            validate_filename(&filename)?;
+            crate::validation::validate_filename(&filename)?;
 
             // Only accept .whl and .tar.gz files
             if !package_utils::validate_file_extension(&filename, &[".whl", ".tar.gz"]) {
