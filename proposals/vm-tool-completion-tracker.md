@@ -134,6 +134,14 @@ None.
   `anyhow`, `crossbeam-epoch`, `quinn-proto`, and `spin` were resolved. Workspace
   formatting, all-target checks, strict Clippy, RustSec audit, unit tests, and
   integration tests passed.
+- 2026-08-24: Managed Docker package work now returns authoritative ecosystem
+  and pinned-version context with checkout creation, eliminating three guest
+  preflight reads. Release reuses checkout, upload, and submission records,
+  eliminating up to five more controller reads; polling begins at 250 ms and
+  remains capped at two seconds; file-only guest subprocesses were removed.
+  `vm packages status` remained healthy at 0.011-0.038 seconds. Workspace
+  formatting, all-target checks, strict Clippy, RustSec audit, unit tests, and
+  integration tests passed.
 
 ## Related Context
 
