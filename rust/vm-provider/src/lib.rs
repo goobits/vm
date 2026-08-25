@@ -19,41 +19,47 @@ use vm_config::config::{BoxSpec, VmConfig};
 // Re-export common types for convenience
 pub use capabilities::{CommandProvider, InstanceProvider, ProvisioningProvider, TempProvider};
 pub use common::instance::{InstanceInfo, InstanceResolver};
+#[cfg(feature = "docker")]
+pub use container::{render_compose_preview, validate_container_environment, ContainerEngine};
 pub use context::ProviderContext;
+#[cfg(feature = "test-helpers")]
+pub use mock::MockProvider;
+pub use resources::{ANSIBLE_PLAYBOOK, ZSHRC_TEMPLATE};
 pub use status::{
     InstanceState, MountUsage, ResourceUsage, RuntimeDiagnostics, ServiceStatus, VmStatusReport,
+};
+pub use tart::TartCommand;
+pub use tart_base::{
+    versioned_cache_name as versioned_tart_cache_name, versioned_image as versioned_tart_image,
+    LINUX_NAME as TART_LINUX_NAME, MACOS_NAME as TART_MACOS_NAME,
 };
 pub use vm_core::error::{Result as VmResult, VmError};
 
 mod capabilities;
-pub mod common;
-pub mod context;
+mod common;
+mod context;
 mod guest_cache;
 mod project_plan;
 mod resource_limits;
-pub mod resources;
+mod resources;
+mod security;
 mod shell_session;
 mod stable_name;
 mod status;
-pub mod tart;
-pub mod tart_base;
+mod tart;
+mod tart_base;
+mod temp_models;
 
-// Re-export template constants for testing
-pub use resources::THEMES_JSON;
-pub use resources::ZSHRC_TEMPLATE;
-pub mod security;
-pub mod temp_models;
-
-pub mod audio;
-pub mod preflight;
+mod audio;
+mod preflight;
 mod user_home;
 
 #[cfg(feature = "docker")]
-pub mod container;
+mod container;
 
 // When the `test-helpers` feature is enabled, include the mock provider.
 #[cfg(feature = "test-helpers")]
-pub mod mock;
+mod mock;
 
 pub use temp_models::{Mount, MountPermission, TempVmState};
 

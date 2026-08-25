@@ -3,7 +3,7 @@ use std::process::Command;
 use crate::error::VmResult;
 use vm_core::{vm_println, vm_progress};
 use vm_packages::{ApplianceConfig, COMPOSE_PROJECT};
-use vm_provider::container::ContainerEngine;
+use vm_provider::ContainerEngine;
 
 use super::appliance::MaintenanceTask;
 use super::{files::ApplianceFiles, process, source_images};
@@ -144,7 +144,7 @@ fn up_command(engine: ContainerEngine, files: &ApplianceFiles) -> Command {
 mod tests {
     use super::up_command;
     use crate::commands::packages::files::ApplianceFiles;
-    use vm_provider::container::ContainerEngine;
+    use vm_provider::ContainerEngine;
 
     #[test]
     fn startup_reuses_present_immutable_images() {

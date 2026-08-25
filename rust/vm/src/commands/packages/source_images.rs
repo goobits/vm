@@ -6,7 +6,7 @@ use std::process::{Command, Stdio};
 use serde::Deserialize;
 use vm_core::{vm_progress, vm_warning};
 use vm_packages::ApplianceConfig;
-use vm_provider::container::ContainerEngine;
+use vm_provider::ContainerEngine;
 
 use crate::error::{VmError, VmResult};
 

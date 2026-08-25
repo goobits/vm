@@ -4,19 +4,23 @@
 
 mod archive;
 mod base_image;
-pub mod create;
-pub mod docker;
-pub mod export;
+mod create;
+mod docker;
+mod export;
 mod images;
-pub mod import;
+mod import;
 mod manager;
-pub mod metadata;
-pub mod restore;
+mod metadata;
+mod restore;
 mod volumes;
 
 // Re-export key types
+pub use create::handle_create;
+pub use export::handle_export;
+pub use import::handle_import;
 pub use manager::{SnapshotManager, SnapshotScope};
 pub use metadata::{ServiceSnapshot, SnapshotMetadata, VolumeSnapshot};
+pub use restore::handle_restore;
 
 /// Calculate optimal concurrency limit based on available CPU count
 ///

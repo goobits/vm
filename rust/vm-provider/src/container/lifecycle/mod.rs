@@ -44,8 +44,8 @@ pub struct LifecycleOperations<'a> {
 }
 
 impl<'a> LifecycleOperations<'a> {
-    /// Constructor - only public method in mod.rs
-    pub fn new(
+    #[cfg(test)]
+    fn new(
         config: &'a VmConfig,
         generated_dir: &'a std::path::PathBuf,
         project_dir: &'a std::path::PathBuf,

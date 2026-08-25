@@ -132,83 +132,6 @@ impl SecurityValidator {
 
         Ok(target_path)
     }
-
-    /// Validate a filename for script creation (no path separators, safe characters only)
-    pub fn validate_script_name(filename: &str) -> Result<()> {
-        // Check for empty name
-        if filename.is_empty() {
-            return Err(VmError::Internal("Script name cannot be empty".to_string()));
-        }
-
-        // Check for reasonable length
-        if filename.len() > 255 {
-            return Err(VmError::Internal(format!(
-                "Script name too long (max 255 characters): {} characters provided",
-                filename.len()
-            )));
-        }
-
-        // Check for path separators
-        if filename.contains('/') || filename.contains('\\') {
-            return Err(VmError::Internal(format!(
-                "Script name cannot contain path separators: {filename}"
-            )));
-        }
-
-        // Check for dangerous characters
-        if filename.contains("..") || filename.starts_with('.') {
-            return Err(VmError::Internal(format!(
-                "Script name cannot contain '..' or start with '.': {filename}"
-            )));
-        }
-
-        // Only allow alphanumeric, dash, underscore, and dots (for extensions)
-        if !filename
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
-        {
-            return Err(VmError::Internal(format!(
-                "Script name can only contain alphanumeric characters, dashes, underscores, and dots: {filename}"
-            )));
-        }
-
-        Ok(())
-    }
-
-    /// Create a safe destination path within a restricted directory
-    pub fn safe_destination_path(base_dir: &Path, filename: &str) -> Result<PathBuf> {
-        // Validate the filename first
-        Self::validate_script_name(filename)?;
-
-        // Ensure base directory exists and is absolute
-        if !base_dir.is_absolute() {
-            return Err(VmError::Internal(format!(
-                "Base directory must be absolute: {}",
-                base_dir.display()
-            )));
-        }
-
-        let destination = base_dir.join(filename);
-
-        // Double-check that we haven't escaped the base directory
-        let canonical_base = base_dir.canonicalize().map_err(|e| {
-            VmError::Internal(format!("Failed to canonicalize base directory: {e}"))
-        })?;
-
-        // Since destination might not exist, we check the parent
-        if let Some(parent) = destination.parent() {
-            if let Ok(canonical_parent) = parent.canonicalize() {
-                if !canonical_parent.starts_with(&canonical_base) {
-                    return Err(VmError::Internal(format!(
-                        "Destination escapes base directory: {}",
-                        destination.display()
-                    )));
-                }
-            }
-        }
-
-        Ok(destination)
-    }
 }
 
 #[cfg(test)]
@@ -302,25 +225,5 @@ mod tests {
             SecurityValidator::validate_managed_checkout_path(Path::new("/workspace"), home,)
                 .is_err()
         );
-    }
-
-    #[test]
-    fn test_validate_script_name_normal() {
-        let result = SecurityValidator::validate_script_name("my-script_v2");
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_validate_script_name_path_separator() {
-        let result = SecurityValidator::validate_script_name("path/to/script");
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("path separators"));
-    }
-
-    #[test]
-    fn test_validate_script_name_traversal() {
-        let result = SecurityValidator::validate_script_name("..script");
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains(".."));
     }
 }

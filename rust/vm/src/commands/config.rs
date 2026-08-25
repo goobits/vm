@@ -87,8 +87,7 @@ fn handle_render_command(
 
     let project_dir = config.project_dir()?;
     let context = vm_provider::ProviderContext::default().with_config(app_config.global);
-    let rendered =
-        vm_provider::container::render_compose_preview(&config, &project_dir, instance, &context)?;
+    let rendered = vm_provider::render_compose_preview(&config, &project_dir, instance, &context)?;
     vm_print!("{rendered}");
     Ok(())
 }

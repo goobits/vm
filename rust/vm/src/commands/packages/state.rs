@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use vm_config::config::ProviderName;
-use vm_provider::container::ContainerEngine;
+use vm_provider::ContainerEngine;
 
 use crate::error::{VmError, VmResult};
 

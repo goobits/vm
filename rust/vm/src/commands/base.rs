@@ -6,7 +6,9 @@ use vm_config::{
     resolve_tool_path, AppConfig,
 };
 use vm_core::{vm_println, vm_warning};
-use vm_provider::{tart::TartCommand, tart_base};
+use vm_provider::{
+    versioned_tart_cache_name, versioned_tart_image, TartCommand, TART_LINUX_NAME, TART_MACOS_NAME,
+};
 
 mod runtime;
 mod tart_install;
@@ -30,7 +32,7 @@ impl TartVibeBase {
     }
 
     fn prebuilt_image(self) -> Option<String> {
-        (self.guest_os == "linux").then(tart_base::versioned_image)
+        (self.guest_os == "linux").then(versioned_tart_image)
     }
 }
 
@@ -66,7 +68,7 @@ async fn handle_build(preset: &str, provider: &str, guest_os: &str) -> VmResult<
                 global: Default::default(),
                 vm: VmConfig::default(),
             };
-            vm_snapshot::create::handle_create(
+            vm_snapshot::handle_create(
                 &config,
                 "docker",
                 DOCKER_BASE_NAME,
@@ -127,15 +129,15 @@ fn active_tart_guest_os() -> &'static str {
 
 fn tart_base_name(guest_os: &str) -> &'static str {
     if guest_os == "macos" {
-        tart_base::MACOS_NAME
+        TART_MACOS_NAME
     } else {
-        tart_base::LINUX_NAME
+        TART_LINUX_NAME
     }
 }
 
 fn tart_base_local_name(guest_os: &str) -> String {
     if guest_os == "linux" {
-        tart_base::versioned_cache_name()
+        versioned_tart_cache_name()
     } else {
         tart_base_name(guest_os).to_string()
     }
@@ -151,8 +153,8 @@ fn configured_tart_vibe_base(config: &VmConfig) -> Option<TartVibeBase> {
     };
 
     match name.as_str() {
-        tart_base::LINUX_NAME => Some(TartVibeBase { guest_os: "linux" }),
-        tart_base::MACOS_NAME => Some(TartVibeBase { guest_os: "macos" }),
+        TART_LINUX_NAME => Some(TartVibeBase { guest_os: "linux" }),
+        TART_MACOS_NAME => Some(TartVibeBase { guest_os: "macos" }),
         _ => None,
     }
 }
@@ -293,7 +295,10 @@ mod tests {
     };
     use std::ffi::OsStr;
     use vm_config::config::{BoxSpec, TartConfig, VmConfig, VmSettings};
-    use vm_provider::{tart::TartCommand, tart_base};
+    use vm_provider::{
+        versioned_tart_cache_name, versioned_tart_image, TartCommand, TART_LINUX_NAME,
+        TART_MACOS_NAME,
+    };
 
     fn config(provider: &str, box_name: &str) -> VmConfig {
         VmConfig {
@@ -312,10 +317,7 @@ mod tests {
         assert_eq!(resolve_tart_guest_os("macos").unwrap(), "macos");
         assert_eq!(tart_base_name("linux"), "vibe-tart-linux-base");
         assert_eq!(tart_base_name("macos"), "vibe-tart-sequoia-base");
-        assert_eq!(
-            tart_base_local_name("linux"),
-            tart_base::versioned_cache_name()
-        );
+        assert_eq!(tart_base_local_name("linux"), versioned_tart_cache_name());
         assert_eq!(tart_base_local_name("macos"), "vibe-tart-sequoia-base");
     }
 
@@ -368,25 +370,25 @@ mod tests {
     #[test]
     fn configured_vibe_bases_resolve_their_guest_os() {
         assert_eq!(
-            configured_tart_vibe_base(&config("tart", tart_base::MACOS_NAME)),
+            configured_tart_vibe_base(&config("tart", TART_MACOS_NAME)),
             Some(TartVibeBase { guest_os: "macos" })
         );
         assert_eq!(
-            configured_tart_vibe_base(&config("tart", tart_base::LINUX_NAME)),
+            configured_tart_vibe_base(&config("tart", TART_LINUX_NAME)),
             Some(TartVibeBase { guest_os: "linux" })
         );
         assert_eq!(
-            configured_tart_vibe_base(&config("tart", tart_base::LINUX_NAME))
+            configured_tart_vibe_base(&config("tart", TART_LINUX_NAME))
                 .and_then(TartVibeBase::prebuilt_image),
-            Some(tart_base::versioned_image())
+            Some(versioned_tart_image())
         );
         assert_eq!(
-            configured_tart_vibe_base(&config("tart", tart_base::LINUX_NAME))
+            configured_tart_vibe_base(&config("tart", TART_LINUX_NAME))
                 .map(TartVibeBase::local_name),
-            Some(tart_base::versioned_cache_name())
+            Some(versioned_tart_cache_name())
         );
         assert_eq!(
-            configured_tart_vibe_base(&config("tart", tart_base::MACOS_NAME))
+            configured_tart_vibe_base(&config("tart", TART_MACOS_NAME))
                 .and_then(TartVibeBase::prebuilt_image),
             None
         );
@@ -399,7 +401,7 @@ mod tests {
             None
         );
         assert_eq!(
-            configured_tart_vibe_base(&config("docker", tart_base::MACOS_NAME)),
+            configured_tart_vibe_base(&config("docker", TART_MACOS_NAME)),
             None
         );
     }

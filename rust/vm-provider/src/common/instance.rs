@@ -4,6 +4,7 @@
 //! across different providers. It defines a unified interface for instance
 //! resolution and information handling.
 
+#[cfg(feature = "tart")]
 use vm_config::config::VmConfig;
 use vm_core::error::{Result, VmError};
 
@@ -104,6 +105,7 @@ pub fn fuzzy_match_instances(partial: &str, instances: &[InstanceInfo]) -> Resul
 }
 
 /// Extract project name from config with fallback to default
+#[cfg(feature = "tart")]
 pub fn extract_project_name(config: &VmConfig) -> &str {
     config
         .project
@@ -140,6 +142,7 @@ pub fn create_container_instance_info(
 }
 
 /// Helper to create InstanceInfo for Tart VMs
+#[cfg(any(feature = "tart", test))]
 pub fn create_tart_instance_info(
     name: &str,
     status: &str,

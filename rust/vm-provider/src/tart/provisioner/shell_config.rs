@@ -1,7 +1,7 @@
 use super::{GuestCommand, TartProvisioner};
 use crate::guest_cache::GuestCachePolicy;
+use crate::resources::{THEMES_JSON, ZSHRC_TEMPLATE};
 use crate::shell_session::quote_posix_argument;
-use crate::{THEMES_JSON, ZSHRC_TEMPLATE};
 use serde_json::json;
 use tera::{Context, Tera};
 use tracing::warn;

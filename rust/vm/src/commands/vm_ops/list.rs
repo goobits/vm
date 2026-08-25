@@ -178,7 +178,7 @@ fn format_uptime(uptime: &Option<String>) -> String {
 #[cfg(test)]
 mod tests {
     use super::load_instances;
-    use vm_provider::mock::MockProvider;
+    use vm_provider::MockProvider;
 
     #[test]
     fn project_listing_uses_the_configured_provider() {

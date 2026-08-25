@@ -299,6 +299,7 @@ impl<'a> ComposeOperations<'a> {
     }
 
     /// Render docker-compose.yml without instance name
+    #[cfg(test)]
     pub fn render_docker_compose(
         &self,
         build_context_dir: &Path,
@@ -314,42 +315,8 @@ impl<'a> ComposeOperations<'a> {
         )
     }
 
-    pub fn write_docker_compose(
-        &self,
-        build_context_dir: &Path,
-        context: &ProviderContext,
-    ) -> Result<PathBuf> {
-        // Ensure AI sync directories exist before rendering compose file
-        ensure_ai_sync_dirs(self.config)?;
-
-        let content = self.render_docker_compose(build_context_dir, context)?;
-
-        let path = compose_path(self.generated_dir, None);
-        secure_write_if_changed(&path, content.as_bytes())?;
-
-        Ok(path)
-    }
-
-    /// Write docker-compose.yml with custom instance name
-    pub fn write_docker_compose_with_instance(
-        &self,
-        build_context_dir: &Path,
-        instance_name: &str,
-        context: &ProviderContext,
-    ) -> Result<PathBuf> {
-        // Ensure AI sync directories exist before rendering compose file
-        ensure_ai_sync_dirs(self.config)?;
-
-        let content =
-            self.render_docker_compose_with_instance(build_context_dir, instance_name, context)?;
-
-        let path = compose_path(self.generated_dir, Some(instance_name));
-        secure_write_if_changed(&path, content.as_bytes())?;
-
-        Ok(path)
-    }
-
     /// Render docker-compose.yml with custom instance name
+    #[cfg(test)]
     pub fn render_docker_compose_with_instance(
         &self,
         build_context_dir: &Path,

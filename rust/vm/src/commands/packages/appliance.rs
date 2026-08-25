@@ -88,7 +88,7 @@ pub(super) async fn up(
         requested,
         previous.as_ref().map(|state| state.engine.clone()),
     );
-    let engine = vm_provider::container::ContainerEngine::detect(&engine_name)?;
+    let engine = vm_provider::ContainerEngine::detect(&engine_name)?;
     let image = resolve_image(
         registry_image,
         previous.as_ref().map(|state| {
@@ -216,7 +216,7 @@ pub(super) async fn doctor(files: &ApplianceFiles) -> VmResult<()> {
         .unwrap_or_else(first_run_engine);
 
     files.validate_definition()?;
-    let engine = vm_provider::container::ContainerEngine::detect(&engine_name)?;
+    let engine = vm_provider::ContainerEngine::detect(&engine_name)?;
     container::doctor(engine, files)?;
 
     if let Some(state) = state {

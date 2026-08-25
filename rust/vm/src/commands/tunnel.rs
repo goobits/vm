@@ -13,7 +13,7 @@ use tracing::warn;
 use vm_config::{config::ProviderName, config::VmConfig, GlobalConfig};
 use vm_core::{vm_hint, vm_println, vm_success, vm_warning};
 use vm_platform::platform;
-use vm_provider::{container::ContainerEngine, InstanceProvider, Provider};
+use vm_provider::{ContainerEngine, InstanceProvider, Provider};
 
 pub(super) fn handle_command(
     command: TunnelSubcommand,

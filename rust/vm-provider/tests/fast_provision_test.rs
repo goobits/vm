@@ -354,7 +354,7 @@ fn test_zshrc_template_avoids_optional_service_dereferences() {
 
 #[test]
 fn test_docker_database_client_installs_do_not_require_python_apt() {
-    let playbook = vm_provider::resources::ANSIBLE_PLAYBOOK;
+    let playbook = vm_provider::ANSIBLE_PLAYBOOK;
     let client_tools_pos = playbook
         .find("Install database client tools for Docker")
         .expect("playbook should install Docker database client tools");
@@ -375,7 +375,7 @@ fn test_docker_database_client_installs_do_not_require_python_apt() {
 
 #[test]
 fn test_docker_engine_install_does_not_require_python_apt() {
-    let playbook = vm_provider::resources::ANSIBLE_PLAYBOOK;
+    let playbook = vm_provider::ANSIBLE_PLAYBOOK;
     let docker_pos = playbook
         .find("Install Docker")
         .expect("playbook should install Docker");

@@ -22,7 +22,7 @@ pub(super) async fn save(
         vm: subject.config,
     };
     vm_progress!("Saving '{target}' as snapshot '{snapshot}'...");
-    vm_snapshot::create::handle_create(
+    vm_snapshot::handle_create(
         &config,
         &provider,
         &snapshot,
@@ -55,7 +55,7 @@ pub(super) async fn revert(
         vm: subject.config,
     };
     vm_progress!("Reverting '{target}' to snapshot '{snapshot}'...");
-    vm_snapshot::restore::handle_restore(&config, &provider, &snapshot, Some(&target), force)
+    vm_snapshot::handle_restore(&config, &provider, &snapshot, Some(&target), force)
         .await
         .map_err(VmError::from)?;
     vm_success!("Reverted '{target}' to snapshot '{snapshot}'");
@@ -80,7 +80,7 @@ pub(super) async fn package(
     let snapshot = target.as_str();
 
     if let Some(dockerfile) = build {
-        vm_snapshot::create::handle_create(
+        vm_snapshot::handle_create(
             &config,
             &provider,
             snapshot,
@@ -96,7 +96,7 @@ pub(super) async fn package(
     }
 
     vm_progress!("Packaging snapshot '{snapshot}'...");
-    vm_snapshot::export::handle_export(
+    vm_snapshot::handle_export(
         &provider,
         snapshot,
         output.as_deref(),

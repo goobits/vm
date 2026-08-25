@@ -7,7 +7,7 @@ use anyhow::Result;
 use std::process::{Command, Stdio};
 use vm_config::config::ProviderName;
 use vm_core::{vm_hint, vm_println, vm_progress, vm_success, vm_warning};
-use vm_provider::container::{validate_container_environment, ContainerEngine};
+use vm_provider::{validate_container_environment, ContainerEngine};
 
 /// Run diagnostics with optional auto-fix
 pub fn run_with_fix(fix: bool, provider: &str, configuration_error: Option<&str>) -> Result<()> {
