@@ -26,7 +26,6 @@ impl<'a> LifecycleOperations<'a> {
         instance_name: Option<&str>,
         context: &ProviderContext,
     ) -> Result<()> {
-        self.check_daemon_is_running()?;
         if let Some(vm_config) = &self.config.vm {
             self.check_memory_allocation(vm_config);
         }

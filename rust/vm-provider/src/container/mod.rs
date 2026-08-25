@@ -353,10 +353,12 @@ mod tests {
 
         let dir = tempfile::tempdir().unwrap();
         let docker = dir.path().join("docker");
+        let log = dir.path().join("commands.log");
         let mut file = std::fs::File::create(&docker).unwrap();
         writeln!(
             file,
             r#"#!/bin/sh
+echo "$@" >> '{}'
 if [ "$1" = "--version" ]; then
   echo "Docker version should stay captured"
   exit 0
@@ -365,7 +367,8 @@ if [ "$1" = "ps" ]; then
   exit 0
 fi
 exit 1
-"#
+"#,
+            log.display()
         )
         .unwrap();
         drop(file);
@@ -378,5 +381,6 @@ exit 1
         engine
             .validate_executable(docker.to_str().unwrap())
             .unwrap();
+        assert_eq!(std::fs::read_to_string(log).unwrap(), "--version\nps\n");
     }
 }

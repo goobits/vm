@@ -116,28 +116,6 @@ impl Default for ContainerCommand {
 pub struct ContainerOps;
 
 impl ContainerOps {
-    /// Check whether the configured container engine is available.
-    pub fn check_daemon_running(executable: Option<&str>) -> Result<()> {
-        let mut cmd = ContainerCommand::new(executable)
-            .subcommand("info")
-            .build_command()?;
-
-        let output = cmd.output().map_err(|e| {
-            VmError::Internal(format!(
-                "Container engine is not running or not accessible: {e}"
-            ))
-        })?;
-
-        if output.status.success() {
-            Ok(())
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            Err(VmError::Internal(format!(
-                "Container engine is not running or not accessible: {stderr}"
-            )))
-        }
-    }
-
     /// List all containers with specified format.
     ///
     /// # Arguments

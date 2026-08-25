@@ -120,12 +120,6 @@ impl<'a> LifecycleOperations<'a> {
         }
     }
 
-    #[must_use = "container engine status should be checked"]
-    pub(super) fn check_daemon_is_running(&self) -> Result<()> {
-        crate::container::ContainerOps::check_daemon_running(Some(self.executable))
-            .map_err(|_| VmError::Internal("Container engine is not running".to_string()))
-    }
-
     /// Check Docker build requirements (disk space, resources)
     pub(super) fn check_docker_build_requirements(&self) {
         self.check_disk_space_unix();
