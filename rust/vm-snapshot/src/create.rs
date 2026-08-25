@@ -9,7 +9,7 @@ use crate::metadata::{ServiceSnapshot, SnapshotMetadata};
 use crate::optimal_concurrency;
 use crate::volumes::backup_volumes;
 use chrono::Utc;
-use futures::stream::{self, StreamExt};
+use futures_util::stream::{self, StreamExt};
 use std::path::Path;
 use vm_config::AppConfig;
 use vm_core::error::{Result, VmError};

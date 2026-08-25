@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use futures::StreamExt;
+use futures_util::StreamExt;
 use reqwest::header::CONTENT_TYPE;
 use reqwest::redirect::Policy;
 use serde::{Deserialize, Serialize};

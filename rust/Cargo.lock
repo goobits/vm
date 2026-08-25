@@ -205,7 +205,7 @@ dependencies = [
  "serde_json",
  "serde_path_to_error",
  "serde_urlencoded",
- "sha1 0.10.6",
+ "sha1",
  "sync_wrapper",
  "tokio",
  "tokio-tungstenite",
@@ -902,21 +902,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
 
 [[package]]
-name = "futures"
-version = "0.3.32"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b147ee9d1f6d097cef9ce628cd2ee62288d963e16fb287bd9286455b241382d"
-dependencies = [
- "futures-channel",
- "futures-core",
- "futures-executor",
- "futures-io",
- "futures-sink",
- "futures-task",
- "futures-util",
-]
-
-[[package]]
 name = "futures-channel"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -978,7 +963,6 @@ version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "389ca41296e6190b48053de0321d02a77f32f8a5d2461dd38762c0593805c6d6"
 dependencies = [
- "futures-channel",
  "futures-core",
  "futures-io",
  "futures-macro",
@@ -1105,7 +1089,7 @@ dependencies = [
  "dialoguer",
  "dirs",
  "fs2",
- "futures",
+ "futures-util",
  "git2",
  "predicates",
  "reqwest",
@@ -2733,17 +2717,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sha1"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aacc4cc499359472b4abe1bf11d0b12e688af9a805fa5e3016f9a386dc2d0214"
-dependencies = [
- "cfg-if",
- "cpufeatures 0.3.0",
- "digest 0.11.3",
-]
-
-[[package]]
 name = "sha2"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3380,7 +3353,7 @@ dependencies = [
  "httparse",
  "log",
  "rand 0.9.4",
- "sha1 0.10.6",
+ "sha1",
  "thiserror",
 ]
 
@@ -3688,7 +3661,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "sha1 0.11.0",
+ "sha1",
  "sha2 0.11.0",
  "tar",
  "tempfile",
@@ -3798,7 +3771,7 @@ version = "5.0.1"
 dependencies = [
  "chrono",
  "flate2",
- "futures",
+ "futures-util",
  "serde",
  "serde_json",
  "tar",

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use futures::stream::{self, StreamExt};
+use futures_util::stream::{self, StreamExt};
 use vm_core::error::{Result, VmError};
 
 use crate::docker::{execute_docker_streaming, execute_docker_with_output};

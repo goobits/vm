@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use futures::future;
+use futures_util::future;
 use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 use tracing::{debug, info, warn};

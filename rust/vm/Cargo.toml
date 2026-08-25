@@ -42,7 +42,7 @@ vm-temp = { path = "../vm-temp" }
 vm-snapshot = { path = "../vm-snapshot" }
 vm-packages = { path = "../vm-packages" }
 vm-auth-proxy = { path = "../vm-auth-proxy" }
-futures = { workspace = true }
+futures-util = { workspace = true }
 chrono = { workspace = true }
 semver = { workspace = true }
 walkdir = { workspace = true }

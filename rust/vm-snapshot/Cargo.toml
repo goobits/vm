@@ -9,7 +9,7 @@ description = "Snapshot management for Goobits VM"
 [dependencies]
 chrono = { workspace = true }
 flate2 = { workspace = true }
-futures = { workspace = true }
+futures-util = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tar = { workspace = true }
