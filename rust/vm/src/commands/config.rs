@@ -64,18 +64,18 @@ fn contains_vm_box(value: &serde_yaml::Value) -> bool {
     let has_box = |settings: &serde_yaml::Value| {
         settings
             .as_mapping()
-            .is_some_and(|vm| vm.contains_key(&key("box")))
+            .is_some_and(|vm| vm.contains_key(key("box")))
     };
 
-    mapping.get(&key("vm")).is_some_and(has_box)
+    mapping.get(key("vm")).is_some_and(has_box)
         || mapping
-            .get(&key("profiles"))
+            .get(key("profiles"))
             .and_then(serde_yaml::Value::as_mapping)
             .is_some_and(|profiles| {
                 profiles.values().any(|profile| {
                     profile
                         .as_mapping()
-                        .and_then(|settings| settings.get(&key("vm")))
+                        .and_then(|settings| settings.get(key("vm")))
                         .is_some_and(has_box)
                 })
             })
