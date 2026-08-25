@@ -215,6 +215,11 @@ fn system_base_build_parses_macos_guest_os() {
 }
 
 #[test]
+fn system_base_validate_is_not_a_public_command() {
+    assert!(Args::try_parse_from(["vm", "system", "base", "validate", "vibe"]).is_err());
+}
+
+#[test]
 fn packages_up_parses_podman_engine() {
     assert!(matches!(
         Args::parse_from(["vm", "packages", "up", "--engine", "podman", "--port", "4080",]).command,

@@ -174,7 +174,6 @@ environment. Active agent sessions do not hot-reload updated skills.
 | `vm system update [--version <version>] [--force]` | Update the VM installation |
 | `vm system uninstall [--keep-config] [-y\|--yes]` | Remove VM from the host |
 | `vm system base build <preset> --provider <docker\|tart> [--guest-os <auto\|linux\|macos>]` | Build a provider-native base |
-| `vm system base validate <preset> [--provider <docker\|tart\|all>] [--rebuild-docker-base] [--build-tart-base]` | Validate provider base workflows |
 
 `vm config validate` is read-only. `vm config render` redacts secrets and host
 paths. Ordinary cleanup and repair preserve managed data unless a command

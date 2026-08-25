@@ -36,7 +36,6 @@ Provider-native base workflows live under `system base`:
 vm system base build vibe --provider docker
 vm system base build vibe --provider tart
 vm system base build vibe --provider tart --guest-os macos
-vm system base validate vibe --provider all
 ```
 
 New Docker environments verify that `@vibe-image` contains Codex's complete

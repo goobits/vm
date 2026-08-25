@@ -369,16 +369,6 @@ pub enum BaseSubcommand {
         #[arg(long = "guest-os", value_parser = ["auto", "linux", "macos"], default_value = "auto")]
         guest_os: String,
     },
-    /// Validate the shared provider workflow for the current project
-    Validate {
-        preset: String,
-        #[arg(long, value_parser = ["docker", "tart", "all"], default_value = "all")]
-        provider: String,
-        #[arg(long)]
-        rebuild_docker_base: bool,
-        #[arg(long)]
-        build_tart_base: bool,
-    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -397,7 +387,7 @@ pub enum SystemSubcommand {
         #[arg(long, short = 'y')]
         yes: bool,
     },
-    /// Build and validate provider-native base environments
+    /// Build provider-native base environments
     Base {
         #[command(subcommand)]
         command: BaseSubcommand,

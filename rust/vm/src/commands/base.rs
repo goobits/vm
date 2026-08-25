@@ -1,9 +1,8 @@
 use crate::cli::BaseSubcommand;
 use crate::error::{VmError, VmResult};
-use std::process::Command;
 use vm_config::{
     config::{ImageSpec, VmConfig},
-    resolve_tool_path, AppConfig,
+    AppConfig,
 };
 use vm_core::{vm_println, vm_warning};
 use vm_provider::{
@@ -20,6 +19,7 @@ pub(in crate::commands) use runtime::{
 };
 
 const DOCKER_BASE_NAME: &str = "@vibe-image";
+const DOCKER_BASE_DOCKERFILE: &str = include_str!("../../../../Dockerfile.vibe");
 const TART_BASE_BUILDER: &str = include_str!("../../scripts/build-vibe-tart-base.sh");
 const VIBE_AI_TOOLS_INSTALLER: &str = include_str!("../../scripts/install-vibe-ai-tools.sh");
 
@@ -45,13 +45,18 @@ pub async fn handle_base(command: BaseSubcommand) -> VmResult<()> {
             provider,
             guest_os,
         } => handle_build(&preset, &provider, &guest_os).await,
-        BaseSubcommand::Validate {
-            preset,
-            provider,
-            rebuild_docker_base,
-            build_tart_base,
-        } => handle_validate(&preset, &provider, rebuild_docker_base, build_tart_base),
     }
+}
+
+fn stage_docker_base() -> VmResult<tempfile::TempDir> {
+    let context = tempfile::tempdir()
+        .map_err(|error| VmError::general(error, "Failed to create a Docker base build context"))?;
+    std::fs::write(
+        context.path().join("Dockerfile.vibe"),
+        DOCKER_BASE_DOCKERFILE,
+    )
+    .map_err(|error| VmError::general(error, "Failed to stage the Docker base definition"))?;
+    Ok(context)
 }
 
 async fn handle_build(preset: &str, provider: &str, guest_os: &str) -> VmResult<()> {
@@ -59,13 +64,8 @@ async fn handle_build(preset: &str, provider: &str, guest_os: &str) -> VmResult<
 
     match provider {
         "docker" => {
-            let dockerfile = resolve_tool_path("Dockerfile.vibe");
-            let build_context = dockerfile.parent().ok_or_else(|| {
-                VmError::validation(
-                    "Vibe Dockerfile has no build context",
-                    Some(dockerfile.display().to_string()),
-                )
-            })?;
+            let build_context = stage_docker_base()?;
+            let dockerfile = build_context.path().join("Dockerfile.vibe");
             let config = AppConfig {
                 global: Default::default(),
                 vm: VmConfig::default(),
@@ -78,7 +78,7 @@ async fn handle_build(preset: &str, provider: &str, guest_os: &str) -> VmResult<
                 false,
                 None,
                 Some(&dockerfile),
-                Some(build_context),
+                Some(build_context.path()),
                 &[],
                 true,
             )
@@ -217,51 +217,6 @@ fn ensure_tart_vibe_base_with_command(
     Ok(local_name)
 }
 
-fn apply_tart_home_from_config(command: &mut Command) {
-    let config = VmConfig::load(None).ok();
-    TartCommand::from_config(config.as_ref()).configure(command);
-}
-
-fn handle_validate(
-    preset: &str,
-    provider: &str,
-    rebuild_docker_base: bool,
-    build_tart_base: bool,
-) -> VmResult<()> {
-    ensure_supported_preset(preset)?;
-
-    let script = resolve_tool_path("scripts/internal/validate-vibe-providers.sh");
-    let mut cmd = Command::new(script);
-    apply_tart_home_from_config(&mut cmd);
-
-    match provider {
-        "docker" => {
-            if rebuild_docker_base {
-                cmd.arg("--rebuild-docker-base");
-            }
-            cmd.args(["--provider", "docker"]);
-        }
-        "tart" => {
-            if build_tart_base {
-                cmd.arg("--build-tart-base");
-            }
-            cmd.args(["--provider", "tart"]);
-        }
-        "all" => {
-            if rebuild_docker_base {
-                cmd.arg("--rebuild-docker-base");
-            }
-            if build_tart_base {
-                cmd.arg("--build-tart-base");
-            }
-            cmd.args(["--provider", "all"]);
-        }
-        _ => unreachable!(),
-    }
-
-    run_command(cmd, "validate vibe providers")
-}
-
 fn ensure_supported_preset(preset: &str) -> VmResult<()> {
     if preset == "vibe" {
         Ok(())
@@ -273,27 +228,12 @@ fn ensure_supported_preset(preset: &str) -> VmResult<()> {
     }
 }
 
-fn run_command(mut command: Command, context: &str) -> VmResult<()> {
-    let status = command.status().map_err(|error| {
-        let message = format!("Failed to {context}: {error}");
-        VmError::general(error, message)
-    })?;
-
-    if status.success() {
-        Ok(())
-    } else {
-        Err(VmError::validation(
-            format!("{context} failed with {status}"),
-            None::<String>,
-        ))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        configured_tart_vibe_base, resolve_tart_guest_os, tart_base_local_name, tart_base_name,
-        TartVibeBase, TART_BASE_BUILDER, VIBE_AI_TOOLS_INSTALLER,
+        configured_tart_vibe_base, resolve_tart_guest_os, stage_docker_base, tart_base_local_name,
+        tart_base_name, TartVibeBase, DOCKER_BASE_DOCKERFILE, TART_BASE_BUILDER,
+        VIBE_AI_TOOLS_INSTALLER,
     };
     use std::ffi::OsStr;
     use vm_config::config::{ImageSpec, TartConfig, VmConfig, VmSettings};
@@ -332,8 +272,16 @@ mod tests {
     }
 
     #[test]
+    fn docker_base_is_staged_from_the_embedded_definition() {
+        let context = stage_docker_base().unwrap();
+        let staged = std::fs::read_to_string(context.path().join("Dockerfile.vibe")).unwrap();
+
+        assert_eq!(staged, DOCKER_BASE_DOCKERFILE);
+        assert!(staged.contains("FROM "));
+    }
+
+    #[test]
     fn vibe_bases_own_standard_ai_clis() {
-        const DOCKERFILE: &str = include_str!("../../../../Dockerfile.vibe");
         const VIBE_PRESET: &str = include_str!("../../../../plugins/vibe-dev/preset.yaml");
 
         for installer in [
@@ -342,7 +290,7 @@ mod tests {
             "https://chatgpt.com/codex/install.sh",
         ] {
             assert!(VIBE_AI_TOOLS_INSTALLER.contains(installer));
-            assert!(DOCKERFILE.contains(installer));
+            assert!(DOCKER_BASE_DOCKERFILE.contains(installer));
         }
         assert!(TART_BASE_BUILDER.contains("VIBE_AI_TOOLS_INSTALLER"));
         assert!(TART_BASE_BUILDER.contains("antigravity claude codex"));
@@ -353,15 +301,16 @@ mod tests {
             "/usr/local/lib/vm-ai-tools/codex-package/bin/codex-code-mode-host",
         ] {
             assert!(VIBE_AI_TOOLS_INSTALLER.contains(runtime_contract));
-            assert!(DOCKERFILE.contains(runtime_contract));
+            assert!(DOCKER_BASE_DOCKERFILE.contains(runtime_contract));
         }
         assert!(VIBE_PRESET.contains("agent-skills: {}"));
         for managed_entry in ["antigravity: {}", "claude: {}", "codex: {}"] {
             assert!(!VIBE_PRESET.contains(managed_entry));
         }
-        assert!(DOCKERFILE.contains("CARGO_TARGET_DIR=\"/tmp/vm-rust-target\""));
-        assert!(DOCKERFILE.contains("CMD command -v node >/dev/null && test -x /usr/bin/python3"));
-        assert!(!DOCKERFILE.contains("CMD bash -c 'source ~/.nvm/nvm.sh"));
+        assert!(DOCKER_BASE_DOCKERFILE.contains("CARGO_TARGET_DIR=\"/tmp/vm-rust-target\""));
+        assert!(DOCKER_BASE_DOCKERFILE
+            .contains("CMD command -v node >/dev/null && test -x /usr/bin/python3"));
+        assert!(!DOCKER_BASE_DOCKERFILE.contains("CMD bash -c 'source ~/.nvm/nvm.sh"));
     }
 
     #[test]
