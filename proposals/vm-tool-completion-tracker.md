@@ -44,6 +44,11 @@ state instead of waiting silently.
   the v5 alias.
 - [ ] Re-export or explicitly retire retained v1 snapshot archives before ending
   platform-less archive import support.
+- [ ] Inventory and migrate users of `$VM_TOOL_DIR/configs/presets/*.yaml` to
+  installed preset plugins before removing filesystem preset discovery.
+- [ ] Audit external automation for hidden `vm create` and
+  `vm get-sync-directory` calls, then migrate it to supported lifecycle and
+  provider paths before removing those commands.
 - [ ] Record owner approval of the v6 compatibility cutoff after all evidence
   above is present.
 
