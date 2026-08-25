@@ -47,7 +47,7 @@ futures-util = { workspace = true }
 flate2 = { workspace = true }
 tar = { workspace = true }
 vm-core = { path = "../vm-core" }
-vm-logging = { path = "../vm-logging" }
+vm-logging = { path = "../vm-logging", features = ["http"] }
 vm-packages = { path = "../vm-packages" }
 
 [dev-dependencies]

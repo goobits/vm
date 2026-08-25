@@ -31,7 +31,12 @@ async fn health_is_public_and_workflow_access_is_scoped() {
         ),
     ));
 
-    assert_eq!(server.get("/health").await.status_code(), StatusCode::OK);
+    let health = server
+        .get("/health")
+        .add_header(vm_logging::REQUEST_ID_HEADER, "work-test-1")
+        .await;
+    assert_eq!(health.status_code(), StatusCode::OK);
+    assert_eq!(health.header(vm_logging::REQUEST_ID_HEADER), "work-test-1");
     assert_eq!(
         server.get("/v1/checkouts").await.status_code(),
         StatusCode::UNAUTHORIZED

@@ -23,13 +23,37 @@ pub enum WorkError {
 
 impl IntoResponse for WorkError {
     fn into_response(self) -> Response {
-        let status = match &self {
-            Self::Invalid(_) => StatusCode::BAD_REQUEST,
-            Self::NotFound(_) => StatusCode::NOT_FOUND,
-            Self::Conflict(_) => StatusCode::CONFLICT,
-            Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
-            Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        let (status, error_code) = match &self {
+            Self::Invalid(_) => (StatusCode::BAD_REQUEST, "invalid_request"),
+            Self::NotFound(_) => (StatusCode::NOT_FOUND, "not_found"),
+            Self::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
+            Self::Unauthorized(_) => (StatusCode::UNAUTHORIZED, "unauthorized"),
+            Self::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error"),
         };
+        if status.is_server_error() {
+            tracing::error!(
+                operation = "http_request",
+                error_code,
+                status_code = status.as_u16(),
+                error = %self,
+                "package workflow request failed"
+            );
+        } else if status == StatusCode::UNAUTHORIZED {
+            tracing::warn!(
+                operation = "http_request",
+                error_code,
+                status_code = status.as_u16(),
+                "package workflow request rejected"
+            );
+        } else {
+            tracing::debug!(
+                operation = "http_request",
+                error_code,
+                status_code = status.as_u16(),
+                error = %self,
+                "package workflow request rejected"
+            );
+        }
         (status, Json(json!({ "error": self.to_string() }))).into_response()
     }
 }

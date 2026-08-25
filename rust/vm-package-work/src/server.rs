@@ -270,6 +270,10 @@ pub(crate) fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router 
         .merge(releases)
         .merge(rollouts)
         .with_state(state)
+        .layer(middleware::from_fn_with_state(
+            vm_logging::HttpLogContext::new("package_work"),
+            vm_logging::request_context,
+        ))
 }
 
 pub async fn run(
@@ -281,7 +285,12 @@ pub async fn run(
     credentials.validate()?;
     let listener = TcpListener::bind((host.as_str(), port)).await?;
     let store = Arc::new(Store::open(data).await?);
-    tracing::info!(host, port, "package-work service listening");
+    tracing::info!(
+        operation = "listen",
+        host,
+        port,
+        "package workflow service listening"
+    );
     axum::serve(listener, router(store, credentials)).await?;
     Ok(())
 }

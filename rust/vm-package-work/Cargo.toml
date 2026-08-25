@@ -28,7 +28,7 @@ tokio-util = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
 vm-core = { path = "../vm-core" }
-vm-logging = { path = "../vm-logging" }
+vm-logging = { path = "../vm-logging", features = ["http"] }
 vm-packages = { path = "../vm-packages" }
 
 [dev-dependencies]

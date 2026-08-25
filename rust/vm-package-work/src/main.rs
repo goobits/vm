@@ -1,6 +1,8 @@
 use std::path::PathBuf;
+use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
+use tracing::Instrument;
 use vm_logging::init_service_subscriber;
 
 #[derive(Parser)]
@@ -26,9 +28,23 @@ enum Command {
     },
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> ExitCode {
     let _guard = init_service_subscriber();
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            tracing::error!(
+                component = "package_work",
+                operation = "run",
+                error = ?error,
+                "package workflow service stopped"
+            );
+            ExitCode::FAILURE
+        }
+    }
+}
 
+fn run() -> Result<(), Box<dyn std::error::Error>> {
     match Cli::parse().command {
         Command::Start { host, port, data } => {
             let read_token = std::env::var("PKG_WORK_READ_TOKEN")?;
@@ -38,20 +54,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let release_token = std::env::var("PKG_WORK_RELEASE_TOKEN")?;
             let rollout_token = std::env::var("PKG_WORK_ROLLOUT_TOKEN")?;
             let agent_signing_key = std::env::var("PKG_WORK_AGENT_SIGNING_KEY")?;
-            tokio::runtime::Runtime::new()?.block_on(vm_package_work::run(
-                host,
-                port,
-                data,
-                vm_package_work::WorkCredentials::new(
-                    read_token,
-                    controller_token,
-                    reviewer_token,
-                    build_token,
-                    release_token,
-                    rollout_token,
-                    agent_signing_key,
-                ),
-            ))?;
+            tokio::runtime::Runtime::new()?.block_on(
+                vm_package_work::run(
+                    host,
+                    port,
+                    data,
+                    vm_package_work::WorkCredentials::new(
+                        read_token,
+                        controller_token,
+                        reviewer_token,
+                        build_token,
+                        release_token,
+                        rollout_token,
+                        agent_signing_key,
+                    ),
+                )
+                .instrument(tracing::info_span!(
+                    "package_service",
+                    component = "package_work"
+                )),
+            )?;
         }
     }
     Ok(())

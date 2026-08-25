@@ -9,16 +9,16 @@ use anyhow::{Context, Result};
 use axum::{
     extract::{DefaultBodyLimit, Path, Query, State},
     http::{header, HeaderMap, StatusCode},
+    middleware,
     response::Json,
     routing::{delete, get, post},
     Router,
 };
 use serde::Deserialize;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Instant;
 use tokio::net::TcpListener;
-use tower_http::trace::TraceLayer;
 use tracing::{error, info, warn};
 
 /// Shared application state
@@ -26,6 +26,39 @@ use tracing::{error, info, warn};
 struct AppState {
     store: Arc<Mutex<SecretStore>>,
     start_time: Instant,
+}
+
+const MAX_BODY_BYTES: usize = 256 * 1024;
+
+fn app_router(state: AppState) -> Router {
+    Router::new()
+        .route("/health", get(health_check))
+        .route("/secrets", get(list_secrets))
+        .route("/secrets/{name}", post(add_secret))
+        .route("/secrets/{name}", get(get_secret))
+        .route("/secrets/{name}", delete(remove_secret))
+        .route("/env/{vm_name}", get(get_environment))
+        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
+        .layer(middleware::from_fn_with_state(
+            vm_logging::HttpLogContext::new("auth_proxy"),
+            vm_logging::request_context,
+        ))
+        .with_state(state)
+}
+
+fn lock_store<'a>(
+    state: &'a AppState,
+    operation: &'static str,
+) -> Result<MutexGuard<'a, SecretStore>, StatusCode> {
+    state.store.lock().map_err(|error| {
+        error!(
+            component = "auth_proxy",
+            operation,
+            error = %error,
+            "secret store lock failed"
+        );
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 /// Query parameters for environment endpoint
@@ -41,28 +74,13 @@ pub async fn run_server_with_shutdown(
     data_dir: PathBuf,
     shutdown_receiver: Option<tokio::sync::oneshot::Receiver<()>>,
 ) -> Result<()> {
-    info!("Starting auth proxy server on {}:{}", host, port);
-
-    // Initialize secret store
     let store = SecretStore::new(data_dir).context("Failed to initialize secret store")?;
     let state = AppState {
         store: Arc::new(Mutex::new(store)),
         start_time: Instant::now(),
     };
 
-    // Build router. The body limit defends against memory-exhaustion DoS from
-    // oversized payloads; the secrets API only ever needs small JSON bodies.
-    const MAX_BODY_BYTES: usize = 256 * 1024;
-    let app = Router::new()
-        .route("/health", get(health_check))
-        .route("/secrets", get(list_secrets))
-        .route("/secrets/{name}", post(add_secret))
-        .route("/secrets/{name}", get(get_secret))
-        .route("/secrets/{name}", delete(remove_secret))
-        .route("/env/{vm_name}", get(get_environment))
-        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
-        .layer(TraceLayer::new_for_http())
-        .with_state(state);
+    let app = app_router(state);
 
     // Start server
     let addr = format!("{host}:{port}");
@@ -70,7 +88,13 @@ pub async fn run_server_with_shutdown(
         .await
         .with_context(|| format!("Failed to bind to {addr}"))?;
 
-    info!("Auth proxy server listening on {}", addr);
+    info!(
+        component = "auth_proxy",
+        operation = "listen",
+        host,
+        port,
+        "auth proxy listening"
+    );
 
     match shutdown_receiver {
         Some(shutdown_rx) => {
@@ -78,7 +102,11 @@ pub async fn run_server_with_shutdown(
             axum::serve(listener, app)
                 .with_graceful_shutdown(async {
                     shutdown_rx.await.ok();
-                    info!("Received shutdown signal, stopping auth proxy gracefully");
+                    info!(
+                        component = "auth_proxy",
+                        operation = "shutdown",
+                        "auth proxy stopping"
+                    );
                 })
                 .await
                 .context("Server failed to start")?;
@@ -105,10 +133,7 @@ pub async fn check_server_running(port: u16) -> bool {
 
 /// Health check endpoint
 async fn health_check(State(state): State<AppState>) -> Result<Json<HealthResponse>, StatusCode> {
-    let store = state.store.lock().map_err(|e| {
-        error!("Mutex lock failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let store = lock_store(&state, "health_check")?;
     let response = HealthResponse {
         status: "healthy".to_string(),
         secret_count: store.secret_count(),
@@ -128,10 +153,7 @@ async fn list_secrets(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let store = state.store.lock().map_err(|e| {
-        error!("Mutex lock failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let store = lock_store(&state, "list_secrets")?;
     let secrets: Vec<SecretSummary> = store
         .list_secrets()
         .iter()
@@ -164,10 +186,7 @@ async fn add_secret(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let mut store = state.store.lock().map_err(|e| {
-        error!("Mutex lock failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let mut store = lock_store(&state, "add_secret")?;
     match store.add_secret(&name, &request.value, request.scope, request.description) {
         Ok(()) => {
             let response = SecretResponse {
@@ -177,12 +196,12 @@ async fn add_secret(
             };
             Ok(Json(response))
         }
-        Err(e) => {
-            warn!("Failed to add secret: {}", e);
+        Err(error) => {
+            error!(operation = "add_secret", error = %error, "secret operation failed");
             let response = SecretResponse {
                 name,
                 success: false,
-                message: Some(format!("Failed to add secret: {e}")),
+                message: Some(format!("Failed to add secret: {error}")),
             };
             Ok(Json(response))
         }
@@ -200,15 +219,12 @@ async fn get_secret(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let store = state.store.lock().map_err(|e| {
-        error!("Mutex lock failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let store = lock_store(&state, "get_secret")?;
     match store.get_secret(&name) {
         Ok(Some(value)) => Ok(value),
         Ok(None) => Err(StatusCode::NOT_FOUND),
-        Err(e) => {
-            warn!("Failed to get secret: {}", e);
+        Err(error) => {
+            error!(operation = "get_secret", error = %error, "secret operation failed");
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
@@ -225,10 +241,7 @@ async fn remove_secret(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let mut store = state.store.lock().map_err(|e| {
-        error!("Mutex lock failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let mut store = lock_store(&state, "remove_secret")?;
     match store.remove_secret(&name) {
         Ok(true) => {
             let response = SecretResponse {
@@ -246,12 +259,12 @@ async fn remove_secret(
             };
             Ok(Json(response))
         }
-        Err(e) => {
-            warn!("Failed to remove secret: {}", e);
+        Err(error) => {
+            error!(operation = "remove_secret", error = %error, "secret operation failed");
             let response = SecretResponse {
                 name,
                 success: false,
-                message: Some(format!("Failed to remove secret: {e}")),
+                message: Some(format!("Failed to remove secret: {error}")),
             };
             Ok(Json(response))
         }
@@ -270,10 +283,7 @@ async fn get_environment(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let store = state.store.lock().map_err(|e| {
-        error!("Mutex lock failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let store = lock_store(&state, "get_environment")?;
     match store.get_env_vars_for_vm(&vm_name, params.project.as_deref()) {
         Ok(env_vars) => {
             let response = EnvironmentResponse {
@@ -283,8 +293,12 @@ async fn get_environment(
             };
             Ok(Json(response))
         }
-        Err(e) => {
-            warn!("Failed to get environment variables: {}", e);
+        Err(error) => {
+            error!(
+                operation = "get_environment",
+                error = %error,
+                "secret operation failed"
+            );
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
@@ -298,7 +312,11 @@ fn verify_auth_token(state: &AppState, headers: &HeaderMap) -> bool {
     let store = match state.store.lock() {
         Ok(guard) => guard,
         Err(_) => {
-            warn!("auth: rejected request because secret store mutex is poisoned");
+            error!(
+                operation = "authenticate",
+                error_code = "store_unavailable",
+                "authentication failed"
+            );
             return false;
         }
     };
@@ -307,7 +325,11 @@ fn verify_auth_token(state: &AppState, headers: &HeaderMap) -> bool {
     let expected_token = match store.get_auth_token() {
         Some(token) => token,
         None => {
-            warn!("auth: rejected request -- no auth token configured on this server");
+            error!(
+                operation = "authenticate",
+                error_code = "token_unavailable",
+                "authentication failed"
+            );
             return false;
         }
     };
@@ -321,18 +343,31 @@ fn verify_auth_token(state: &AppState, headers: &HeaderMap) -> bool {
                 let ok: bool = token.as_bytes().ct_eq(expected_token.as_bytes()).into();
                 if !ok {
                     warn!(
-                        "auth: rejected request -- bearer token mismatch (received {} bytes)",
-                        token.len()
+                        operation = "authenticate",
+                        error_code = "token_mismatch",
+                        "authentication rejected"
                     );
                 }
                 return ok;
             }
-            warn!("auth: rejected request -- Authorization header present but not a Bearer token");
+            warn!(
+                operation = "authenticate",
+                error_code = "invalid_scheme",
+                "authentication rejected"
+            );
         } else {
-            warn!("auth: rejected request -- Authorization header is not valid UTF-8");
+            warn!(
+                operation = "authenticate",
+                error_code = "invalid_header",
+                "authentication rejected"
+            );
         }
     } else {
-        warn!("auth: rejected request -- missing Authorization header");
+        warn!(
+            operation = "authenticate",
+            error_code = "missing_header",
+            "authentication rejected"
+        );
     }
 
     false
@@ -359,24 +394,22 @@ mod tests {
             start_time: Instant::now(),
         };
 
-        let app = Router::new()
-            .route("/health", get(health_check))
-            .route("/secrets", get(list_secrets))
-            .route("/secrets/{name}", post(add_secret))
-            .route("/secrets/{name}", get(get_secret))
-            .route("/secrets/{name}", delete(remove_secret))
-            .route("/env/{vm_name}", get(get_environment))
-            .with_state(state);
-
-        (TestServer::new(app), auth_token)
+        (TestServer::new(app_router(state)), auth_token)
     }
 
     #[tokio::test]
     async fn test_health_check() {
         let (server, _) = create_test_server().await;
 
-        let response = server.get("/health").await;
+        let response = server
+            .get("/health")
+            .add_header(vm_logging::REQUEST_ID_HEADER, "auth-test-1")
+            .await;
         response.assert_status_ok();
+        assert_eq!(
+            response.header(vm_logging::REQUEST_ID_HEADER),
+            "auth-test-1"
+        );
 
         let health: HealthResponse = response.json();
         assert_eq!(health.status, "healthy");

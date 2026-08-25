@@ -13,6 +13,11 @@ use tracing_subscriber::{
     registry, EnvFilter,
 };
 
+#[cfg(feature = "http")]
+mod http;
+#[cfg(feature = "http")]
+pub use http::{request_context, HttpLogContext, REQUEST_ID_HEADER};
+
 // --- Custom "Tee" Writer ---
 struct Tee<A, B> {
     a: A,

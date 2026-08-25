@@ -17,8 +17,8 @@ vm-core = { path = "../vm-core" }
 # HTTP Server
 axum = { workspace = true }
 tokio = { workspace = true }
-tower-http = { workspace = true }
 reqwest = { workspace = true }
+vm-logging = { path = "../vm-logging", features = ["http"] }
 
 # Cryptography
 aes-gcm = "0.10"

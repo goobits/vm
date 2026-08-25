@@ -192,21 +192,35 @@ impl AppError {
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        // Log the error before moving values out
-        tracing::error!(error = %self, "Request failed");
-
-        let error_response = self.to_error_response();
-        let status = self.error_code().http_status();
-
-        // Log additional details for internal errors
-        if matches!(self.error_code(), ErrorCode::InternalError) {
-            if let AppError::Anyhow(ref e) = self {
-                tracing::error!(source = ?e.source(), "Internal server error details");
-            }
+        let error_code = self.error_code();
+        let status = error_code.http_status();
+        let error_code = error_code.as_str();
+        if status.is_server_error() {
+            tracing::error!(
+                operation = "http_request",
+                error_code,
+                status_code = status.as_u16(),
+                error = ?self,
+                "package request failed"
+            );
+        } else if status == StatusCode::UNAUTHORIZED {
+            tracing::warn!(
+                operation = "http_request",
+                error_code,
+                status_code = status.as_u16(),
+                "package request rejected"
+            );
+        } else {
+            tracing::debug!(
+                operation = "http_request",
+                error_code,
+                status_code = status.as_u16(),
+                error = %self,
+                "package request rejected"
+            );
         }
 
-        tracing::debug!(status = %status, code = %error_response.code, "Returning standardized error response");
-
+        let error_response = self.to_error_response();
         (status, axum::Json(error_response)).into_response()
     }
 }

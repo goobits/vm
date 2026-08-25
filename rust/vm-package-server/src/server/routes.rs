@@ -68,6 +68,10 @@ pub(super) fn app_router(state: AppState) -> Router {
         app = app.merge(writes).merge(crate::tools::router());
     }
     app.with_state(Arc::new(state))
+        .layer(middleware::from_fn_with_state(
+            vm_logging::HttpLogContext::new("package_registry"),
+            vm_logging::request_context,
+        ))
 }
 
 async fn guest_client_handler() -> Response {

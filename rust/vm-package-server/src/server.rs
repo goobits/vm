@@ -6,9 +6,9 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use tokio::net::TcpListener;
-use tracing::{error, info};
+use tracing::info;
 
 mod routes;
 mod setup;
@@ -23,32 +23,31 @@ pub async fn run_server_with_shutdown(
     data_dir: PathBuf,
     shutdown_receiver: Option<tokio::sync::oneshot::Receiver<()>>,
 ) -> Result<()> {
-    info!("🚀 Starting Goobits Package Server...");
-
     let state = setup::app_state(&host, port, &data_dir)?;
-    info!("📂 Using data directory: {}", state.data_dir.display());
-    info!("Starting server on {host}:{port}");
+    let configured_data_dir = state.data_dir.clone();
     let app = app_router(state);
 
-    let addr: SocketAddr = format!("{host}:{port}").parse().map_err(|e| {
-        error!(host = %host, port = %port, error = %e, "Invalid socket address");
-        anyhow::anyhow!("Invalid socket address {host}:{port}: {e}")
-    })?;
+    let addr: SocketAddr = format!("{host}:{port}")
+        .parse()
+        .with_context(|| format!("invalid package registry address {host}:{port}"))?;
+    let listener = TcpListener::bind(&addr)
+        .await
+        .with_context(|| format!("failed to bind package registry to {addr}"))?;
 
-    let listener = TcpListener::bind(&addr).await.map_err(|e| {
-        error!(addr = %addr, error = %e, "Failed to bind to address");
-        anyhow::anyhow!("Failed to bind to {host}:{port}: {e}")
-    })?;
-
-    info!("✅ Server is running on http://{}:{}", host, port);
-    info!("Server listening on {}", addr);
+    info!(
+        operation = "listen",
+        host,
+        port,
+        data_dir = %configured_data_dir.display(),
+        "package registry listening"
+    );
 
     match shutdown_receiver {
         Some(shutdown_rx) => {
             axum::serve(listener, app)
                 .with_graceful_shutdown(async {
                     shutdown_rx.await.ok();
-                    info!("Received shutdown signal, stopping server gracefully");
+                    info!(operation = "shutdown", "package registry stopping");
                 })
                 .await
                 .map_err(|e| anyhow::anyhow!("Server error: {e}"))?;
@@ -145,7 +144,15 @@ mod tests {
         };
         let server = TestServer::new(app_router(state));
 
-        assert_eq!(server.get("/health").await.status_code(), StatusCode::OK);
+        let health = server
+            .get("/health")
+            .add_header(vm_logging::REQUEST_ID_HEADER, "registry-test-1")
+            .await;
+        assert_eq!(health.status_code(), StatusCode::OK);
+        assert_eq!(
+            health.header(vm_logging::REQUEST_ID_HEADER),
+            "registry-test-1"
+        );
         assert_eq!(
             server.get("/api/status").await.status_code(),
             StatusCode::UNAUTHORIZED

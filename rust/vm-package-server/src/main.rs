@@ -5,6 +5,8 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+use std::process::ExitCode;
+use tracing::Instrument;
 use vm_logging::init_service_subscriber;
 use vm_package_server::run_server;
 
@@ -35,15 +37,32 @@ enum Commands {
     },
 }
 
-fn main() -> Result<()> {
+fn main() -> ExitCode {
     let _guard = init_service_subscriber();
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            tracing::error!(
+                component = "package_registry",
+                operation = "run",
+                error = ?error,
+                "package registry stopped"
+            );
+            ExitCode::FAILURE
+        }
+    }
+}
 
+fn run() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
         Commands::Start { host, port, data } => {
             let runtime = tokio::runtime::Runtime::new()?;
-            runtime.block_on(run_server(host, port, data))
+            runtime.block_on(run_server(host, port, data).instrument(tracing::info_span!(
+                "package_service",
+                component = "package_registry"
+            )))
         }
     }
 }
