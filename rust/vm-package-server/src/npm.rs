@@ -7,11 +7,17 @@ use axum::{
 };
 use base64::{engine::general_purpose, Engine as _};
 use serde_json::{json, Value};
+use sha1::{Digest, Sha1};
 use std::path::{Path, PathBuf};
 use tracing::{debug, info};
+use vm_packages::{encode_hex, sha256_hex};
 
 use crate::validation;
-use crate::{sha1_hash, sha256_hash, storage, AppError, AppResult, AppState, SuccessResponse};
+use crate::{storage, AppError, AppResult, AppState, SuccessResponse};
+
+fn sha1_hex(data: &[u8]) -> String {
+    encode_hex(Sha1::digest(data))
+}
 
 fn validate_package(package: &str) -> AppResult<String> {
     validation::validate_package_name(package, "npm")
@@ -160,7 +166,7 @@ pub async fn package_metadata(
         .join("cache")
         .join(cache_scope)
         .join("npm/metadata")
-        .join(format!("{}.json", sha256_hash(package.as_bytes())));
+        .join(format!("{}.json", sha256_hex(package.as_bytes())));
     let upstream = Arc::clone(&state.upstream_client);
     let internal = state.internal_client.clone();
     let resolved_package = package.clone();
@@ -271,7 +277,7 @@ async fn download_tarball_inner(
         .join("cache")
         .join(cache_scope)
         .join("npm")
-        .join(sha256_hash(package.as_bytes()))
+        .join(sha256_hex(package.as_bytes()))
         .join(&filename);
     let tarball_url = format!("/{package}/-/{filename}");
     let upstream = Arc::clone(&state.upstream_client);
@@ -410,7 +416,7 @@ pub async fn publish_package(
             validation::validate_package_upload(&tarball_data, filename, "NPM")?;
 
             // Calculate SHA1 hash for metadata
-            let shasum = sha1_hash(&tarball_data);
+            let shasum = sha1_hex(&tarball_data);
 
             // Update metadata with correct tarball URL and hash
             if let Some(versions) = payload["versions"].as_object_mut() {
@@ -503,6 +509,14 @@ mod tests {
     use serde_json::json;
     use std::sync::Arc;
     use tempfile::TempDir;
+
+    #[test]
+    fn npm_shasum_uses_sha1_hex() {
+        assert_eq!(
+            sha1_hex(b"hello world"),
+            "2aae6c35c94fcfb415dbe95f408b9ce91ee846ed"
+        );
+    }
 
     fn create_npm_test_state() -> (Arc<AppState>, TempDir) {
         let temp_dir = TempDir::new().expect("Failed to create temp dir for test");

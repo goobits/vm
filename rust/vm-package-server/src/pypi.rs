@@ -7,10 +7,10 @@ use axum::{
     response::Html,
 };
 use tracing::{debug, info, warn};
-use vm_packages::{PackageEcosystem, PackageIdentity};
+use vm_packages::{sha256_hex, PackageEcosystem, PackageIdentity};
 
 use crate::validation;
-use crate::{package_utils, sha256_hash, storage, AppError, AppResult, AppState, SuccessResponse};
+use crate::{package_utils, storage, AppError, AppResult, AppState, SuccessResponse};
 
 /// Helper to list valid package files (.whl, .tar.gz) in the PyPI packages directory
 async fn list_package_files(pypi_dir: &Path) -> AppResult<Vec<PathBuf>> {
@@ -420,7 +420,7 @@ pub async fn upload_package(
             })?;
 
             // Calculate hash once during upload
-            let hash = sha256_hash(&data);
+            let hash = sha256_hex(&data);
             let _publish_guard = storage::publish_guard().await;
 
             // Immutable release files accept exact retries but never replacement.
@@ -582,8 +582,7 @@ mod tests {
         std::fs::write(&package_file, content).expect("should write test package file");
 
         // Create corresponding .meta file with hash
-        use crate::sha256_hash;
-        let hash = sha256_hash(content);
+        let hash = sha256_hex(content);
         let meta_file = package_file.with_extension("whl.meta");
         std::fs::write(&meta_file, hash).expect("should write meta file");
 
@@ -609,8 +608,7 @@ mod tests {
         std::fs::write(&package_file, content).expect("should write test package file");
 
         // Create corresponding .meta file with hash
-        use crate::sha256_hash;
-        let hash = sha256_hash(content);
+        let hash = sha256_hex(content);
         let meta_file = package_file.with_extension("whl.meta");
         std::fs::write(&meta_file, hash).expect("should write meta file");
 

@@ -4,9 +4,7 @@
 //! including package uploads, downloads, version management, and configuration.
 
 use super::{index::*, parsing::*, storage::*};
-use crate::{
-    package_utils, sha256_hash, storage, validation, AppError, AppResult, AppState, SuccessResponse,
-};
+use crate::{package_utils, storage, validation, AppError, AppResult, AppState, SuccessResponse};
 use axum::{
     extract::{Path as AxumPath, State},
     http::HeaderMap,
@@ -15,6 +13,7 @@ use axum::{
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tracing::{debug, info, warn};
+use vm_packages::sha256_hex;
 
 /// Get crate versions with checksums and file sizes
 pub async fn get_crate_versions(
@@ -189,7 +188,7 @@ pub async fn publish_crate(
     .await?;
 
     // Calculate checksum
-    let cksum = sha256_hash(&crate_data);
+    let cksum = sha256_hex(&crate_data);
 
     // Update the index
     update_crate_index(&metadata, &cksum, &state.data_dir).await?;

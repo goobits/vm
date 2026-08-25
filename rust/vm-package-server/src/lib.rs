@@ -8,7 +8,6 @@ mod auth;
 mod cargo;
 mod config;
 mod error;
-mod hash_utils;
 mod internal;
 mod local_storage;
 mod npm;
@@ -26,7 +25,6 @@ mod validation;
 
 pub use config::Config;
 pub use error::{ApiErrorResponse, AppError, AppResult, ErrorCode};
-pub use hash_utils::{sha1_hash, sha256_hash};
 pub use internal::InternalRegistryClient;
 pub use resolver::ResolverService;
 pub use server::{run_server, run_server_with_shutdown};
