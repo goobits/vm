@@ -5,8 +5,17 @@ use vm_packages::PackageEcosystem;
 use crate::error::{VmError, VmResult};
 
 use super::runtime::{
-    checkout_root, copy_private, exec, exec_in_workspace, exec_output, GuestRuntime,
+    checkout_root, copy_private, create_directory, exec_in_workspace, exec_output,
+    make_private_executable, path_exists, path_is_file, read_file, remove_directory, remove_file,
+    GuestRuntime,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CargoWrapperState {
+    Missing,
+    Managed,
+    Foreign,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct OverrideRecord {
@@ -43,13 +52,12 @@ impl OverrideRecord {
     }
 
     pub(super) fn load(
-        subject: &GuestRuntime,
         root: &str,
         checkout: &vm_packages::CheckoutRecord,
         consumer: &str,
     ) -> VmResult<Self> {
         let path = format!("{root}/override.json");
-        let content = exec_output(subject, ["cat", path.as_str()]).map_err(|error| {
+        let content = read_file(&path).map_err(|error| {
             VmError::validation(
                 format!("Managed package override state is missing: {error}"),
                 Some("The checkout was retained; restore its override state before cleanup"),
@@ -66,23 +74,12 @@ impl OverrideRecord {
     }
 
     pub(super) fn load_optional(
-        subject: &GuestRuntime,
         root: &str,
         checkout: &vm_packages::CheckoutRecord,
         consumer: &str,
     ) -> VmResult<Option<Self>> {
-        let present = exec_output(
-            subject,
-            [
-                "/bin/sh",
-                "-c",
-                "if [ -f \"$1/override.json\" ]; then printf yes; else printf no; fi",
-                "vm-package-override",
-                root,
-            ],
-        )?;
-        if present.trim() == "yes" {
-            Self::load(subject, root, checkout, consumer).map(Some)
+        if path_is_file(&format!("{root}/override.json"))? {
+            Self::load(root, checkout, consumer).map(Some)
         } else {
             Ok(None)
         }
@@ -167,17 +164,8 @@ impl OverrideRecord {
         let root = self.root()?;
         let home = self.home()?;
         let wrapper = format!("{home}/.local/bin/cargo");
-        let wrapper_state = exec_output(
-            subject,
-            [
-                "/bin/sh",
-                "-c",
-                "if [ ! -e \"$1\" ]; then printf missing; elif grep -Fq '# vm-managed cargo override wrapper' \"$1\"; then printf managed; else printf foreign; fi",
-                "vm-cargo-wrapper",
-                wrapper.as_str(),
-            ],
-        )?;
-        if wrapper_state.trim() == "foreign" {
+        let wrapper_state = cargo_wrapper_state(&wrapper)?;
+        if wrapper_state == CargoWrapperState::Foreign {
             return Err(VmError::validation(
                 format!("Refusing to replace existing Cargo executable at {wrapper}"),
                 Some("Move the executable or use a guest without a conflicting ~/.local/bin/cargo"),
@@ -196,7 +184,7 @@ impl OverrideRecord {
             &fragment,
         )?;
 
-        if wrapper_state.trim() == "missing" {
+        if wrapper_state == CargoWrapperState::Missing {
             let actual = exec_output(subject, ["/bin/sh", "-lc", "command -v cargo"])?;
             let actual = actual.trim();
             if actual.is_empty() || actual == wrapper {
@@ -205,10 +193,10 @@ impl OverrideRecord {
                     None::<String>,
                 ));
             }
-            exec(subject, ["mkdir", "-p", &format!("{home}/.local/bin")])?;
+            create_directory(&format!("{home}/.local/bin"))?;
             let script = cargo_wrapper(actual);
             copy_private(subject, script.as_bytes(), &wrapper)?;
-            exec(subject, ["chmod", "700", wrapper.as_str()])?;
+            make_private_executable(&wrapper)?;
         }
         vm_println!("Cargo override active for {}", self.package);
         Ok(())
@@ -216,23 +204,13 @@ impl OverrideRecord {
 }
 
 pub(super) fn cleanup_failed_attach(subject: &GuestRuntime, root: &str) -> VmResult<()> {
-    let has_record = exec_output(
-        subject,
-        [
-            "/bin/sh",
-            "-c",
-            "if [ -f \"$1/override.json\" ]; then printf yes; else printf no; fi",
-            "vm-package-cleanup",
-            root,
-        ],
-    )?;
-    if has_record.trim() == "yes" {
+    if path_is_file(&format!("{root}/override.json"))? {
         let path = format!("{root}/override.json");
-        let content = exec_output(subject, ["cat", path.as_str()])?;
+        let content = read_file(&path)?;
         let record: OverrideRecord = serde_json::from_str(&content).map_err(VmError::from)?;
         record.restore(subject)?;
     }
-    exec(subject, ["rm", "-rf", "--", root])
+    remove_directory(root)
 }
 
 pub(super) fn cargo_patch(package: &str, source: &str) -> String {
@@ -267,22 +245,39 @@ exec {actual} "$@"
 fn remove_cargo(subject: &GuestRuntime, checkout_id: &str) -> VmResult<()> {
     let root = checkout_root(subject, checkout_id)?;
     let fragment = format!("{root}/cargo.config");
-    exec(subject, ["rm", "-f", "--", fragment.as_str()])?;
+    remove_file(&fragment)?;
     let home = root
         .strip_suffix(&format!("/.local/share/vm/package-checkouts/{checkout_id}"))
         .ok_or_else(|| VmError::validation("Managed checkout root is invalid", None::<String>))?;
     let wrapper = format!("{home}/.local/bin/cargo");
     let base = format!("{home}/.local/share/vm/package-checkouts");
-    exec(
-        subject,
-        [
-            "/bin/sh",
-            "-c",
-            "if ! find \"$1\" -mindepth 2 -maxdepth 2 -type f -name cargo.config -print -quit 2>/dev/null | grep -q .; then if [ -f \"$2\" ] && grep -Fq '# vm-managed cargo override wrapper' \"$2\"; then rm -f -- \"$2\"; fi; fi",
-            "vm-cargo-cleanup",
-            base.as_str(),
-            wrapper.as_str(),
-        ],
+    if !has_cargo_override(&base) && cargo_wrapper_state(&wrapper)? == CargoWrapperState::Managed {
+        remove_file(&wrapper)?;
+    }
+    Ok(())
+}
+
+fn has_cargo_override(base: &str) -> bool {
+    let Ok(checkouts) = std::fs::read_dir(base) else {
+        return false;
+    };
+    checkouts
+        .filter_map(Result::ok)
+        .any(|checkout| checkout.path().join("cargo.config").is_file())
+}
+
+fn cargo_wrapper_state(path: &str) -> VmResult<CargoWrapperState> {
+    if !path_exists(path)? {
+        return Ok(CargoWrapperState::Missing);
+    }
+    Ok(
+        if read_file(path)
+            .is_ok_and(|content| content.contains("# vm-managed cargo override wrapper"))
+        {
+            CargoWrapperState::Managed
+        } else {
+            CargoWrapperState::Foreign
+        },
     )
 }
 
@@ -407,5 +402,35 @@ mod tests {
         assert!(wrapper.contains("assigned Cargo checkout is missing"));
         assert!(wrapper.contains("exit 66"));
         assert!(wrapper.contains("exec '/home/developer/.cargo/bin/cargo'"));
+    }
+
+    #[test]
+    fn cargo_override_files_and_wrapper_ownership_are_detected_without_shells() {
+        let temporary = tempfile::tempdir().unwrap();
+        let base = temporary.path().to_str().unwrap();
+        let wrapper = temporary.path().join("cargo");
+        let wrapper = wrapper.to_str().unwrap();
+
+        assert!(!has_cargo_override(base));
+        assert_eq!(
+            cargo_wrapper_state(wrapper).unwrap(),
+            CargoWrapperState::Missing
+        );
+
+        let checkout = temporary.path().join("checkout-1");
+        std::fs::create_dir(&checkout).unwrap();
+        std::fs::write(checkout.join("cargo.config"), "patch\n").unwrap();
+        std::fs::write(wrapper, cargo_wrapper("/usr/bin/cargo")).unwrap();
+        assert!(has_cargo_override(base));
+        assert_eq!(
+            cargo_wrapper_state(wrapper).unwrap(),
+            CargoWrapperState::Managed
+        );
+
+        std::fs::write(wrapper, "#!/bin/sh\n").unwrap();
+        assert_eq!(
+            cargo_wrapper_state(wrapper).unwrap(),
+            CargoWrapperState::Foreign
+        );
     }
 }

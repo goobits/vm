@@ -10,7 +10,10 @@ use crate::error::{VmError, VmResult};
 
 use super::{
     overrides::cargo_patch,
-    runtime::{checkout_root, exec, exec_in_workspace, exec_output, GuestRuntime},
+    runtime::{
+        checkout_root, exec, exec_in_workspace, exec_output, remove_directory, remove_file,
+        GuestRuntime,
+    },
 };
 
 pub(super) async fn handle_guest(
@@ -144,7 +147,7 @@ async fn submit(
     let consumers = run_checks(subject, checkout, &source, &consumer, package_ecosystem)?;
 
     let bundle = format!("{root}/submission.bundle");
-    exec(subject, ["rm", "-f", bundle.as_str()])?;
+    remove_file(&bundle)?;
     exec(
         subject,
         [
@@ -158,7 +161,7 @@ async fn submit(
         ],
     )?;
     let submission = upload_bundle(subject, &checkout.checkout_id, &consumer, &root, &bundle)?;
-    exec(subject, ["rm", "-f", bundle.as_str()])?;
+    remove_file(&bundle)?;
 
     validate(client, submission, consumers, actor).await
 }
@@ -291,8 +294,8 @@ async fn submit_workspace_commit(
     let root = checkout_root(subject, &checkout.checkout_id)?;
     let bundle = format!("{root}/submission.bundle");
     let scratch = format!("{root}/workspace-validation");
-    exec(subject, ["rm", "-rf", "--", scratch.as_str()])?;
-    exec(subject, ["rm", "-f", "--", bundle.as_str()])?;
+    remove_directory(&scratch)?;
+    remove_file(&bundle)?;
     let result = async {
         exec(
             subject,
@@ -329,8 +332,8 @@ async fn submit_workspace_commit(
         Ok::<_, VmError>((submission, consumers))
     }
     .await;
-    let scratch_cleanup = exec(subject, ["rm", "-rf", "--", scratch.as_str()]);
-    let bundle_cleanup = exec(subject, ["rm", "-f", "--", bundle.as_str()]);
+    let scratch_cleanup = remove_directory(&scratch);
+    let bundle_cleanup = remove_file(&bundle);
     let (submission, consumers) = result?;
     scratch_cleanup?;
     bundle_cleanup?;

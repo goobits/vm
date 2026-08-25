@@ -1,14 +1,16 @@
 use vm_core::{vm_hint, vm_println, vm_progress, vm_success};
 use vm_packages::{
-    CleanupRequest, CreateCheckout, PackageEcosystem, PackageInfrastructureClient,
-    RegistryEndpoints, SourceKind, TransitionRequest, WorkflowState,
+    CleanupRequest, CreateCheckout, PackageEcosystem, SourceKind, TransitionRequest, WorkflowState,
 };
 
 use crate::error::{VmError, VmResult};
 
 use super::{
     overrides::{cleanup_failed_attach, OverrideRecord},
-    runtime::{checkout_root, exec, write_checkout_access, GuestRuntime},
+    runtime::{
+        checkout_root, create_directory, exec, remove_directory, remove_file,
+        write_checkout_access, GuestRuntime,
+    },
 };
 
 const GUEST_WORK_TASK: &str = "managed guest package work";
@@ -44,13 +46,11 @@ pub(super) fn cleanup_guest(
         ));
     }
     if checkout.source_kind == SourceKind::Package {
-        if let Some(record) =
-            OverrideRecord::load_optional(subject, &root, checkout, subject.consumer())?
-        {
+        if let Some(record) = OverrideRecord::load_optional(&root, checkout, subject.consumer())? {
             record.restore(subject)?;
         }
     }
-    exec(subject, ["find", root.as_str(), "-depth", "-delete"])
+    remove_directory(&root)
 }
 
 pub(super) async fn handle_guest(package: String) -> VmResult<()> {
@@ -106,7 +106,6 @@ pub(super) async fn handle_guest(package: String) -> VmResult<()> {
     }
     attach(
         &subject,
-        subject.gateway(),
         &checkout.checkout,
         lease_token,
         &consumer,
@@ -202,7 +201,6 @@ fn cleanup_ready(state: WorkflowState) -> bool {
 
 fn attach(
     subject: &GuestRuntime,
-    gateway: &str,
     checkout: &vm_packages::CheckoutRecord,
     lease_token: &str,
     consumer: &str,
@@ -217,11 +215,14 @@ fn attach(
     }
     let root = checkout_root(subject, &checkout.checkout_id)?;
     let source = format!("{root}/source");
-    let archive = format!("/tmp/{}.bundle", checkout.checkout_id);
-    let archive_client =
-        PackageInfrastructureClient::new(RegistryEndpoints::new(gateway).map_err(VmError::from)?);
+    let archive = format!("{root}/checkout.bundle");
+    let branch = checkout
+        .branch
+        .as_deref()
+        .ok_or_else(|| VmError::validation("Checkout branch is missing", None::<String>))?;
+    let archive_client = subject.client()?;
     let url = archive_client.checkout_archive_url(&checkout.checkout_id, consumer);
-    exec(subject, ["mkdir", "-p", root.as_str()])?;
+    create_directory(&root)?;
     refresh_checkout_access(subject, &root, lease_token)?;
     exec(
         subject,
@@ -238,21 +239,18 @@ fn attach(
             &archive,
         ],
     )?;
-    exec(subject, ["git", "clone", &archive, source.as_str()])?;
     exec(
         subject,
         [
             "git",
-            "-C",
+            "clone",
+            "--branch",
+            branch,
+            &archive,
             source.as_str(),
-            "switch",
-            checkout
-                .branch
-                .as_deref()
-                .ok_or_else(|| VmError::validation("Checkout branch is missing", None::<String>))?,
         ],
     )?;
-    exec(subject, ["rm", "-f", archive.as_str()])?;
+    remove_file(&archive)?;
     ensure_override(
         subject,
         checkout,
@@ -280,7 +278,7 @@ fn ensure_override(
     else {
         return Ok(());
     };
-    if OverrideRecord::load_optional(subject, root, checkout, subject.consumer())?.is_some() {
+    if OverrideRecord::load_optional(root, checkout, subject.consumer())?.is_some() {
         return Ok(());
     }
     let record = OverrideRecord::new(

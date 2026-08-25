@@ -9,7 +9,7 @@ use vm_packages::{
 use crate::error::{VmError, VmResult};
 
 use super::{
-    runtime::{checkout_root, exec, GuestRuntime},
+    runtime::{checkout_root, create_directory, exec, remove_directory, remove_file, GuestRuntime},
     submission::{run_binary_check, run_collection_check, run_consumer_check, run_package_check},
 };
 
@@ -70,7 +70,7 @@ pub(super) async fn handle_guest(
     let root = format!("{checkout_root}/integration-{}", integrating.submission_id);
     let source = format!("{root}/source");
     let bundle = format!("{root}/integration.bundle");
-    exec(subject, ["mkdir", "-p", root.as_str()])?;
+    create_directory(&root)?;
     let download_client = PackageInfrastructureClient::new(
         RegistryEndpoints::new(subject.gateway()).map_err(VmError::from)?,
     );
@@ -102,7 +102,7 @@ pub(super) async fn handle_guest(
             &integration.integration_commit,
         ],
     )?;
-    exec(subject, ["rm", "-f", bundle.as_str()])?;
+    remove_file(&bundle)?;
     vm_progress!("Rerunning integrated package and consumer checks...");
     let consumers = match checkout.source_kind {
         SourceKind::Package => {
@@ -145,7 +145,7 @@ pub(super) async fn handle_guest(
             },
         )
         .await?;
-    exec(subject, ["rm", "-rf", "--", root.as_str()])?;
+    remove_directory(&root)?;
     vm_success!("Integrated checks passed at {integration_commit}");
     Ok(ready)
 }

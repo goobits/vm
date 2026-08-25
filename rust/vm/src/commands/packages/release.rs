@@ -8,7 +8,7 @@ use crate::error::{VmError, VmResult};
 
 use super::{
     checkout, integration,
-    runtime::{checkout_root, exec_output, GuestRuntime},
+    runtime::{checkout_root, read_file, GuestRuntime},
     submission, workspace,
 };
 
@@ -298,7 +298,7 @@ async fn renew_release_lease(
         return Ok(());
     }
     let root = checkout_root(subject, &checkout.checkout_id)?;
-    let header = exec_output(subject, ["cat", &format!("{root}/authorization-header")])?;
+    let header = read_file(&format!("{root}/authorization-header"))?;
     let token = header
         .trim()
         .strip_prefix("Authorization: Bearer ")
