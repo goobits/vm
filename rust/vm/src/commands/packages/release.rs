@@ -14,7 +14,35 @@ use super::{
 
 const RELEASE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 const ACTIVATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10 * 60);
-const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+const INITIAL_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
+const MAX_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+
+struct PollBackoff {
+    next: std::time::Duration,
+}
+
+impl PollBackoff {
+    fn new() -> Self {
+        Self {
+            next: INITIAL_POLL_INTERVAL,
+        }
+    }
+
+    fn next_delay(&mut self) -> std::time::Duration {
+        let delay = self.next;
+        self.next = self.next.saturating_mul(2).min(MAX_POLL_INTERVAL);
+        delay
+    }
+
+    async fn wait(&mut self, deadline: tokio::time::Instant) -> bool {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            return false;
+        }
+        tokio::time::sleep(self.next_delay().min(remaining)).await;
+        tokio::time::Instant::now() < deadline
+    }
+}
 
 pub(super) async fn handle_guest() -> VmResult<()> {
     let subject = GuestRuntime::discover()?;
@@ -178,6 +206,7 @@ async fn wait_for_tool_activation(
     release_id: &str,
 ) -> VmResult<()> {
     let deadline = tokio::time::Instant::now() + ACTIVATION_TIMEOUT;
+    let mut poll = PollBackoff::new();
     loop {
         let activation = client.tool_activation_for_release(release_id).await?;
         let pending = activation
@@ -195,10 +224,9 @@ async fn wait_for_tool_activation(
         if planned && pending == 0 {
             return activation_result(&activation, false);
         }
-        if tokio::time::Instant::now() >= deadline {
+        if !poll.wait(deadline).await {
             return activation_result(&activation, true);
         }
-        tokio::time::sleep(POLL_INTERVAL).await;
     }
 }
 
@@ -308,17 +336,17 @@ async fn wait_for_review(
     workspace_release: bool,
 ) -> VmResult<vm_packages::SubmissionRecord> {
     let deadline = tokio::time::Instant::now() + RELEASE_TIMEOUT;
+    let mut poll = PollBackoff::new();
     while matches!(
         submission.state,
         WorkflowState::Submitted | WorkflowState::Validating | WorkflowState::Reviewing
     ) {
-        if tokio::time::Instant::now() >= deadline {
+        if !poll.wait(deadline).await {
             return Err(VmError::validation(
                 "Timed out waiting for package review",
                 Some("Rerun the same release command to resume"),
             ));
         }
-        tokio::time::sleep(POLL_INTERVAL).await;
         submission = client.submission(&submission.submission_id).await?;
     }
     match submission.state {
@@ -348,17 +376,17 @@ async fn wait_for_publication(
     workspace_release: bool,
 ) -> VmResult<vm_packages::SubmissionRecord> {
     let deadline = tokio::time::Instant::now() + RELEASE_TIMEOUT;
+    let mut poll = PollBackoff::new();
     while matches!(
         submission.state,
         WorkflowState::ReadyToRelease | WorkflowState::Publishing
     ) {
-        if tokio::time::Instant::now() >= deadline {
+        if !poll.wait(deadline).await {
             return Err(VmError::validation(
                 "Timed out waiting for private package publication",
                 Some("Rerun the same release command to resume"),
             ));
         }
-        tokio::time::sleep(POLL_INTERVAL).await;
         submission = client.submission(&submission.submission_id).await?;
     }
     match submission.state {
@@ -433,6 +461,17 @@ mod tests {
             false,
         )
         .is_ok());
+    }
+
+    #[test]
+    fn polling_starts_fast_and_stays_bounded() {
+        let mut poll = PollBackoff::new();
+
+        assert_eq!(poll.next_delay(), std::time::Duration::from_millis(250));
+        assert_eq!(poll.next_delay(), std::time::Duration::from_millis(500));
+        assert_eq!(poll.next_delay(), std::time::Duration::from_secs(1));
+        assert_eq!(poll.next_delay(), MAX_POLL_INTERVAL);
+        assert_eq!(poll.next_delay(), MAX_POLL_INTERVAL);
     }
 
     #[test]
