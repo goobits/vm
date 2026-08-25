@@ -97,7 +97,12 @@ pub async fn review_submission(
             },
         )
         .await?;
-    println!("{}: {:?}", result.submission_id, decision);
+    tracing::info!(
+        operation = "review",
+        submission_id = %result.submission_id,
+        decision = ?decision,
+        "package review completed"
+    );
     Ok(())
 }
 

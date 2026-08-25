@@ -1,10 +1,11 @@
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, ExitCode};
 
 use anyhow::{bail, Context, Result};
+use vm_logging::init_service_subscriber;
 use vm_package_jobs::runtime::{
     authorization_header, command_text as text, download_bundle, operation_key,
-    required_secret as secret, run_command as run,
+    required_secret as secret, run_command as run, worker_main, QueueMonitor,
 };
 use vm_packages::{
     PackageEcosystem, PackageInfrastructureClient, RegistryEndpoints, RolloutState,
@@ -12,21 +13,33 @@ use vm_packages::{
 };
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> ExitCode {
+    let _guard = init_service_subscriber();
+    worker_main("package_rollout", run_worker()).await
+}
+
+async fn run_worker() -> Result<()> {
     let gateway =
         std::env::var("PKG_ROLLOUT_GATEWAY").unwrap_or_else(|_| "http://gateway:8080".into());
     let token = secret("PKG_ROLLOUT_TOKEN_FILE")?;
     let client = PackageInfrastructureClient::new(RegistryEndpoints::new(gateway)?)
         .with_rollout_token(token.clone());
+    let mut queue = QueueMonitor::new("poll_rollout_queue");
     loop {
         match client.reconcile_rollout_queue().await {
             Ok(Some(rollout)) => {
+                queue.available();
                 if let Err(error) = run_rollout(&client, &token, &rollout.rollout_id).await {
-                    eprintln!("rollout {} failed: {error:#}", rollout.rollout_id);
+                    tracing::error!(
+                        operation = "rollout",
+                        rollout_id = %rollout.rollout_id,
+                        error = ?error,
+                        "package rollout failed"
+                    );
                 }
             }
-            Ok(None) => {}
-            Err(error) => eprintln!("rollout queue unavailable: {error:#}"),
+            Ok(None) => queue.available(),
+            Err(error) => queue.unavailable(&error),
         }
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
@@ -40,12 +53,22 @@ async fn run_rollout(
     let rollout = client.rollout(rollout_id).await?;
     match rollout.state {
         RolloutState::ReadyForReview => {
-            println!("{} is already ready for review", rollout.rollout_id);
+            tracing::info!(
+                operation = "rollout",
+                rollout_id = %rollout.rollout_id,
+                outcome = "already_ready",
+                "package rollout is ready for review"
+            );
             return Ok(());
         }
         RolloutState::Validating => {
             complete(client, &rollout.rollout_id, true).await?;
-            println!("{} recovered and is ready for review", rollout.rollout_id);
+            tracing::info!(
+                operation = "rollout",
+                rollout_id = %rollout.rollout_id,
+                outcome = "recovered",
+                "package rollout is ready for review"
+            );
             return Ok(());
         }
         RolloutState::Active => {}
@@ -146,10 +169,12 @@ async fn run_rollout(
         "submit tested consumer rollout",
     )?;
     let ready = complete(client, &rollout.rollout_id, true).await?;
-    println!(
-        "{} is ready for review on {}",
-        ready.rollout_id,
-        ready.branch.as_deref().unwrap_or("rollout branch")
+    tracing::info!(
+        operation = "rollout",
+        rollout_id = %ready.rollout_id,
+        branch = ready.branch.as_deref().unwrap_or("rollout branch"),
+        outcome = "ready",
+        "package rollout is ready for review"
     );
     Ok(())
 }

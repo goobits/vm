@@ -1,10 +1,60 @@
 use std::fs;
+use std::future::Future;
 use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::{Command, ExitCode, Output};
 
 use anyhow::{bail, Context, Result};
+use tracing::Instrument;
 use vm_packages::sha256_hex;
+
+pub struct QueueMonitor {
+    operation: &'static str,
+    unavailable: bool,
+}
+
+impl QueueMonitor {
+    pub fn new(operation: &'static str) -> Self {
+        Self {
+            operation,
+            unavailable: false,
+        }
+    }
+
+    pub fn available(&mut self) {
+        if std::mem::take(&mut self.unavailable) {
+            tracing::info!(operation = self.operation, "package queue access recovered");
+        }
+    }
+
+    pub fn unavailable(&mut self, error: &impl std::fmt::Debug) {
+        if !std::mem::replace(&mut self.unavailable, true) {
+            tracing::warn!(
+                operation = self.operation,
+                error = ?error,
+                "package queue unavailable"
+            );
+        }
+    }
+}
+
+pub async fn worker_main<F>(component: &'static str, worker: F) -> ExitCode
+where
+    F: Future<Output = Result<()>>,
+{
+    let span = tracing::info_span!("package_worker", component);
+    async move {
+        match worker.await {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                tracing::error!(operation = "run", error = ?error, "package worker stopped");
+                ExitCode::FAILURE
+            }
+        }
+    }
+    .instrument(span)
+    .await
+}
 
 pub fn required_secret(variable: &str) -> Result<String> {
     let path = std::env::var(variable).with_context(|| format!("{variable} is required"))?;

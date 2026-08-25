@@ -191,7 +191,12 @@ pub async fn build_submission(
     client
         .complete_tool_build(&submission.submission_id, &request)
         .await?;
-    println!("{} build staged", submission.submission_id);
+    tracing::info!(
+        operation = "build",
+        submission_id = %submission.submission_id,
+        outcome = "staged",
+        "tool build completed"
+    );
     Ok(())
 }
 
@@ -223,7 +228,13 @@ async fn record_build_failure(
     client
         .complete_tool_build(&submission.submission_id, &request)
         .await?;
-    println!("{} requires build changes", submission.submission_id);
+    tracing::info!(
+        operation = "build",
+        submission_id = %submission.submission_id,
+        failure_kind = ?kind,
+        outcome = "needs_changes",
+        "tool build completed"
+    );
     Ok(())
 }
 

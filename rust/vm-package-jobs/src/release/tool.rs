@@ -230,9 +230,15 @@ pub(super) async fn release_submission(
     )
     .await?;
     cleanup_release(client, &released.release_id, RELEASE_ACTOR).await?;
-    println!(
-        "{} {} published from {} ({})",
-        released.package, released.version, released.source_commit, released.release_id
+    tracing::info!(
+        operation = "release",
+        submission_id = %submission.submission_id,
+        release_id = %released.release_id,
+        package = %released.package,
+        version = %released.version,
+        source_commit = %released.source_commit,
+        outcome = "published",
+        "tool release completed"
     );
     Ok(())
 }

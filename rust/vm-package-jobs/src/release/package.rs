@@ -45,7 +45,13 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
             .as_deref()
             .context("published submission has no release record")?;
         cleanup_release(&client, release_id, RELEASE_ACTOR).await?;
-        println!("{} is already published", submission.submission_id);
+        tracing::info!(
+            operation = "release",
+            submission_id = %submission.submission_id,
+            release_id,
+            outcome = "already_published",
+            "package release completed"
+        );
         return Ok(());
     }
     if !matches!(
@@ -190,9 +196,15 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
     )
     .await?;
     cleanup_release(&client, &released.release_id, RELEASE_ACTOR).await?;
-    println!(
-        "{}@{} published from {} ({})",
-        released.package, released.version, released.source_commit, released.release_id
+    tracing::info!(
+        operation = "release",
+        submission_id = %submission.submission_id,
+        release_id = %released.release_id,
+        package = %released.package,
+        version = %released.version,
+        source_commit = %released.source_commit,
+        outcome = "published",
+        "package release completed"
     );
     Ok(())
 }
