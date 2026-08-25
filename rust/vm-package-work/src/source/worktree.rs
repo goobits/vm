@@ -7,7 +7,7 @@ use vm_packages::{
 use super::{git_output, run, source_key, SourceManager};
 use crate::store::SourceDefinition;
 use crate::{
-    io::{cleanup_directory, cleanup_file},
+    temporary_cleanup::{cleanup_directory, cleanup_file},
     Store, WorkError, WorkResult,
 };
 

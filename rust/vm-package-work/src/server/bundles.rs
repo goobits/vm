@@ -18,7 +18,7 @@ use super::{
     auth::{agent_capability_access, ensure_checkout_record_access},
     AppState,
 };
-use crate::{io::cleanup_file, WorkError, WorkResult};
+use crate::{temporary_cleanup::cleanup_file, WorkError, WorkResult};
 
 const MAX_SUBMISSION_BYTES: u64 = 256 * 1024 * 1024;
 

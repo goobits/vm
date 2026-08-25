@@ -1,8 +1,8 @@
-//! File system utility functions for project detection and analysis.
+//! Shared filesystem primitives.
 
 use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Replace a file without exposing partially written contents.
 pub fn atomic_write(path: &Path, content: &[u8]) -> io::Result<()> {
@@ -25,6 +25,18 @@ pub fn atomic_write(path: &Path, content: &[u8]) -> io::Result<()> {
         .persist(path)
         .map(|_| ())
         .map_err(|error| error.error)
+}
+
+/// Replace a file asynchronously without blocking the async runtime.
+pub async fn atomic_write_async(path: PathBuf, content: Vec<u8>) -> io::Result<()> {
+    tokio::task::spawn_blocking(move || atomic_write(&path, &content))
+        .await
+        .map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                format!("atomic write task failed: {error}"),
+            )
+        })?
 }
 
 /// Check if a file exists in a directory
@@ -58,7 +70,7 @@ pub fn has_file_containing(dir: &Path, filename: &str, content: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::atomic_write;
+    use super::{atomic_write, atomic_write_async};
 
     #[test]
     fn atomic_write_replaces_existing_content() {
@@ -78,5 +90,19 @@ mod tests {
         let error = atomic_write(directory.path(), b"content").unwrap_err();
 
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[tokio::test]
+    async fn atomic_write_async_replaces_existing_content() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("generated.yml");
+        std::fs::write(&path, "old").unwrap();
+
+        atomic_write_async(path.clone(), b"new".to_vec())
+            .await
+            .unwrap();
+
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "new");
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
     }
 }

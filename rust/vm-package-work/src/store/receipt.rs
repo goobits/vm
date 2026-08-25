@@ -1,9 +1,10 @@
 use chrono::Utc;
+use vm_core::file_system::atomic_write_async;
 use vm_packages::{ReceiptKind, WorkflowReceipt, WorkflowState};
 
 use super::idempotency::next_id;
 use super::{pretty_json, Database, Store};
-use crate::{io::atomic_write, WorkError, WorkResult};
+use crate::{WorkError, WorkResult};
 
 pub(crate) struct ReceiptInput<'a> {
     pub(crate) kind: ReceiptKind,
@@ -54,12 +55,12 @@ impl Store {
                 .root()
                 .join("receipts")
                 .join(format!("{}.json", receipt.receipt_id));
-            atomic_write(path, pretty_json(receipt)?).await?;
+            atomic_write_async(path, pretty_json(receipt)?).await?;
         }
         let releases = self.root().join("receipts/releases");
         tokio::fs::create_dir_all(&releases).await?;
         for release in database.releases.values() {
-            atomic_write(
+            atomic_write_async(
                 releases.join(format!("{}.json", release.release_id)),
                 pretty_json(release)?,
             )
@@ -68,7 +69,7 @@ impl Store {
         let consumers = self.root().join("receipts/consumers");
         tokio::fs::create_dir_all(&consumers).await?;
         for consumer in database.consumers.values() {
-            atomic_write(
+            atomic_write_async(
                 consumers.join(format!("{}.json", consumer.name)),
                 pretty_json(consumer)?,
             )
@@ -77,7 +78,7 @@ impl Store {
         let rollouts = self.root().join("receipts/rollouts");
         tokio::fs::create_dir_all(&rollouts).await?;
         for rollout in database.rollouts.values() {
-            atomic_write(
+            atomic_write_async(
                 rollouts.join(format!("{}.json", rollout.rollout_id)),
                 pretty_json(rollout)?,
             )
@@ -86,7 +87,7 @@ impl Store {
         let tools = self.root().join("receipts/tools");
         tokio::fs::create_dir_all(&tools).await?;
         for receipt in database.tool_receipts.values() {
-            atomic_write(
+            atomic_write_async(
                 tools.join(format!("{}.json", receipt.receipt_id)),
                 pretty_json(receipt)?,
             )

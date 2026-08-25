@@ -3,13 +3,14 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
+use vm_core::file_system::atomic_write_async;
 use vm_packages::{
     CheckoutRecord, ConsumerRecord, PackageDefinition, ReleaseRecord, RolloutRecord, SourceKind,
     SubmissionRecord, ToolActivationRecord, ToolArtifactRecord, ToolBuildRecord, ToolDefinition,
     ToolPublicationReceipt, WorkflowReceipt,
 };
 
-use crate::{io::atomic_write, WorkResult};
+use crate::WorkResult;
 
 mod idempotency;
 mod receipt;
@@ -127,7 +128,8 @@ impl Store {
 }
 
 async fn persist_database(root: &Path, database: &Database) -> WorkResult<()> {
-    atomic_write(root.join(STATE_FILE), pretty_json(database)?).await
+    atomic_write_async(root.join(STATE_FILE), pretty_json(database)?).await?;
+    Ok(())
 }
 
 pub(crate) fn pretty_json(value: &impl Serialize) -> WorkResult<Vec<u8>> {

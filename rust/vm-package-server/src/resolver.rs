@@ -193,10 +193,8 @@ async fn persist_catalog(path: &Path, catalog: &InternalPackageCatalog) -> Resul
             .await
             .map_err(|error| error.to_string())?;
     }
-    let path = path.to_path_buf();
-    tokio::task::spawn_blocking(move || vm_core::file_system::atomic_write(&path, &content))
+    vm_core::file_system::atomic_write_async(path.to_path_buf(), content)
         .await
-        .map_err(|error| error.to_string())?
         .map_err(|error| error.to_string())
 }
 

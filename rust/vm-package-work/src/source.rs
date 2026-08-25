@@ -10,7 +10,7 @@ use tracing::warn;
 use vm_core::command_capture::{capture_output_async, sanitized_diagnostic, CaptureLimits};
 use vm_packages::{sha256_hex, CheckoutRecord};
 
-use crate::{io::cleanup_directory, WorkError, WorkResult};
+use crate::{temporary_cleanup::cleanup_directory, WorkError, WorkResult};
 
 const SOURCE_COMMAND_LIMITS: CaptureLimits =
     CaptureLimits::new(Duration::from_secs(15 * 60), 16 * 1024 * 1024, 64 * 1024);

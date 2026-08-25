@@ -4,7 +4,7 @@ use vm_packages::{SubmissionRecord, ToolKind, ToolSourceManifest};
 
 use super::{git_output, managed_component, run, source_key, SourceManager};
 use crate::{
-    io::{cleanup_directory, cleanup_file},
+    temporary_cleanup::{cleanup_directory, cleanup_file},
     Store, WorkError, WorkResult,
 };
 

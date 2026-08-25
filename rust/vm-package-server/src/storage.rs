@@ -73,10 +73,7 @@ pub async fn save_file<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C) -> A
 
     let content = content.as_ref().to_vec();
     let content_len = content.len();
-    let owned_path = path.to_path_buf();
-    tokio::task::spawn_blocking(move || vm_core::file_system::atomic_write(&owned_path, &content))
-        .await
-        .map_err(|error| AppError::InternalError(format!("atomic write task failed: {error}")))??;
+    vm_core::file_system::atomic_write_async(path.to_path_buf(), content).await?;
     debug!(
         operation = "write_file",
         path = %path.display(),

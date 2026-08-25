@@ -1,11 +1,11 @@
 use std::path::{Path, PathBuf};
 
+use vm_core::file_system::atomic_write_async;
 use vm_packages::{sha256_hex, CheckoutRecord};
 
 use super::{git_output, run, SourceManager};
 use crate::{
-    io::{atomic_write, cleanup_directory},
-    ImportedSubmission, Store, WorkError, WorkResult,
+    temporary_cleanup::cleanup_directory, ImportedSubmission, Store, WorkError, WorkResult,
 };
 
 impl SourceManager {
@@ -308,7 +308,7 @@ impl SourceManager {
             .join("submissions");
         tokio::fs::create_dir_all(&submissions).await?;
         let key = submitted_commit.chars().take(16).collect::<String>();
-        atomic_write(submissions.join(format!("{key}.diff")), diff.clone()).await?;
+        atomic_write_async(submissions.join(format!("{key}.diff")), diff.clone()).await?;
         let durable_bundle = submissions.join(format!("{key}.bundle"));
         if !tokio::fs::try_exists(&durable_bundle).await? {
             tokio::fs::rename(bundle, &durable_bundle).await?;
