@@ -168,6 +168,11 @@ None.
   separate owners. Update and activation paths call reconciliation directly
   instead of reaching through their parent module. All 33 focused tool tests
   and strict all-target Clippy passed.
+- 2026-08-24: Source installation now has one Rust-owned path for builds,
+  executable placement, plugins, PATH setup, and completion. The shell entry
+  point only bootstraps dependencies and launches that installer; duplicate
+  setup, verification, standalone-server, and legacy flag paths were removed.
+  Installer tests, strict Clippy, and shell syntax passed.
 
 ## Related Context
 

@@ -37,9 +37,6 @@ readonly ERR_DEPENDENCY_MISSING=2
 readonly ERR_NETWORK_TIMEOUT=3
 readonly ERR_VERIFICATION_FAILED=4
 readonly ERR_INSTALL_FAILED=5
-readonly ERR_PATH_CONFIG=6
-readonly ERR_PERMISSION_DENIED=7
-readonly ERR_CARGO_BUILD=8
 
 # Color codes for output
 readonly RED='\033[0;31m'
@@ -56,9 +53,6 @@ OS_TYPE=""
 OS_VERSION=""
 ARCH=""
 PACKAGE_MANAGER=""
-CURRENT_SHELL=""
-SHELL_CONFIG=""
-SHELL_TYPE=""  # bash, zsh, fish, etc.
 
 # Installation options (parsed from arguments)
 INSTALLER_ARGS=()
@@ -109,7 +103,7 @@ handle_error() {
         echo -e "${BLUE}📍 Debug Info:${NC}"
         echo -e "  Platform: ${OS_TYPE:-unknown} ${OS_VERSION:-unknown}"
         echo -e "  Arch: ${ARCH:-unknown}"
-        echo -e "  Shell: ${CURRENT_SHELL:-unknown}"
+        echo -e "  Shell: ${SHELL:-unknown}"
         echo -e "  Log: $LOG_FILE"
         echo -e "  Time: $(date '+%Y-%m-%d %H:%M:%S')"
         echo -e "${RED}═══════════════════════════════════════════${NC}"
@@ -200,59 +194,6 @@ detect_platform() {
     fi
 
     log_success "Detected: $OS_TYPE $OS_VERSION ($ARCH) with $PACKAGE_MANAGER"
-}
-
-detect_shell_config() {
-    log_info "Detecting shell configuration..."
-
-    # Get current shell
-    CURRENT_SHELL=$(basename "$SHELL" 2>/dev/null || echo "bash")
-
-    # Determine shell type and config file
-    case "$CURRENT_SHELL" in
-        zsh)
-            SHELL_TYPE="zsh"
-            if [[ "$OS_TYPE" == "macos" ]]; then
-                # macOS uses .zprofile for login shells
-                SHELL_CONFIG="$HOME/.zprofile"
-            else
-                SHELL_CONFIG="$HOME/.zshrc"
-            fi
-            ;;
-
-        bash)
-            SHELL_TYPE="bash"
-            # Check for various bash configs in order of preference
-            if [[ "$OS_TYPE" == "macos" ]]; then
-                SHELL_CONFIG="$HOME/.bash_profile"
-            elif [[ -f "$HOME/.bash_profile" ]]; then
-                SHELL_CONFIG="$HOME/.bash_profile"
-            elif [[ -f "$HOME/.bashrc" ]]; then
-                SHELL_CONFIG="$HOME/.bashrc"
-            else
-                SHELL_CONFIG="$HOME/.profile"
-            fi
-            ;;
-
-        fish)
-            SHELL_TYPE="fish"
-            SHELL_CONFIG="$HOME/.config/fish/config.fish"
-            mkdir -p "$(dirname "$SHELL_CONFIG")" 2>/dev/null || true
-            ;;
-
-        sh|dash|ash)
-            SHELL_TYPE="sh"
-            SHELL_CONFIG="$HOME/.profile"
-            ;;
-
-        *)
-            SHELL_TYPE="unknown"
-            SHELL_CONFIG="$HOME/.profile"
-            log_warning "Unknown shell: $CURRENT_SHELL, using .profile"
-            ;;
-    esac
-
-    log_success "Shell: $CURRENT_SHELL (config: $(basename "$SHELL_CONFIG"))"
 }
 
 # ============================================================================
@@ -625,196 +566,8 @@ install_build_dependencies() {
 }
 
 # ============================================================================
-# Path Configuration
-# ============================================================================
-
-configure_path_safely() {
-    local cargo_bin_path="$HOME/.cargo/bin"
-
-    log_info "Configuring PATH in $SHELL_CONFIG..."
-
-    # Create shell config if it doesn't exist
-    if [[ ! -f "$SHELL_CONFIG" ]]; then
-        touch "$SHELL_CONFIG" || handle_error $ERR_PATH_CONFIG \
-            "Failed to create shell configuration file" \
-            "Check permissions for $SHELL_CONFIG"
-        log_info "Created: $SHELL_CONFIG"
-    fi
-
-    # Check if PATH is already configured
-    if grep -q "$cargo_bin_path" "$SHELL_CONFIG" 2>/dev/null; then
-        log_success "PATH already configured in $(basename "$SHELL_CONFIG")"
-        return 0
-    fi
-
-    # Add PATH configuration based on shell type
-    local path_line
-    case "$SHELL_TYPE" in
-        fish)
-            path_line="set -gx PATH \$PATH $cargo_bin_path"
-            ;;
-        *)
-            path_line="export PATH=\"\$PATH:$cargo_bin_path\""
-            ;;
-    esac
-
-    # Add to shell config
-    {
-        echo ""
-        echo "# Added by VM installer v$SCRIPT_VERSION"
-        echo "$path_line"
-    } >> "$SHELL_CONFIG"
-
-    log_success "PATH updated in $(basename "$SHELL_CONFIG")"
-    log_warning "Restart your terminal or run: source $SHELL_CONFIG"
-
-    return 0
-}
-
-install_shell_completion() {
-    local vm_binary=""
-    local completion_path=""
-    local source_line=""
-
-    log_info "Installing shell completion for $SHELL_TYPE..."
-
-    if [[ -x "$HOME/.local/bin/vm" ]]; then
-        vm_binary="$HOME/.local/bin/vm"
-    elif [[ -x "$HOME/.cargo/bin/vm" ]]; then
-        vm_binary="$HOME/.cargo/bin/vm"
-    elif command_exists vm; then
-        vm_binary="$(command -v vm)"
-    fi
-
-    if [[ -z "$vm_binary" ]]; then
-        log_warning "Skipping shell completion installation: vm binary not found"
-        return 0
-    fi
-
-    case "$SHELL_TYPE" in
-        bash)
-            completion_path="$HOME/.vm-completion.bash"
-            source_line="source ~/.vm-completion.bash"
-            ;;
-        zsh)
-            completion_path="$HOME/.vm-completion.zsh"
-            source_line="source ~/.vm-completion.zsh"
-            ;;
-        fish)
-            completion_path="$HOME/.config/fish/completions/vm.fish"
-            ;;
-        *)
-            log_warning "Skipping shell completion installation for unsupported shell: $SHELL_TYPE"
-            return 0
-            ;;
-    esac
-
-    mkdir -p "$(dirname "$completion_path")" || {
-        log_warning "Failed to create completion directory for $completion_path"
-        return 0
-    }
-
-    if ! "$vm_binary" internal-completion "$SHELL_TYPE" > "$completion_path"; then
-        log_warning "Failed to generate shell completion for $SHELL_TYPE"
-        return 0
-    fi
-
-    if [[ "$SHELL_TYPE" == "zsh" ]] && ! grep -Fq '${functions[compdef]+x}' "$completion_path" 2>/dev/null; then
-        local completion_tmp
-        completion_tmp=$(mktemp) || {
-            log_warning "Failed to create temporary zsh completion file"
-            return 0
-        }
-        {
-            echo "# Ensure compdef is available when this file is sourced directly from .zshrc."
-            echo 'if [[ -n ${ZSH_VERSION:-} && -z ${functions[compdef]+x} ]]; then'
-            echo "  autoload -Uz compinit"
-            echo "  compinit -i"
-            echo "fi"
-            echo ""
-            cat "$completion_path"
-        } > "$completion_tmp" && mv "$completion_tmp" "$completion_path"
-        rm -f "$completion_tmp"
-    fi
-
-    if [[ -n "$source_line" ]]; then
-        if [[ ! -f "$SHELL_CONFIG" ]]; then
-            touch "$SHELL_CONFIG" || {
-                log_warning "Failed to update $SHELL_CONFIG with completion source line"
-                return 0
-            }
-        fi
-
-        if ! grep -Fq "$source_line" "$SHELL_CONFIG" 2>/dev/null; then
-            {
-                echo ""
-                echo "# Added by VM installer v$SCRIPT_VERSION"
-                echo "$source_line"
-            } >> "$SHELL_CONFIG"
-        fi
-    fi
-
-    log_success "Shell completion installed at $completion_path"
-    return 0
-}
-
-# ============================================================================
 # VM Installation Functions
 # ============================================================================
-
-build_standalone_pkg_server() {
-    log_info "Building standalone package server..."
-
-    local script_dir
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-    cd "$script_dir/rust" || handle_error $ERR_CARGO_BUILD \
-        "Failed to navigate to rust directory" \
-        "Ensure the script is run from the project root"
-
-    local cargo_target_dir="${CARGO_TARGET_DIR:-/tmp/vm-rust-target}"
-    if ! timeout "$CARGO_TIMEOUT_SECONDS" env CARGO_TARGET_DIR="$cargo_target_dir" cargo build --release --features standalone-binary -p vm-package-server 2>&1 | tee -a "$LOG_FILE"; then
-        handle_error $ERR_CARGO_BUILD \
-            "Failed to build standalone package server" \
-            "Check the build log in $LOG_FILE"
-    fi
-
-    log_success "Standalone package server built successfully"
-
-    # Install the standalone binary
-    local pkg_server_bin="$cargo_target_dir/release/pkg-server"
-    if [[ ! -f "$pkg_server_bin" ]]; then
-        handle_error $ERR_INSTALL_FAILED \
-            "Built binary not found at expected location" \
-            "Check if the build completed successfully"
-    fi
-
-    # Determine install directory
-    local install_dir
-    if [[ -w "/usr/local/bin" ]]; then
-        install_dir="/usr/local/bin"
-    elif [[ -d "$HOME/.local/bin" ]] || mkdir -p "$HOME/.local/bin" 2>/dev/null; then
-        install_dir="$HOME/.local/bin"
-    else
-        handle_error $ERR_PERMISSION_DENIED \
-            "No writable install directory found" \
-            "Create ~/.local/bin or run with sudo"
-    fi
-
-    log_info "Installing pkg-server to $install_dir..."
-    cp "$pkg_server_bin" "$install_dir/pkg-server" || handle_error $ERR_INSTALL_FAILED \
-        "Failed to copy pkg-server binary" \
-        "Check permissions for $install_dir"
-
-    chmod +x "$install_dir/pkg-server" || handle_error $ERR_PERMISSION_DENIED \
-        "Failed to make pkg-server executable" \
-        "Check file permissions"
-
-    log_success "pkg-server installed to $install_dir/pkg-server"
-
-    cd "$script_dir" || true
-    return 0
-}
 
 install_vm_tool() {
     log_info "Installing VM tool..."
@@ -884,95 +637,12 @@ install_vm_tool() {
 }
 
 # ============================================================================
-# Installation Verification (Phase 4)
-# ============================================================================
-
-verify_installation() {
-    local checks_passed=0
-    local checks_total=0
-    local has_errors=false
-
-    echo ""
-    log_info "Running installation verification..."
-    echo ""
-
-    # Source cargo env to ensure PATH is updated
-    if [[ -f "$HOME/.cargo/env" ]]; then
-        # shellcheck source=/dev/null
-        source "$HOME/.cargo/env"
-    fi
-
-    # Check 1: VM binary exists
-    ((checks_total++))
-    if command_exists vm; then
-        log_success "VM binary found in PATH"
-        ((checks_passed++))
-    else
-        log_error "VM binary not found in PATH"
-        has_errors=true
-    fi
-
-    # Check 2: VM binary is executable
-    ((checks_total++))
-    if [[ -x "$(command -v vm 2>/dev/null)" ]]; then
-        log_success "VM binary is executable"
-        ((checks_passed++))
-    else
-        log_error "VM binary not executable"
-        has_errors=true
-    fi
-
-    # Check 3: VM responds to version
-    ((checks_total++))
-    if timeout 10 vm --version &>/dev/null; then
-        local vm_version
-        vm_version=$(vm --version 2>/dev/null | head -1)
-        log_success "VM responds correctly: $vm_version"
-        ((checks_passed++))
-    else
-        log_error "VM doesn't respond to --version"
-        has_errors=true
-    fi
-
-    # Check 4: Cargo bin in PATH
-    ((checks_total++))
-    if echo "$PATH" | grep -q ".cargo/bin"; then
-        log_success "Cargo bin directory in PATH"
-        ((checks_passed++))
-    else
-        log_warning "Cargo bin not in PATH (will be added on next shell restart)"
-        ((checks_passed++))  # Not a critical error
-    fi
-
-    # Check 5: Installation mode
-    ((checks_total++))
-    log_success "Built from source"
-    ((checks_passed++))
-
-    # Report results
-    echo ""
-    if [[ $checks_passed -eq $checks_total ]]; then
-        log_success "All verification checks passed ($checks_passed/$checks_total)"
-        return 0
-    elif [[ "$has_errors" == "true" ]]; then
-        log_error "Some critical checks failed ($checks_passed/$checks_total)"
-        return 1
-    else
-        log_warning "Some non-critical checks failed ($checks_passed/$checks_total)"
-        return 0
-    fi
-}
-
-# ============================================================================
 # Argument Parsing
 # ============================================================================
 
 parse_arguments() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --build-from-source)
-                log_info "Building from source (default mode)"
-                ;;
             --version)
                 local requested_version="${2:-}"
                 if [[ -z "$requested_version" ]] || [[ "$requested_version" == --* ]]; then
@@ -1007,7 +677,6 @@ Usage:
   $SCRIPT_NAME [OPTIONS]
 
 Options:
-  --build-from-source    Legacy alias; source install is the default
   --help, -h             Show this help message
   -v                     Show installer version information
 
@@ -1017,9 +686,6 @@ Environment Variables:
 Examples:
   # Install from source
   ./$SCRIPT_NAME
-
-  # Legacy source-install alias
-  ./$SCRIPT_NAME --build-from-source
 
 For more information, visit: $REPO_URL
 EOF
@@ -1047,9 +713,6 @@ main() {
         "Platform detection failed" \
         "Please report this issue with your OS details"
 
-    detect_shell_config
-    echo ""
-
     # Step 2: Build from source
     log_info "Building from source..."
 
@@ -1071,21 +734,7 @@ main() {
     install_vm_tool
     echo ""
 
-    # Step 3: Configure PATH
-    configure_path_safely
-    echo ""
-
-    # Step 4: Install shell completion
-    install_shell_completion
-    echo ""
-
-    # Step 5: Verify installation
-    if ! verify_installation; then
-        log_warning "Installation completed with warnings"
-        log_info "Please check the log file: $LOG_FILE"
-    fi
-
-    # Step 6: Success message
+    # Step 3: Success message
     echo ""
     echo -e "${GREEN}═══════════════════════════════════════════${NC}"
     echo -e "${GREEN}🎉 Installation completed successfully!${NC}"
@@ -1093,9 +742,7 @@ main() {
     echo ""
 
     # Show next steps
-    echo -e "${BLUE}Next steps:${NC}"
-    echo -e "  1. Restart your terminal or run: ${YELLOW}source $SHELL_CONFIG${NC}"
-    echo -e "  2. Get started with: ${YELLOW}vm --help${NC}"
+    echo -e "${BLUE}Next step:${NC} ${YELLOW}vm --help${NC}"
     echo ""
     echo -e "${BLUE}Documentation:${NC} $REPO_URL"
     echo -e "${BLUE}Support:${NC} ${REPO_URL}/issues"
