@@ -273,7 +273,11 @@ vm package dev --output dev.tar.gz
 ## Debug Output
 
 ```bash
-LOG_LEVEL=DEBUG vm run linux as dev
+LOG_LEVEL=debug LOG_OUTPUT=console LOG_FORMAT=human vm run linux as dev
 VM_DEBUG=true vm run linux as dev
 VM_VERBOSE=true vm run linux as dev
 ```
+
+CLI logs default to a file so requested command output stays clean. Long-running
+services default to JSON on stderr and include an `x-request-id` on HTTP
+responses for correlation.

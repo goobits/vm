@@ -97,6 +97,12 @@ data and successful results use stdout; progress, warnings, hints, and errors
 use stderr. Libraries return errors without printing them, and the `vm`
 executable renders each fatal error once.
 
+`rust/vm-logging/` owns tracing initialization and HTTP request context. CLI
+logs remain separate from requested output; package services emit JSON to
+stderr by default and correlate request spans and response headers with the
+same bounded `x-request-id`. Command diagnostics name executables but omit
+arguments because arguments can contain credentials.
+
 ## Provider Boundaries
 
 Callers borrow the narrowest capability they need: `CommandProvider` for guest

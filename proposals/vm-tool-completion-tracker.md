@@ -19,14 +19,12 @@ owning Docker workspace without copying its repository or build tree. Live
 TypeMill 1.2.0 acceptance proved exactly-once retry behavior and stable
 container and volume identities. At owner direction, the previously listed
 equipped-host acceptance gates are no longer tracked as release requirements.
-Release behavior remains complete. Package-service logging is undergoing a
-bounded consistency and safety pass; no release semantics are changing.
+Release behavior remains complete. Package services now use shared structured,
+container-safe logging without changing release semantics.
 
 ## Remaining Tasks In Order
 
-- [ ] Standardize package services on structured, container-safe logging and
-  remove remaining unstructured worker output without logging credentials or
-  private payloads.
+None.
 
 ## Completed Foundations
 
@@ -68,6 +66,10 @@ bounded consistency and safety pass; no release semantics are changing.
 
 ## Verification Log
 
+- 2026-08-24: Package registry, workflow, and worker processes now share
+  container-safe structured logging, request IDs, stable operation and error
+  fields, bounded queue-outage reporting, and secret-safe diagnostics. Focused
+  tests and strict Clippy passed.
 - 2026-08-24: Coordinated binary build inputs now keep both transient
   inspection state and immutable bundles inside the writable source-mirrors
   volume; the unprivileged workflow service no longer attempts to create paths

@@ -19,7 +19,7 @@ Goobits VM is built using a **layered architecture** designed around the princip
 | Foundation | `vm-platform` | OS integration, paths, and host resource detection | `cargo test -p vm-platform` |
 | Foundation | `vm-core` | Shared errors, output primitives, FS and command utilities | `cargo test -p vm-core` |
 | Foundation | `vm-messages` | Reusable config, plugin, and service message templates | `cargo test -p vm-messages` |
-| Foundation | `vm-logging` | Tracing subscriber + log routing setup used by every binary | `cargo test -p vm-logging` |
+| Foundation | `vm-logging` | Tracing profiles, log routing, and HTTP request context | `cargo test -p vm-logging` |
 | Configuration | `vm-config` | Configuration schema, detectors, CLI helpers | `cargo test -p vm-config` |
 | Configuration | `vm-plugin` | Plugin discovery, validation, and preset/service loading | `cargo test -p vm-plugin` |
 | Provider | `vm-provider` | Provider traits plus Docker/Podman/Tart implementations | `cargo test -p vm-provider` |
