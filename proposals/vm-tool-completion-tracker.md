@@ -185,6 +185,10 @@ None.
   facade and dedicated Cargo, npm, and PyPI protocol owners. Shared client and
   enablement checks are centralized. Focused upstream tests and strict
   all-target Clippy passed.
+- 2026-08-24: Package appliance filesystem ownership is now separated across
+  credentials, definition materialization, lifecycle locks, tool-cache IO, and
+  durable state. Methods remain restricted to the package domain, with no
+  compatibility facade. Focused file tests and strict all-target Clippy passed.
 
 ## Related Context
 
