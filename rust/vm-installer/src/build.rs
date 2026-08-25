@@ -131,9 +131,13 @@ mod tests {
     use super::target_directory;
 
     #[test]
-    fn machine_cache_target_directory_is_absolute() {
+    fn target_directory_honors_configuration_or_uses_the_machine_cache() {
         let target_dir = target_directory();
         assert!(target_dir.is_absolute());
-        assert!(target_dir.ends_with("vm-rust-target"));
+        if let Some(configured) = std::env::var_os("CARGO_TARGET_DIR") {
+            assert_eq!(target_dir, std::path::PathBuf::from(configured));
+        } else {
+            assert!(target_dir.ends_with("vm-rust-target"));
+        }
     }
 }

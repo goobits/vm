@@ -189,6 +189,11 @@ None.
   credentials, definition materialization, lifecycle locks, tool-cache IO, and
   durable state. Methods remain restricted to the package domain, with no
   compatibility facade. Focused file tests and strict all-target Clippy passed.
+- 2026-08-24: Final god-module hardening removed retired module, type, function,
+  installer flag, and standalone-server names. Workspace formatting, all-target
+  checks, strict Clippy, RustSec audit, unit tests, integration tests, installer
+  shell syntax, and clean-diff checks passed. `cargo-deny` and `jscpd` were not
+  installed for their optional environment-dependent gates.
 
 ## Related Context
 
