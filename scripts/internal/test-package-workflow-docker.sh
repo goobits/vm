@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
@@ -45,6 +45,8 @@ before_volumes=$acceptance_root/before.volumes
 after_volumes=$acceptance_root/after.volumes
 server_image=
 jobs_image=
+acceptance_phase=initialize
+failure_line=unknown
 
 run_vm() {
   env HOME="$acceptance_home" \
@@ -53,8 +55,33 @@ run_vm() {
     PATH="$fake_bin:$(dirname "$vm_binary"):$PATH" "$vm_binary" "$@"
 }
 
+capture_failure_evidence() {
+  local status=$1
+  local evidence=$acceptance_root/failure-evidence
+  local container
+  mkdir -p "$evidence/containers"
+  printf 'exit_status=%s\nphase=%s\nline=%s\n' \
+    "$status" "$acceptance_phase" "$failure_line" > "$evidence/status"
+  docker ps --all --no-trunc > "$evidence/docker-ps.txt" 2>&1 || true
+  docker info > "$evidence/docker-info.txt" 2>&1 || true
+  workflow_state > "$evidence/workflows.json" 2> "$evidence/workflows.error" || true
+  while IFS= read -r container; do
+    test -n "$container" || continue
+    docker container inspect "$container" \
+      > "$evidence/containers/$container.inspect.json" 2>&1 || true
+    docker logs "$container" \
+      > "$evidence/containers/$container.log" 2>&1 || true
+  done < <(docker ps --all --format '{{.Names}}' 2>/dev/null | \
+    grep -E "^(${compose_project}|${project_name}|${consumer_name}|${stopped_name})" || true)
+}
+
 cleanup() {
+  local status=$?
+  trap - EXIT
   set +e
+  if test "$status" -ne 0; then
+    capture_failure_evidence "$status"
+  fi
   run_vm --config "$project_root/vm.yaml" remove "$environment_name" --force >/dev/null 2>&1
   run_vm --config "$consumer_root/vm.yaml" remove "$consumer_environment" --force >/dev/null 2>&1
   run_vm --config "$stopped_root/vm.yaml" remove "$stopped_environment" --force >/dev/null 2>&1
@@ -72,11 +99,17 @@ cleanup() {
   if test -n "$server_image" && test -n "$jobs_image"; then
     docker image rm --force "$server_image" "$jobs_image" >/dev/null 2>&1
   fi
-  case "$acceptance_root" in
-    */vm-package-acceptance.*) rm -rf -- "$acceptance_root" ;;
-  esac
+  if test "$status" -eq 0; then
+    case "$acceptance_root" in
+      */vm-package-acceptance.*) rm -rf -- "$acceptance_root" ;;
+    esac
+  else
+    echo "Docker package workflow evidence preserved: $acceptance_root" >&2
+  fi
+  exit "$status"
 }
 trap cleanup EXIT
+trap 'failure_line=$LINENO' ERR
 trap 'exit 130' HUP INT TERM
 
 source "$script_dir/package-workflow-docker/assertions.sh"
@@ -84,6 +117,7 @@ source "$script_dir/package-workflow-docker/fixtures.sh"
 source "$script_dir/package-workflow-docker/language-package.sh"
 source "$script_dir/package-workflow-docker/tool-release.sh"
 
+acceptance_phase=check-prerequisites
 test -x "$vm_binary" || {
   echo "Acceptance VM binary is missing: $vm_binary" >&2
   echo "Repair: (cd rust && cargo build --release --package goobits-vm)" >&2
@@ -98,12 +132,18 @@ command -v docker >/dev/null 2>&1 || {
 version=$("$vm_binary" --version | awk '{print $2}')
 server_image=vm-package-server-acceptance:$version-$run_id
 jobs_image=vm-package-jobs-acceptance:$version-$run_id
+acceptance_phase=build-appliance-images
 docker build --provenance=false --tag "$server_image"   --file "$repository_root/rust/vm-package-server/docker/server/Dockerfile" "$repository_root"
 docker build --provenance=false --tag "$jobs_image"   --file "$repository_root/rust/vm-package-jobs/Dockerfile" "$repository_root"
 
+acceptance_phase=prepare-fixtures
 prepare_acceptance_fixtures
+acceptance_phase=prepare-infrastructure
 prepare_acceptance_infrastructure
+acceptance_phase=language-package-lifecycle
 accept_language_package_lifecycle
+acceptance_phase=managed-tool-workflows
 accept_tool_workflows
 
+acceptance_phase=complete
 echo 'Docker package workflow acceptance passed'

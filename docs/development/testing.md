@@ -65,7 +65,9 @@ adoption with backups, restart/resume, deferred activation on start, and stable
 container and volume identities. CI restarts the package controller. On a
 disposable host, set `VM_ACCEPTANCE_DOCKER_RESTART_COMMAND` to a command that
 restarts Docker itself to run the full daemon-interruption gate. The script
-removes only its unique acceptance resources.
+removes only its unique acceptance resources. On failure it captures workflow
+state, Docker inventory, container inspection, and container logs before
+teardown, then preserves the temporary acceptance directory printed to stderr.
 
 The supported integration target enables the package server's
 `standalone-binary` feature so its CLI fixtures compile and run with the rest of
