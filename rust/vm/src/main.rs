@@ -47,6 +47,14 @@ async fn run_command(invocation: Invocation) {
         Invocation::Remote(arguments) => commands::remote_command::handle(arguments).await,
     };
     if let Err(error) = result {
+        tracing::error!(
+            operation = "execute_command",
+            outcome = "failed",
+            error = %error,
+            error_source = error.source_chain().unwrap_or_default(),
+            hint = error.hint().unwrap_or_default(),
+            "vm command failed"
+        );
         vm_error!("Error: {}", error);
         if let Some(hint) = error.hint() {
             vm_hint!("{}", hint);

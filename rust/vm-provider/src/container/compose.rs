@@ -59,9 +59,10 @@ impl<'a> ComposeOperations<'a> {
             })
             || matches!(instance, "." | "..")
         {
-            return Err(VmError::Validation(format!(
-                "Invalid Docker instance name '{instance}'"
-            )));
+            return Err(VmError::validation(
+                format!("Invalid Docker instance name '{instance}'"),
+                None::<String>,
+            ));
         }
         let mut custom_config = self.config.clone();
 

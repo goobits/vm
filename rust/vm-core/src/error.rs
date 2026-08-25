@@ -48,8 +48,11 @@ pub enum VmError {
     #[error("Serialization error: {0}")]
     Serialization(String),
 
-    #[error("Validation error: {0}")]
-    Validation(String),
+    #[error("Validation error: {message}")]
+    Validation {
+        message: String,
+        hint: Option<String>,
+    },
 
     #[error("Other error: {0}")]
     Other(#[from] anyhow::Error),
@@ -69,8 +72,19 @@ impl From<serde_json::Error> for VmError {
 
 impl VmError {
     /// Create a validation error with an optional hint
-    pub fn validation<S: Into<String>, H: Into<String>>(msg: S, _hint: Option<H>) -> Self {
-        VmError::Validation(msg.into())
+    pub fn validation<S: Into<String>, H: Into<String>>(msg: S, hint: Option<H>) -> Self {
+        VmError::Validation {
+            message: msg.into(),
+            hint: hint.map(Into::into),
+        }
+    }
+
+    /// Return the actionable follow-up attached to a validation error.
+    pub fn hint(&self) -> Option<&str> {
+        match self {
+            Self::Validation { hint, .. } => hint.as_deref(),
+            _ => None,
+        }
     }
 
     /// Create a filesystem error with path and operation context
@@ -92,3 +106,16 @@ impl VmError {
 }
 
 pub type Result<T> = std::result::Result<T, VmError>;
+
+#[cfg(test)]
+mod tests {
+    use super::VmError;
+
+    #[test]
+    fn validation_errors_preserve_actionable_hints() {
+        let error = VmError::validation("invalid port", Some("use a port from 1-65535"));
+
+        assert_eq!(error.to_string(), "Validation error: invalid port");
+        assert_eq!(error.hint(), Some("use a port from 1-65535"));
+    }
+}

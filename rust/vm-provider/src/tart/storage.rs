@@ -231,9 +231,10 @@ fn validate_instance(instance: &str) -> Result<()> {
         || instance == "."
         || instance == ".."
     {
-        return Err(VmError::Validation(format!(
-            "Invalid Tart instance name '{instance}'"
-        )));
+        return Err(VmError::validation(
+            format!("Invalid Tart instance name '{instance}'"),
+            None::<String>,
+        ));
     }
     Ok(())
 }

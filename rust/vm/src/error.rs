@@ -25,16 +25,21 @@ impl VmError {
         }
     }
 
-    fn message(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-            hint: None,
-            source: None,
-        }
-    }
-
     pub fn hint(&self) -> Option<&str> {
         self.hint.as_deref()
+    }
+
+    pub fn source_chain(&self) -> Option<String> {
+        let mut source = self.source();
+        let mut messages = Vec::new();
+        while let Some(error) = source {
+            messages.push(clean_diagnostic(&error.to_string()));
+            if messages.len() == 8 {
+                break;
+            }
+            source = error.source();
+        }
+        (!messages.is_empty()).then(|| messages.join(": "))
     }
 
     pub fn config<E>(source: E, context: impl Into<String>) -> Self
@@ -111,7 +116,12 @@ pub type VmResult<T> = Result<T, VmError>;
 
 impl From<anyhow::Error> for VmError {
     fn from(error: anyhow::Error) -> Self {
-        Self::message(error.to_string())
+        let message = error.to_string();
+        Self {
+            message,
+            hint: None,
+            source: Some(error.into_boxed_dyn_error()),
+        }
     }
 }
 
@@ -136,8 +146,30 @@ impl From<vm_packages::PackageValidationError> for VmError {
 
 impl From<vm_core::error::VmError> for VmError {
     fn from(error: vm_core::error::VmError) -> Self {
-        Self::message(error.to_string())
+        let message = error.to_string();
+        let hint = error.hint().map(str::to_string);
+        Self {
+            message,
+            hint,
+            source: Some(Box::new(error)),
+        }
     }
+}
+
+fn clean_diagnostic(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
+        .take(512)
+        .collect::<String>()
+        .trim()
+        .to_string()
 }
 
 #[cfg(test)]
@@ -188,5 +220,23 @@ mod tests {
 
         assert_eq!(error.to_string(), "connection closed");
         assert_eq!(error.source().unwrap().to_string(), "connection closed");
+    }
+
+    #[test]
+    fn conversions_preserve_hints_and_error_chains() {
+        let validation = VmError::from(vm_core::error::VmError::validation(
+            "invalid target",
+            Some("select one environment"),
+        ));
+        assert_eq!(validation.hint(), Some("select one environment"));
+        assert!(validation.source().is_some());
+
+        let source = io::Error::other("disk unavailable");
+        let anyhow_error = anyhow::Error::new(source).context("could not save state");
+        let converted = VmError::from(anyhow_error);
+        assert_eq!(converted.to_string(), "could not save state");
+        assert!(converted
+            .source_chain()
+            .is_some_and(|chain| chain.contains("disk unavailable")));
     }
 }

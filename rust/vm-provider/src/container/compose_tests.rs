@@ -354,7 +354,7 @@ fn renders_stable_scoped_storage_and_runtime_policy() {
         .unwrap();
     assert!(matches!(
         compose.render_docker_compose_with_instance(&project_dir, "a\"b", &context),
-        Err(VmError::Validation(_))
+        Err(VmError::Validation { .. })
     ));
     let instance_yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(&instance_rendered).unwrap();
     let instance_volumes = yaml_mapping(&instance_yaml, "volumes");

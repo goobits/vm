@@ -21,15 +21,17 @@ use crate::error::{Result, VmError};
 pub fn validate_server_address(server_addr: &str) -> Result<()> {
     // Check basic length constraints
     if server_addr.is_empty() || server_addr.len() > 253 {
-        return Err(VmError::Validation(
-            "Server address must be between 1 and 253 characters".to_string(),
+        return Err(VmError::validation(
+            "Server address must be between 1 and 253 characters",
+            None::<String>,
         ));
     }
 
     // Check for null bytes or control characters (injection prevention)
     if server_addr.contains('\0') || server_addr.chars().any(|c| c.is_control()) {
-        return Err(VmError::Validation(
-            "Server address contains invalid control characters".to_string(),
+        return Err(VmError::validation(
+            "Server address contains invalid control characters",
+            None::<String>,
         ));
     }
 
@@ -62,10 +64,10 @@ pub fn validate_server_address(server_addr: &str) -> Result<()> {
             .iter()
             .all(|label| !label.is_empty() && label.chars().all(|c| c.is_ascii_digit()))
     {
-        return Err(VmError::Validation(format!(
-            "Invalid IP address format: {}",
-            server_addr
-        )));
+        return Err(VmError::validation(
+            format!("Invalid IP address format: {server_addr}"),
+            None::<String>,
+        ));
     }
 
     // 5. Validate as hostname (DNS name)
@@ -76,45 +78,54 @@ pub fn validate_server_address(server_addr: &str) -> Result<()> {
 pub fn validate_hostname(hostname: &str) -> Result<()> {
     // Basic length check (DNS hostname max is 253 characters)
     if hostname.is_empty() || hostname.len() > 253 {
-        return Err(VmError::Validation(
-            "Hostname must be between 1 and 253 characters".to_string(),
+        return Err(VmError::validation(
+            "Hostname must be between 1 and 253 characters",
+            None::<String>,
         ));
     }
 
     // Cannot start or end with a dot
     if hostname.starts_with('.') || hostname.ends_with('.') {
-        return Err(VmError::Validation(
-            "Hostname cannot start or end with a dot".to_string(),
+        return Err(VmError::validation(
+            "Hostname cannot start or end with a dot",
+            None::<String>,
         ));
     }
 
     // Split into labels and validate each
     let labels: Vec<&str> = hostname.split('.').collect();
     if labels.is_empty() {
-        return Err(VmError::Validation("Hostname cannot be empty".to_string()));
+        return Err(VmError::validation(
+            "Hostname cannot be empty",
+            None::<String>,
+        ));
     }
 
     for label in labels {
         // Each label must be 1-63 characters
         if label.is_empty() || label.len() > 63 {
-            return Err(VmError::Validation(
-                "Hostname labels must be between 1 and 63 characters".to_string(),
+            return Err(VmError::validation(
+                "Hostname labels must be between 1 and 63 characters",
+                None::<String>,
             ));
         }
 
         // Cannot start or end with hyphen
         if label.starts_with('-') || label.ends_with('-') {
-            return Err(VmError::Validation(
-                "Hostname labels cannot start or end with a hyphen".to_string(),
+            return Err(VmError::validation(
+                "Hostname labels cannot start or end with a hyphen",
+                None::<String>,
             ));
         }
 
         // Must contain only alphanumeric characters and hyphens
         if !label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-            return Err(VmError::Validation(format!(
-                "Hostname label '{}' contains invalid characters (only alphanumeric and '-' allowed)",
-                label
-            )));
+            return Err(VmError::validation(
+                format!(
+                    "Hostname label '{label}' contains invalid characters (only alphanumeric and '-' allowed)"
+                ),
+                None::<String>,
+            ));
         }
     }
 
