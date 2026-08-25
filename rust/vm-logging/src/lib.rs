@@ -25,9 +25,9 @@ where
     B: Write,
 {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let res_a = self.a.write(buf);
-        let res_b = self.b.write(buf);
-        res_a.or(res_b)
+        self.a.write_all(buf)?;
+        self.b.write_all(buf)?;
+        Ok(buf.len())
     }
 
     fn flush(&mut self) -> io::Result<()> {
@@ -173,7 +173,7 @@ pub fn init_subscriber() -> Option<WorkerGuard> {
         guard = Some(_guard);
 
         let tee_writer = MakeTee {
-            make_a: std::io::stdout,
+            make_a: std::io::stderr,
             make_b: non_blocking,
         };
 
@@ -184,7 +184,7 @@ pub fn init_subscriber() -> Option<WorkerGuard> {
             subscriber.with(fmt_layer.pretty()).init();
         }
     } else if use_console {
-        let fmt_layer = tracing_subscriber::fmt::layer().with_writer(std::io::stdout);
+        let fmt_layer = tracing_subscriber::fmt::layer().with_writer(std::io::stderr);
         if is_json {
             subscriber.with(fmt_layer.json()).init();
         } else {
@@ -206,4 +206,45 @@ pub fn init_subscriber() -> Option<WorkerGuard> {
     }
 
     guard
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Tee;
+    use std::io::{self, Write};
+
+    struct FailingWriter;
+
+    impl Write for FailingWriter {
+        fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+            Err(io::Error::other("sink unavailable"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn tee_writes_the_complete_event_to_both_sinks() {
+        let mut tee = Tee {
+            a: Vec::new(),
+            b: Vec::new(),
+        };
+
+        tee.write_all(b"event").unwrap();
+
+        assert_eq!(tee.a, b"event");
+        assert_eq!(tee.b, b"event");
+    }
+
+    #[test]
+    fn tee_reports_a_failed_sink() {
+        let mut tee = Tee {
+            a: Vec::new(),
+            b: FailingWriter,
+        };
+
+        assert!(tee.write_all(b"event").is_err());
+    }
 }

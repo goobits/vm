@@ -49,7 +49,10 @@ pub(crate) async fn create_from_dockerfile(
     tracing::info!("Build context: {}", build_context.display());
     tracing::info!("Dockerfile: {}", dockerfile_path.display());
     if !build_args.is_empty() {
-        tracing::info!("Build arguments: {:?}", build_args);
+        tracing::info!(
+            build_arg_count = build_args.len(),
+            "Docker build arguments configured"
+        );
     }
 
     let mut args = vec![
