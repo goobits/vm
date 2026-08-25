@@ -1,4 +1,4 @@
-use vm_core::{vm_hint, vm_success, vm_warning};
+use vm_core::{vm_hint, vm_println, vm_success, vm_warning};
 use vm_packages::{
     LeaseRequest, PackageEcosystem, SourceKind, ToolActivationState, ToolActivationTargetState,
     WorkflowState,
@@ -17,6 +17,30 @@ const RELEASE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 *
 const ACTIVATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10 * 60);
 const INITIAL_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
 const MAX_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+const PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+
+struct ReleaseProgress {
+    last_state: WorkflowState,
+    next_heartbeat: tokio::time::Instant,
+}
+
+impl ReleaseProgress {
+    fn new(submission: &vm_packages::SubmissionRecord) -> Self {
+        Self {
+            last_state: submission.state,
+            next_heartbeat: tokio::time::Instant::now() + PROGRESS_INTERVAL,
+        }
+    }
+
+    fn report(&mut self, submission: &vm_packages::SubmissionRecord) {
+        let now = tokio::time::Instant::now();
+        if submission.state != self.last_state || now >= self.next_heartbeat {
+            print_release_phase(submission);
+            self.last_state = submission.state;
+            self.next_heartbeat = now + PROGRESS_INTERVAL;
+        }
+    }
+}
 
 struct PollBackoff {
     next: std::time::Duration,
@@ -157,17 +181,30 @@ pub(super) async fn handle_guest() -> VmResult<()> {
     if let Some(workspace) = workspace.as_mut() {
         workspace.record_commit(&current.submitted_commit)?;
     }
+    if !matches!(
+        current.state,
+        WorkflowState::Published | WorkflowState::Closed
+    ) {
+        vm_println!("Release job: {}", current.submission_id);
+        print_release_phase(&current);
+        vm_hint!("Ctrl-C detaches without cancelling; rerun `vm packages release` to resume");
+        if workspace.is_none() {
+            vm_hint!("Cancel explicitly with `vm packages cancel` from this checkout");
+        }
+    }
     current = wait_for_review(&client, current, checkout.workspace_release).await?;
     if matches!(
         current.state,
         WorkflowState::Approved | WorkflowState::Integrating
     ) {
+        vm_println!("Phase: integrating approved source");
         if package_ecosystem.is_none() {
             package_ecosystem = checkout_package_ecosystem(&client, &checkout).await?;
         }
         current =
             integration::handle_guest(&subject, &client, &checkout, &current, package_ecosystem)
                 .await?;
+        print_release_phase(&current);
     }
     let published = wait_for_publication(&client, current, checkout.workspace_release).await?;
     let release_id = published.release_id.as_deref().ok_or_else(|| {
@@ -341,17 +378,26 @@ async fn wait_for_review(
 ) -> VmResult<vm_packages::SubmissionRecord> {
     let deadline = tokio::time::Instant::now() + RELEASE_TIMEOUT;
     let mut poll = PollBackoff::new();
+    let mut progress = ReleaseProgress::new(&submission);
     while matches!(
         submission.state,
         WorkflowState::Submitted | WorkflowState::Validating | WorkflowState::Reviewing
     ) {
         if !poll.wait(deadline).await {
             return Err(VmError::validation(
-                "Timed out waiting for package review",
-                Some("Rerun the same release command to resume"),
+                format!(
+                    "Timed out waiting for release job {} in {}",
+                    submission.submission_id,
+                    release_phase_label(submission.state)
+                ),
+                Some(format!(
+                    "Inspect with `vm packages show {}`, then rerun `vm packages release` to resume",
+                    submission.checkout_id
+                )),
             ));
         }
         submission = client.submission(&submission.submission_id).await?;
+        progress.report(&submission);
     }
     match submission.state {
         WorkflowState::NeedsChanges => Err(VmError::validation(
@@ -381,17 +427,26 @@ async fn wait_for_publication(
 ) -> VmResult<vm_packages::SubmissionRecord> {
     let deadline = tokio::time::Instant::now() + RELEASE_TIMEOUT;
     let mut poll = PollBackoff::new();
+    let mut progress = ReleaseProgress::new(&submission);
     while matches!(
         submission.state,
         WorkflowState::ReadyToRelease | WorkflowState::Publishing
     ) {
         if !poll.wait(deadline).await {
             return Err(VmError::validation(
-                "Timed out waiting for private package publication",
-                Some("Rerun the same release command to resume"),
+                format!(
+                    "Timed out waiting for release job {} in {}",
+                    submission.submission_id,
+                    release_phase_label(submission.state)
+                ),
+                Some(format!(
+                    "Inspect with `vm packages show {}`, then rerun `vm packages release` to resume",
+                    submission.checkout_id
+                )),
             ));
         }
         submission = client.submission(&submission.submission_id).await?;
+        progress.report(&submission);
     }
     match submission.state {
         WorkflowState::Published | WorkflowState::Closed => Ok(submission),
@@ -414,11 +469,51 @@ async fn wait_for_publication(
     }
 }
 
+fn print_release_phase(submission: &vm_packages::SubmissionRecord) {
+    vm_println!(
+        "Phase: {} (job {})",
+        release_phase_label(submission.state),
+        submission.submission_id
+    );
+}
+
+fn release_phase_label(state: WorkflowState) -> &'static str {
+    match state {
+        WorkflowState::Created | WorkflowState::CheckedOut | WorkflowState::Active => "preparing",
+        WorkflowState::Submitted => "submitted",
+        WorkflowState::Validating => "validating",
+        WorkflowState::Reviewing => "reviewing",
+        WorkflowState::Approved => "approved",
+        WorkflowState::Integrating => "integrating",
+        WorkflowState::ReadyToRelease => "queued for isolated build/publication",
+        WorkflowState::Publishing => "publishing privately",
+        WorkflowState::Published => "published",
+        WorkflowState::NeedsChanges => "needs changes",
+        WorkflowState::Rejected => "rejected",
+        WorkflowState::Cancelled => "cancelled",
+        WorkflowState::Failed => "failed",
+        WorkflowState::Closed => "closed",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
 
     use super::*;
+
+    #[test]
+    fn release_phase_labels_explain_queue_and_terminal_states() {
+        assert_eq!(
+            release_phase_label(WorkflowState::ReadyToRelease),
+            "queued for isolated build/publication"
+        );
+        assert_eq!(
+            release_phase_label(WorkflowState::Publishing),
+            "publishing privately"
+        );
+        assert_eq!(release_phase_label(WorkflowState::Failed), "failed");
+    }
 
     fn activation(
         states: &[(bool, ToolActivationTargetState)],

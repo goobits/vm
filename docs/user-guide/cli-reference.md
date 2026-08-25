@@ -111,7 +111,7 @@ Configuration fields and examples belong in the
 | `vm packages drift` | Show version drift across consumers |
 | `vm packages open <source>` | Open an attested package or tool in its existing writable Docker owner; create no checkout |
 | `vm packages checkout <source>` | Create or resume a guest-owned package or tool checkout |
-| `vm packages release` | Release the checkout or canonical workspace containing the current directory |
+| `vm packages release` | Release the checkout or canonical workspace containing the current directory; print durable job and phase progress |
 | `vm packages cancel` | Cancel and clean the checkout containing the current directory |
 | `vm packages auth (--github\|--token-file <path>\|--clear)` | Import or remove the controller Git token |
 
@@ -137,7 +137,7 @@ release, security, recovery, and consumer workflow details.
 | `vm tools list` | List VM-owned vendor tools and registered package tools |
 | `vm tools show <name>` | Show one vendor definition or package tool and its releases |
 | `vm tools refresh` | Refresh the controller tool catalog |
-| `vm tools status [environment]` | Combine controller, installed, and consumable state |
+| `vm tools status [environment]` | Combine controller workflow/job, publication, installed, and consumable state |
 | `vm tools enable <tool>...` | Select tools globally and activate them in every running managed Docker environment |
 | `vm tools disable <tool>...` | Remove tools from the global selection while retaining existing managed files |
 | `vm tools update [<tool>...] [--to <environment>]... [--include-stopped] [--background]` | Update VM-owned vendor tools and configured package tools across selected environments |

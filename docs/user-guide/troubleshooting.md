@@ -207,6 +207,16 @@ untracked changes yourself, and correct an origin mismatch explicitly before
 retrying. VM never resets files, changes remotes, creates tags, or repairs an
 exact canonical source.
 
+If release remains in `ready_to_release`, inspect `vm tools status
+[environment]` for its durable job ID and workflow. The release command prints
+the same ID, reports phase changes, and emits a heartbeat every 30 seconds.
+`Ctrl-C` only detaches; rerun `vm packages release` to resume, or run `vm
+packages cancel` from a managed checkout to cancel explicitly. A full builder
+temporary filesystem is reported as an unhealthy package service. Reconcile it
+with `vm packages up`; the builder starts by removing only stale directories in
+its dedicated managed work root, without changing workflow records, artifacts,
+project environments, or named volumes.
+
 For an existing environment, run this on the controller host:
 
 ```bash

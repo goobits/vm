@@ -172,6 +172,8 @@ fn source_fingerprint(workspace: &Path, dockerfile: &str) -> VmResult<String> {
         let mut inputs = vec![workspace.to_path_buf()];
         if let Some(root) = workspace.parent() {
             inputs.push(root.join("configs"));
+            inputs.push(root.join("Dockerfile.vibe"));
+            inputs.push(root.join("plugins/vibe-dev/preset.yaml"));
             inputs.push(root.join(".dockerignore"));
         }
         inputs
@@ -474,6 +476,29 @@ mod tests {
         assert_ne!(
             after,
             source_fingerprint(&workspace, "vm-package-jobs/Dockerfile").unwrap()
+        );
+    }
+
+    #[test]
+    fn server_fingerprint_includes_vm_compile_assets() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("checkout");
+        let workspace = root.join("rust");
+        fs::create_dir_all(root.join("configs")).unwrap();
+        fs::create_dir_all(root.join("plugins/vibe-dev")).unwrap();
+        fs::create_dir_all(&workspace).unwrap();
+        fs::write(workspace.join("Cargo.toml"), "[workspace]").unwrap();
+        fs::write(root.join("configs/defaults.yaml"), "version: '2.0'\n").unwrap();
+        fs::write(root.join("Dockerfile.vibe"), "FROM scratch\n").unwrap();
+        fs::write(root.join("plugins/vibe-dev/preset.yaml"), "name: vibe\n").unwrap();
+
+        let before =
+            source_fingerprint(&workspace, "vm-package-server/docker/server/Dockerfile").unwrap();
+        fs::write(root.join("Dockerfile.vibe"), "FROM scratch AS base\n").unwrap();
+
+        assert_ne!(
+            before,
+            source_fingerprint(&workspace, "vm-package-server/docker/server/Dockerfile",).unwrap()
         );
     }
 

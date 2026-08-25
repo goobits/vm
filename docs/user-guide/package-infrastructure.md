@@ -220,6 +220,12 @@ The checkout ID is inferred from the current directory. `vm packages cancel`
 uses the same inference. Controller-side ID lookup remains a hidden diagnostic,
 not part of normal work.
 
+Release prints its durable submission ID and current phase before waiting, then
+prints a heartbeat every 30 seconds while the phase is unchanged. `Ctrl-C`
+detaches the CLI without cancelling controller work; rerun the same command to
+resume. From a managed checkout, `vm packages cancel` is the explicit durable
+cancellation path.
+
 For a language package the workflow records whether the requesting project
 actually consumes it. Source-only maintenance runs package checks without
 inventing a consumer result or changing the project's dependency setup. When a
@@ -445,6 +451,12 @@ isolated build starts.
 Binary tools use a versioned, argument-safe manifest. A credential-separated
 builder builds each declared target from the submitted source bundle, validates
 the archive and executable links, and stages immutable content-addressed bytes.
+Each build uses one directory beneath the builder's private work root. The
+worker reclaims sandbox ownership and removes that exact directory on every
+success or failure, and startup removes only stale directories bearing the
+managed build prefix. The work root remains ephemeral and gains no Docker
+socket, host mount, or broad filesystem capability. A builder health check also
+marks the service unhealthy before temporary free space becomes critically low.
 Its package managers can resolve registry-backed npm, Cargo, and Python
 dependencies through a private read-only edge. The edge holds the private
 upstream read credential; repository commands receive only unauthenticated edge
@@ -536,9 +548,11 @@ is environment-specific, and a published package is consumable through the
 gateway. `vm tools list` reports VM-owned vendor definitions plus controller
 registration/publication.
 `vm tools status [environment]` adds installed and consumable guest state and
-reports the three base-owned vendor runtimes separately. Its rows are the union of
-configured tools, controller registrations, and guest state, so a stale
-installed tool remains visible after it is removed from project configuration.
+reports the three base-owned vendor runtimes separately. Managed-tool rows also
+show the newest active controller workflow and durable submission ID, including
+work that is queued before its first artifact exists. Its rows are the union of
+configured tools, controller registrations, and guest state, so a stale installed
+tool remains visible after it is removed from project configuration.
 For collections, `PROJECT_COPY` also identifies a standalone project checkout
 at a declared activation path. Managed releases live under the guest home and
 never advance, remove, or otherwise rewrite project Git; the operator must pick

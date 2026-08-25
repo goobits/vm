@@ -23,9 +23,10 @@ const RELEASE_ACTOR: &str = "tool-release-service";
 mod archive;
 mod artifact;
 mod build;
+mod build_workspace;
 mod publication;
 
-pub use build::build_submission;
+pub use build::{build_submission, prepare_build_work_root};
 
 use archive::collection_identity;
 use artifact::{

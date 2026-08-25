@@ -21,6 +21,7 @@ use sandbox::prepare_unprivileged_build;
 use sources::materialize;
 use staging::stage;
 
+pub use super::build_workspace::prepare_build_work_root;
 #[cfg(test)]
 pub(super) use sandbox::cargo_source_config;
 pub(super) use sandbox::{native_target, prepare_isolated_package_configuration, run_isolated};
@@ -33,6 +34,36 @@ pub async fn build_submission(
     build_token: &str,
     gateway: &str,
     staging_root: &Path,
+    work_root: &Path,
+) -> Result<()> {
+    let workspace = super::build_workspace::BuildWorkspace::create(work_root)?;
+    let result = build_submission_in(
+        client,
+        submission,
+        build_token,
+        gateway,
+        staging_root,
+        workspace.path(),
+    )
+    .await;
+    let cleanup = workspace.close();
+    match (result, cleanup) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(error), Ok(())) => Err(error),
+        (Ok(()), Err(cleanup)) => Err(cleanup),
+        (Err(error), Err(cleanup)) => Err(error.context(format!(
+            "binary build workspace cleanup also failed: {cleanup:#}"
+        ))),
+    }
+}
+
+async fn build_submission_in(
+    client: &PackageInfrastructureClient,
+    submission: &SubmissionRecord,
+    build_token: &str,
+    gateway: &str,
+    staging_root: &Path,
+    release_root: &Path,
 ) -> Result<()> {
     if submission.state != WorkflowState::ReadyToRelease {
         bail!("binary tool submission is not ready to build");
@@ -53,14 +84,13 @@ pub async fn build_submission(
         .integration
         .as_ref()
         .context("binary tool submission has no integration record")?;
-    let release_root = tempfile::tempdir()?;
-    let bundle = release_root.path().join("integration.bundle");
+    let bundle = release_root.join("integration.bundle");
     download_bundle(
         &client.build_bundle_url(&submission.submission_id),
         build_token,
         &bundle,
     )?;
-    let source = release_root.path().join("source");
+    let source = release_root.join("source");
     clone_at(&bundle, &source, &integration.integration_commit)?;
     let raw_manifest = match std::fs::read(source.join("vm-tool.yaml")) {
         Ok(manifest) => manifest,
@@ -105,7 +135,7 @@ pub async fn build_submission(
         client,
         &submission.submission_id,
         build_token,
-        release_root.path(),
+        release_root,
         &manifest,
     ) {
         Ok(sources) => sources,
@@ -123,7 +153,7 @@ pub async fn build_submission(
         }
     };
     if !checkout.initial_release {
-        let canonical = release_root.path().join("canonical");
+        let canonical = release_root.join("canonical");
         clone_at(&bundle, &canonical, &integration.canonical_commit)?;
         let previous_version = binary_identity(&canonical)?
             .version
@@ -143,12 +173,12 @@ pub async fn build_submission(
             return Ok(());
         }
     }
-    prepare_isolated_package_configuration(release_root.path())?;
-    prepare_unprivileged_build(release_root.path(), &source, &build_sources)?;
+    prepare_isolated_package_configuration(release_root)?;
+    prepare_unprivileged_build(release_root, &source, &build_sources)?;
     let tag = format!("v{version}");
     let context = ToolArtifactContext {
         source: &source,
-        release_root: release_root.path(),
+        release_root,
         name: &submission.package,
         source_commit: &source_commit,
         tag: &tag,

@@ -4,7 +4,7 @@ pub const COMPOSE_PROJECT: &str = "vm-packages";
 pub const COMPOSE_YAML: &str = include_str!("resources/compose.yaml");
 pub const GATEWAY_CONFIG: &str = include_str!("resources/Caddyfile");
 /// Bump when running appliance services must be rebuilt or recreated.
-pub const APPLIANCE_DEFINITION_REVISION: u32 = 3;
+pub const APPLIANCE_DEFINITION_REVISION: u32 = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplianceConfig {
@@ -149,6 +149,10 @@ mod tests {
         assert!(builder.get("source-mirrors").is_none());
         let builder_text = serde_yaml_ng::to_string(builder).unwrap();
         assert!(builder_text.contains("/run/build-secrets/build-token"));
+        assert!(builder_text.contains("PKG_BUILD_WORK_ROOT"));
+        assert!(builder_text.contains("/tmp/vm-package-build"));
+        assert!(builder.get("healthcheck").is_some());
+        assert!(!builder_text.contains("DAC_OVERRIDE"));
         assert!(!builder_text.contains("/run/secrets"));
         assert!(!builder_text.contains("publish_token"));
         assert!(!builder_text.contains("release_token"));

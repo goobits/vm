@@ -8,6 +8,8 @@ WORKDIR /source
 ENV CARGO_TARGET_DIR=/tmp/vm-rust-target
 COPY rust/ .
 COPY configs/ /configs/
+COPY Dockerfile.vibe /Dockerfile.vibe
+COPY plugins/vibe-dev/preset.yaml /plugins/vibe-dev/preset.yaml
 RUN --mount=type=cache,id=vm-packages-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=vm-packages-cargo-git,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,id=vm-packages-rust-target,target=/tmp/vm-rust-target,sharing=locked \

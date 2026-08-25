@@ -23,7 +23,10 @@ Release behavior remains complete. VM-owned Codex, Claude, and Antigravity can
 now be updated across existing environments through the same `vm tools update`
 surface without project configuration or package publication. Package services
 use shared structured, container-safe logging without changing release
-semantics.
+semantics. Binary builds now use a dedicated, ownership-reclaimed workspace;
+startup removes only stale VM-managed build directories, builder health detects
+low temporary capacity, and release/status output exposes durable job and phase
+state instead of waiting silently.
 
 ## Remaining Tasks In Order
 
@@ -87,6 +90,15 @@ semantics.
 
 ## Verification Log
 
+- 2026-08-25: Diagnosed the silent CodeAtlas and TypeMill release stall as an
+  exhausted 8 GiB builder tmpfs caused by root cleanup losing access after the
+  isolated build tree changed to UID 10002. A builder-only restart recovered the
+  queue; CodeAtlas 1.0.0 and TypeMill 3.0.0 then published and activated. The
+  fixed package images built from source, package reconciliation completed,
+  doctor passed, and a repeat reconciliation reused every long-lived service.
+  All inspected project container IDs and all eighteen package volumes remained
+  unchanged, and a synthetic UID-10002 stale workspace was reclaimed on builder
+  restart while the exact builder container ID remained stable.
 - 2026-08-25: Source installation atomically copied the host CLI into
   `~/.local/bin/vm`; the executable remained usable after scoped Cargo cleanup
   removed 8.8 GiB from three validated temporary build targets. `pdx.fun`

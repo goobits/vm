@@ -3,7 +3,7 @@ use std::process::ExitCode;
 
 use anyhow::{Context, Result};
 use vm_logging::init_service_subscriber;
-use vm_package_jobs::release::tool::build_submission;
+use vm_package_jobs::release::tool::{build_submission, prepare_build_work_root};
 use vm_package_jobs::runtime::{required_secret, run_job_worker, worker_main};
 use vm_packages::{PackageInfrastructureClient, RegistryEndpoints};
 
@@ -20,6 +20,10 @@ async fn run() -> Result<()> {
     let staging_root = PathBuf::from(
         std::env::var_os("PKG_BUILD_STAGING_ROOT").context("PKG_BUILD_STAGING_ROOT is required")?,
     );
+    let work_root = PathBuf::from(
+        std::env::var_os("PKG_BUILD_WORK_ROOT").context("PKG_BUILD_WORK_ROOT is required")?,
+    );
+    prepare_build_work_root(&work_root)?;
     let client = PackageInfrastructureClient::new(RegistryEndpoints::new(&gateway)?)
         .with_build_token(build_token.clone());
     run_job_worker(
@@ -31,8 +35,17 @@ async fn run() -> Result<()> {
             let build_token = &build_token;
             let gateway = &gateway;
             let staging_root = &staging_root;
+            let work_root = &work_root;
             async move {
-                build_submission(client, &submission, build_token, gateway, staging_root).await
+                build_submission(
+                    client,
+                    &submission,
+                    build_token,
+                    gateway,
+                    staging_root,
+                    work_root,
+                )
+                .await
             }
         },
         |submission| submission.submission_id.clone(),
