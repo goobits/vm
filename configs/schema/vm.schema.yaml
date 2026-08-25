@@ -134,6 +134,24 @@ properties:
             additionalProperties: false
         default: ubuntu:jammy
         description: Base image, Dockerfile, or saved snapshot.
+      box:
+        oneOf:
+          - type: string
+          - type: object
+            required:
+              - dockerfile
+            properties:
+              dockerfile:
+                type: string
+              context:
+                type: string
+              args:
+                type: object
+                additionalProperties:
+                  type: string
+            additionalProperties: false
+        deprecated: true
+        description: Legacy alias for image. New configurations should use image.
       memory:
         oneOf:
           - type: integer

@@ -60,6 +60,7 @@
 
 ### 🐛 Fixed
 
+- 🪟 Existing `vm.box` configurations remain readable as a deprecated alias for canonical `vm.image`.
 - 📦 Deterministic package review permits only bounded, comment-only `.env.example` templates while continuing to reject environment values, credentials, private keys, and other sensitive paths.
 - 📦 Managed tool checkouts remain available until fleet activation succeeds, and release waits long enough for the activation worker's bounded per-target retries, making its retry guidance executable on larger fleets.
 - 📦 Restored managed checkouts recreate their durable submission ref before integration, allowing compacted and first-release checkouts to proceed without another agent commit.

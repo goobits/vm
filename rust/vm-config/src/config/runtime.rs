@@ -21,7 +21,7 @@ pub enum ImageSpec {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct VmSettings {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(alias = "box", skip_serializing_if = "Option::is_none")]
     pub image: Option<ImageSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
