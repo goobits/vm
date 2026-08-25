@@ -181,6 +181,10 @@ None.
   reference-counted lifecycle orchestration now have separate owners under
   `services/`. Focused lifecycle tests, all-target checks, and strict Clippy
   passed.
+- 2026-08-24: Package-server upstream behavior now has one small client/config
+  facade and dedicated Cargo, npm, and PyPI protocol owners. Shared client and
+  enablement checks are centralized. Focused upstream tests and strict
+  all-target Clippy passed.
 
 ## Related Context
 
