@@ -251,7 +251,7 @@ fn run_binary_repair(
     name: &str,
     executable: &str,
     installer: &Path,
-    legacy_scope: &str,
+    approved_scope: &str,
 ) -> Output {
     let temporary = directory.path().join("tmp");
     let installed_path = format!(".local/bin/{executable}");
@@ -271,7 +271,7 @@ fn run_binary_repair(
             installer.to_str().unwrap(),
             "https://example.test/tool.sh",
             "sh",
-            legacy_scope,
+            approved_scope,
         ])
         .env("HOME", directory.path().join("home"))
         .env("TMPDIR", temporary)
@@ -555,11 +555,11 @@ fn codex_repair_is_consumable_and_rolls_back_the_complete_runtime() {
         )
         .unwrap();
     }
-    let legacy_root = run_codex_repair(&directory, &prefix, &installer, &first_package, None);
+    let copied_root = run_codex_repair(&directory, &prefix, &installer, &first_package, None);
     assert!(
-        legacy_root.status.success(),
+        copied_root.status.success(),
         "{}",
-        String::from_utf8_lossy(&legacy_root.stderr)
+        String::from_utf8_lossy(&copied_root.stderr)
     );
 
     let second_package = fake_codex_package(&directory, "2.0.0");
@@ -690,15 +690,15 @@ fn codex_repair_refuses_an_unmanaged_user_launcher() {
 
 #[cfg(unix)]
 #[test]
-fn codex_repair_adopts_a_broken_declared_legacy_symlink() {
+fn codex_repair_adopts_a_broken_symlink_in_the_approved_scope() {
     let directory = TempDir::new().unwrap();
     let prefix = directory.path().join("prefix");
     let user_bin = directory.path().join("home/.local/bin");
-    let legacy = directory
+    let approved = directory
         .path()
         .join("home/.codex/packages/standalone/current/bin/codex");
     fs::create_dir_all(&user_bin).unwrap();
-    std::os::unix::fs::symlink(&legacy, user_bin.join("codex")).unwrap();
+    std::os::unix::fs::symlink(&approved, user_bin.join("codex")).unwrap();
     let installer = fake_codex_installer(&directory);
     let package = fake_codex_package(&directory, "1.0.0");
 
@@ -717,7 +717,7 @@ fn codex_repair_adopts_a_broken_declared_legacy_symlink() {
 
 #[cfg(unix)]
 #[test]
-fn codex_repair_refuses_a_broken_symlink_outside_the_legacy_scope() {
+fn codex_repair_refuses_a_broken_symlink_outside_the_approved_scope() {
     let directory = TempDir::new().unwrap();
     let prefix = directory.path().join("prefix");
     let user_bin = directory.path().join("home/.local/bin");

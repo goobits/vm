@@ -62,6 +62,7 @@ def replace(path, content, mode=0o644, owner=None):
 
 managed_directory("/etc/vm", 0o750 if uid else 0o700, (0, gid))
 owner = (0, gid)
+replace("/etc/vm/managed-guest", "1\n", 0o644, (0, 0))
 
 package = request.get("package")
 if package is not None:
@@ -74,8 +75,6 @@ if package is not None:
     replace("/etc/vm/pip.conf", package["pip_conf"], sensitive_mode, owner)
     replace("/etc/vm/cargo-config.toml", package["cargo_config"], sensitive_mode, owner)
     replace("/etc/vm/package-client.revision", package["revision"] + "\n", sensitive_mode, owner)
-    replace("/etc/vm/managed-guest", "1\n", 0o644, (0, 0))
-
     source = "[ -r /etc/profile.d/vm-packages.sh ] && . /etc/profile.d/vm-packages.sh"
     for candidate in ("/etc/bash.bashrc", "/etc/zsh/zshrc"):
         path = pathlib.Path(candidate)
@@ -316,5 +315,12 @@ mod tests {
         assert!(INSTALL_MANAGED_SETTINGS.contains("/etc/profile.d/vm-packages.sh"));
         assert!(INSTALL_MANAGED_SETTINGS.contains("/etc/vm/remote-commands.json"));
         assert!(INSTALL_MANAGED_SETTINGS.contains("refusing managed file symlink"));
+        let marker = INSTALL_MANAGED_SETTINGS
+            .find("/etc/vm/managed-guest")
+            .unwrap();
+        let package = INSTALL_MANAGED_SETTINGS
+            .find("package = request.get")
+            .unwrap();
+        assert!(marker < package);
     }
 }

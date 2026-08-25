@@ -151,7 +151,8 @@ properties:
                   type: string
             additionalProperties: false
         deprecated: true
-        description: Legacy alias for image. New configurations should use image.
+        x-vm-remove-in: "6.0.0"
+        description: Deprecated v5 alias for image. Migrate to image before v6.0.0.
       memory:
         oneOf:
           - type: integer

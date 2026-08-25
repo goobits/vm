@@ -43,6 +43,7 @@
 
 ### 🔧 Changed
 
+- 🪟 Compatibility paths now name their exact pre-role or approved scope, all managed-settings reconciliation writes the canonical guest marker, and the active tracker records evidence required before v6 removals.
 - 📦 Configuration initialization and loading now have library-owned implementations used by `vm`; the redundant standalone `vm-config` executable and its generic YAML query/transform surface are removed.
 - 🚀 Docker vibe base builds stage the definition embedded in the installed binary, and the repository-only provider validation workflow is no longer exposed as a public CLI command.
 - ☁️ Vibe base builds replace deprecated Gemini CLI with Antigravity and use one shared native installer contract for Antigravity, Claude Code, and Codex; `agent-skills` remains managed by `vm tools`.
@@ -67,7 +68,7 @@
 - ☁️ Worktree creation refuses pre-existing non-worktree directories, rejects sibling-prefix escapes, and preserves failed partial worktrees for explicit inspection instead of recursively deleting them.
 - 🪟 Source installation fails closed when the official Rust installer checksum is unavailable or malformed instead of executing a size-only-verified download.
 - 🪟 Source installation atomically copies `vm` into the stable user binary directory and keeps reusable Cargo artifacts in the platform cache, so temporary-build cleanup cannot break the installed CLI.
-- ☁️ Vendor-tool migration safely adopts broken symlinks inside a declared legacy installer scope while continuing to refuse unrelated launchers.
+- ☁️ Vendor-tool migration safely adopts broken symlinks inside a declared approved installer scope while continuing to refuse unrelated launchers.
 - 🪟 Existing `vm.box` configurations remain readable as a deprecated alias for canonical `vm.image`.
 - 📦 Deterministic package review permits only bounded, comment-only `.env.example` templates while continuing to reject environment values, credentials, private keys, and other sensitive paths.
 - 📦 Managed tool checkouts remain available until fleet activation succeeds, and release waits long enough for the activation worker's bounded per-target retries, making its retry guidance executable on larger fleets.

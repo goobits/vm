@@ -24,6 +24,13 @@ fn load_selected_config(
 /// Handle the `vm config validate` command.
 fn handle_validate_command(config_path: Option<PathBuf>, profile: Option<String>) -> VmResult<()> {
     let config = load_selected_config(config_path, profile)?.vm;
+    if config
+        .source_path
+        .as_deref()
+        .is_some_and(raw_config_uses_deprecated_box)
+    {
+        vm_warning!("`vm.box` is deprecated; use `vm.image` before v6.0.0");
+    }
     let report = validate_config(&config, ValidationMode::Static).map_err(|error| {
         VmError::validation(
             format!("Unexpected configuration validation error: {error}"),
@@ -40,6 +47,38 @@ fn handle_validate_command(config_path: Option<PathBuf>, profile: Option<String>
 
     vm_success!("Configuration is valid.");
     Ok(())
+}
+
+fn raw_config_uses_deprecated_box(path: &std::path::Path) -> bool {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|content| serde_yaml::from_str::<serde_yaml::Value>(&content).ok())
+        .is_some_and(|value| contains_vm_box(&value))
+}
+
+fn contains_vm_box(value: &serde_yaml::Value) -> bool {
+    let serde_yaml::Value::Mapping(mapping) = value else {
+        return false;
+    };
+    let key = |name: &str| serde_yaml::Value::String(name.to_string());
+    let has_box = |settings: &serde_yaml::Value| {
+        settings
+            .as_mapping()
+            .is_some_and(|vm| vm.contains_key(&key("box")))
+    };
+
+    mapping.get(&key("vm")).is_some_and(has_box)
+        || mapping
+            .get(&key("profiles"))
+            .and_then(serde_yaml::Value::as_mapping)
+            .is_some_and(|profiles| {
+                profiles.values().any(|profile| {
+                    profile
+                        .as_mapping()
+                        .and_then(|settings| settings.get(&key("vm")))
+                        .is_some_and(has_box)
+                })
+            })
 }
 
 /// Handle the `vm config show` command.
@@ -427,7 +466,7 @@ fn update_vm_config_ports(new_range: &str) -> VmResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{handle_validate_command, load_selected_config};
+    use super::{contains_vm_box, handle_validate_command, load_selected_config};
 
     #[test]
     fn validation_honors_explicit_config_and_does_not_modify_it() {
@@ -468,5 +507,23 @@ profiles:
                 .as_deref(),
             Some("feature")
         );
+    }
+
+    #[test]
+    fn deprecated_box_detection_covers_root_and_profile_vm_settings() {
+        for yaml in [
+            "vm:\n  box: '@old'\n",
+            "profiles:\n  docker:\n    vm:\n      box: '@old'\n",
+        ] {
+            let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(yaml).unwrap();
+            assert!(contains_vm_box(&value));
+        }
+        let canonical: serde_yaml_ng::Value =
+            serde_yaml_ng::from_str("vm:\n  image: '@current'\n").unwrap();
+        assert!(!contains_vm_box(&canonical));
+
+        let unrelated: serde_yaml_ng::Value =
+            serde_yaml_ng::from_str("metadata:\n  vm:\n    box: '@unrelated'\n").unwrap();
+        assert!(!contains_vm_box(&unrelated));
     }
 }

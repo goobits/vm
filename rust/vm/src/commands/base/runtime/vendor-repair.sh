@@ -10,7 +10,7 @@ system_prefix=$7
 installer_override=$8
 installer_url=$9
 installer_shell=${10}
-legacy_user_scope=${11}
+approved_user_scope=${11}
 shift 11
 
 case "$name" in
@@ -110,14 +110,14 @@ delete_installed_path() {
   run_install find "$destination" -depth -delete
 }
 
-legacy_user_launcher() {
+approved_user_launcher() {
   launcher=$1
   executable=$2
   test "$launcher" = "$user_bin/$executable" || return 1
-  case "$legacy_user_scope" in
+  case "$approved_user_scope" in
     symlink:*)
       run_install test -L "$launcher" || return 1
-      relative=${legacy_user_scope#symlink:}
+      relative=${approved_user_scope#symlink:}
       case "$relative" in
         /*|*..*) return 1 ;;
       esac
@@ -135,7 +135,7 @@ legacy_user_launcher() {
       esac
       ;;
     file:*)
-      relative=${legacy_user_scope#file:}
+      relative=${approved_user_scope#file:}
       case "$relative" in
         /*|*..*) return 1 ;;
       esac
@@ -167,7 +167,7 @@ require_managed_launcher() {
     && run_install cmp -s "$launcher" "$target/bin/$executable"; then
     return 0
   fi
-  if legacy_user_launcher "$launcher" "$executable"; then
+  if approved_user_launcher "$launcher" "$executable"; then
     return 0
   fi
   printf 'Refusing to replace unmanaged launcher: %s\n' "$launcher" >&2

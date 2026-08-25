@@ -134,10 +134,10 @@ pub(super) fn is_environment_container(
     role: &str,
     compose_service: &str,
 ) -> bool {
-    role == "environment" || is_legacy_environment(name, project, role, compose_service)
+    role == "environment" || is_pre_role_environment(name, project, role, compose_service)
 }
 
-fn is_legacy_environment(name: &str, project: &str, role: &str, compose_service: &str) -> bool {
+fn is_pre_role_environment(name: &str, project: &str, role: &str, compose_service: &str) -> bool {
     !project.is_empty()
         && role.is_empty()
         && name == format!("{project}-dev")
@@ -169,7 +169,7 @@ pub(super) fn config_path_from_inspect(container: &serde_json::Value) -> Option<
     }
 
     if project.is_empty()
-        || (role != "environment" && !is_legacy_environment(name, project, role, compose_service))
+        || (role != "environment" && !is_pre_role_environment(name, project, role, compose_service))
     {
         return None;
     }
@@ -304,7 +304,7 @@ mod tests {
             Some(config.clone())
         );
 
-        let legacy = serde_json::json!({
+        let pre_role = serde_json::json!({
             "Name": "/demo-dev",
             "Config": {
                 "Labels": {
@@ -320,7 +320,7 @@ mod tests {
                 "Destination": "/workspace"
             }]
         });
-        assert_eq!(config_path_from_inspect(&legacy), Some(config));
+        assert_eq!(config_path_from_inspect(&pre_role), Some(config));
 
         let service = serde_json::json!({
             "Name": "/demo-postgres",

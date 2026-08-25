@@ -63,13 +63,14 @@ pub(super) fn managed_guest_context() -> bool {
 
 fn is_managed_guest(
     managed_marker: Option<&str>,
-    image_identity: Option<&str>,
-    docker_marker: bool,
-    filesystem_marker: bool,
+    compatible_image_identity: Option<&str>,
+    docker_container: bool,
+    compatible_filesystem_marker: bool,
 ) -> bool {
-    filesystem_marker
+    compatible_filesystem_marker
         || managed_marker.is_some_and(truthy)
-        || (docker_marker && image_identity.is_some_and(|identity| !identity.trim().is_empty()))
+        || (docker_container
+            && compatible_image_identity.is_some_and(|identity| !identity.trim().is_empty()))
 }
 
 fn truthy(value: &str) -> bool {
@@ -262,7 +263,7 @@ mod tests {
     use vm_provider::InstanceInfo;
 
     #[test]
-    fn detects_new_and_compatible_managed_guest_markers() {
+    fn detects_canonical_and_compatibility_managed_guest_markers() {
         assert!(is_managed_guest(Some("1"), None, false, false));
         assert!(is_managed_guest(None, None, false, true));
         assert!(is_managed_guest(None, Some("demo:latest"), true, false));

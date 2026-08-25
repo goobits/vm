@@ -41,6 +41,9 @@ vm config clear
 selected config and profile without contacting the provider; environment values
 and host paths are redacted.
 
+`vm.box` remains readable during the v5 migration but `vm config validate`
+warns when it is present. Rename it to `vm.image` before v6.0.0.
+
 Profiles remain available for project variants:
 
 ```bash

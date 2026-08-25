@@ -27,7 +27,22 @@ semantics.
 
 ## Remaining Tasks In Order
 
-None.
+### v6 compatibility retirement (evidence-gated; not a v5 release blocker)
+
+- [ ] Ship the v5 migration warnings and canonical writers before selecting a
+  v6 cutoff.
+- [ ] Prove managed Docker inventory uses `com.vm.role=environment`, or recreate
+  remaining pre-role environments, before removing label-based discovery.
+- [ ] Prove every managed guest has `/etc/vm/managed-guest`, or reconcile/recreate
+  it, before removing image-identity and package/remote-file detection.
+- [ ] Prove persisted package-appliance state has been rewritten to the canonical
+  `engine` and current image fields before removing older state readers.
+- [ ] Migrate every tracked `vm.box` configuration to `vm.image` before removing
+  the v5 alias.
+- [ ] Re-export or explicitly retire retained v1 snapshot archives before ending
+  platform-less archive import support.
+- [ ] Record owner approval of the v6 compatibility cutoff after all evidence
+  above is present.
 
 ## Completed Foundations
 

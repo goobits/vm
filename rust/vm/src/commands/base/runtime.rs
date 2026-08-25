@@ -64,7 +64,7 @@ struct VendorToolDefinition {
     installer_args: &'static [&'static str],
     layout: VendorLayout,
     required: &'static [&'static str],
-    legacy_user_scope: &'static str,
+    approved_user_scope: &'static str,
 }
 
 const VENDOR_TOOLS: &[VendorToolDefinition] = &[
@@ -77,7 +77,7 @@ const VENDOR_TOOLS: &[VendorToolDefinition] = &[
         installer_args: &[],
         layout: VendorLayout::Binary,
         required: &["agy"],
-        legacy_user_scope: "file:.local/bin/agy",
+        approved_user_scope: "file:.local/bin/agy",
     },
     VendorToolDefinition {
         name: "claude",
@@ -88,7 +88,7 @@ const VENDOR_TOOLS: &[VendorToolDefinition] = &[
         installer_args: &["stable"],
         layout: VendorLayout::Binary,
         required: &["claude"],
-        legacy_user_scope: "symlink:.local/share/claude/versions",
+        approved_user_scope: "symlink:.local/share/claude/versions",
     },
     VendorToolDefinition {
         name: "codex",
@@ -101,7 +101,7 @@ const VENDOR_TOOLS: &[VendorToolDefinition] = &[
             marker: "codex-package.json",
         },
         required: &["codex", "codex-code-mode-host"],
-        legacy_user_scope: "symlink:.codex/packages/standalone",
+        approved_user_scope: "symlink:.codex/packages/standalone",
     },
 ];
 
@@ -237,7 +237,7 @@ fn launch_reconciliation(
         String::new(),
         definition.installer_url.into(),
         definition.installer_shell.into(),
-        definition.legacy_user_scope.into(),
+        definition.approved_user_scope.into(),
     ];
     command.extend(definition.installer_args.iter().map(ToString::to_string));
     provider
