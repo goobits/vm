@@ -96,7 +96,8 @@ impl<'a> LifecycleOperations<'a> {
         let modified_config = self.prepare_config_for_build()?;
         mountpoints::prepare(&modified_config, self.project_dir, None)?;
         let build_ops = BuildOperations::new(&modified_config, self.generated_dir, self.executable);
-        let (build_context, base_image, is_snapshot) = build_ops.prepare_build_context()?;
+        let (build_context, base_image, is_snapshot, prepared_base_identity) =
+            build_ops.prepare_build_context()?;
 
         if let Some(networking) = &modified_config.networking {
             if !networking.networks.is_empty() {
@@ -112,9 +113,16 @@ impl<'a> LifecycleOperations<'a> {
             self.executable,
         );
         let build_args = build_ops.gather_build_args(&base_image);
-        let base_image_identity = build_ops.image_identity(&base_image)?;
-        let image_tag =
-            build_ops.derived_image_tag(&base_image, &base_image_identity, &build_context)?;
+        let base_image_identity = match prepared_base_identity {
+            Some(identity) => identity,
+            None => build_ops.image_identity(&base_image)?,
+        };
+        let image_tag = build_ops.derived_image_tag_with_args(
+            &base_image,
+            &base_image_identity,
+            &build_context,
+            &build_args,
+        )?;
         let compose_path = match instance_name {
             Some(name) => compose_ops.write_docker_compose_with_instance_and_image_tag(
                 &build_context,

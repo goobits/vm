@@ -3,6 +3,96 @@ use std::fs;
 use vm_config::config::{ImageSpec, VmConfig, VmSettings};
 use vm_config::detector::git::GitConfig;
 
+fn derived_image_tag(
+    build_ops: &BuildOperations<'_>,
+    base_image: &str,
+    base_image_identity: &str,
+    build_context: &std::path::Path,
+) -> vm_core::error::Result<String> {
+    let build_args = build_ops.gather_build_args(base_image);
+    build_ops.derived_image_tag_with_args(
+        base_image,
+        base_image_identity,
+        build_context,
+        &build_args,
+    )
+}
+
+#[cfg(unix)]
+#[test]
+fn cached_base_image_identity_is_reused() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let generated = tempfile::tempdir().unwrap();
+    let executable = generated.path().join("runtime");
+    let log = generated.path().join("commands.log");
+    fs::write(
+        &executable,
+        format!(
+            "#!/bin/sh\necho \"$@\" >> '{}'\nprintf 'sha256:cached\\n'\n",
+            log.display()
+        ),
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&executable).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&executable, permissions).unwrap();
+    let config = VmConfig::default();
+    let build_ops = BuildOperations::new(&config, generated.path(), executable.to_str().unwrap());
+
+    let (_, base_image, _, identity) = build_ops.prepare_build_context().unwrap();
+
+    assert_eq!(base_image, "ubuntu:24.04");
+    assert_eq!(identity.as_deref(), Some("sha256:cached"));
+    assert_eq!(
+        fs::read_to_string(log).unwrap(),
+        "image inspect --format {{.Id}} ubuntu:24.04\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn pulled_base_image_is_inspected_once_after_pull() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let generated = tempfile::tempdir().unwrap();
+    let executable = generated.path().join("runtime");
+    let log = generated.path().join("commands.log");
+    let pulled = generated.path().join("pulled");
+    fs::write(
+        &executable,
+        format!(
+            r#"#!/bin/sh
+echo "$@" >> '{}'
+if [ "$1" = pull ]; then touch '{}'; exit 0; fi
+if [ "$1" = image ] && [ -f '{}' ]; then printf 'sha256:pulled\n'; exit 0; fi
+exit 1
+"#,
+            log.display(),
+            pulled.display(),
+            pulled.display()
+        ),
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&executable).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&executable, permissions).unwrap();
+    let config = VmConfig::default();
+    let build_ops = BuildOperations::new(&config, generated.path(), executable.to_str().unwrap());
+
+    let (_, _, _, identity) = build_ops.prepare_build_context().unwrap();
+
+    assert_eq!(identity.as_deref(), Some("sha256:pulled"));
+    assert_eq!(
+        fs::read_to_string(log).unwrap(),
+        concat!(
+            "image inspect --format {{.Id}} ubuntu:24.04\n",
+            "pull ubuntu:24.04\n",
+            "image inspect --format {{.Id}} ubuntu:24.04\n"
+        )
+    );
+}
+
 #[test]
 fn generated_images_are_marked_as_vm_managed() {
     assert!(include_str!("Dockerfile.j2").contains("LABEL com.vm.managed=\"true\""));
@@ -172,20 +262,20 @@ fn test_derived_image_tag_snapshot_ignores_host_identity_inputs() {
     let build_ops_a = BuildOperations::new(&config_a, &temp_path_a, "docker");
     let build_ops_b = BuildOperations::new(&config_b, &temp_path_b, "docker");
 
-    let tag_a = build_ops_a
-        .derived_image_tag(
-            "vm-snapshot/global/vibe-image:latest",
-            "sha256:shared-base",
-            build_context.path(),
-        )
-        .unwrap();
-    let tag_b = build_ops_b
-        .derived_image_tag(
-            "vm-snapshot/global/vibe-image:latest",
-            "sha256:shared-base",
-            build_context.path(),
-        )
-        .unwrap();
+    let tag_a = derived_image_tag(
+        &build_ops_a,
+        "vm-snapshot/global/vibe-image:latest",
+        "sha256:shared-base",
+        build_context.path(),
+    )
+    .unwrap();
+    let tag_b = derived_image_tag(
+        &build_ops_b,
+        "vm-snapshot/global/vibe-image:latest",
+        "sha256:shared-base",
+        build_context.path(),
+    )
+    .unwrap();
 
     assert_eq!(tag_a, tag_b);
 }
@@ -203,12 +293,30 @@ fn test_derived_image_tag_changes_when_base_image_is_rebuilt() {
     let config = VmConfig::default();
     let generated = tempfile::tempdir().unwrap();
     let build_ops = BuildOperations::new(&config, generated.path(), "docker");
-    let old_tag = build_ops
-        .derived_image_tag("example/base:latest", "sha256:old", build_context.path())
+    let build_args = build_ops.gather_build_args("example/base:latest");
+    let old_tag = derived_image_tag(
+        &build_ops,
+        "example/base:latest",
+        "sha256:old",
+        build_context.path(),
+    )
+    .unwrap();
+    let reused_args_tag = build_ops
+        .derived_image_tag_with_args(
+            "example/base:latest",
+            "sha256:old",
+            build_context.path(),
+            &build_args,
+        )
         .unwrap();
-    let new_tag = build_ops
-        .derived_image_tag("example/base:latest", "sha256:new", build_context.path())
-        .unwrap();
+    let new_tag = derived_image_tag(
+        &build_ops,
+        "example/base:latest",
+        "sha256:new",
+        build_context.path(),
+    )
+    .unwrap();
 
+    assert_eq!(old_tag, reused_args_tag);
     assert_ne!(old_tag, new_tag);
 }

@@ -38,15 +38,22 @@ impl<'a> BuildOperations<'a> {
         )
     }
 
-    pub fn pull_image(&self, image: &str) -> Result<()> {
+    fn pull_image_with_identity(&self, image: &str) -> Result<String> {
+        match self.ensure_image_available(image)? {
+            Some(identity) => Self::parse_image_identity(image, &identity),
+            None => self.image_identity(image),
+        }
+    }
+
+    fn ensure_image_available(&self, image: &str) -> Result<Option<Vec<u8>>> {
         // Check if image already exists locally to avoid unnecessary pulls (10-30s savings)
         let inspect = Command::new(self.executable)
-            .args(["image", "inspect", image])
+            .args(["image", "inspect", "--format", "{{.Id}}", image])
             .output()?;
 
         if inspect.status.success() {
             vm_dbg!("Image '{}' already cached locally, skipping pull", image);
-            return Ok(());
+            return Ok(Some(inspect.stdout));
         }
 
         // Retry transient network failures with exponential backoff. We keep
@@ -70,7 +77,7 @@ impl<'a> BuildOperations<'a> {
                 .output()?;
 
             if output.status.success() {
-                return Ok(());
+                return Ok(None);
             }
 
             let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -161,8 +168,9 @@ impl<'a> BuildOperations<'a> {
 
     /// Prepare build context with embedded resources and generated Dockerfile
     ///
-    /// Returns a tuple of (build_context_path, base_image_name, is_snapshot)
-    pub fn prepare_build_context(&self) -> Result<(PathBuf, String, bool)> {
+    /// Returns the build context, base image, snapshot flag, and any image ID
+    /// already observed while ensuring that the base image is available.
+    pub(crate) fn prepare_build_context(&self) -> Result<(PathBuf, String, bool, Option<String>)> {
         // Get image configuration
         let image_config = self.get_image_config()?;
 
@@ -170,11 +178,11 @@ impl<'a> BuildOperations<'a> {
         let is_snapshot = matches!(&image_config, ImageConfig::Snapshot(_));
 
         // Handle different image types
-        let base_image = match &image_config {
+        let (base_image, base_image_identity) = match &image_config {
             ImageConfig::DockerImage(image) => {
                 // Pull Docker image from registry
-                self.pull_image(image)?;
-                image.clone()
+                let identity = self.pull_image_with_identity(image)?;
+                (image.clone(), Some(identity))
             }
             ImageConfig::Dockerfile {
                 path,
@@ -203,7 +211,7 @@ impl<'a> BuildOperations<'a> {
                     args.as_ref(),
                 )?;
 
-                image_name
+                (image_name, None)
             }
             ImageConfig::Snapshot(name) => {
                 // Load image from global snapshot
@@ -252,11 +260,14 @@ impl<'a> BuildOperations<'a> {
                     })?;
 
                 // Check if image is already loaded
-                let image_exists = match Command::new(self.executable)
-                    .args(["image", "inspect", image_tag])
+                let image_identity = match Command::new(self.executable)
+                    .args(["image", "inspect", "--format", "{{.Id}}", image_tag])
                     .output()
                 {
-                    Ok(output) => output.status.success(),
+                    Ok(output) if output.status.success() => {
+                        Some(Self::parse_image_identity(image_tag, &output.stdout)?)
+                    }
+                    Ok(_) => None,
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                         return Err(VmError::Dependency(format!(
                             "Container engine '{}' is not installed or not in PATH",
@@ -271,7 +282,7 @@ impl<'a> BuildOperations<'a> {
                     }
                 };
 
-                if !image_exists {
+                if image_identity.is_none() {
                     info!("  Image not loaded, loading from snapshot...");
 
                     // Load image from tar file
@@ -298,7 +309,7 @@ impl<'a> BuildOperations<'a> {
                     info!("  ✓ Image loaded successfully");
                 }
 
-                image_tag.to_string()
+                (image_tag.to_string(), image_identity)
             }
             _ => {
                 return Err(VmError::Internal(
@@ -309,6 +320,6 @@ impl<'a> BuildOperations<'a> {
 
         let build_context = self.prepare_compose_build_context()?;
 
-        Ok((build_context, base_image, is_snapshot))
+        Ok((build_context, base_image, is_snapshot, base_image_identity))
     }
 }

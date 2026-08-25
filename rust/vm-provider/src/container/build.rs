@@ -306,7 +306,11 @@ CMD ["tail", "-f", "/dev/null"]
             )));
         }
 
-        let identity = String::from_utf8_lossy(&inspect.stdout).trim().to_string();
+        Self::parse_image_identity(image, &inspect.stdout)
+    }
+
+    pub(super) fn parse_image_identity(image: &str, output: &[u8]) -> Result<String> {
+        let identity = String::from_utf8_lossy(output).trim().to_string();
         if identity.is_empty() {
             return Err(VmError::Internal(format!(
                 "Base image '{image}' did not report an image ID"
@@ -315,11 +319,12 @@ CMD ["tail", "-f", "/dev/null"]
         Ok(identity)
     }
 
-    pub fn derived_image_tag(
+    pub(crate) fn derived_image_tag_with_args(
         &self,
         base_image: &str,
         base_image_identity: &str,
         build_context: &Path,
+        build_args: &[String],
     ) -> Result<String> {
         let mut hasher = Sha256::new();
         hasher.update(base_image.as_bytes());
@@ -327,7 +332,7 @@ CMD ["tail", "-f", "/dev/null"]
         hasher.update(base_image_identity.as_bytes());
         hasher.update([0]);
 
-        for arg in self.gather_build_args(base_image) {
+        for arg in build_args {
             hasher.update(arg.as_bytes());
             hasher.update([0]);
         }
