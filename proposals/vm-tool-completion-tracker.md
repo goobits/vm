@@ -122,6 +122,12 @@ None.
 - 2026-08-19: Formatting, workspace checks, unit and integration tests, strict
   Clippy, shell syntax, and `git diff --check` passed. Duplicate detection could
   not run because `jscpd` was unavailable.
+- 2026-08-24: Removed unmanaged registry surfaces and duplicate service state;
+  preserved HTTP, workflow, cleanup, snapshot, and CLI failure context; bounded
+  external commands and poison-job retries; and preserved failed Docker-test
+  evidence. Formatting, strict workspace Clippy, unit tests, integration tests,
+  shell syntax, and focused failure tests passed. Docker and `jscpd` were not
+  available for their environment-dependent gates.
 
 ## Related Context
 
