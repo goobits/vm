@@ -32,7 +32,15 @@ pub async fn save_immutable<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C)
         Ok(mut file) => {
             if let Err(error) = file.write_all(content).await {
                 drop(file);
-                let _ = fs::remove_file(path).await;
+                if let Err(cleanup_error) = fs::remove_file(path).await {
+                    warn!(
+                        operation = "cleanup_failed_immutable_write",
+                        path = %path.display(),
+                        error = ?cleanup_error,
+                        write_error = ?error,
+                        "incomplete immutable artifact cleanup failed"
+                    );
+                }
                 return Err(error.into());
             }
             file.sync_all().await?;

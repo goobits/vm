@@ -6,7 +6,10 @@ use vm_packages::{
 
 use super::{git_output, run, source_key, SourceManager};
 use crate::store::SourceDefinition;
-use crate::{Store, WorkError, WorkResult};
+use crate::{
+    io::{cleanup_directory, cleanup_file},
+    Store, WorkError, WorkResult,
+};
 
 impl SourceManager {
     /// Preserve the validated integration bundle outside mutable checkout data.
@@ -57,7 +60,7 @@ impl SourceManager {
             tokio::fs::set_permissions(&temporary, std::fs::Permissions::from_mode(0o444)).await?;
         }
         if let Err(error) = tokio::fs::rename(&temporary, &destination).await {
-            let _ = tokio::fs::remove_file(&temporary).await;
+            cleanup_file(&temporary, "cleanup_uncommitted_release_source").await;
             if !tokio::fs::try_exists(&destination).await? {
                 return Err(error.into());
             }
@@ -85,7 +88,7 @@ impl SourceManager {
             .prepare_locked(store, &checkout.checkout, &definition)
             .await;
         if let Err(error) = &result {
-            let _ = store
+            if let Err(transition_error) = store
                 .transition(
                     &checkout.checkout.checkout_id,
                     TransitionRequest {
@@ -97,7 +100,16 @@ impl SourceManager {
                         idempotency_key: format!("source-failed-{}", checkout.checkout.checkout_id),
                     },
                 )
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    operation = "record_source_failure",
+                    checkout_id = %checkout.checkout.checkout_id,
+                    error = ?transition_error,
+                    source_error = ?error,
+                    "failed to persist source checkout failure"
+                );
+            }
         }
         result
     }
@@ -243,11 +255,11 @@ impl SourceManager {
         }
         .await;
         if let Err(error) = restore {
-            let _ = tokio::fs::remove_dir_all(&temporary).await;
+            cleanup_directory(&temporary, "cleanup_failed_checkout_restore").await;
             return Err(error);
         }
         if let Err(error) = tokio::fs::rename(&temporary, &source).await {
-            let _ = tokio::fs::remove_dir_all(&temporary).await;
+            cleanup_directory(&temporary, "cleanup_uncommitted_checkout_restore").await;
             return Err(error.into());
         }
         Ok(())

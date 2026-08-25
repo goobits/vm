@@ -53,12 +53,16 @@ pub(super) fn push_source(
             .args(["config", "user.email", "packages@vm.internal"]),
         "configure release Git identity",
     )?;
-    let local_tag = git_text(
-        source,
-        &["rev-parse", &format!("refs/tags/{tag}^{{}}")],
-        "inspect local release tag",
-    )
-    .ok();
+    let local_tag =
+        if git_text(source, &["tag", "--list", tag], "find local release tag")?.is_empty() {
+            None
+        } else {
+            Some(git_text(
+                source,
+                &["rev-parse", &format!("refs/tags/{tag}^{{}}")],
+                "inspect local release tag",
+            )?)
+        };
     match local_tag.as_deref() {
         Some(commit) if commit != release_commit => {
             bail!("release tag {tag} already points to a different commit")
@@ -93,20 +97,15 @@ pub(super) fn push_source(
     if remote_branch == release_commit && remote_tag.as_deref() == Some(release_commit) {
         return Ok(());
     }
-    let _ = run(
-        git()
-            .arg("-C")
-            .arg(source)
-            .args(["remote", "remove", "canonical"]),
-        "remove prior release remote",
-    );
-    run(
-        git()
-            .arg("-C")
-            .arg(source)
-            .args(["remote", "add", "canonical", repository]),
-        "configure canonical release remote",
-    )?;
+    let remotes = git_text(source, &["remote"], "list release remotes")?;
+    let mut configure_remote = git();
+    configure_remote.arg("-C").arg(source).arg("remote");
+    if remotes.lines().any(|remote| remote == "canonical") {
+        configure_remote.args(["set-url", "canonical", repository]);
+    } else {
+        configure_remote.args(["add", "canonical", repository]);
+    }
+    run(&mut configure_remote, "configure canonical release remote")?;
     let mut command = git();
     command.arg("-C").arg(source).arg("push");
     let pushing_both = remote_branch == canonical_commit && remote_tag.is_none();

@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 use tracing::warn;
 use vm_packages::{sha256_hex, CheckoutRecord};
 
-use crate::{WorkError, WorkResult};
+use crate::{io::cleanup_directory, WorkError, WorkResult};
 
 const SOURCE_COMMAND_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const MAX_SOURCE_STDOUT: usize = 16 * 1024 * 1024;
@@ -72,11 +72,11 @@ impl SourceManager {
         )
         .await;
         if let Err(error) = clone {
-            let _ = tokio::fs::remove_dir_all(&temporary).await;
+            cleanup_directory(&temporary, "cleanup_failed_mirror_clone").await;
             return Err(error);
         }
         if let Err(error) = tokio::fs::rename(&temporary, mirror).await {
-            let _ = tokio::fs::remove_dir_all(&temporary).await;
+            cleanup_directory(&temporary, "cleanup_uncommitted_mirror_clone").await;
             return Err(error.into());
         }
         Ok(())

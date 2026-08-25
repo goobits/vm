@@ -3,7 +3,10 @@ use std::path::PathBuf;
 use vm_packages::{SubmissionRecord, ToolKind, ToolSourceManifest};
 
 use super::{git_output, managed_component, run, source_key, SourceManager};
-use crate::{Store, WorkError, WorkResult};
+use crate::{
+    io::{cleanup_directory, cleanup_file},
+    Store, WorkError, WorkResult,
+};
 
 impl SourceManager {
     /// Materialize one manifest-declared, catalog-registered source as an
@@ -65,7 +68,7 @@ impl SourceManager {
                 })
         }
         .await;
-        let _ = tokio::fs::remove_dir_all(&inspect).await;
+        cleanup_directory(&inspect, "cleanup_build_source_inspection").await;
         let build_source = inspect_result?;
 
         let producer = store.tool(&submission.package).await?.definition;
@@ -142,11 +145,11 @@ impl SourceManager {
         )
         .await;
         if let Err(error) = bundle_result {
-            let _ = tokio::fs::remove_file(&temporary).await;
+            cleanup_file(&temporary, "cleanup_failed_build_source_bundle").await;
             return Err(error);
         }
         if let Err(error) = tokio::fs::rename(&temporary, &destination).await {
-            let _ = tokio::fs::remove_file(&temporary).await;
+            cleanup_file(&temporary, "cleanup_uncommitted_build_source_bundle").await;
             if !tokio::fs::try_exists(&destination).await? {
                 return Err(error.into());
             }

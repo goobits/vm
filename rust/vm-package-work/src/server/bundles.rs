@@ -18,7 +18,7 @@ use super::{
     auth::{agent_capability_access, ensure_checkout_record_access},
     AppState,
 };
-use crate::{WorkError, WorkResult};
+use crate::{io::cleanup_file, WorkError, WorkResult};
 
 const MAX_SUBMISSION_BYTES: u64 = 256 * 1024 * 1024;
 
@@ -79,7 +79,7 @@ pub(super) async fn upload_submission(
     }
     .await;
     if result.is_err() {
-        let _ = tokio::fs::remove_file(&staging).await;
+        cleanup_file(&staging, "cleanup_failed_submission_upload").await;
     }
     Ok((StatusCode::CREATED, Json(result?)))
 }
@@ -134,7 +134,7 @@ pub(super) async fn upload_rollout(
             .await
     }
     .await;
-    let _ = tokio::fs::remove_file(&staging).await;
+    cleanup_file(&staging, "cleanup_rollout_upload").await;
     Ok((StatusCode::CREATED, Json(result?)))
 }
 

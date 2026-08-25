@@ -3,7 +3,10 @@ use std::path::{Path, PathBuf};
 use vm_packages::{sha256_hex, CheckoutRecord};
 
 use super::{git_output, run, SourceManager};
-use crate::{io::atomic_write, ImportedSubmission, Store, WorkError, WorkResult};
+use crate::{
+    io::{atomic_write, cleanup_directory},
+    ImportedSubmission, Store, WorkError, WorkResult,
+};
 
 impl SourceManager {
     pub async fn submission_staging_path(&self, checkout: &CheckoutRecord) -> WorkResult<PathBuf> {
@@ -177,7 +180,7 @@ impl SourceManager {
         let (base_commit, branch, initial_release) = match prepare {
             Ok(prepared) => prepared,
             Err(error) => {
-                let _ = tokio::fs::remove_dir_all(&temporary).await;
+                cleanup_directory(&temporary, "cleanup_failed_submission_import").await;
                 return Err(error);
             }
         };
