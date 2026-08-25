@@ -152,6 +152,14 @@ None.
   `vm packages status` remained healthy at 0.011-0.038 seconds. Workspace
   formatting, all-target checks, strict Clippy, RustSec audit, unit tests, and
   integration tests passed.
+- 2026-08-24: Managed checkout and release commands now reuse one infrastructure
+  client per active path, and successful release cleanup no longer reloads its
+  immutable checkout. Guest checkout preparation resolves only the authenticated
+  consumer's pinned package context and clones only matching active work instead
+  of the complete durable checkout history. `vm packages status` remained
+  healthy across ten runs at 0.013-0.014 seconds. Workspace formatting,
+  all-target checks, strict Clippy, RustSec audit, unit tests, and integration
+  tests passed.
 
 ## Related Context
 
