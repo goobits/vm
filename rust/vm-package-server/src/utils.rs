@@ -1,5 +1,13 @@
 //! Filename parsing shared by the Python registry handlers.
 
+use vm_packages::{PackageEcosystem, PackageIdentity};
+
+fn normalized_python_name(name: &str) -> Option<String> {
+    PackageIdentity::new(PackageEcosystem::Python, name)
+        .ok()
+        .map(|package| package.name)
+}
+
 /// Extract and normalize a Python package name from a wheel or source archive.
 pub fn extract_pypi_package_name(filename: &str) -> Option<String> {
     let base = filename
@@ -13,11 +21,11 @@ pub fn extract_pypi_package_name(filename: &str) -> Option<String> {
             .next()
             .is_some_and(|character| character.is_ascii_digit())
         {
-            return Some(crate::normalize_pypi_name(&parts[..index].join("-")));
+            return normalized_python_name(&parts[..index].join("-"));
         }
     }
 
-    Some(crate::normalize_pypi_name(base))
+    normalized_python_name(base)
 }
 
 #[cfg(test)]

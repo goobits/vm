@@ -17,12 +17,9 @@ impl PackageIdentity {
         ecosystem: PackageEcosystem,
         name: impl Into<String>,
     ) -> Result<Self, PackageValidationError> {
-        let name = name.into();
+        let name = normalize_name(ecosystem, &name.into());
         validate_label("package", &name)?;
-        Ok(Self {
-            ecosystem,
-            name: normalize_name(ecosystem, &name),
-        })
+        Ok(Self { ecosystem, name })
     }
 
     pub fn key(&self) -> String {
@@ -211,6 +208,10 @@ mod tests {
         assert_eq!(
             package(PackageEcosystem::Python, "Goobits.Auth_core").name,
             "goobits-auth-core"
+        );
+        assert_eq!(
+            package(PackageEcosystem::Python, "Django--REST..framework").name,
+            "django-rest-framework"
         );
         assert!(package(PackageEcosystem::Cargo, "goobits-auth").matches_name("Goobits_Auth"));
         assert!(package(PackageEcosystem::Python, "goobits-auth").matches_name("Goobits.Auth"));

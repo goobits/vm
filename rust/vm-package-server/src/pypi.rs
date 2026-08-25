@@ -7,11 +7,12 @@ use axum::{
     response::Html,
 };
 use tracing::{debug, info, warn};
+use vm_packages::{PackageEcosystem, PackageIdentity};
 
 use crate::validation;
 use crate::{
-    normalize_pypi_name, package_utils, sha256_hash, storage, validate_filename, AppError,
-    AppResult, AppState, SuccessResponse,
+    package_utils, sha256_hash, storage, validate_filename, AppError, AppResult, AppState,
+    SuccessResponse,
 };
 
 /// Helper to list valid package files (.whl, .tar.gz) in the PyPI packages directory
@@ -105,7 +106,9 @@ pub async fn package_index(
     headers: HeaderMap,
 ) -> AppResult<Html<String>> {
     info!(package = %package, "Generating PyPI package index");
-    let normalized_package = normalize_pypi_name(&package);
+    let normalized_package = PackageIdentity::new(PackageEcosystem::Python, &package)
+        .map_err(|error| AppError::BadRequest(error.to_string()))?
+        .name;
     let pypi_dir = state.data_dir.join("pypi/packages");
     let mut files = Vec::new();
 

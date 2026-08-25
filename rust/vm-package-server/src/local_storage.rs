@@ -24,7 +24,9 @@ fn list_pypi_packages(data_dir: &Path) -> Result<Vec<String>> {
     let mut package_names = HashSet::new();
     for entry in fs::read_dir(packages_dir)? {
         let entry = entry?;
-        if let Some(name) = extract_pypi_package_name(&entry.file_name().to_string_lossy()) {
+        if let Some(name) =
+            crate::utils::extract_pypi_package_name(&entry.file_name().to_string_lossy())
+        {
             package_names.insert(name);
         }
     }
@@ -85,23 +87,10 @@ fn collect_cargo_crates(directory: &Path, packages: &mut HashSet<String>) -> Res
     Ok(())
 }
 
-fn extract_pypi_package_name(filename: &str) -> Option<String> {
-    if filename.ends_with(".whl") {
-        return filename
-            .split_once('-')
-            .map(|(name, _)| name.replace('_', "-"));
-    }
-
-    let stem = filename.strip_suffix(".tar.gz")?;
-    let (name, version) = stem.rsplit_once('-')?;
-    version
-        .starts_with(|character: char| character.is_numeric() || character == 'v')
-        .then(|| name.to_string())
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{extract_pypi_package_name, list_local_packages};
+    use super::list_local_packages;
+    use crate::utils::extract_pypi_package_name;
 
     #[test]
     fn extracts_supported_python_artifact_names() {
