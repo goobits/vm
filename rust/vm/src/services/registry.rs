@@ -3,35 +3,21 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use super::{
-    auth_proxy::AuthProxyService, mongodb::MongodbService, mysql::MysqlService,
-    postgresql::PostgresqlService, redis::RedisService, ManagedService,
-};
+use super::{auth_proxy::AuthProxyService, container::ManagedContainerService, ManagedService};
 
 pub(super) type Services = HashMap<String, Arc<dyn ManagedService>>;
 
 pub(super) fn managed_services() -> Services {
     let shutdown_handles = Arc::new(Mutex::new(HashMap::new()));
-    HashMap::from([
+    let mut services = HashMap::from([(
+        "auth_proxy".to_string(),
+        Arc::new(AuthProxyService::new(shutdown_handles)) as Arc<dyn ManagedService>,
+    )]);
+    services.extend(ManagedContainerService::ALL.map(|service| {
         (
-            "auth_proxy".to_string(),
-            Arc::new(AuthProxyService::new(shutdown_handles)) as Arc<dyn ManagedService>,
-        ),
-        (
-            "postgresql".to_string(),
-            Arc::new(PostgresqlService) as Arc<dyn ManagedService>,
-        ),
-        (
-            "redis".to_string(),
-            Arc::new(RedisService) as Arc<dyn ManagedService>,
-        ),
-        (
-            "mongodb".to_string(),
-            Arc::new(MongodbService) as Arc<dyn ManagedService>,
-        ),
-        (
-            "mysql".to_string(),
-            Arc::new(MysqlService) as Arc<dyn ManagedService>,
-        ),
-    ])
+            service.service_name().to_string(),
+            Arc::new(service) as Arc<dyn ManagedService>,
+        )
+    }));
+    services
 }

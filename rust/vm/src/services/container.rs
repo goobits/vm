@@ -1,6 +1,195 @@
 use anyhow::Result;
 use serde_json::Value;
 use tracing::{info, warn};
+use vm_config::GlobalConfig;
+
+use super::{container_runtime, get_or_generate_password, ManagedService};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ManagedContainerService {
+    Postgresql,
+    Redis,
+    Mongodb,
+    Mysql,
+}
+
+impl ManagedContainerService {
+    pub(super) const ALL: [Self; 4] = [Self::Postgresql, Self::Redis, Self::Mongodb, Self::Mysql];
+
+    pub(super) const fn service_name(self) -> &'static str {
+        match self {
+            Self::Postgresql => "postgresql",
+            Self::Redis => "redis",
+            Self::Mongodb => "mongodb",
+            Self::Mysql => "mysql",
+        }
+    }
+
+    const fn container_name(self) -> &'static str {
+        match self {
+            Self::Postgresql => "vm-postgres-global",
+            Self::Redis => "vm-redis-global",
+            Self::Mongodb => "vm-mongodb-global",
+            Self::Mysql => "vm-mysql-global",
+        }
+    }
+
+    const fn display_name(self) -> &'static str {
+        match self {
+            Self::Postgresql => "PostgreSQL",
+            Self::Redis => "Redis",
+            Self::Mongodb => "MongoDB",
+            Self::Mysql => "MySQL",
+        }
+    }
+
+    const fn image(self) -> &'static str {
+        match self {
+            Self::Postgresql => "postgres",
+            Self::Redis => "redis",
+            Self::Mongodb => "mongo",
+            Self::Mysql => "mysql",
+        }
+    }
+
+    const fn guest_port(self) -> u16 {
+        match self {
+            Self::Postgresql => 5432,
+            Self::Redis => 6379,
+            Self::Mongodb => 27017,
+            Self::Mysql => 3306,
+        }
+    }
+
+    const fn guest_data_dir(self) -> &'static str {
+        match self {
+            Self::Postgresql => "/var/lib/postgresql/data",
+            Self::Redis => "/data",
+            Self::Mongodb => "/data/db",
+            Self::Mysql => "/var/lib/mysql",
+        }
+    }
+
+    fn settings<'a>(self, config: &'a GlobalConfig) -> ContainerServiceSettings<'a> {
+        match self {
+            Self::Postgresql => ContainerServiceSettings {
+                version: &config.services.postgresql.version,
+                data_dir: &config.services.postgresql.data_dir,
+                host_port: config.services.postgresql.port,
+            },
+            Self::Redis => ContainerServiceSettings {
+                version: &config.services.redis.version,
+                data_dir: &config.services.redis.data_dir,
+                host_port: config.services.redis.port,
+            },
+            Self::Mongodb => ContainerServiceSettings {
+                version: &config.services.mongodb.version,
+                data_dir: &config.services.mongodb.data_dir,
+                host_port: config.services.mongodb.port,
+            },
+            Self::Mysql => ContainerServiceSettings {
+                version: &config.services.mysql.version,
+                data_dir: &config.services.mysql.data_dir,
+                host_port: config.services.mysql.port,
+            },
+        }
+    }
+
+    async fn start_container(self, config: &GlobalConfig) -> Result<()> {
+        let settings = self.settings(config);
+        let executable = container_runtime(config);
+        let spec = ManagedContainerSpec {
+            name: self.container_name(),
+            service: self.service_name(),
+            display_name: self.display_name(),
+            image: self.image(),
+            version: settings.version,
+            host_port: settings.host_port,
+            guest_port: self.guest_port(),
+        };
+        let password = get_or_generate_password(self.service_name()).await?;
+
+        match self {
+            Self::Postgresql => {
+                start_managed_container(
+                    executable,
+                    spec,
+                    settings.data_dir,
+                    self.guest_data_dir(),
+                    &[("POSTGRES_PASSWORD", &password)],
+                    &[],
+                )
+                .await
+            }
+            Self::Redis => {
+                start_managed_container(
+                    executable,
+                    spec,
+                    settings.data_dir,
+                    self.guest_data_dir(),
+                    &[],
+                    &["--requirepass", &password],
+                )
+                .await
+            }
+            Self::Mongodb => {
+                start_managed_container(
+                    executable,
+                    spec,
+                    settings.data_dir,
+                    self.guest_data_dir(),
+                    &[
+                        ("MONGO_INITDB_ROOT_USERNAME", "root"),
+                        ("MONGO_INITDB_ROOT_PASSWORD", &password),
+                    ],
+                    &[],
+                )
+                .await
+            }
+            Self::Mysql => {
+                start_managed_container(
+                    executable,
+                    spec,
+                    settings.data_dir,
+                    self.guest_data_dir(),
+                    &[("MYSQL_ROOT_PASSWORD", &password)],
+                    &[],
+                )
+                .await
+            }
+        }
+    }
+}
+
+struct ContainerServiceSettings<'a> {
+    version: &'a str,
+    data_dir: &'a str,
+    host_port: u16,
+}
+
+#[async_trait::async_trait]
+impl ManagedService for ManagedContainerService {
+    async fn start(&self, global_config: &GlobalConfig) -> Result<()> {
+        self.start_container(global_config).await
+    }
+
+    async fn stop(&self) -> Result<()> {
+        let executable = crate::utils::configured_container_runtime();
+        stop_managed_container(&executable, self.container_name()).await
+    }
+
+    async fn check_health(&self, global_config: &GlobalConfig) -> bool {
+        loopback_healthy(self.get_port(global_config)).await
+    }
+
+    fn name(&self) -> &str {
+        self.service_name()
+    }
+
+    fn get_port(&self, global_config: &GlobalConfig) -> u16 {
+        self.settings(global_config).host_port
+    }
+}
 
 fn loopback_port(host: u16, guest: u16) -> String {
     format!("127.0.0.1:{host}:{guest}")
@@ -194,7 +383,24 @@ pub(super) async fn loopback_healthy(port: u16) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{container_mismatch, loopback_port, ManagedContainerSpec};
+    use std::collections::BTreeSet;
+
+    use super::{container_mismatch, loopback_port, ManagedContainerService, ManagedContainerSpec};
+
+    #[test]
+    fn managed_database_definitions_are_distinct() {
+        let names = ManagedContainerService::ALL
+            .map(ManagedContainerService::service_name)
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        let containers = ManagedContainerService::ALL
+            .map(ManagedContainerService::container_name)
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(names.len(), ManagedContainerService::ALL.len());
+        assert_eq!(containers.len(), ManagedContainerService::ALL.len());
+    }
 
     #[test]
     fn managed_services_bind_only_to_loopback() {

@@ -10,10 +10,6 @@ use vm_config::GlobalConfig;
 pub mod auth_proxy;
 mod container;
 mod lifecycle;
-pub mod mongodb;
-pub mod mysql;
-pub mod postgresql;
-pub mod redis;
 mod registry;
 mod state;
 
