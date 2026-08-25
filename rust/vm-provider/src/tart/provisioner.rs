@@ -6,7 +6,7 @@ use crate::{
 };
 use duct::cmd;
 use tracing::info;
-use vm_config::config::{BoxSpec, MountAccess, VmConfig};
+use vm_config::config::{ImageSpec, MountAccess, VmConfig};
 use vm_core::error::{Result, VmError};
 
 mod ai_tools;
@@ -287,7 +287,7 @@ $SUDO chmod 0555 "$target""#
             return "linux";
         }
 
-        if let Some(BoxSpec::String(name)) = config.vm.as_ref().and_then(|vm| vm.get_box_spec()) {
+        if let Some(ImageSpec::String(name)) = config.vm.as_ref().and_then(|vm| vm.image.clone()) {
             if let Some(guest_os) = tart_base::guest_os(&name) {
                 return guest_os;
             }
@@ -327,7 +327,7 @@ mod tests {
     #[cfg(unix)]
     use std::process::Command;
     use vm_config::config::{
-        BoxSpec, ProjectConfig, ServiceConfig, TartConfig, TerminalConfig, VmConfig, VmSettings,
+        ImageSpec, ProjectConfig, ServiceConfig, TartConfig, TerminalConfig, VmConfig, VmSettings,
     };
 
     #[test]
@@ -566,7 +566,7 @@ mod tests {
     fn guest_os_detects_vibe_tart_base_as_macos() {
         let config = VmConfig {
             vm: Some(VmSettings {
-                r#box: Some(BoxSpec::String("vibe-tart-sequoia-base".to_string())),
+                image: Some(ImageSpec::String("vibe-tart-sequoia-base".to_string())),
                 ..Default::default()
             }),
             ..Default::default()
@@ -579,7 +579,7 @@ mod tests {
     fn guest_os_detects_linux_base_name() {
         let config = VmConfig {
             vm: Some(VmSettings {
-                r#box: Some(BoxSpec::String("vibe-tart-linux-base".to_string())),
+                image: Some(ImageSpec::String("vibe-tart-linux-base".to_string())),
                 ..Default::default()
             }),
             ..Default::default()
@@ -593,7 +593,7 @@ mod tests {
         let config = VmConfig {
             os: Some("macos".to_string()),
             vm: Some(VmSettings {
-                r#box: Some(BoxSpec::String("custom-base".to_string())),
+                image: Some(ImageSpec::String("custom-base".to_string())),
                 ..Default::default()
             }),
             ..Default::default()
@@ -606,7 +606,7 @@ mod tests {
     fn guest_os_defaults_ambiguous_custom_tart_base_to_macos() {
         let config = VmConfig {
             vm: Some(VmSettings {
-                r#box: Some(BoxSpec::String("custom-team-base".to_string())),
+                image: Some(ImageSpec::String("custom-team-base".to_string())),
                 ..Default::default()
             }),
             ..Default::default()
@@ -623,7 +623,7 @@ mod tests {
                 ..Default::default()
             }),
             vm: Some(VmSettings {
-                r#box: Some(BoxSpec::String("vibe-tart-sequoia-base".to_string())),
+                image: Some(ImageSpec::String("vibe-tart-sequoia-base".to_string())),
                 ..Default::default()
             }),
             terminal: Some(TerminalConfig {

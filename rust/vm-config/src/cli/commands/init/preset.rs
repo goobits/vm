@@ -24,9 +24,9 @@ pub(super) fn build_config_from_preset(
     let category = preset_category(preset_name, &preset);
     let base = build_initial_config(sanitized_name)?;
     let mut config = match category {
-        PresetCategory::Box => {
-            info!("🎁 Using box preset '{preset_name}'");
-            apply_box_preset(base, preset)
+        PresetCategory::Image => {
+            info!("🎁 Using image preset '{preset_name}'");
+            apply_image_preset(base, preset)
         }
         PresetCategory::Provision => {
             info!("📦 Using provision preset '{preset_name}'");
@@ -55,24 +55,24 @@ fn preset_category(preset_name: &str, preset: &VmConfig) -> PresetCategory {
     if preset
         .vm
         .as_ref()
-        .and_then(|vm| vm.r#box.as_ref())
+        .and_then(|vm| vm.image.as_ref())
         .is_some()
     {
-        PresetCategory::Box
+        PresetCategory::Image
     } else {
         PresetCategory::Provision
     }
 }
 
-fn apply_box_preset(mut config: VmConfig, mut preset: VmConfig) -> VmConfig {
+fn apply_image_preset(mut config: VmConfig, mut preset: VmConfig) -> VmConfig {
     replace_if_some(&mut config.provider, preset.provider.take());
     replace_if_some(&mut config.default_profile, preset.default_profile.take());
     replace_if_some(&mut config.os, preset.os.take());
     replace_if_some(&mut config.tart, preset.tart.take());
     replace_if_some(&mut config.profiles, preset.profiles.take());
 
-    if let Some(box_spec) = preset.vm.and_then(|vm| vm.r#box) {
-        config.vm.get_or_insert_with(Default::default).r#box = Some(box_spec);
+    if let Some(image_spec) = preset.vm.and_then(|vm| vm.image) {
+        config.vm.get_or_insert_with(Default::default).image = Some(image_spec);
     }
     if let Some(mut source) = preset.project {
         let target = config.project.get_or_insert_with(Default::default);

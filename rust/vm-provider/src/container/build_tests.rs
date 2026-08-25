@@ -1,6 +1,6 @@
 use super::*;
 use std::fs;
-use vm_config::config::{BoxSpec, VmConfig, VmSettings};
+use vm_config::config::{ImageSpec, VmConfig, VmSettings};
 use vm_config::detector::git::GitConfig;
 
 #[test]
@@ -74,7 +74,7 @@ fn test_gather_build_args_snapshot_omits_host_specific_inputs() {
         }),
         vm: Some(VmSettings {
             timezone: Some("America/New_York".to_string()),
-            r#box: Some(BoxSpec::String("@vibe-box".to_string())),
+            image: Some(ImageSpec::String("@vibe-image".to_string())),
             ..Default::default()
         }),
         ..Default::default()
@@ -82,7 +82,7 @@ fn test_gather_build_args_snapshot_omits_host_specific_inputs() {
 
     let temp_path = temp_dir.path().to_path_buf();
     let build_ops = BuildOperations::new(&config, &temp_path, "docker");
-    let args = build_ops.gather_build_args("vm-snapshot/global/vibe-box:latest");
+    let args = build_ops.gather_build_args("vm-snapshot/global/vibe-image:latest");
 
     assert!(args
         .iter()
@@ -110,9 +110,9 @@ fn test_gather_build_args_snapshot_omits_host_specific_inputs() {
         .any(|arg| arg.starts_with("--build-arg=GIT_USER_EMAIL=")));
 
     let mut other_snapshot = config.clone();
-    other_snapshot.vm.as_mut().unwrap().r#box = Some(BoxSpec::String("@team-box".to_string()));
+    other_snapshot.vm.as_mut().unwrap().image = Some(ImageSpec::String("@team-image".to_string()));
     let other_args = BuildOperations::new(&other_snapshot, &temp_path, "docker")
-        .gather_build_args("vm-snapshot/global/team-box:latest");
+        .gather_build_args("vm-snapshot/global/team-image:latest");
     assert!(other_args
         .iter()
         .any(|arg| arg == "--build-arg=BASE_PREPROVISIONED=true"));
@@ -142,7 +142,7 @@ fn test_derived_image_tag_snapshot_ignores_host_identity_inputs() {
 
     let snapshot_vm = VmSettings {
         timezone: Some("America/New_York".to_string()),
-        r#box: Some(BoxSpec::String("@vibe-box".to_string())),
+        image: Some(ImageSpec::String("@vibe-image".to_string())),
         ..Default::default()
     };
 
@@ -174,14 +174,14 @@ fn test_derived_image_tag_snapshot_ignores_host_identity_inputs() {
 
     let tag_a = build_ops_a
         .derived_image_tag(
-            "vm-snapshot/global/vibe-box:latest",
+            "vm-snapshot/global/vibe-image:latest",
             "sha256:shared-base",
             build_context.path(),
         )
         .unwrap();
     let tag_b = build_ops_b
         .derived_image_tag(
-            "vm-snapshot/global/vibe-box:latest",
+            "vm-snapshot/global/vibe-image:latest",
             "sha256:shared-base",
             build_context.path(),
         )

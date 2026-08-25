@@ -1,7 +1,7 @@
 //! Integration tests for preset system
 //!
 //! This test suite validates the preset refactor, specifically:
-//! 1. Box preset initialization (vm-config init with preset)
+//! 1. Image preset initialization (vm-config init with preset)
 //! 2. Provision preset merging (vm config preset apply)
 //! 3. Preset filtering in different contexts
 //! 4. Project name derivation from directory
@@ -11,7 +11,9 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tempfile::TempDir;
-use vm_config::config::{BoxSpec, CpuLimit, MemoryLimit, ProjectConfig, TerminalConfig, VmConfig};
+use vm_config::config::{
+    CpuLimit, ImageSpec, MemoryLimit, ProjectConfig, TerminalConfig, VmConfig,
+};
 use vm_core::error::Result;
 
 use vm_config::PresetDetector;
@@ -75,15 +77,15 @@ impl PresetTestFixture {
         // Write plugin.yaml
         let plugin_yaml = r#"name: vibe
 version: 1.0.0
-description: Vibe Development Box
+description: Vibe Development Image
 plugin_type: preset
-preset_category: box
+preset_category: image
 "#;
         fs::write(vibe_dir.join("plugin.yaml"), plugin_yaml)?;
 
         // Write preset.yaml
-        let preset_yaml = r#"vm_box: '@vibe-box'
-category: box
+        let preset_yaml = r#"vm_image: '@vibe-image'
+category: image
 networking:
   networks:
     - spacebase
@@ -180,16 +182,16 @@ impl Drop for PresetTestFixture {
 }
 
 // ============================================================================
-// Test 1: Box Preset Initialization
+// Test 1: Image Preset Initialization
 // ============================================================================
 
 #[test]
-fn test_init_with_box_preset() -> Result<()> {
-    // Validates that initializing with a box preset (like 'vibe'):
-    // - Creates vm.yaml with vm.box reference
-    // - Includes box-specific config (networking, host_sync, etc.)
+fn test_init_with_image_preset() -> Result<()> {
+    // Validates that initializing with an image preset (like 'vibe'):
+    // - Creates vm.yaml with vm.image reference
+    // - Includes image-specific config (networking, host_sync, etc.)
     // - Does NOT include preset field
-    // - Does NOT include versions or package arrays (they come from the box)
+    // - Does NOT include versions or package arrays (they come from the image)
     // - Project name is derived from directory name
 
     let _guard = TEST_MUTEX
@@ -197,14 +199,14 @@ fn test_init_with_box_preset() -> Result<()> {
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let fixture = PresetTestFixture::new()?;
 
-    // Arrange: Create vibe box preset plugin
+    // Arrange: Create vibe image preset plugin
     fixture.create_vibe_preset_plugin()?;
 
-    // Act: Simulate 'vm-config init vibe' - load the preset and apply box preset logic
+    // Act: Simulate 'vm-config init vibe' - load the preset and apply image preset logic
     let detector = fixture.create_detector();
     let vibe_config = detector.load_preset("vibe")?;
 
-    // Build minimal config as vm-config init would for a box preset
+    // Build minimal config as vm-config init would for an image preset
     // Set project name from directory
     let mut config = VmConfig {
         project: Some(ProjectConfig {
@@ -215,11 +217,11 @@ fn test_init_with_box_preset() -> Result<()> {
         ..Default::default()
     };
 
-    // Copy box reference from preset
+    // Copy image reference from preset
     if let Some(preset_vm) = vibe_config.vm {
-        if let Some(box_spec) = preset_vm.r#box {
+        if let Some(image_spec) = preset_vm.image {
             config.vm = Some(vm_config::config::VmSettings {
-                r#box: Some(box_spec),
+                image: Some(image_spec),
                 ..Default::default()
             });
         }
@@ -238,14 +240,16 @@ fn test_init_with_box_preset() -> Result<()> {
     // Assert: Verify the generated config
     let saved_config = fixture.read_vm_yaml()?;
 
-    // 1. vm.box should exist and reference '@vibe-box'
+    // 1. vm.image should exist and reference '@vibe-image'
     assert!(saved_config.vm.is_some(), "vm settings should be present");
     let vm_settings = saved_config.vm.as_ref().unwrap();
-    assert!(vm_settings.r#box.is_some(), "vm.box should be present");
+    assert!(vm_settings.image.is_some(), "vm.image should be present");
 
-    match &vm_settings.r#box {
-        Some(BoxSpec::String(s)) => assert_eq!(s, "@vibe-box", "vm.box should reference @vibe-box"),
-        _ => panic!("vm.box should be a string reference"),
+    match &vm_settings.image {
+        Some(ImageSpec::String(s)) => {
+            assert_eq!(s, "@vibe-image", "vm.image should reference @vibe-image")
+        }
+        _ => panic!("vm.image should be a string reference"),
     }
     assert!(saved_config.tools.entries.contains_key("codex"));
 
@@ -272,34 +276,34 @@ fn test_init_with_box_preset() -> Result<()> {
     );
     assert!(host_sync.git_config, "host_sync.git_config should be true");
 
-    // 4. Should NOT contain 'preset' field (box presets are not provision presets)
+    // 4. Should NOT contain 'preset' field (image presets are not provision presets)
     assert!(
         saved_config.preset.is_none(),
-        "preset field should NOT be present for box presets"
+        "preset field should NOT be present for image presets"
     );
 
     // 5. Should NOT contain versions field
     assert!(
         saved_config.versions.is_none(),
-        "versions field should NOT be present (comes from box)"
+        "versions field should NOT be present (comes from image)"
     );
 
     // 6. Should NOT contain package arrays
     assert!(
         saved_config.apt_packages.is_empty(),
-        "apt_packages should be empty (comes from box)"
+        "apt_packages should be empty (comes from image)"
     );
     assert!(
         saved_config.npm_packages.is_empty(),
-        "npm_packages should be empty (comes from box)"
+        "npm_packages should be empty (comes from image)"
     );
     assert!(
         saved_config.pip_packages.is_empty(),
-        "pip_packages should be empty (comes from box)"
+        "pip_packages should be empty (comes from image)"
     );
     assert!(
         saved_config.cargo_packages.is_empty(),
-        "cargo_packages should be empty (comes from box)"
+        "cargo_packages should be empty (comes from image)"
     );
 
     // 7. project.name should match directory name
@@ -327,7 +331,7 @@ fn test_config_preset_provision() -> Result<()> {
     //- Merges npm_packages into config
     //- Enables services from preset
     //- Sets preset reference field
-    //- Does NOT include vm.box field
+    //- Does NOT include vm.image field
 
     let _guard = TEST_MUTEX
         .lock()
@@ -402,30 +406,30 @@ fn test_config_preset_provision() -> Result<()> {
         "NODE_ENV should be set to development"
     );
 
-    // 5. Should NOT have vm.box field (provision presets don't set boxes)
+    // 5. Should NOT have vm.image field (provision presets don't set images)
     assert!(
-        saved_config.vm.is_none() || saved_config.vm.as_ref().unwrap().r#box.is_none(),
-        "vm.box should NOT be set for provision presets"
+        saved_config.vm.is_none() || saved_config.vm.as_ref().unwrap().image.is_none(),
+        "vm.image should NOT be set for provision presets"
     );
 
     Ok(())
 }
 
 // ============================================================================
-// Test 3: Box Preset Filtered from Config List
+// Test 3: Image Preset Filtered from Config List
 // ============================================================================
 
 #[test]
-fn test_box_preset_not_in_config_list() -> Result<()> {
+fn test_image_preset_not_in_config_list() -> Result<()> {
     // Validates that list_presets() (used by 'vm config preset')
-    //excludes box presets but includes provision presets
+    //excludes image presets but includes provision presets
 
     let _guard = TEST_MUTEX
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let fixture = PresetTestFixture::new()?;
 
-    // Arrange: Create both box and provision presets
+    // Arrange: Create both image and provision presets
     fixture.create_vibe_preset_plugin()?;
     fixture.create_nodejs_preset_plugin()?;
     fixture.create_python_preset_plugin()?;
@@ -434,10 +438,10 @@ fn test_box_preset_not_in_config_list() -> Result<()> {
     let detector = fixture.create_detector();
     let presets = detector.list_presets()?;
 
-    // Assert: Box preset should NOT be in list
+    // Assert: Image preset should NOT be in list
     assert!(
         !presets.contains(&"vibe".to_string()),
-        "vibe (box preset) should NOT be in config preset list"
+        "vibe (image preset) should NOT be in config preset list"
     );
 
     // Provision presets SHOULD be in list
@@ -454,20 +458,20 @@ fn test_box_preset_not_in_config_list() -> Result<()> {
 }
 
 // ============================================================================
-// Test 4: Box Preset in Init List
+// Test 4: Image Preset in Init List
 // ============================================================================
 
 #[test]
-fn test_box_preset_in_init_list() -> Result<()> {
+fn test_image_preset_in_init_list() -> Result<()> {
     // Validates that list_all_presets() (used by 'vm-config init')
-    //includes BOTH box and provision presets
+    // Includes both image and provision presets
 
     let _guard = TEST_MUTEX
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let fixture = PresetTestFixture::new()?;
 
-    // Arrange: Create both box and provision presets
+    // Arrange: Create both image and provision presets
     fixture.create_vibe_preset_plugin()?;
     fixture.create_nodejs_preset_plugin()?;
     fixture.create_python_preset_plugin()?;
@@ -476,10 +480,10 @@ fn test_box_preset_in_init_list() -> Result<()> {
     let detector = fixture.create_detector();
     let all_presets = detector.list_all_presets()?;
 
-    // Assert: Both box and provision presets should be in list
+    // Assert: Both image and provision presets should be in list
     assert!(
         all_presets.contains(&"vibe".to_string()),
-        "vibe (box preset) should be in init preset list"
+        "vibe (image preset) should be in init preset list"
     );
     assert!(
         all_presets.contains(&"nodejs".to_string()),
@@ -502,7 +506,7 @@ fn test_preset_category_detection() -> Result<()> {
     // Validates that preset categories are correctly detected from:
     //1. Plugin metadata (preset_category field)
     //2. Preset content (category field)
-    //3. Presence of vm_box field (fallback)
+    //3. Presence of vm_image field (fallback)
 
     let _guard = TEST_MUTEX
         .lock()
@@ -516,23 +520,23 @@ fn test_preset_category_detection() -> Result<()> {
     // Act & Assert: Check category detection
     let detector = fixture.create_detector();
 
-    // Load vibe preset and check for box characteristics
+    // Load vibe preset and check for image characteristics
     let vibe_config = detector.load_preset("vibe")?;
-    let has_box = vibe_config
+    let has_image = vibe_config
         .vm
         .as_ref()
-        .and_then(|vm| vm.r#box.as_ref())
+        .and_then(|vm| vm.image.as_ref())
         .is_some();
-    assert!(has_box, "vibe preset should have vm.box field");
+    assert!(has_image, "vibe preset should have vm.image field");
 
-    // Load nodejs preset and verify it doesn't have box
+    // Load nodejs preset and verify it doesn't have an image
     let nodejs_config = detector.load_preset("nodejs")?;
-    let has_box = nodejs_config
+    let has_image = nodejs_config
         .vm
         .as_ref()
-        .and_then(|vm| vm.r#box.as_ref())
+        .and_then(|vm| vm.image.as_ref())
         .is_some();
-    assert!(!has_box, "nodejs preset should NOT have vm.box field");
+    assert!(!has_image, "nodejs preset should NOT have vm.image field");
 
     // Verify nodejs has provision-specific fields
     assert!(
@@ -615,8 +619,8 @@ fn test_project_name_from_directory() -> Result<()> {
 // ============================================================================
 
 #[test]
-fn test_box_preset_networking_merge() -> Result<()> {
-    // Validates that networking configuration from a box preset
+fn test_image_preset_networking_merge() -> Result<()> {
+    // Validates that networking configuration from an image preset
     //is properly merged into the generated vm.yaml
 
     let _guard = TEST_MUTEX
@@ -733,12 +737,12 @@ fn test_multiple_provision_preset_merge() -> Result<()> {
 }
 
 // ============================================================================
-// Test 9: Box Preset Aliases Preservation
+// Test 9: Image Preset Aliases Preservation
 // ============================================================================
 
 #[test]
-fn test_box_preset_aliases_preserved() -> Result<()> {
-    // Validates that aliases from box presets are preserved in vm.yaml
+fn test_image_preset_aliases_preserved() -> Result<()> {
+    // Validates that aliases from image presets are preserved in vm.yaml
 
     let _guard = TEST_MUTEX
         .lock()
@@ -760,7 +764,7 @@ fn test_box_preset_aliases_preserved() -> Result<()> {
     // Assert: Verify aliases are present
     assert!(
         !config.aliases.is_empty(),
-        "aliases should be present from box preset"
+        "aliases should be present from image preset"
     );
     assert_eq!(
         config.aliases.get("gs"),
@@ -797,7 +801,7 @@ fn test_preset_description_retrieval() -> Result<()> {
     assert!(vibe_desc.is_some(), "vibe preset should have a description");
     assert_eq!(
         vibe_desc.unwrap(),
-        "Vibe Development Box",
+        "Vibe Development Image",
         "vibe description should match"
     );
 
@@ -843,7 +847,7 @@ fn test_vibe_tart_preset_uses_linux_tart_by_default() -> Result<()> {
         tart_profile
             .vm
             .as_ref()
-            .and_then(|vm| vm.r#box.as_ref())
+            .and_then(|vm| vm.image.as_ref())
             .map(|b| serde_yaml::to_string(b).unwrap().trim().to_string()),
         Some("vibe-tart-linux-base".to_string())
     );

@@ -39,7 +39,7 @@ vm system base build vibe --provider tart --guest-os macos
 vm system base validate vibe --provider all
 ```
 
-New Docker environments verify that `@vibe-box` contains Codex's complete
+New Docker environments verify that `@vibe-image` contains Codex's complete
 standalone runtime before deriving the project image. If an older cached base
 is incomplete, creation stops with the exact non-destructive base-build command
 instead of opening a partially working Codex session.

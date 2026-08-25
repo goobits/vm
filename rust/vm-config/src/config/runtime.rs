@@ -6,7 +6,7 @@ use super::{CpuLimit, MemoryLimit, SwapLimit};
 /// Base image, Dockerfile, or snapshot configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
-pub enum BoxSpec {
+pub enum ImageSpec {
     String(String),
     Build {
         dockerfile: String,
@@ -19,13 +19,10 @@ pub enum BoxSpec {
 
 /// Virtual machine resource and system configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct VmSettings {
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        rename = "box",
-        alias = "image"
-    )]
-    pub r#box: Option<BoxSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<ImageSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -52,12 +49,6 @@ pub struct VmSettings {
     pub stop_grace_period: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logging: Option<ContainerLoggingConfig>,
-}
-
-impl VmSettings {
-    pub fn get_box_spec(&self) -> Option<BoxSpec> {
-        self.r#box.clone()
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

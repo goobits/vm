@@ -147,7 +147,7 @@ pub async fn handle_import(
         tracing::info!("\nTo use this base image in any project:");
         tracing::info!("  1. Add to your vm.yaml:");
         tracing::info!("     vm:");
-        tracing::info!("       box: @{}", snapshot_name);
+        tracing::info!("       image: @{}", snapshot_name);
         tracing::info!("  2. Run: vm run linux");
         tracing::info!("\nThe VM will start instantly using the imported base image!");
     } else {

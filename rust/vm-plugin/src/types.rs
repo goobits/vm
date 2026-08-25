@@ -5,7 +5,7 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum PresetCategory {
-    Box,
+    Image,
     #[default]
     Provision,
 }
@@ -62,7 +62,7 @@ pub struct PresetContent {
     pub aliases: std::collections::HashMap<String, String>,
 
     #[serde(default)]
-    pub vm_box: Option<String>,
+    pub vm_image: Option<String>,
 
     #[serde(default)]
     pub provision: Vec<String>,

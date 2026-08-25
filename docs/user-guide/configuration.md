@@ -80,7 +80,7 @@ tart:
   ssh_user: admin
   install_docker: true
 vm:
-  box: vibe-tart-linux-base
+  image: vibe-tart-linux-base
   cpus: 8
   memory: 16384
 ```

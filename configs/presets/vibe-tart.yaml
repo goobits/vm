@@ -6,7 +6,7 @@ preset:
 provider: tart
 
 vm:
-  box: '@vibe-box'
+  image: '@vibe-image'
   cpus: 75%
   memory: 75%
   swap: 2048
@@ -37,7 +37,7 @@ profiles:
     project:
       workspace_path: /workspace
     vm:
-      box: vibe-tart-linux-base
+      image: vibe-tart-linux-base
     tart:
       guest_os: linux
       disk_size: 80
@@ -48,7 +48,7 @@ profiles:
     project:
       workspace_path: /workspace
     vm:
-      box: vibe-tart-sequoia-base
+      image: vibe-tart-sequoia-base
     tart:
       guest_os: macos
       disk_size: 80

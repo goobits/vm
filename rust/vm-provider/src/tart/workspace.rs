@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use vm_config::config::{BoxSpec, VmConfig};
+use vm_config::config::{ImageSpec, VmConfig};
 use vm_core::error::Result;
 
 use super::provider::TartProvider;
@@ -84,7 +84,7 @@ impl TartProvider {
         if guest_os == Some("linux") {
             return false;
         }
-        if let Some(BoxSpec::String(name)) = config.vm.as_ref().and_then(|vm| vm.get_box_spec()) {
+        if let Some(ImageSpec::String(name)) = config.vm.as_ref().and_then(|vm| vm.image.clone()) {
             if let Some(os) = tart_base::guest_os(&name) {
                 return os == "macos";
             }

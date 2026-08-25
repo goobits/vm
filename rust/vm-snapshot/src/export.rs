@@ -151,7 +151,8 @@ pub async fn handle_export(
         tracing::info!("\nTo import on another machine:");
         tracing::info!("  vm snapshot import {}", output_file.display());
         tracing::info!("\nThen use in any project with:");
-        tracing::info!("  vm.box: @{}", clean_name);
+        tracing::info!("  vm:");
+        tracing::info!("    image: @{}", clean_name);
     } else {
         tracing::info!("\nTo import on another machine:");
         tracing::info!("  vm snapshot import {}", output_file.display());

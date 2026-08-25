@@ -116,14 +116,24 @@ properties:
     type: object
     description: Virtual machine/container settings
     properties:
-      box:
-        type: string
-        default: ubuntu:jammy
-        description: Base image, Dockerfile, or saved snapshot. Prefer vm.image in new configs.
       image:
-        type: string
+        oneOf:
+          - type: string
+          - type: object
+            required:
+              - dockerfile
+            properties:
+              dockerfile:
+                type: string
+              context:
+                type: string
+              args:
+                type: object
+                additionalProperties:
+                  type: string
+            additionalProperties: false
         default: ubuntu:jammy
-        description: Base image, Dockerfile, or saved snapshot. Alias for vm.box.
+        description: Base image, Dockerfile, or saved snapshot.
       memory:
         oneOf:
           - type: integer
@@ -187,7 +197,7 @@ properties:
       gui:
         type: boolean
         default: false
-        description: Enable GUI mode for VirtualBox (Vagrant provider only)
+        description: Enable GUI mode when supported by the selected provider.
       timezone:
         type: string
         default: America/Los_Angeles
@@ -219,6 +229,7 @@ properties:
             minimum: 1
             default: 5
         additionalProperties: false
+    additionalProperties: false
   storage:
     type: object
     description: Container-only named volumes and bounded temporary filesystems

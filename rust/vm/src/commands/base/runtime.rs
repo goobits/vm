@@ -1,4 +1,4 @@
-use vm_config::{config::BoxSpec, config::VmConfig};
+use vm_config::{config::ImageSpec, config::VmConfig};
 use vm_provider::CommandProvider;
 
 use crate::error::{VmError, VmResult};
@@ -120,10 +120,10 @@ pub(in crate::commands) fn codex_expected(config: &VmConfig) -> bool {
     }) || config
         .vm
         .as_ref()
-        .and_then(|settings| settings.get_box_spec())
+        .and_then(|settings| settings.image.clone())
         .is_some_and(|spec| match spec {
-            BoxSpec::String(name) => name.to_ascii_lowercase().contains("vibe"),
-            BoxSpec::Build { .. } => false,
+            ImageSpec::String(name) => name.to_ascii_lowercase().contains("vibe"),
+            ImageSpec::Build { .. } => false,
         })
 }
 

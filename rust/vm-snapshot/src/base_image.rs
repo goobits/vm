@@ -120,7 +120,7 @@ pub(crate) async fn create_from_dockerfile(
     );
     tracing::info!("\nYou can now use this snapshot in vm.yaml:");
     tracing::info!("  vm:");
-    tracing::info!("    box: @{}", snapshot_name);
+    tracing::info!("    image: @{}", snapshot_name);
     Ok(())
 }
 

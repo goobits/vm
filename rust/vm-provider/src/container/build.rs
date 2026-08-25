@@ -11,7 +11,7 @@ use vm_core::error::{Result, VmError};
 
 // Internal imports
 use super::{compose_context::managed_worktree_root, UserConfig};
-use crate::BoxConfig;
+use crate::ImageConfig;
 use crate::{project_plan::NodeToolchainPlan, resources};
 use vm_config::config::VmConfig;
 
@@ -81,7 +81,7 @@ Thumbs.db
         // Generate Dockerfile from template
         // For custom Dockerfiles, generate a minimal wrapper that uses the pre-built image
         let dockerfile_path = build_context.join("Dockerfile.generated");
-        if matches!(self.get_box_config()?, BoxConfig::Dockerfile { .. }) {
+        if matches!(self.get_image_config()?, ImageConfig::Dockerfile { .. }) {
             // Custom Dockerfile case: Generate minimal Dockerfile that uses the pre-built image
             self.generate_dockerfile_from_image(&dockerfile_path, &self.get_custom_image_name())?;
         } else {
@@ -186,8 +186,8 @@ CMD ["tail", "-f", "/dev/null"]
         args.push(format!("--build-arg=base_image={}", base_image));
 
         // Detect if using a pre-provisioned snapshot to skip redundant base provisioning
-        // Use explicit BoxConfig check instead of string matching to avoid false positives
-        // (e.g., "company/dev-box:latest" should NOT be treated as a snapshot)
+        // Use explicit ImageConfig check instead of string matching to avoid false positives
+        // (e.g., "company/dev-image:latest" should NOT be treated as a snapshot)
         let is_snapshot = self.uses_preprovisioned_snapshot();
 
         args.push(format!("--build-arg=BASE_PREPROVISIONED={}", is_snapshot));
@@ -276,14 +276,15 @@ CMD ["tail", "-f", "/dev/null"]
     }
 
     pub fn uses_preprovisioned_snapshot(&self) -> bool {
-        self.get_box_config()
-            .map(|cfg| matches!(cfg, BoxConfig::Snapshot(_)))
+        self.get_image_config()
+            .map(|cfg| matches!(cfg, ImageConfig::Snapshot(_)))
             .unwrap_or(false)
     }
 
     fn uses_vibe_snapshot(&self) -> bool {
-        self.get_box_config()
-            .is_ok_and(|config| matches!(config, BoxConfig::Snapshot(name) if name == "vibe-box"))
+        self.get_image_config().is_ok_and(
+            |config| matches!(config, ImageConfig::Snapshot(name) if name == "vibe-image"),
+        )
     }
 
     pub fn image_exists(&self, image: &str) -> Result<bool> {

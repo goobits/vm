@@ -1,30 +1,30 @@
-use crate::config::{mounts::validate_mount_target, BoxSpec, ProviderName, VmConfig};
+use crate::config::{mounts::validate_mount_target, ImageSpec, ProviderName, VmConfig};
 use vm_core::error::Result;
 
-/// Validate box spec configurations are compatible with the provider
-fn validate_box_spec(config: &VmConfig, provider: &ProviderName) -> Vec<String> {
+/// Validate image specifications against the selected provider.
+fn validate_image_spec(config: &VmConfig, provider: &ProviderName) -> Vec<String> {
     let mut errors = Vec::new();
 
     let Some(vm) = &config.vm else {
         return errors;
     };
-    let Some(box_spec) = vm.get_box_spec() else {
+    let Some(image_spec) = vm.image.clone() else {
         return errors;
     };
 
     match provider {
         ProviderName::Docker | ProviderName::Podman => {
-            validate_docker_box_spec(&box_spec, &mut errors)
+            validate_docker_image_spec(&image_spec, &mut errors)
         }
-        ProviderName::Tart => validate_tart_box_spec(&box_spec, &mut errors),
+        ProviderName::Tart => validate_tart_image_spec(&image_spec, &mut errors),
         _ => {}
     }
 
     errors
 }
 
-fn validate_docker_box_spec(box_spec: &BoxSpec, errors: &mut Vec<String>) {
-    if let BoxSpec::Build { dockerfile, .. } = box_spec {
+fn validate_docker_image_spec(image_spec: &ImageSpec, errors: &mut Vec<String>) {
+    if let ImageSpec::Build { dockerfile, .. } = image_spec {
         let path = std::path::Path::new(dockerfile);
         if !path.exists() {
             errors.push(format!("Dockerfile not found: {}", dockerfile));
@@ -32,8 +32,8 @@ fn validate_docker_box_spec(box_spec: &BoxSpec, errors: &mut Vec<String>) {
     }
 }
 
-fn validate_tart_box_spec(box_spec: &BoxSpec, errors: &mut Vec<String>) {
-    if matches!(box_spec, BoxSpec::Build { .. }) {
+fn validate_tart_image_spec(image_spec: &ImageSpec, errors: &mut Vec<String>) {
+    if matches!(image_spec, ImageSpec::Build { .. }) {
         errors.push("Tart does not support Dockerfile builds".to_string());
     }
 }
@@ -76,9 +76,9 @@ pub(super) fn validate_provider(config: &VmConfig) -> Result<()> {
     }
 }
 
-pub(super) fn validate_box_spec_compat(config: &VmConfig) -> Result<()> {
+pub(super) fn validate_image_spec_compat(config: &VmConfig) -> Result<()> {
     if let Some(provider) = &config.provider {
-        let errors = validate_box_spec(config, provider);
+        let errors = validate_image_spec(config, provider);
         if !errors.is_empty() {
             return Err(vm_core::error::VmError::Config(errors.join("; ")));
         }

@@ -452,7 +452,7 @@ impl Provider for TartProvider {
 mod tests {
     use super::TartProvider;
     use crate::{tart_base, ProvisioningProvider};
-    use vm_config::config::{BoxSpec, ProjectConfig, TartConfig, VmConfig, VmSettings};
+    use vm_config::config::{ImageSpec, ProjectConfig, TartConfig, VmConfig, VmSettings};
 
     fn provider(config: VmConfig) -> TartProvider {
         TartProvider::from_config(config).unwrap()
@@ -463,7 +463,7 @@ mod tests {
         let provider = provider(VmConfig::default());
         let config = VmConfig {
             vm: Some(VmSettings {
-                r#box: Some(BoxSpec::String(tart_base::LINUX_NAME.to_string())),
+                image: Some(ImageSpec::String(tart_base::LINUX_NAME.to_string())),
                 ..Default::default()
             }),
             ..Default::default()

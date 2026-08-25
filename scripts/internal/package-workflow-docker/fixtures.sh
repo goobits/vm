@@ -15,7 +15,7 @@ vm:
   user: acceptance
   uid: 11000
   gid: 11000
-  box:
+  image:
     dockerfile: Dockerfile.acceptance
     context: .
 terminal:

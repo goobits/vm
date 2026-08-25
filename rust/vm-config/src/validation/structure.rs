@@ -18,7 +18,7 @@ impl<'a> StructuralValidator<'a> {
     fn validate(&self) -> Result<()> {
         project::validate_required_fields(self.config)?;
         project::validate_provider(self.config)?;
-        project::validate_box_spec_compat(self.config)?;
+        project::validate_image_spec_compat(self.config)?;
         project::validate_project(self.config)?;
         network::validate_ports(self.config)?;
         network::validate_services(self.config)?;

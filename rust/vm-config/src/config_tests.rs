@@ -1,81 +1,69 @@
 #[cfg(test)]
-mod box_spec_tests {
-    use crate::config::{BoxSpec, VmSettings};
+mod image_spec_tests {
+    use crate::config::{ImageSpec, VmSettings};
     use indexmap::IndexMap;
 
     #[test]
-    fn test_box_spec_string_deserialization() {
-        let yaml = r#"
-box: ubuntu:24.04
-"#;
-        let vm: VmSettings = serde_yaml_ng::from_str(yaml).unwrap();
-        assert!(matches!(vm.r#box, Some(BoxSpec::String(_))));
-        if let Some(BoxSpec::String(s)) = vm.r#box {
-            assert_eq!(s, "ubuntu:24.04");
-        }
-    }
-
-    #[test]
-    fn test_image_alias_deserializes_to_box_spec() {
+    fn test_image_spec_string_deserialization() {
         let yaml = r#"
 image: ubuntu:24.04
 "#;
         let vm: VmSettings = serde_yaml_ng::from_str(yaml).unwrap();
-        assert!(matches!(vm.r#box, Some(BoxSpec::String(_))));
-        if let Some(BoxSpec::String(s)) = vm.r#box {
+        assert!(matches!(vm.image, Some(ImageSpec::String(_))));
+        if let Some(ImageSpec::String(s)) = vm.image {
             assert_eq!(s, "ubuntu:24.04");
         }
     }
 
     #[test]
-    fn test_box_spec_string_deserialization_node() {
+    fn test_image_spec_string_deserialization_node() {
         let yaml = r#"
-box: node:20
+image: node:20
 "#;
         let vm: VmSettings = serde_yaml_ng::from_str(yaml).unwrap();
-        assert!(matches!(vm.r#box, Some(BoxSpec::String(_))));
-        if let Some(BoxSpec::String(s)) = vm.r#box {
+        assert!(matches!(vm.image, Some(ImageSpec::String(_))));
+        if let Some(ImageSpec::String(s)) = vm.image {
             assert_eq!(s, "node:20");
         }
     }
 
     #[test]
-    fn test_box_spec_dockerfile_path_deserialization() {
+    fn test_image_spec_dockerfile_path_deserialization() {
         let yaml = r#"
-box: ./Dockerfile
+image: ./Dockerfile
 "#;
         let vm: VmSettings = serde_yaml_ng::from_str(yaml).unwrap();
-        assert!(matches!(vm.r#box, Some(BoxSpec::String(_))));
-        if let Some(BoxSpec::String(s)) = vm.r#box {
+        assert!(matches!(vm.image, Some(ImageSpec::String(_))));
+        if let Some(ImageSpec::String(s)) = vm.image {
             assert_eq!(s, "./Dockerfile");
         }
     }
 
     #[test]
-    fn test_box_spec_snapshot_deserialization() {
+    fn test_image_spec_snapshot_deserialization() {
         let yaml = r#"
-box: "@my-snapshot"
+image: "@my-snapshot"
 "#;
         let vm: VmSettings = serde_yaml_ng::from_str(yaml).unwrap();
-        assert!(matches!(vm.r#box, Some(BoxSpec::String(_))));
-        if let Some(BoxSpec::String(s)) = vm.r#box {
+        assert!(matches!(vm.image, Some(ImageSpec::String(_))));
+        if let Some(ImageSpec::String(s)) = vm.image {
             assert_eq!(s, "@my-snapshot");
         }
     }
 
     #[test]
-    fn test_box_spec_build_deserialization_minimal() {
+    fn test_image_spec_build_deserialization_minimal() {
         let yaml = r#"
-box:
+image:
   dockerfile: ./Dockerfile
 "#;
         let vm: VmSettings = serde_yaml_ng::from_str(yaml).unwrap();
-        assert!(matches!(vm.r#box, Some(BoxSpec::Build { .. })));
-        if let Some(BoxSpec::Build {
+        assert!(matches!(vm.image, Some(ImageSpec::Build { .. })));
+        if let Some(ImageSpec::Build {
             dockerfile,
             context,
             args,
-        }) = vm.r#box
+        }) = vm.image
         {
             assert_eq!(dockerfile, "./Dockerfile");
             assert_eq!(context, None);
@@ -84,19 +72,19 @@ box:
     }
 
     #[test]
-    fn test_box_spec_build_deserialization_with_context() {
+    fn test_image_spec_build_deserialization_with_context() {
         let yaml = r#"
-box:
+image:
   dockerfile: ./Dockerfile
   context: .
 "#;
         let vm: VmSettings = serde_yaml_ng::from_str(yaml).unwrap();
-        assert!(matches!(vm.r#box, Some(BoxSpec::Build { .. })));
-        if let Some(BoxSpec::Build {
+        assert!(matches!(vm.image, Some(ImageSpec::Build { .. })));
+        if let Some(ImageSpec::Build {
             dockerfile,
             context,
             args,
-        }) = vm.r#box
+        }) = vm.image
         {
             assert_eq!(dockerfile, "./Dockerfile");
             assert_eq!(context, Some(".".to_string()));
@@ -105,9 +93,9 @@ box:
     }
 
     #[test]
-    fn test_box_spec_build_deserialization_full() {
+    fn test_image_spec_build_deserialization_full() {
         let yaml = r#"
-box:
+image:
   dockerfile: ./Dockerfile
   context: .
   args:
@@ -115,12 +103,12 @@ box:
     PYTHON_VERSION: "3.11"
 "#;
         let vm: VmSettings = serde_yaml_ng::from_str(yaml).unwrap();
-        assert!(matches!(vm.r#box, Some(BoxSpec::Build { .. })));
-        if let Some(BoxSpec::Build {
+        assert!(matches!(vm.image, Some(ImageSpec::Build { .. })));
+        if let Some(ImageSpec::Build {
             dockerfile,
             context,
             args,
-        }) = vm.r#box
+        }) = vm.image
         {
             assert_eq!(dockerfile, "./Dockerfile");
             assert_eq!(context, Some(".".to_string()));
@@ -132,19 +120,19 @@ box:
     }
 
     #[test]
-    fn test_box_spec_build_with_nested_path() {
+    fn test_image_spec_build_with_nested_path() {
         let yaml = r#"
-box:
+image:
   dockerfile: ./docker/app.dockerfile
   context: ./docker
 "#;
         let vm: VmSettings = serde_yaml_ng::from_str(yaml).unwrap();
-        assert!(matches!(vm.r#box, Some(BoxSpec::Build { .. })));
-        if let Some(BoxSpec::Build {
+        assert!(matches!(vm.image, Some(ImageSpec::Build { .. })));
+        if let Some(ImageSpec::Build {
             dockerfile,
             context,
             ..
-        }) = vm.r#box
+        }) = vm.image
         {
             assert_eq!(dockerfile, "./docker/app.dockerfile");
             assert_eq!(context, Some("./docker".to_string()));
@@ -152,38 +140,38 @@ box:
     }
 
     #[test]
-    fn test_get_box_spec_returns_none_when_both_missing() {
+    fn image_is_optional() {
         let yaml = r#"
 user: myuser
 memory: 4096
 "#;
         let vm: VmSettings = serde_yaml_ng::from_str(yaml).unwrap();
-        assert!(vm.get_box_spec().is_none());
+        assert!(vm.image.clone().is_none());
     }
 
     #[test]
-    fn test_box_spec_partialeq_string() {
-        let spec1 = BoxSpec::String("ubuntu:24.04".to_string());
-        let spec2 = BoxSpec::String("ubuntu:24.04".to_string());
-        let spec3 = BoxSpec::String("node:20".to_string());
+    fn test_image_spec_partialeq_string() {
+        let spec1 = ImageSpec::String("ubuntu:24.04".to_string());
+        let spec2 = ImageSpec::String("ubuntu:24.04".to_string());
+        let spec3 = ImageSpec::String("node:20".to_string());
 
         assert_eq!(spec1, spec2);
         assert_ne!(spec1, spec3);
     }
 
     #[test]
-    fn test_box_spec_partialeq_build() {
-        let spec1 = BoxSpec::Build {
+    fn test_image_spec_partialeq_build() {
+        let spec1 = ImageSpec::Build {
             dockerfile: "./Dockerfile".to_string(),
             context: Some(".".to_string()),
             args: None,
         };
-        let spec2 = BoxSpec::Build {
+        let spec2 = ImageSpec::Build {
             dockerfile: "./Dockerfile".to_string(),
             context: Some(".".to_string()),
             args: None,
         };
-        let spec3 = BoxSpec::Build {
+        let spec3 = ImageSpec::Build {
             dockerfile: "./other.dockerfile".to_string(),
             context: Some(".".to_string()),
             args: None,
@@ -194,19 +182,19 @@ memory: 4096
     }
 
     #[test]
-    fn test_box_spec_partialeq_build_with_args() {
+    fn test_image_spec_partialeq_build_with_args() {
         let mut args1 = IndexMap::new();
         args1.insert("NODE_VERSION".to_string(), "20".to_string());
 
         let mut args2 = IndexMap::new();
         args2.insert("NODE_VERSION".to_string(), "20".to_string());
 
-        let spec1 = BoxSpec::Build {
+        let spec1 = ImageSpec::Build {
             dockerfile: "./Dockerfile".to_string(),
             context: None,
             args: Some(args1.clone()),
         };
-        let spec2 = BoxSpec::Build {
+        let spec2 = ImageSpec::Build {
             dockerfile: "./Dockerfile".to_string(),
             context: None,
             args: Some(args2),
@@ -216,9 +204,9 @@ memory: 4096
     }
 
     #[test]
-    fn test_box_spec_partialeq_different_variants() {
-        let spec1 = BoxSpec::String("./Dockerfile".to_string());
-        let spec2 = BoxSpec::Build {
+    fn test_image_spec_partialeq_different_variants() {
+        let spec1 = ImageSpec::String("./Dockerfile".to_string());
+        let spec2 = ImageSpec::Build {
             dockerfile: "./Dockerfile".to_string(),
             context: None,
             args: None,
@@ -228,15 +216,15 @@ memory: 4096
     }
 
     #[test]
-    fn test_box_spec_serialization_string() {
-        let spec = BoxSpec::String("ubuntu:24.04".to_string());
+    fn test_image_spec_serialization_string() {
+        let spec = ImageSpec::String("ubuntu:24.04".to_string());
         let yaml = serde_yaml_ng::to_string(&spec).unwrap();
         assert_eq!(yaml.trim(), "ubuntu:24.04");
     }
 
     #[test]
-    fn test_box_spec_serialization_build_minimal() {
-        let spec = BoxSpec::Build {
+    fn test_image_spec_serialization_build_minimal() {
+        let spec = ImageSpec::Build {
             dockerfile: "./Dockerfile".to_string(),
             context: None,
             args: None,
@@ -248,11 +236,11 @@ memory: 4096
     }
 
     #[test]
-    fn test_box_spec_serialization_build_full() {
+    fn test_image_spec_serialization_build_full() {
         let mut args = IndexMap::new();
         args.insert("NODE_VERSION".to_string(), "20".to_string());
 
-        let spec = BoxSpec::Build {
+        let spec = ImageSpec::Build {
             dockerfile: "./Dockerfile".to_string(),
             context: Some(".".to_string()),
             args: Some(args),
@@ -264,59 +252,49 @@ memory: 4096
     }
 
     #[test]
-    fn test_box_spec_roundtrip_string() {
-        let original = BoxSpec::String("ubuntu:24.04".to_string());
+    fn test_image_spec_roundtrip_string() {
+        let original = ImageSpec::String("ubuntu:24.04".to_string());
         let yaml = serde_yaml_ng::to_string(&original).unwrap();
-        let deserialized: BoxSpec = serde_yaml_ng::from_str(&yaml).unwrap();
+        let deserialized: ImageSpec = serde_yaml_ng::from_str(&yaml).unwrap();
         assert_eq!(original, deserialized);
     }
 
     #[test]
-    fn test_box_spec_roundtrip_build() {
+    fn test_image_spec_roundtrip_build() {
         let mut args = IndexMap::new();
         args.insert("NODE_VERSION".to_string(), "20".to_string());
 
-        let original = BoxSpec::Build {
+        let original = ImageSpec::Build {
             dockerfile: "./Dockerfile".to_string(),
             context: Some(".".to_string()),
             args: Some(args),
         };
         let yaml = serde_yaml_ng::to_string(&original).unwrap();
-        let deserialized: BoxSpec = serde_yaml_ng::from_str(&yaml).unwrap();
+        let deserialized: ImageSpec = serde_yaml_ng::from_str(&yaml).unwrap();
         assert_eq!(original, deserialized);
     }
 
     #[test]
-    fn test_vm_settings_get_box_spec_prefers_box() {
+    fn vm_settings_reads_image() {
         let vm = VmSettings {
-            r#box: Some(BoxSpec::String("node:20".to_string())),
+            image: Some(ImageSpec::String("node:20".to_string())),
             ..Default::default()
         };
 
-        let spec = vm.get_box_spec().unwrap();
-        assert_eq!(spec, BoxSpec::String("node:20".to_string()));
+        let spec = vm.image.clone().unwrap();
+        assert_eq!(spec, ImageSpec::String("node:20".to_string()));
     }
 
     #[test]
-    fn test_vm_settings_get_box_spec_returns_none() {
-        let vm = VmSettings {
-            r#box: None,
-            ..Default::default()
-        };
-
-        assert!(vm.get_box_spec().is_none());
-    }
-
-    #[test]
-    fn test_box_spec_clone() {
-        let original = BoxSpec::String("ubuntu:24.04".to_string());
+    fn test_image_spec_clone() {
+        let original = ImageSpec::String("ubuntu:24.04".to_string());
         let cloned = original.clone();
         assert_eq!(original, cloned);
     }
 
     #[test]
-    fn test_box_spec_debug() {
-        let spec = BoxSpec::String("ubuntu:24.04".to_string());
+    fn test_image_spec_debug() {
+        let spec = ImageSpec::String("ubuntu:24.04".to_string());
         let debug = format!("{:?}", spec);
         assert!(debug.contains("ubuntu:24.04"));
     }

@@ -204,10 +204,10 @@ RUN ARCH=$(uname -m) && \
     echo "export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.${ARCH}.json" >> /etc/profile.d/vulkan-icd.sh && \
     chmod +x /etc/profile.d/vulkan-icd.sh
 
-LABEL org.opencontainers.image.title="Vibe Development Box" \
+LABEL org.opencontainers.image.title="Vibe Development Image" \
       org.opencontainers.image.version="1.2" \
       com.vm-tool.preset="vibe" \
-      com.vm-tool.snapshot-name="vibe-box"
+      com.vm-tool.snapshot-name="vibe-image"
 
 USER ${USER_NAME}
 SHELL ["/bin/bash", "-c"]

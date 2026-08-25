@@ -4,7 +4,7 @@
 //!
 //! ## Architecture
 //!
-//! - **Preset Plugins**: Define development environments (box or provision types)
+//! - **Preset Plugins**: Define image-backed or provisioned development environments
 //! - **Service Plugins**: Define infrastructure services (PostgreSQL, Redis, etc.)
 //!
 //! ## Plugin Discovery
@@ -16,7 +16,7 @@
 //!
 //! ## Preset Categories
 //!
-//! - **Box Presets**: Reference pre-built Docker images (e.g., `@vibe-box`)
+//! - **Image Presets**: Reference pre-built Docker images (e.g., `@vibe-image`)
 //! - **Provision Presets**: Define packages to install at runtime
 //!
 //! ## Usage

@@ -2,7 +2,7 @@ use crate::cli::BaseSubcommand;
 use crate::error::{VmError, VmResult};
 use std::process::Command;
 use vm_config::{
-    config::{BoxSpec, VmConfig},
+    config::{ImageSpec, VmConfig},
     resolve_tool_path, AppConfig,
 };
 use vm_core::{vm_println, vm_warning};
@@ -17,7 +17,7 @@ pub(in crate::commands) use runtime::{
     codex_expected, codex_state, reconcile_codex, reconcile_codex_in_background, CodexState,
 };
 
-const DOCKER_BASE_NAME: &str = "@vibe-box";
+const DOCKER_BASE_NAME: &str = "@vibe-image";
 const TART_BASE_BUILDER: &str = include_str!("../../scripts/build-vibe-tart-base.sh");
 const VIBE_AI_TOOLS_INSTALLER: &str = include_str!("../../scripts/install-vibe-ai-tools.sh");
 
@@ -148,7 +148,7 @@ fn configured_tart_vibe_base(config: &VmConfig) -> Option<TartVibeBase> {
         return None;
     }
 
-    let BoxSpec::String(name) = config.vm.as_ref()?.get_box_spec()? else {
+    let ImageSpec::String(name) = config.vm.as_ref()?.image.clone()? else {
         return None;
     };
 
@@ -294,17 +294,17 @@ mod tests {
         TartVibeBase, TART_BASE_BUILDER, VIBE_AI_TOOLS_INSTALLER,
     };
     use std::ffi::OsStr;
-    use vm_config::config::{BoxSpec, TartConfig, VmConfig, VmSettings};
+    use vm_config::config::{ImageSpec, TartConfig, VmConfig, VmSettings};
     use vm_provider::{
         versioned_tart_cache_name, versioned_tart_image, TartCommand, TART_LINUX_NAME,
         TART_MACOS_NAME,
     };
 
-    fn config(provider: &str, box_name: &str) -> VmConfig {
+    fn config(provider: &str, image_name: &str) -> VmConfig {
         VmConfig {
             provider: Some(provider.into()),
             vm: Some(VmSettings {
-                r#box: Some(BoxSpec::String(box_name.to_string())),
+                image: Some(ImageSpec::String(image_name.to_string())),
                 ..Default::default()
             }),
             ..Default::default()

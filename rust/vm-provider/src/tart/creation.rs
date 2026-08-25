@@ -12,7 +12,7 @@ use super::{
     provisioner::TartProvisioner,
 };
 use crate::{
-    common::instance::extract_project_name, project_plan::ProjectPlan, tart_base, BoxConfig,
+    common::instance::extract_project_name, project_plan::ProjectPlan, tart_base, ImageConfig,
     VmError,
 };
 
@@ -93,20 +93,20 @@ impl TartProvider {
     }
 
     pub(super) fn get_tart_image(&self, config: &VmConfig) -> Result<String> {
-        if let Some(box_spec) = config
+        if let Some(image_spec) = config
             .vm
             .as_ref()
-            .and_then(|settings| settings.get_box_spec())
+            .and_then(|settings| settings.image.clone())
         {
-            return match BoxConfig::parse_for_tart(&box_spec)? {
-                BoxConfig::TartImage(image) if image == tart_base::LINUX_NAME => {
+            return match ImageConfig::parse_for_tart(&image_spec)? {
+                ImageConfig::TartImage(image) if image == tart_base::LINUX_NAME => {
                     Ok(tart_base::versioned_cache_name())
                 }
-                BoxConfig::TartImage(image) => Ok(image),
-                BoxConfig::Snapshot(name) => Err(VmError::Config(format!(
+                ImageConfig::TartImage(image) => Ok(image),
+                ImageConfig::Snapshot(name) => Err(VmError::Config(format!(
                     "Use 'vm revert {name}' for snapshots"
                 ))),
-                _ => Err(VmError::Internal("Invalid box type for Tart".into())),
+                _ => Err(VmError::Internal("Invalid image type for Tart".into())),
             };
         }
         Ok(DEFAULT_TART_IMAGE.to_string())

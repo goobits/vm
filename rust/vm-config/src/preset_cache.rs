@@ -73,7 +73,7 @@ pub fn list_presets_cached(detector: &PresetDetector) -> Result<Vec<String>> {
     Ok(list)
 }
 
-/// List all presets (including box presets) with caching
+/// List all presets (including image presets) with caching
 #[instrument(skip(detector))]
 pub fn list_all_presets_cached(detector: &PresetDetector) -> Result<Vec<String>> {
     // For now, don't cache list_all_presets separately since it's only used in init

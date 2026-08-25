@@ -33,7 +33,7 @@ ARG GIT_CORE_EXCLUDESFILE_CONTENT
 ARG BASE_PREPROVISIONED=false
 ARG VIBE_RUNTIME_REQUIRED=false
 
-# A stale @vibe-box must fail before a project image can appear usable. Rebuild
+# A stale @vibe-image must fail before a project image can appear usable. Rebuild
 # the shared base once instead of repairing every derived environment.
 RUN if [ "$VIBE_RUNTIME_REQUIRED" = "true" ]; then \
         test -f /usr/local/lib/vm-ai-tools/codex-package/codex-package.json && \

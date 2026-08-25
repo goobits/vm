@@ -41,7 +41,7 @@ pub(super) fn materialize_minimal_preset_config(
     original_base_config: Option<&VmConfig>,
     suppress_warning: bool,
 ) -> (VmConfig, bool) {
-    // Build VM section with preset box if specified
+    // Build the VM section with the preset image, when specified.
     let vm = build_vm_section(merged, preset);
 
     // Start with minimal config
@@ -74,7 +74,7 @@ pub(super) fn materialize_minimal_preset_config(
     (minimal, warn_preserved_customizations)
 }
 
-/// Build VM section with preset box if specified
+/// Build the VM section with the preset image, when specified.
 fn build_vm_section(
     merged: &VmConfig,
     preset: Option<&VmConfig>,
@@ -83,16 +83,16 @@ fn build_vm_section(
 
     let mut vm = merged.vm.clone();
 
-    // If preset specifies a box (e.g., '@vibe-box'), override the cloned value
-    if let Some(preset_box) = preset
+    // A preset image overrides the merged image.
+    if let Some(preset_image) = preset
         .and_then(|p| p.vm.as_ref())
-        .and_then(|vm| vm.r#box.clone())
+        .and_then(|vm| vm.image.clone())
     {
         if vm.is_none() {
             vm = Some(VmSettings::default());
         }
         if let Some(vm_settings) = vm.as_mut() {
-            vm_settings.r#box = Some(preset_box);
+            vm_settings.image = Some(preset_image);
         }
     }
 

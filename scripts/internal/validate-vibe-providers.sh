@@ -15,7 +15,7 @@ Usage:
 
 Flags:
   --provider docker|tart|all  Limit validation guidance to one provider (default: all)
-  --rebuild-docker-base   Rebuild @vibe-box from Dockerfile.vibe before validation
+  --rebuild-docker-base   Rebuild @vibe-image from Dockerfile.vibe before validation
   --build-tart-base       Build the versioned local Linux Tart vibe base before validation
 
 Environment:

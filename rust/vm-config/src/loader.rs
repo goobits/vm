@@ -182,7 +182,7 @@ impl ConfigLoader {
         let contents = fs::read_to_string(path)
             .with_context(|| format!("Failed to read file at {}", path.display()))?;
 
-        // Preprocess to handle unquoted @ symbols in box field
+        // Preprocess to handle unquoted @ symbols in image field
         let preprocessed = Self::preprocess_yaml(&contents);
 
         // Use centralized YAML parsing with enhanced diagnostics
@@ -205,19 +205,19 @@ impl ConfigLoader {
 
     /// Preprocesses YAML content to handle special cases like unquoted @ symbols.
     ///
-    /// This allows users to write `box: @snapshot-name` without quotes,
-    /// which is more ergonomic than requiring `box: '@snapshot-name'`.
+    /// This allows users to write `image: @snapshot-name` without quotes,
+    /// which is more ergonomic than requiring `image: '@snapshot-name'`.
     fn preprocess_yaml(contents: &str) -> String {
         use regex::Regex;
         use std::sync::OnceLock;
 
-        // Pattern to match unquoted @ values in box field
-        // Matches: "box: @value" or "box:@value" (with optional spaces and comments)
+        // Pattern to match unquoted @ values in image field
+        // Matches: "image: @value" or "image:@value" (with optional spaces and comments)
         // Captures the @ symbol and the value that follows (alphanumeric, dash, underscore)
         // and preserves any trailing content (like comments)
-        static BOX_PATTERN: OnceLock<Regex> = OnceLock::new();
-        let re = BOX_PATTERN.get_or_init(|| {
-            Regex::new(r"(?m)^(\s*box:\s*)(@[\w-]+)(\s*.*)$")
+        static IMAGE_PATTERN: OnceLock<Regex> = OnceLock::new();
+        let re = IMAGE_PATTERN.get_or_init(|| {
+            Regex::new(r"(?m)^(\s*image:\s*)(@[\w-]+)(\s*.*)$")
                 .expect("Hardcoded regex pattern should always compile")
         });
 
@@ -236,13 +236,13 @@ mod tests {
         let input = r#"
 version: '2.0'
 vm:
-  box: @vibe-base
+  image: @vibe-base
   memory: 4096
 "#;
         let expected = r#"
 version: '2.0'
 vm:
-  box: '@vibe-base'
+  image: '@vibe-base'
   memory: 4096
 "#;
         let result = ConfigLoader::preprocess_yaml(input);
@@ -254,7 +254,7 @@ vm:
         let input = r#"
 version: '2.0'
 vm:
-  box: '@vibe-base'
+  image: '@vibe-base'
   memory: 4096
 "#;
         // Should not double-quote
@@ -265,9 +265,9 @@ vm:
     #[test]
     fn test_preprocess_yaml_no_spaces() {
         let input = r#"vm:
-  box:@snapshot-name"#;
+  image:@snapshot-name"#;
         let expected = r#"vm:
-  box:'@snapshot-name'"#;
+  image:'@snapshot-name'"#;
         let result = ConfigLoader::preprocess_yaml(input);
         assert_eq!(result, expected);
     }
@@ -275,9 +275,9 @@ vm:
     #[test]
     fn test_preprocess_yaml_with_comment() {
         let input = r#"vm:
-  box: @vibe-base  # my snapshot"#;
+  image: @vibe-base  # my snapshot"#;
         let expected = r#"vm:
-  box: '@vibe-base'  # my snapshot"#;
+  image: '@vibe-base'  # my snapshot"#;
         let result = ConfigLoader::preprocess_yaml(input);
         assert_eq!(result, expected);
     }
@@ -288,14 +288,14 @@ vm:
 version: '2.0'
 provider: docker
 vm:
-  box: @snapshot
+  image: @snapshot
   memory: unlimited
 services:
   postgresql:
     enabled: true
 "#;
         let result = ConfigLoader::preprocess_yaml(input);
-        assert!(result.contains("box: '@snapshot'"));
+        assert!(result.contains("image: '@snapshot'"));
         assert!(result.contains("version: '2.0'"));
         assert!(result.contains("memory: unlimited"));
         assert!(result.contains("postgresql:"));
@@ -311,7 +311,7 @@ services:
         let config_content = r#"version: '2.0'
 provider: docker
 vm:
-  box: @vibe-base
+  image: @vibe-base
   memory: 4096
 "#;
         temp_file.write_all(config_content.as_bytes()).unwrap();
@@ -325,11 +325,11 @@ vm:
         assert!(result.is_ok());
         let config = result.unwrap();
 
-        // Verify the box value was parsed correctly
+        // Verify the image value was parsed correctly
         assert_eq!(
-            config.vm.and_then(|v| v.r#box).map(|b| match b {
-                crate::config::BoxSpec::String(s) => s,
-                _ => panic!("Expected BoxSpec::String"),
+            config.vm.and_then(|v| v.image).map(|image| match image {
+                crate::config::ImageSpec::String(s) => s,
+                _ => panic!("Expected ImageSpec::String"),
             }),
             Some("@vibe-base".to_string())
         );
@@ -345,7 +345,7 @@ vm:
         let config_content = r#"version: '2.0'
 provider: docker
 vm:
-  box: '@vibe-base'
+  image: '@vibe-base'
   memory: 4096
 "#;
         temp_file.write_all(config_content.as_bytes()).unwrap();
@@ -359,11 +359,11 @@ vm:
         assert!(result.is_ok());
         let config = result.unwrap();
 
-        // Verify the box value was parsed correctly
+        // Verify the image value was parsed correctly
         assert_eq!(
-            config.vm.and_then(|v| v.r#box).map(|b| match b {
-                crate::config::BoxSpec::String(s) => s,
-                _ => panic!("Expected BoxSpec::String"),
+            config.vm.and_then(|v| v.image).map(|image| match image {
+                crate::config::ImageSpec::String(s) => s,
+                _ => panic!("Expected ImageSpec::String"),
             }),
             Some("@vibe-base".to_string())
         );

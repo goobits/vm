@@ -1,4 +1,4 @@
-use crate::config::{BoxSpec, VmConfig, VmSettings};
+use crate::config::{ImageSpec, VmConfig, VmSettings};
 use crate::detector::detect_preset_for_project;
 use glob::glob;
 use serde::{Deserialize, Serialize};
@@ -162,8 +162,8 @@ impl PresetDetector {
                 );
             }
 
-            let vm = content.vm_box.take().map(|value| VmSettings {
-                r#box: Some(BoxSpec::String(value)),
+            let vm = content.vm_image.take().map(|value| VmSettings {
+                image: Some(ImageSpec::String(value)),
                 ..Default::default()
             });
 
@@ -220,10 +220,10 @@ impl PresetDetector {
         Ok(None)
     }
 
-    /// Lists available provision presets (excludes box presets)
+    /// Lists available provision presets (excludes image presets)
     ///
     /// This is used by `vm config preset` to show presets that can be merged
-    /// into existing configurations. Box presets are excluded because they
+    /// into existing configurations. Image presets are excluded because they
     /// are only used during `vm-config init`.
     ///
     /// # Returns
@@ -238,7 +238,7 @@ impl PresetDetector {
             presets.push(name.to_string());
         }
 
-        // Add plugin presets (filter out box presets)
+        // Add plugin presets (filter out image presets)
         if let Ok(plugin_presets) = self.get_plugin_presets() {
             for name in plugin_presets {
                 if !presets.contains(&name) {
@@ -273,7 +273,7 @@ impl PresetDetector {
         Ok(presets)
     }
 
-    /// Get list of presets from plugins (provision presets only, excludes box presets)
+    /// Get list of presets from plugins (provision presets only, excludes image presets)
     pub(crate) fn get_plugin_presets(&self) -> Result<Vec<String>> {
         let plugins = match vm_plugin::discover_plugins() {
             Ok(p) => p,
@@ -283,13 +283,13 @@ impl PresetDetector {
         let preset_names = vm_plugin::get_preset_plugins(&plugins)
             .into_iter()
             .filter(|p| {
-                // Filter out box presets - only include provision presets
+                // Filter out image presets - only include provision presets
                 if let Some(category) = &p.info.preset_category {
-                    category != &vm_plugin::PresetCategory::Box
+                    category != &vm_plugin::PresetCategory::Image
                 } else {
                     // If category not specified, check preset content
                     if let Ok(content) = vm_plugin::load_preset_content(p) {
-                        content.category != vm_plugin::PresetCategory::Box
+                        content.category != vm_plugin::PresetCategory::Image
                     } else {
                         true // Include if we can't determine category
                     }
@@ -301,7 +301,7 @@ impl PresetDetector {
         Ok(preset_names)
     }
 
-    /// Lists all available presets including both box and provision types.
+    /// Lists all available presets including both image and provision types.
     ///
     /// This is used by `vm-config init` to validate preset names.
     /// For filtering to provision-only presets, use [`list_presets`](Self::list_presets).

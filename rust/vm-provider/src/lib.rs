@@ -14,7 +14,7 @@ use vm_core::error::Result;
 // Internal imports
 #[cfg(any(feature = "docker", feature = "tart", feature = "test-helpers"))]
 use vm_config::config::ProviderName;
-use vm_config::config::{BoxSpec, VmConfig};
+use vm_config::config::{ImageSpec, VmConfig};
 
 // Re-export common types for convenience
 pub use capabilities::{CommandProvider, InstanceProvider, ProvisioningProvider, TempProvider};
@@ -63,9 +63,9 @@ mod mock;
 
 pub use temp_models::{Mount, MountPermission, TempVmState};
 
-/// Internal representation of box configuration after provider-specific parsing
+/// Provider-specific image configuration.
 #[derive(Debug, Clone)]
-pub enum BoxConfig {
+pub enum ImageConfig {
     /// Docker image from registry (e.g., "ubuntu:24.04")
     DockerImage(String),
 
@@ -83,7 +83,7 @@ pub enum BoxConfig {
     Snapshot(String),
 }
 
-impl BoxConfig {
+impl ImageConfig {
     fn looks_like_tart_image(s: &str) -> bool {
         let lower = s.to_ascii_lowercase();
         tart_base::guest_os(s).is_some()
@@ -102,19 +102,19 @@ impl BoxConfig {
             || lower.ends_with(".dockerfile")
     }
 
-    /// Parse a BoxSpec for Docker provider
+    /// Parse an [`ImageSpec`] for the Docker provider.
     ///
     /// # Detection Rules
     /// - Starts with `@` → Snapshot
     /// - Starts with `./`, `../`, `/` → Dockerfile path
     /// - Ends with `.dockerfile` → Dockerfile
     /// - Otherwise → Docker image
-    pub fn parse_for_docker(spec: &BoxSpec, base_dir: &Path) -> Result<Self> {
+    pub fn parse_for_docker(spec: &ImageSpec, base_dir: &Path) -> Result<Self> {
         match spec {
-            BoxSpec::String(s) => {
+            ImageSpec::String(s) => {
                 // Snapshot (@prefix)
                 if let Some(name) = s.strip_prefix('@') {
-                    return Ok(BoxConfig::Snapshot(name.to_string()));
+                    return Ok(ImageConfig::Snapshot(name.to_string()));
                 }
 
                 // Dockerfile (path-like)
@@ -126,7 +126,7 @@ impl BoxConfig {
                         base_dir.join(s)
                     };
                     let context = path.parent().unwrap_or(base_dir).to_path_buf();
-                    return Ok(BoxConfig::Dockerfile {
+                    return Ok(ImageConfig::Dockerfile {
                         path,
                         context,
                         args: None,
@@ -137,7 +137,7 @@ impl BoxConfig {
                 if s.ends_with(".dockerfile") {
                     let path = base_dir.join(s);
                     let context = base_dir.to_path_buf();
-                    return Ok(BoxConfig::Dockerfile {
+                    return Ok(ImageConfig::Dockerfile {
                         path,
                         context,
                         args: None,
@@ -151,10 +151,10 @@ impl BoxConfig {
                 }
 
                 // Default: Docker image
-                Ok(BoxConfig::DockerImage(s.to_string()))
+                Ok(ImageConfig::DockerImage(s.to_string()))
             }
 
-            BoxSpec::Build {
+            ImageSpec::Build {
                 dockerfile,
                 context,
                 args,
@@ -179,7 +179,7 @@ impl BoxConfig {
                     path.parent().unwrap_or(base_dir).to_path_buf()
                 };
 
-                Ok(BoxConfig::Dockerfile {
+                Ok(ImageConfig::Dockerfile {
                     path,
                     context: ctx,
                     args: args.clone().map(|m| m.into_iter().collect()),
@@ -188,18 +188,18 @@ impl BoxConfig {
         }
     }
 
-    /// Parse a BoxSpec for Tart provider
+    /// Parse an [`ImageSpec`] for the Tart provider.
     ///
     /// # Detection Rules
     /// - Starts with `@` → Snapshot
     /// - Otherwise → OCI image
     /// - Build variant → Error (not supported)
-    pub fn parse_for_tart(spec: &BoxSpec) -> Result<Self> {
+    pub fn parse_for_tart(spec: &ImageSpec) -> Result<Self> {
         match spec {
-            BoxSpec::String(s) => {
+            ImageSpec::String(s) => {
                 // Snapshot
                 if let Some(name) = s.strip_prefix('@') {
-                    return Ok(BoxConfig::Snapshot(name.to_string()));
+                    return Ok(ImageConfig::Snapshot(name.to_string()));
                 }
 
                 if Self::looks_like_dockerfile_path(s) {
@@ -209,10 +209,10 @@ impl BoxConfig {
                 }
 
                 // OCI image
-                Ok(BoxConfig::TartImage(s.to_string()))
+                Ok(ImageConfig::TartImage(s.to_string()))
             }
 
-            BoxSpec::Build { .. } => Err(VmError::Config(
+            ImageSpec::Build { .. } => Err(VmError::Config(
                 "Tart provider does not support Dockerfile builds".to_string(),
             )),
         }

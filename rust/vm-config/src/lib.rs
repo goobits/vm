@@ -13,10 +13,10 @@
 //!
 //! The configuration system supports two types of presets:
 //!
-//! ### Box Presets
+//! ### Image Presets
 //!
 //! Pre-built Docker images with all tooling pre-installed.
-//! Creates minimal `vm.yaml` with just the box reference.
+//! Creates minimal `vm.yaml` with just the image reference.
 //!
 //! ### Provision Presets
 //!
@@ -261,11 +261,11 @@ profiles:
   docker:
     provider: docker
     vm:
-      box: "@vibe-box"
+      image: "@vibe-image"
   tart:
     provider: tart
     vm:
-      box: vibe-tart-sequoia-base
+      image: vibe-tart-sequoia-base
 "#,
             )?;
 
@@ -275,7 +275,7 @@ profiles:
                 app.vm
                     .vm
                     .as_ref()
-                    .and_then(|vm| vm.r#box.as_ref())
+                    .and_then(|vm| vm.image.as_ref())
                     .map(|b| serde_yaml_ng::to_string(b).unwrap().trim().to_string()),
                 Some("vibe-tart-sequoia-base".to_string())
             );
@@ -297,11 +297,11 @@ profiles:
   docker:
     provider: docker
     vm:
-      box: "@vibe-box"
+      image: "@vibe-image"
   tart:
     provider: tart
     vm:
-      box: vibe-tart-sequoia-base
+      image: vibe-tart-sequoia-base
 "#,
             )?;
 
@@ -311,7 +311,7 @@ profiles:
                 app.vm
                     .vm
                     .as_ref()
-                    .and_then(|vm| vm.r#box.as_ref())
+                    .and_then(|vm| vm.image.as_ref())
                     .map(|b| serde_yaml_ng::to_string(b).unwrap().trim().to_string()),
                 Some("vibe-tart-sequoia-base".to_string())
             );
@@ -333,11 +333,11 @@ profiles:
   docker:
     provider: docker
     vm:
-      box: "@vibe-box"
+      image: "@vibe-image"
   tart:
     provider: tart
     vm:
-      box: vibe-tart-sequoia-base
+      image: vibe-tart-sequoia-base
 "#,
             )?;
 
@@ -351,9 +351,9 @@ profiles:
                 app.vm
                     .vm
                     .as_ref()
-                    .and_then(|vm| vm.r#box.as_ref())
+                    .and_then(|vm| vm.image.as_ref())
                     .map(|b| serde_yaml_ng::to_string(b).unwrap().trim().to_string()),
-                Some("'@vibe-box'".to_string())
+                Some("'@vibe-image'".to_string())
             );
             Ok(())
         })

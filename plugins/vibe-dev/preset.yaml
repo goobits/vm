@@ -1,8 +1,8 @@
 # Vibe Development Preset
-# Uses a pre-built @vibe-box snapshot with Antigravity, Claude, and Codex.
+# Uses a pre-built @vibe-image snapshot with Antigravity, Claude, and Codex.
 
-# Reference pre-built vibe-box snapshot
-vm_box: '@vibe-box'
+# Reference pre-built vibe-image snapshot
+vm_image: '@vibe-image'
 
 tools:
   updates: prompt

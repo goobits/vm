@@ -407,11 +407,11 @@ services:
         assert!(config_content.contains("profiles:"));
         assert!(config_content.contains("tart:"));
         assert!(config_content.contains("provider: tart"));
-        assert!(config_content.contains("box: vibe-tart-linux-base"));
+        assert!(config_content.contains("image: vibe-tart-linux-base"));
         assert!(config_content.contains("guest_os: linux"));
         assert!(config_content.contains("install_docker: true"));
         assert!(config_content.contains("macos:"));
-        assert!(config_content.contains("box: vibe-tart-sequoia-base"));
+        assert!(config_content.contains("image: vibe-tart-sequoia-base"));
         assert!(config_content.contains("guest_os: macos"));
         assert!(config_content.contains("ssh_user: admin"));
 

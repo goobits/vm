@@ -8,21 +8,21 @@ use vm_core::vm_dbg;
 use vm_snapshot::{SnapshotManager, SnapshotScope};
 
 use super::{BuildOperations, ContainerOps};
-use crate::BoxConfig;
+use crate::ImageConfig;
 
 impl<'a> BuildOperations<'a> {
-    /// Get box configuration, parsing BoxSpec from vm.box field
-    pub(super) fn get_box_config(&self) -> Result<BoxConfig> {
+    /// Get image configuration, parsing ImageSpec from vm.image field
+    pub(super) fn get_image_config(&self) -> Result<ImageConfig> {
         let base_dir = self.config.project_dir()?;
 
         if let Some(vm_settings) = &self.config.vm {
-            if let Some(box_spec) = vm_settings.get_box_spec() {
-                return BoxConfig::parse_for_docker(&box_spec, &base_dir);
+            if let Some(image_spec) = vm_settings.image.clone() {
+                return ImageConfig::parse_for_docker(&image_spec, &base_dir);
             }
         }
 
         // Default to ubuntu:24.04
-        Ok(BoxConfig::DockerImage("ubuntu:24.04".to_string()))
+        Ok(ImageConfig::DockerImage("ubuntu:24.04".to_string()))
     }
 
     /// Get the generated custom image name for Dockerfiles
@@ -163,20 +163,20 @@ impl<'a> BuildOperations<'a> {
     ///
     /// Returns a tuple of (build_context_path, base_image_name, is_snapshot)
     pub fn prepare_build_context(&self) -> Result<(PathBuf, String, bool)> {
-        // Get box configuration
-        let box_config = self.get_box_config()?;
+        // Get image configuration
+        let image_config = self.get_image_config()?;
 
         // Track if we're using a pre-provisioned snapshot
-        let is_snapshot = matches!(&box_config, BoxConfig::Snapshot(_));
+        let is_snapshot = matches!(&image_config, ImageConfig::Snapshot(_));
 
-        // Handle different box types
-        let base_image = match &box_config {
-            BoxConfig::DockerImage(image) => {
+        // Handle different image types
+        let base_image = match &image_config {
+            ImageConfig::DockerImage(image) => {
                 // Pull Docker image from registry
                 self.pull_image(image)?;
                 image.clone()
             }
-            BoxConfig::Dockerfile {
+            ImageConfig::Dockerfile {
                 path,
                 context,
                 args,
@@ -194,7 +194,7 @@ impl<'a> BuildOperations<'a> {
                 // Build the image with a generated name
                 let image_name = self.get_custom_image_name();
 
-                // Pass build args from BoxSpec::Build variant
+                // Pass build args from ImageSpec::Build variant
                 ContainerOps::build_custom_image(
                     Some(self.executable),
                     path,
@@ -205,7 +205,7 @@ impl<'a> BuildOperations<'a> {
 
                 image_name
             }
-            BoxConfig::Snapshot(name) => {
+            ImageConfig::Snapshot(name) => {
                 // Load image from global snapshot
                 info!("Loading base image from snapshot '@{}'...", name);
 
@@ -302,7 +302,7 @@ impl<'a> BuildOperations<'a> {
             }
             _ => {
                 return Err(VmError::Internal(
-                    "Invalid box configuration for container provider".to_string(),
+                    "Invalid image configuration for container provider".to_string(),
                 ));
             }
         };

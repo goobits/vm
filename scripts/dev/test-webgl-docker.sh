@@ -1,12 +1,12 @@
 #!/bin/bash
-# Test WebGL/WebGPU support in Docker before rebuilding @vibe-box
+# Test WebGL/WebGPU support in Docker before rebuilding @vibe-image
 # Usage: ./scripts/dev/test-webgl-docker.sh [--no-cache] [--skip-build]
 #   --no-cache   Force fresh build (ignore Docker cache)
-#   --skip-build Reuse existing vibe-box-test image (for quick retests)
+#   --skip-build Reuse existing vibe-image-test image (for quick retests)
 
 set -e
 
-IMAGE_NAME="vibe-box-test"
+IMAGE_NAME="vibe-image-test"
 CONTAINER_NAME="vibe-webgl-test"
 BUILD_ARGS=""
 SKIP_BUILD=false
@@ -344,8 +344,8 @@ echo "=== Test Summary ==="
 if [ $WEBGL_EXIT -eq 0 ]; then
     echo "SUCCESS: All WebGL tests passed!"
     echo ""
-    echo "You can now rebuild @vibe-box with:"
-    echo "  vm snapshot create @vibe-box --from-dockerfile Dockerfile.vibe --force"
+    echo "You can now rebuild @vibe-image with:"
+    echo "  vm snapshot create @vibe-image --from-dockerfile Dockerfile.vibe --force"
     exit 0
 else
     echo "FAILURE: WebGL tests did not pass"

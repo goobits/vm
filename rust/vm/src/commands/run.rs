@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use crate::cli::EnvironmentKind;
 use crate::error::{VmError, VmResult};
 use vm_config::{
-    config::{BoxSpec, CpuLimit, MemoryLimit, TartConfig, VmConfig},
+    config::{CpuLimit, ImageSpec, MemoryLimit, TartConfig, VmConfig},
     AppConfig,
 };
 use vm_core::{vm_hint, vm_progress, vm_success};
@@ -162,18 +162,18 @@ fn ensure_config_exists(config_path: Option<&PathBuf>, provider: Option<&str>) -
 
 fn apply_overrides(config: &mut VmConfig, intent: &RunIntent) -> VmResult<()> {
     let mut settings = config.vm.take().unwrap_or_default();
-    settings.r#box = intent
+    settings.image = intent
         .from_snapshot
         .as_ref()
-        .map(|snapshot| BoxSpec::String(format!("@{}", snapshot.trim_start_matches('@'))))
+        .map(|snapshot| ImageSpec::String(format!("@{}", snapshot.trim_start_matches('@'))))
         .or_else(|| {
             intent
                 .build
                 .as_ref()
-                .map(|path| BoxSpec::String(path.to_string_lossy().to_string()))
+                .map(|path| ImageSpec::String(path.to_string_lossy().to_string()))
         })
-        .or_else(|| intent.image.clone().map(BoxSpec::String))
-        .or(settings.r#box);
+        .or_else(|| intent.image.clone().map(ImageSpec::String))
+        .or(settings.image);
     if let Some(cpu) = &intent.cpu {
         settings.cpus = Some(parse_cpu_limit(cpu)?);
     }
@@ -198,20 +198,16 @@ fn apply_kind(config: &mut VmConfig, intent: &RunIntent) {
     }
 
     let settings = config.vm.get_or_insert_with(Default::default);
-    let replace_default = match settings.r#box.as_ref() {
+    let replace_default = match settings.image.as_ref() {
         None => true,
-        Some(BoxSpec::String(value)) => matches!(
+        Some(ImageSpec::String(value)) => matches!(
             value.as_str(),
-            "ubuntu:jammy"
-                | "ubuntu:24.04"
-                | "vibe-tart-linux-base"
-                | "@vibe-box"
-                | "vibe-tart-base"
+            "ubuntu:jammy" | "ubuntu:24.04" | "vibe-tart-linux-base" | "@vibe-image"
         ),
         Some(_) => false,
     };
     if replace_default {
-        settings.r#box = Some(BoxSpec::String(
+        settings.image = Some(ImageSpec::String(
             "ghcr.io/cirruslabs/macos-sequoia-base:latest".to_string(),
         ));
     }

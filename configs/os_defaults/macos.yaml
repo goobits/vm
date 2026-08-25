@@ -3,7 +3,7 @@
 # Default configuration for macOS VMs
 provider: tart
 vm:
-  box: ghcr.io/cirruslabs/macos-sequoia-base:latest
+  image: ghcr.io/cirruslabs/macos-sequoia-base:latest
   memory: 8192
   cpus: 4
   user: admin

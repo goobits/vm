@@ -29,7 +29,7 @@ pub use limits::{CpuLimit, DiskLimit, MemoryLimit, SwapLimit};
 pub use mounts::{MountAccess, MountConfig};
 pub use provider::ProviderName;
 pub use runtime::{
-    BootstrapConfig, BoxSpec, ContainerLoggingConfig, PlaywrightBootstrapConfig, VersionsConfig,
+    BootstrapConfig, ContainerLoggingConfig, ImageSpec, PlaywrightBootstrapConfig, VersionsConfig,
     VmSettings,
 };
 pub use storage::{

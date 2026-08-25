@@ -13,7 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(unix)]
 use tempfile::TempDir;
-use vm_config::config::{BoxSpec, VmConfig, VmSettings};
+use vm_config::config::{ImageSpec, VmConfig, VmSettings};
 use vm_provider::{
     CommandProvider, InstanceInfo, InstanceProvider, InstanceState, Provider, ProviderContext,
     ProvisioningProvider, VmStatusReport,
@@ -256,7 +256,7 @@ fn detects_vibe_runtimes_and_validates_reconciliation_scripts() {
 
     config.preset = None;
     config.vm = Some(VmSettings {
-        r#box: Some(BoxSpec::String("vibe-tart-linux-base".into())),
+        image: Some(ImageSpec::String("vibe-tart-linux-base".into())),
         ..Default::default()
     });
     assert!(codex_expected(&config));
