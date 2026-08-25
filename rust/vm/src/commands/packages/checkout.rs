@@ -7,11 +7,11 @@ use vm_packages::{
 use crate::error::{VmError, VmResult};
 
 use super::{
-    overrides::{cleanup_failed_attach, OverrideRecord},
-    runtime::{
-        checkout_root, create_directory, exec, remove_directory, remove_file,
-        write_checkout_access, GuestRuntime,
+    guest_checkout::{
+        checkout_root, create_directory, remove_directory, remove_file, write_checkout_access,
     },
+    guest_runtime::{exec, GuestRuntime},
+    overrides::{cleanup_failed_attach, OverrideRecord},
 };
 
 const GUEST_WORK_TASK: &str = "managed guest package work";
@@ -295,7 +295,7 @@ fn ensure_override(
         source,
         pinned_version,
     );
-    record.write(subject, root)?;
+    record.write(root)?;
     if let Err(error) = record.activate(subject) {
         let _ = record.restore(subject);
         return Err(error);

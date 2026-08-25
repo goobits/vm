@@ -62,7 +62,7 @@ pub(super) async fn show(files: &ApplianceFiles, checkout_id: &str) -> VmResult<
 }
 
 pub(super) async fn show_guest(checkout_id: &str) -> VmResult<()> {
-    let checkout = super::runtime::GuestRuntime::discover()?
+    let checkout = super::guest_runtime::GuestRuntime::discover()?
         .client()?
         .checkout(checkout_id)
         .await?;
@@ -78,7 +78,7 @@ fn print_checkout(checkout: &CheckoutRecord) -> VmResult<()> {
 
 pub(super) async fn status_guest() -> VmResult<()> {
     let healthy = async {
-        let runtime = super::runtime::GuestRuntime::discover()?;
+        let runtime = super::guest_runtime::GuestRuntime::discover()?;
         let client = runtime.client()?;
         let (_packages, _tools) = tokio::try_join!(client.package_definitions(), client.tools())?;
         Ok::<_, VmError>(())

@@ -13,7 +13,8 @@ use super::{
     discovery::{
         normalize_repository_url, resolve_registered_source, tool_manifest, RegisteredSource,
     },
-    runtime::{checkout_root, copy_private, exec_output, write_checkout_access, GuestRuntime},
+    guest_checkout::{checkout_root, copy_private, write_checkout_access},
+    guest_runtime::{exec_output, GuestRuntime},
 };
 
 const STATE_SCHEMA: u32 = 1;
@@ -46,13 +47,13 @@ struct WorkspaceReleaseState {
 }
 
 impl WorkspaceRelease {
-    pub(super) fn record_commit(&mut self, subject: &GuestRuntime, commit: &str) -> VmResult<()> {
+    pub(super) fn record_commit(&mut self, commit: &str) -> VmResult<()> {
         self.state.source_commit = commit.to_string();
-        self.save(subject)
+        self.save()
     }
 
-    fn save(&self, subject: &GuestRuntime) -> VmResult<()> {
-        save_state(subject, &self.state_path, &self.state)
+    fn save(&self) -> VmResult<()> {
+        save_state(&self.state_path, &self.state)
     }
 }
 
@@ -116,11 +117,11 @@ pub(super) async fn prepare(subject: &GuestRuntime) -> VmResult<WorkspacePrepara
         Some(checkout) if !checkout.state.revokes_lease() => checkout,
         Some(_) => {
             state = new_state(&registered.name, &repository, &head);
-            save_state(subject, &state_path, &state)?;
+            save_state(&state_path, &state)?;
             create_checkout(subject, &client, &registered, &mut state, &state_path).await?
         }
         None => {
-            save_state(subject, &state_path, &state)?;
+            save_state(&state_path, &state)?;
             create_checkout(subject, &client, &registered, &mut state, &state_path).await?
         }
     };
@@ -247,7 +248,7 @@ async fn create_checkout(
         })
         .await?;
     state.checkout_id = Some(created.checkout.checkout_id.clone());
-    save_state(subject, state_path, state)?;
+    save_state(state_path, state)?;
     Ok(created.checkout)
 }
 
@@ -357,9 +358,9 @@ fn state_matches(
         && (32..=256).contains(&state.lease_token.len())
 }
 
-fn save_state(subject: &GuestRuntime, path: &Path, state: &WorkspaceReleaseState) -> VmResult<()> {
+fn save_state(path: &Path, state: &WorkspaceReleaseState) -> VmResult<()> {
     let content = serde_json::to_vec(state).map_err(VmError::from)?;
-    copy_private(subject, &content, &path.to_string_lossy())
+    copy_private(&content, &path.to_string_lossy())
 }
 
 #[cfg(test)]

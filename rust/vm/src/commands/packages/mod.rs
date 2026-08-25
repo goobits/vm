@@ -2,17 +2,19 @@ mod access;
 mod appliance;
 mod catalog;
 mod checkout;
+mod client_settings;
 mod consumer;
 mod container;
 mod credentials;
 mod discovery;
 mod files;
+mod guest_checkout;
+mod guest_runtime;
 mod integration;
 mod overrides;
 mod process;
 mod registration;
 mod release;
-mod runtime;
 mod source_images;
 mod sources;
 mod state;
@@ -28,8 +30,8 @@ use crate::commands::command_context::managed_guest_context;
 use crate::error::{VmError, VmResult};
 use vm_core::{vm_println, vm_success};
 
+pub(super) use client_settings::{apply_client_environment, reconcile_client_settings};
 use files::ApplianceFiles;
-pub(super) use runtime::{apply_client_environment, reconcile_client_settings};
 
 pub(in crate::commands) fn git_auth_configured() -> VmResult<bool> {
     ApplianceFiles::discover()?.has_git_token()

@@ -9,11 +9,9 @@ use vm_packages::{
 use crate::error::{VmError, VmResult};
 
 use super::{
+    guest_checkout::{checkout_root, remove_directory, remove_file},
+    guest_runtime::{exec, exec_in_workspace, exec_output, GuestRuntime},
     overrides::cargo_patch,
-    runtime::{
-        checkout_root, exec, exec_in_workspace, exec_output, remove_directory, remove_file,
-        GuestRuntime,
-    },
 };
 
 pub(super) async fn handle_guest(
@@ -414,8 +412,7 @@ pub(super) fn run_collection_check(subject: &GuestRuntime, source: &str) -> VmRe
 }
 
 pub(super) fn run_binary_check(subject: &GuestRuntime, source: &str) -> VmResult<()> {
-    let content =
-        super::runtime::exec_output(subject, ["git", "-C", source, "show", "HEAD:vm-tool.yaml"])?;
+    let content = exec_output(subject, ["git", "-C", source, "show", "HEAD:vm-tool.yaml"])?;
     let manifest: vm_packages::ToolSourceManifest =
         serde_yaml_ng::from_str(&content).map_err(|error| {
             VmError::validation(format!("Invalid vm-tool.yaml: {error}"), None::<String>)

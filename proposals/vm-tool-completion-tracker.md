@@ -160,6 +160,10 @@ None.
   healthy across ten runs at 0.013-0.014 seconds. Workspace formatting,
   all-target checks, strict Clippy, RustSec audit, unit tests, and integration
   tests passed.
+- 2026-08-24: Package command runtime ownership is now explicit: controller
+  client provisioning, guest identity and execution, and managed checkout files
+  live in separate modules with no compatibility facade. All 77 package command
+  tests and strict all-target Clippy passed.
 
 ## Related Context
 

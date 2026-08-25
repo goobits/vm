@@ -9,7 +9,8 @@ use vm_packages::{
 use crate::error::{VmError, VmResult};
 
 use super::{
-    runtime::{checkout_root, create_directory, exec, remove_directory, remove_file, GuestRuntime},
+    guest_checkout::{checkout_root, create_directory, remove_directory, remove_file},
+    guest_runtime::{exec, GuestRuntime},
     submission::{run_binary_check, run_collection_check, run_consumer_check, run_package_check},
 };
 

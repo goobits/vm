@@ -7,9 +7,10 @@ use vm_packages::{
 use crate::error::{VmError, VmResult};
 
 use super::{
-    checkout, integration,
-    runtime::{checkout_root, read_file, GuestRuntime},
-    submission, workspace,
+    checkout,
+    guest_checkout::{checkout_root, read_file},
+    guest_runtime::GuestRuntime,
+    integration, submission, workspace,
 };
 
 const RELEASE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
@@ -154,7 +155,7 @@ pub(super) async fn handle_guest() -> VmResult<()> {
         }
     };
     if let Some(workspace) = workspace.as_mut() {
-        workspace.record_commit(&subject, &current.submitted_commit)?;
+        workspace.record_commit(&current.submitted_commit)?;
     }
     current = wait_for_review(&client, current, checkout.workspace_release).await?;
     if matches!(
@@ -175,7 +176,7 @@ pub(super) async fn handle_guest() -> VmResult<()> {
     let release = client.release(release_id).await?;
     let managed_checkout = workspace.is_none();
     if let Some(workspace) = workspace.as_mut() {
-        workspace.record_commit(&subject, &release.source_commit)?;
+        workspace.record_commit(&release.source_commit)?;
     }
     vm_success!("Released {}@{}", release.package, release.version);
     if checkout.source_kind != SourceKind::Package {

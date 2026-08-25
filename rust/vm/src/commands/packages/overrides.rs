@@ -4,10 +4,12 @@ use vm_packages::PackageEcosystem;
 
 use crate::error::{VmError, VmResult};
 
-use super::runtime::{
-    checkout_root, copy_private, create_directory, exec_in_workspace, exec_output,
-    make_private_executable, path_exists, path_is_file, read_file, remove_directory, remove_file,
-    GuestRuntime,
+use super::{
+    guest_checkout::{
+        checkout_root, copy_private, create_directory, make_private_executable, path_exists,
+        path_is_file, read_file, remove_directory, remove_file,
+    },
+    guest_runtime::{exec_in_workspace, exec_output, GuestRuntime},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,9 +48,9 @@ impl OverrideRecord {
         }
     }
 
-    pub(super) fn write(&self, subject: &GuestRuntime, root: &str) -> VmResult<()> {
+    pub(super) fn write(&self, root: &str) -> VmResult<()> {
         let content = serde_json::to_vec_pretty(self).map_err(VmError::from)?;
-        copy_private(subject, &content, &format!("{root}/override.json"))
+        copy_private(&content, &format!("{root}/override.json"))
     }
 
     pub(super) fn load(
@@ -174,7 +176,6 @@ impl OverrideRecord {
 
         let fragment = format!("{root}/cargo.config");
         copy_private(
-            subject,
             format!(
                 "{}\n{}\n",
                 self.source,
@@ -195,7 +196,7 @@ impl OverrideRecord {
             }
             create_directory(&format!("{home}/.local/bin"))?;
             let script = cargo_wrapper(actual);
-            copy_private(subject, script.as_bytes(), &wrapper)?;
+            copy_private(script.as_bytes(), &wrapper)?;
             make_private_executable(&wrapper)?;
         }
         vm_println!("Cargo override active for {}", self.package);
