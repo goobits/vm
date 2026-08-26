@@ -31,32 +31,36 @@ jobs:
           echo '{"name": "ci-test", "version": "1.0.0"}' > package.json
           echo "console.log('Hello from CI');" > index.js
 
-      - name: Create VM (non-interactive)
+      - name: Create and start VM
         run: |
           cd test-project
-          vm create --force --non-interactive
+          vm run container
         timeout-minutes: 5
         env:
           VM_NO_PROMPT: "true"
 
       - name: Verify VM status
         run: |
+          cd test-project
           vm list
           vm status
 
       - name: Execute command in VM
         run: |
-          vm exec "node --version"
-          vm exec "npm --version"
-          vm exec "cat package.json"
+          cd test-project
+          vm exec -- node --version
+          vm exec -- npm --version
+          vm exec -- cat package.json
 
       - name: Test SSH (non-interactive)
         run: |
-          vm ssh --command "echo 'SSH works in CI'"
-          vm ssh --command "ls -la"
+          cd test-project
+          vm shell --command "echo 'SSH works in CI'"
+          vm shell --command "ls -la"
 
       - name: Cleanup
         if: always()
         run: |
-          vm destroy --force --all
+          cd test-project
+          vm remove --force
           docker ps -a  # Verify cleanup

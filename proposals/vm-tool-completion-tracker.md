@@ -28,22 +28,22 @@ and the owner approves the cutoff.
 
 ### Phase 2A: 🤖 Reconcile managed compatibility state
 
-- [ ] Prove managed Docker inventory uses `com.vm.role=environment`, or recreate
+- [x] Prove managed Docker inventory uses `com.vm.role=environment`, or recreate
   remaining pre-role environments, before removing label-based discovery.
-- [ ] Prove every managed guest has `/etc/vm/managed-guest`, or reconcile/recreate
+- [x] Prove every managed guest has `/etc/vm/managed-guest`, or reconcile/recreate
   it, before removing image-identity and package/remote-file detection.
-- [ ] Prove persisted package-appliance state has been rewritten to the canonical
+- [x] Prove persisted package-appliance state has been rewritten to the canonical
   `engine` and current image fields before removing older state readers.
-- [ ] Migrate every tracked `vm.box` configuration to `vm.image` before removing
+- [x] Migrate every tracked `vm.box` configuration to `vm.image` before removing
   the v5 alias.
-- [ ] Re-export or explicitly retire retained v1 snapshot archives before ending
+- [x] Re-export or explicitly retire retained v1 snapshot archives before ending
   platform-less archive import support.
 
 ### Phase 2B: 🫵 Confirm external compatibility consumers
 
-- [ ] Inventory and migrate users of `$VM_TOOL_DIR/configs/presets/*.yaml` to
+- [x] Inventory and migrate users of `$VM_TOOL_DIR/configs/presets/*.yaml` to
   installed preset plugins before removing filesystem preset discovery.
-- [ ] Audit external automation for hidden `vm create` and
+- [x] Audit external automation for hidden `vm create` and
   `vm get-sync-directory` calls, then migrate it to supported lifecycle and
   provider paths before removing those commands.
 
@@ -95,6 +95,13 @@ and the owner approves the cutoff.
 
 ## Verification Log
 
+- 2026-08-25: The current user and repository compatibility inventory found no
+  managed environments or guests, persisted package state, retained snapshot
+  archives, custom filesystem presets, or user-level lifecycle automation. The
+  tracked tree contains no `vm.box`; an ignored local project config remains
+  intentionally untouched. The sole tracked automation use of hidden
+  `vm create` moved to `vm run container`, and its already-retired lifecycle
+  syntax and working directories were corrected at the same boundary.
 - 2026-08-25: Final v5 safeguards now warn only when pre-role environment
   labels, legacy managed-guest detection, retired package state, filesystem
   presets, or hidden lifecycle commands are exercised. Package state rewrites
