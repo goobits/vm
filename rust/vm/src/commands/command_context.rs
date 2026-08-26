@@ -53,41 +53,12 @@ pub(super) fn managed_guest_context() -> bool {
     }
     is_managed_guest(
         std::env::var("VM_MANAGED_GUEST").ok().as_deref(),
-        std::env::var("VM_IMAGE_IDENTITY").ok().as_deref(),
-        std::path::Path::new("/.dockerenv").exists(),
         std::path::Path::new("/etc/vm/managed-guest").exists(),
-        std::path::Path::new("/etc/vm/package-edge.env").exists()
-            || std::path::Path::new(super::managed_guest::GUEST_REMOTE_COMMANDS_PATH).exists(),
     )
 }
 
-fn is_managed_guest(
-    managed_marker: Option<&str>,
-    compatible_image_identity: Option<&str>,
-    docker_container: bool,
-    canonical_filesystem_marker: bool,
-    compatible_filesystem_marker: bool,
-) -> bool {
-    if canonical_filesystem_marker || managed_marker.is_some_and(truthy) {
-        return true;
-    }
-    if compatible_filesystem_marker {
-        tracing::warn!(
-            compatibility = "legacy_managed_guest_file",
-            "managed guest uses a retired filesystem marker; reconcile it before v6"
-        );
-        return true;
-    }
-    if docker_container
-        && compatible_image_identity.is_some_and(|identity| !identity.trim().is_empty())
-    {
-        tracing::warn!(
-            compatibility = "image_identity_managed_guest",
-            "managed guest uses retired image-identity detection; reconcile it before v6"
-        );
-        return true;
-    }
-    false
+fn is_managed_guest(managed_marker: Option<&str>, canonical_filesystem_marker: bool) -> bool {
+    canonical_filesystem_marker || managed_marker.is_some_and(truthy)
 }
 
 fn truthy(value: &str) -> bool {
@@ -280,18 +251,10 @@ mod tests {
     use vm_provider::InstanceInfo;
 
     #[test]
-    fn detects_canonical_and_compatibility_managed_guest_markers() {
-        assert!(is_managed_guest(Some("1"), None, false, false, false));
-        assert!(is_managed_guest(None, None, false, true, false));
-        assert!(is_managed_guest(None, None, false, false, true));
-        assert!(is_managed_guest(
-            None,
-            Some("demo:latest"),
-            true,
-            false,
-            false
-        ));
-        assert!(!is_managed_guest(None, None, true, false, false));
+    fn detects_only_canonical_managed_guest_markers() {
+        assert!(is_managed_guest(Some("1"), false));
+        assert!(is_managed_guest(None, true));
+        assert!(!is_managed_guest(None, false));
     }
 
     #[test]

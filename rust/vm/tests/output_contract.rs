@@ -188,7 +188,7 @@ fn config_show_never_materializes_package_credentials() {
     fs::write(
         appliance.join("state.json"),
         r#"{
-  "runtime": "docker",
+  "engine": "docker",
   "gateway_url": "http://127.0.0.1:3080",
   "gateway_port": 3080,
   "registry_image": "registry/image:1",

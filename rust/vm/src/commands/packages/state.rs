@@ -20,24 +20,6 @@ pub(super) struct ApplianceState {
     pub controller_version: String,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct LegacyApplianceState {
-    #[serde(default)]
-    definition_revision: u32,
-    runtime: ProviderName,
-    gateway_url: String,
-    gateway_port: u16,
-    registry_image: String,
-    #[serde(default)]
-    registry_image_identity: String,
-    #[serde(default)]
-    job_image: String,
-    #[serde(default)]
-    review_image: String,
-    controller_version: String,
-}
-
 impl ApplianceState {
     pub(super) fn container_engine(&self) -> VmResult<ContainerEngine> {
         if !self.engine.is_container() {
@@ -57,40 +39,6 @@ impl ApplianceState {
 
     pub(super) fn from_json(json: &[u8]) -> VmResult<Self> {
         serde_json::from_slice(json).map_err(VmError::from)
-    }
-
-    pub(super) fn from_persisted_json(json: &[u8]) -> VmResult<(Self, bool)> {
-        match Self::from_json(json) {
-            Ok(state) => Ok((state, false)),
-            Err(current_error) => {
-                let legacy: LegacyApplianceState =
-                    serde_json::from_slice(json).map_err(|_| current_error)?;
-                let job_image = match (legacy.job_image.as_str(), legacy.review_image.as_str()) {
-                    (job_image, "") => job_image.to_string(),
-                    ("", review_image) => review_image.to_string(),
-                    (job_image, review_image) if job_image == review_image => job_image.to_string(),
-                    _ => {
-                        return Err(VmError::validation(
-                            "Legacy package infrastructure metadata names conflicting job images",
-                            Some("Run `vm packages doctor --fix`"),
-                        ));
-                    }
-                };
-                Ok((
-                    Self {
-                        definition_revision: legacy.definition_revision,
-                        engine: legacy.runtime,
-                        gateway_url: legacy.gateway_url,
-                        gateway_port: legacy.gateway_port,
-                        registry_image: legacy.registry_image,
-                        registry_image_identity: legacy.registry_image_identity,
-                        job_image,
-                        controller_version: legacy.controller_version,
-                    },
-                    true,
-                ))
-            }
-        }
     }
 }
 
@@ -135,45 +83,5 @@ mod tests {
 
             assert!(ApplianceState::from_json(json.as_bytes()).is_err());
         }
-    }
-
-    #[test]
-    fn persisted_runtime_state_migrates_to_the_canonical_engine_field() {
-        let json = br#"{
-            "definition_revision": 3,
-            "runtime": "docker",
-            "gateway_url": "http://127.0.0.1:3080",
-            "gateway_port": 3080,
-            "registry_image": "registry:1",
-            "registry_image_identity": "sha256:registry",
-            "job_image": "jobs:1",
-            "controller_version": "1"
-        }"#;
-
-        let (state, migrated) = ApplianceState::from_persisted_json(json).unwrap();
-
-        assert!(migrated);
-        assert_eq!(state.engine, ProviderName::Docker);
-        assert_eq!(state.job_image, "jobs:1");
-        assert!(
-            String::from_utf8_lossy(&state.to_json().unwrap()).contains("\"engine\": \"docker\"")
-        );
-    }
-
-    #[test]
-    fn persisted_review_image_state_migrates_once() {
-        let json = br#"{
-            "runtime": "docker",
-            "gateway_url": "http://127.0.0.1:3080",
-            "gateway_port": 3080,
-            "registry_image": "registry:1",
-            "review_image": "jobs:1",
-            "controller_version": "1"
-        }"#;
-
-        let (state, migrated) = ApplianceState::from_persisted_json(json).unwrap();
-
-        assert!(migrated);
-        assert_eq!(state.job_image, "jobs:1");
     }
 }

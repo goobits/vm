@@ -17,7 +17,7 @@ pub(super) fn list_instances(
             "--filter",
             "label=com.vm.managed=true",
             "--format",
-            "{{.Names}}\t{{.ID}}\t{{.Status}}\t{{.CreatedAt}}\t{{.RunningFor}}\t{{.Label \"com.vm.project\"}}\t{{.Label \"com.vm.role\"}}\t{{.Label \"com.docker.compose.service\"}}",
+            "{{.Names}}\t{{.ID}}\t{{.Status}}\t{{.CreatedAt}}\t{{.RunningFor}}\t{{.Label \"com.vm.project\"}}\t{{.Label \"com.vm.role\"}}",
         ])
         .output()
         .map_err(|error| {
@@ -43,8 +43,7 @@ pub(super) fn list_instances(
             }
             let project = parts.get(5).copied().unwrap_or_default();
             let role = parts.get(6).copied().unwrap_or_default();
-            let compose_service = parts.get(7).copied().unwrap_or_default();
-            is_environment_container(parts[0], project, role, compose_service).then(|| {
+            is_environment_container(role).then(|| {
                 create_container_instance_info(
                     engine.name(),
                     parts[0],
@@ -52,10 +51,7 @@ pub(super) fn list_instances(
                     parts[2],
                     Some(parts[3]),
                     Some(parts[4]),
-                    parts
-                        .get(5)
-                        .filter(|project| !project.is_empty())
-                        .map(|project| (*project).to_string()),
+                    (!project.is_empty()).then(|| project.to_string()),
                 )
             })
         })
@@ -128,48 +124,15 @@ fn host_ports_from_bindings(bindings: &str) -> Result<Vec<u16>> {
     Ok(ports)
 }
 
-pub(super) fn is_environment_container(
-    name: &str,
-    project: &str,
-    role: &str,
-    compose_service: &str,
-) -> bool {
-    if role == "environment" {
-        return true;
-    }
-
-    let compatible = is_pre_role_environment(name, project, role, compose_service);
-    if compatible {
-        tracing::warn!(
-            container = name,
-            compatibility = "pre_role_environment",
-            "managed environment uses retired pre-role labels; recreate it before v6"
-        );
-    }
-    compatible
-}
-
-fn is_pre_role_environment(name: &str, project: &str, role: &str, compose_service: &str) -> bool {
-    !project.is_empty()
-        && role.is_empty()
-        && name == format!("{project}-dev")
-        && (compose_service.is_empty() || compose_service == name)
+pub(super) fn is_environment_container(role: &str) -> bool {
+    role == "environment"
 }
 
 pub(super) fn config_path_from_inspect(container: &serde_json::Value) -> Option<PathBuf> {
     let labels = &container["Config"]["Labels"];
-    let name = container["Name"]
-        .as_str()
-        .unwrap_or_default()
-        .trim_start_matches('/');
     let project = labels["com.vm.project"].as_str().unwrap_or_default();
     let role = labels["com.vm.role"].as_str().unwrap_or_default();
-    let compose_service = labels["com.docker.compose.service"]
-        .as_str()
-        .unwrap_or_default();
-    if labels["com.vm.managed"].as_str() != Some("true")
-        || !is_environment_container(name, project, role, compose_service)
-    {
+    if labels["com.vm.managed"].as_str() != Some("true") || !is_environment_container(role) {
         return None;
     }
 
@@ -180,9 +143,7 @@ pub(super) fn config_path_from_inspect(container: &serde_json::Value) -> Option<
         }
     }
 
-    if project.is_empty()
-        || (role != "environment" && !is_pre_role_environment(name, project, role, compose_service))
-    {
+    if project.is_empty() {
         return None;
     }
 
@@ -235,30 +196,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn environment_filter_excludes_managed_compose_services() {
-        assert!(is_environment_container(
-            "demo-dev",
-            "demo",
-            "environment",
-            "demo-dev"
-        ));
-        assert!(is_environment_container("demo-dev", "demo", "", "demo-dev"));
-        assert!(!is_environment_container(
-            "demo-postgres",
-            "demo",
-            "",
-            "postgres"
-        ));
-        assert!(!is_environment_container("demo-dev", "", "", "demo-dev"));
-        assert!(!is_environment_container(
-            "other-dev",
-            "demo",
-            "",
-            "other-dev"
-        ));
-        assert!(!is_environment_container(
-            "demo-dev", "demo", "service", "demo-dev"
-        ));
+    fn environment_filter_requires_the_canonical_role() {
+        assert!(is_environment_container("environment"));
+        assert!(!is_environment_container(""));
+        assert!(!is_environment_container("service"));
     }
 
     #[test]
@@ -315,24 +256,6 @@ mod tests {
             config_path_from_inspect(&partially_labeled),
             Some(config.clone())
         );
-
-        let pre_role = serde_json::json!({
-            "Name": "/demo-dev",
-            "Config": {
-                "Labels": {
-                    "com.vm.managed": "true",
-                    "com.vm.project": "demo",
-                    "com.docker.compose.service": "demo-dev"
-                },
-                "WorkingDir": "/workspace"
-            },
-            "Mounts": [{
-                "Type": "bind",
-                "Source": project.path(),
-                "Destination": "/workspace"
-            }]
-        });
-        assert_eq!(config_path_from_inspect(&pre_role), Some(config));
 
         let service = serde_json::json!({
             "Name": "/demo-postgres",
