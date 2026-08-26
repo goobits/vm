@@ -1,6 +1,6 @@
 ---
 Status: Rolling
-Date: 2026-08-24
+Date: 2026-08-25
 Depends: docs/user-guide/package-infrastructure.md, docs/development/architecture.md, docs/development/testing.md
 ---
 
@@ -12,28 +12,22 @@ history needed to assess the release workflow.
 
 ## Current Verdict
 
-One-command publishing, durable fleet activation, unmanaged-path backup,
-restart recovery, stopped-environment deferral, and coordinated sibling-source
-builds are implemented. A package-only command now opens an attested source's
-owning Docker workspace without copying its repository or build tree. Live
-TypeMill 1.2.0 acceptance proved exactly-once retry behavior and stable
-container and volume identities. At owner direction, the previously listed
-equipped-host acceptance gates are no longer tracked as release requirements.
-Release behavior remains complete. VM-owned Codex, Claude, and Antigravity can
-now be updated across existing environments through the same `vm tools update`
-surface without project configuration or package publication. Package services
-use shared structured, container-safe logging without changing release
-semantics. Binary builds now use a dedicated, ownership-reclaimed workspace;
-startup removes only stale VM-managed build directories, builder health detects
-low temporary capacity, and release/status output exposes durable job and phase
-state instead of waiting silently.
+Package infrastructure and managed-tool release behavior are complete for v5.
+The remaining work is evidence-gated compatibility retirement for v6, not a v5
+release blocker. Removal cannot begin until v5 safeguards are verified, managed
+state and known consumers are migrated, external automation is accounted for,
+and the owner approves the cutoff.
 
 ## Remaining Tasks In Order
 
-### v6 compatibility retirement (evidence-gated; not a v5 release blocker)
+### Phase 1: 🤖 Verify v5 migration safeguards
 
-- [ ] Ship the v5 migration warnings and canonical writers before selecting a
-  v6 cutoff.
+- [ ] Verify that every compatibility path below has an actionable v5 warning
+  where applicable, writes its canonical form, and has regression coverage.
+  Implement any gaps before collecting removal evidence.
+
+### Phase 2A: 🤖 Reconcile managed compatibility state
+
 - [ ] Prove managed Docker inventory uses `com.vm.role=environment`, or recreate
   remaining pre-role environments, before removing label-based discovery.
 - [ ] Prove every managed guest has `/etc/vm/managed-guest`, or reconcile/recreate
@@ -44,11 +38,17 @@ state instead of waiting silently.
   the v5 alias.
 - [ ] Re-export or explicitly retire retained v1 snapshot archives before ending
   platform-less archive import support.
+
+### Phase 2B: 🫵 Confirm external compatibility consumers
+
 - [ ] Inventory and migrate users of `$VM_TOOL_DIR/configs/presets/*.yaml` to
   installed preset plugins before removing filesystem preset discovery.
 - [ ] Audit external automation for hidden `vm create` and
   `vm get-sync-directory` calls, then migrate it to supported lifecycle and
   provider paths before removing those commands.
+
+### Phase 3: 🫵 Approve the v6 cutoff
+
 - [ ] Record owner approval of the v6 compatibility cutoff after all evidence
   above is present.
 
