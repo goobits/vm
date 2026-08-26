@@ -2,6 +2,10 @@
 
 Presets are reusable configuration overlays for common project types.
 
+Custom presets should be installed as preset plugins. Files placed directly in
+`$VM_TOOL_DIR/configs/presets/*.yaml` remain readable in v5 but emit a migration
+warning and will no longer be discovered in v6.
+
 ```bash
 vm config preset --list
 vm config preset nodejs

@@ -209,7 +209,7 @@ fn test_port_conflict_detection() -> Result<()> {
     let _listener =
         TcpListener::bind("0.0.0.0:3333").context("Failed to bind to port 3333 for testing")?;
 
-    // Try to create VM with conflicting port
+    // Try to run an environment with a conflicting port
     let config = format!(
         r#"
 version: 1
@@ -229,9 +229,9 @@ ports:
     );
     fs::write(&vm_yaml_path, config)?;
 
-    // `vm create` should fail with a clear error on stdout
+    // `vm run container` should fail with a clear error on stdout
     fixture
-        .run_failing_vm_command(&["create"])?
+        .run_failing_vm_command(&["run", "container"])?
         .stdout(predicates::str::contains(
             "Configuration error: Port 3333 is already in use on host",
         ));

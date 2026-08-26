@@ -105,6 +105,10 @@ impl PresetDetector {
             )));
         }
 
+        vm_warning!(
+            "Filesystem preset '{}' is deprecated; install it as a preset plugin before v6.0.0",
+            preset_path.display()
+        );
         let content = std::fs::read_to_string(&preset_path)?;
         let source_desc = format!("preset file '{}'", preset_path.display());
         let preset_file: PresetFile =
@@ -247,27 +251,7 @@ impl PresetDetector {
             }
         }
 
-        // Add file system presets (if presets dir exists)
-        if self.presets_dir.exists() {
-            let pattern = self
-                .presets_dir
-                .join("*.yaml")
-                .to_string_lossy()
-                .to_string();
-            for path in glob(&pattern)
-                .map_err(|e| VmError::Filesystem(format!("Glob pattern error: {e}")))?
-                .flatten()
-            {
-                let Some(stem) = path.file_stem() else {
-                    continue;
-                };
-
-                let name = stem.to_string_lossy().to_string();
-                if !presets.contains(&name) {
-                    presets.push(name);
-                }
-            }
-        }
+        self.add_filesystem_presets(&mut presets)?;
 
         presets.sort();
         Ok(presets)
@@ -328,30 +312,43 @@ impl PresetDetector {
             }
         }
 
-        // Add file system presets (if presets dir exists)
-        if self.presets_dir.exists() {
-            let pattern = self
-                .presets_dir
-                .join("*.yaml")
-                .to_string_lossy()
-                .to_string();
-            for path in glob(&pattern)
-                .map_err(|e| VmError::Filesystem(format!("Glob pattern error: {e}")))?
-                .flatten()
-            {
-                let Some(stem) = path.file_stem() else {
-                    continue;
-                };
-
-                let name = stem.to_string_lossy().to_string();
-                if !presets.contains(&name) {
-                    presets.push(name);
-                }
-            }
-        }
+        self.add_filesystem_presets(&mut presets)?;
 
         presets.sort();
         Ok(presets)
+    }
+
+    fn add_filesystem_presets(&self, presets: &mut Vec<String>) -> Result<()> {
+        if !self.presets_dir.exists() {
+            return Ok(());
+        }
+
+        let pattern = self
+            .presets_dir
+            .join("*.yaml")
+            .to_string_lossy()
+            .to_string();
+        let mut found_filesystem_preset = false;
+        for path in glob(&pattern)
+            .map_err(|error| VmError::Filesystem(format!("Glob pattern error: {error}")))?
+            .flatten()
+        {
+            let Some(stem) = path.file_stem() else {
+                continue;
+            };
+            let name = stem.to_string_lossy().to_string();
+            if !presets.contains(&name) {
+                presets.push(name);
+                found_filesystem_preset = true;
+            }
+        }
+
+        if found_filesystem_preset {
+            vm_warning!(
+                "Filesystem presets are deprecated; install them as preset plugins before v6.0.0"
+            );
+        }
+        Ok(())
     }
 
     /// Gets description for a preset (from plugin or embedded)

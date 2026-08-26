@@ -134,7 +134,19 @@ pub(super) fn is_environment_container(
     role: &str,
     compose_service: &str,
 ) -> bool {
-    role == "environment" || is_pre_role_environment(name, project, role, compose_service)
+    if role == "environment" {
+        return true;
+    }
+
+    let compatible = is_pre_role_environment(name, project, role, compose_service);
+    if compatible {
+        tracing::warn!(
+            container = name,
+            compatibility = "pre_role_environment",
+            "managed environment uses retired pre-role labels; recreate it before v6"
+        );
+    }
+    compatible
 }
 
 fn is_pre_role_environment(name: &str, project: &str, role: &str, compose_service: &str) -> bool {

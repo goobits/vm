@@ -25,16 +25,13 @@ fn test_vm_lifecycle_provider_parity() -> Result<()> {
 
         fixture.create_config_for_provider(provider)?;
 
-        // Test `vm create`
-        let output = fixture.run_vm_command(&["create", "--force"])?;
-        assert!(output.status.success(), "vm create failed for {}", provider);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            stdout.contains("VM created successfully"),
-            "vm create output was incorrect for {}: {}",
-            provider,
-            stdout
-        );
+        // Test the public create-and-start lifecycle.
+        let output = fixture.run_vm_command(&["run", "linux", "--provider", provider])?;
+        assert!(output.status.success(), "vm run failed for {}", provider);
+
+        // Stop before exercising an explicit start.
+        let output = fixture.run_vm_command(&["stop"])?;
+        assert!(output.status.success(), "vm stop failed for {}", provider);
 
         // Test `vm start`
         let output = fixture.run_vm_command(&["start"])?;

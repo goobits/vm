@@ -43,6 +43,7 @@
 
 ### 🔧 Changed
 
+- 🪟 Legacy managed-environment, managed-guest, package-state, filesystem-preset, and hidden lifecycle paths now emit actionable v6 migration warnings when exercised.
 - 🧩 Plugin scaffolding accepts only supported preset/service definition types, reuses canonical name validation, emits current configuration examples, and no longer describes built-in database or secret commands as plugin-backed.
 - 📦 Preset operations now resolve directly within each CLI invocation; the redundant process-global cache, cache-only benchmark/tests, orphan workspace test file, and unused configuration exports are removed.
 - 🪟 Compatibility paths now name their exact pre-role or approved scope, all managed-settings reconciliation writes the canonical guest marker, and the active tracker records evidence required before v6 removals.

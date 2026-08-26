@@ -96,6 +96,48 @@ fn application_errors_are_rendered_once_on_stderr() {
 }
 
 #[test]
+fn hidden_lifecycle_commands_emit_v6_migration_warnings() {
+    let temp_dir = TempDir::new().unwrap();
+    let config = temp_dir.path().join("vm.yaml");
+    fs::write(
+        &config,
+        "version: '2.0'\nprovider: docker\nproject:\n  name: output-test\n  workspace_path: /workspace\n",
+    )
+    .unwrap();
+
+    let sync_output = run(
+        &temp_dir,
+        &["--config", config.to_str().unwrap(), "get-sync-directory"],
+    );
+    let sync_stderr = String::from_utf8(sync_output.stderr).unwrap();
+    assert!(sync_stderr.contains("`vm get-sync-directory` is deprecated"));
+    assert!(sync_stderr.contains("v6.0.0"));
+
+    let create_output = run(&temp_dir, &["--config", "missing.yaml", "create"]);
+    let create_stderr = String::from_utf8(create_output.stderr).unwrap();
+    assert!(!create_output.status.success());
+    assert!(create_stderr.contains("`vm create` is deprecated"));
+    assert!(create_stderr.contains("v6.0.0"));
+}
+
+#[test]
+fn filesystem_preset_discovery_emits_v6_migration_warning() {
+    let temp_dir = TempDir::new().unwrap();
+    let presets_dir = temp_dir.path().join(".vm/configs/presets");
+    fs::create_dir_all(&presets_dir).unwrap();
+    fs::write(presets_dir.join("legacy-custom.yaml"), "preset: {}\n").unwrap();
+
+    let output = run(&temp_dir, &["config", "preset", "--list"]);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(output.status.success(), "{stderr}");
+    assert!(stdout.contains("legacy-custom"), "{stdout}");
+    assert!(stderr.contains("Filesystem presets are deprecated"));
+    assert!(stderr.contains("v6.0.0"));
+}
+
+#[test]
 fn compose_render_is_raw_redacted_stdout() {
     let temp_dir = TempDir::new().unwrap();
     let config = temp_dir.path().join("vm.yaml");

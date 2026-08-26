@@ -9,6 +9,7 @@ use command_context::{
 use environment::resolve_environment;
 use vm_config::validation::{validate_config, ValidationMode};
 use vm_config::AppConfig;
+use vm_core::vm_warning;
 
 pub mod base;
 pub mod clean;
@@ -108,6 +109,9 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             }
         }
         Command::Create { environment, force } => {
+            vm_warning!(
+                "`vm create` is deprecated; use `vm run <mac|linux|container>` or `vm shell` before v6.0.0"
+            );
             let subject = resolve_environment(args.config.clone(), args.profile, environment)?;
             let (provider, config, global_config) =
                 load_provider_context(args.config, subject.profile, subject.provider_override)?;
@@ -347,6 +351,9 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         Command::Tools { command } => tools::handle(command, args.config, args.profile).await,
         Command::Tunnel { command } => tunnel::handle_command(command, args.config, args.profile),
         Command::GetSyncDirectory => {
+            vm_warning!(
+                "`vm get-sync-directory` is deprecated and will be removed in v6.0.0; use the configured provider workspace path"
+            );
             let (provider, _, _) = load_provider_context(args.config, args.profile, None)?;
             vm_ops::handle_get_sync_directory(provider);
             Ok(())

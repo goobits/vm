@@ -43,6 +43,10 @@ impl ApplianceFiles {
             Ok(json) => {
                 let (state, migrated) = ApplianceState::from_persisted_json(&json)?;
                 if migrated {
+                    tracing::warn!(
+                        compatibility = "legacy_package_appliance_state",
+                        "package appliance state used retired fields; rewrote canonical v5 fields before v6"
+                    );
                     self.write_state(&state)?;
                 }
                 Ok(Some(state))
@@ -82,4 +86,40 @@ fn write_private(path: &Path, content: &[u8]) -> VmResult<()> {
         )
     })?;
     vm_core::file_system::set_permissions_mode(path, 0o600).map_err(VmError::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ApplianceFiles;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn reading_legacy_state_rewrites_canonical_fields() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path().join("packages");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("state.json"),
+            r#"{
+  "runtime": "docker",
+  "gateway_url": "http://127.0.0.1:3080",
+  "gateway_port": 3080,
+  "registry_image": "registry:1",
+  "review_image": "jobs:1",
+  "controller_version": "5.0.1"
+}"#,
+        )
+        .unwrap();
+
+        let files = ApplianceFiles::at(root.clone());
+        let state = files.read_state().unwrap().unwrap();
+        assert_eq!(state.engine.as_str(), "docker");
+
+        let rewritten = fs::read_to_string(root.join("state.json")).unwrap();
+        assert!(rewritten.contains(r#""engine": "docker""#));
+        assert!(rewritten.contains(r#""job_image": "jobs:1""#));
+        assert!(!rewritten.contains("runtime"));
+        assert!(!rewritten.contains("review_image"));
+    }
 }

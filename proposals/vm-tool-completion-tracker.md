@@ -22,7 +22,7 @@ and the owner approves the cutoff.
 
 ### Phase 1: 🤖 Verify v5 migration safeguards
 
-- [ ] Verify that every compatibility path below has an actionable v5 warning
+- [x] Verify that every compatibility path below has an actionable v5 warning
   where applicable, writes its canonical form, and has regression coverage.
   Implement any gaps before collecting removal evidence.
 
@@ -95,6 +95,15 @@ and the owner approves the cutoff.
 
 ## Verification Log
 
+- 2026-08-25: Final v5 safeguards now warn only when pre-role environment
+  labels, legacy managed-guest detection, retired package state, filesystem
+  presets, or hidden lifecycle commands are exercised. Package state rewrites
+  canonical fields, and ordinary lifecycle coverage now uses `vm run` while
+  focused compatibility coverage remains. Formatting, vm-config and provider
+  tests, 245 VM command tests, 11 output-contract tests, compile-only provider
+  integration coverage, and strict library/binary Clippy passed. Strict
+  all-target Clippy remains blocked by the pre-existing `cmp_owned` warning in
+  `rust/vm/src/cli/tests.rs`; all targets pass when only that lint is allowed.
 - 2026-08-25: Diagnosed the silent CodeAtlas and TypeMill release stall as an
   exhausted 8 GiB builder tmpfs caused by root cleanup losing access after the
   isolated build tree changed to UID 10002. A builder-only restart recovered the
