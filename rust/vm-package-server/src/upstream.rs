@@ -38,7 +38,7 @@ impl UpstreamClient {
     pub fn new(config: UpstreamConfig) -> AppResult<Self> {
         let client = Client::builder()
             .timeout(config.timeout)
-            .user_agent("goobits-pkg-server/0.1.0")
+            .user_agent(concat!("goobits-pkg-server/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|error| {
                 AppError::InternalError(format!("Failed to create HTTP client: {error}"))

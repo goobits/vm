@@ -191,7 +191,10 @@ mod tests {
         let shell_config = home.path().join(".zshrc");
         std::fs::write(
             &shell_config,
-            "export KEEP=1\n\n# Added by VM installer v5.0.1\nexport PATH=\"$PATH:/vm\"\necho '# Added by VM installer is documentation'\n",
+            format!(
+                "export KEEP=1\n\n# Added by VM installer v{}\nexport PATH=\"$PATH:/vm\"\necho '# Added by VM installer is documentation'\n",
+                env!("CARGO_PKG_VERSION")
+            ),
         )
         .unwrap();
 

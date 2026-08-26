@@ -2,15 +2,20 @@
 #
 # Version Bumper Script
 #
-# Automatically increments the patch version (x.y.z -> x.y.z+1) in Cargo.toml
+# Automatically increments the package.json patch version (x.y.z -> x.y.z+1)
+# and synchronizes the Rust workspace version from that release source.
 # Usage: ./scripts/dev/bump-version.sh
 
 set -euo pipefail
 
+PACKAGE_JSON="package.json"
 CARGO_TOML="rust/Cargo.toml"
+CARGO_LOCK="rust/Cargo.lock"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PACKAGE_JSON_PATH="$PROJECT_ROOT/$PACKAGE_JSON"
 CARGO_TOML_PATH="$PROJECT_ROOT/$CARGO_TOML"
+CARGO_LOCK_PATH="$PROJECT_ROOT/$CARGO_LOCK"
 
 # Colors for output
 RED='\033[0;31m'
@@ -19,17 +24,17 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Check if Cargo.toml exists
-if [[ ! -f "$CARGO_TOML_PATH" ]]; then
-    echo -e "${RED}❌ Error: $CARGO_TOML not found${NC}"
+# Check if the release manifests exist
+if [[ ! -f "$PACKAGE_JSON_PATH" || ! -f "$CARGO_TOML_PATH" || ! -f "$CARGO_LOCK_PATH" ]]; then
+    echo -e "${RED}❌ Error: $PACKAGE_JSON, $CARGO_TOML, and $CARGO_LOCK are required${NC}"
     exit 1
 fi
 
-# Extract current version from workspace Cargo.toml
-CURRENT_VERSION=$(grep '^\s*version\s*=\s*"' "$CARGO_TOML_PATH" | head -1 | sed 's/.*version\s*=\s*"\([^"]*\)".*/\1/')
+# Extract the current version from the release source of truth.
+CURRENT_VERSION=$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$PACKAGE_JSON_PATH" | head -1)
 
 if [[ -z "$CURRENT_VERSION" ]]; then
-    echo -e "${RED}❌ Error: Could not extract version from $CARGO_TOML${NC}"
+    echo -e "${RED}❌ Error: Could not extract version from $PACKAGE_JSON${NC}"
     exit 1
 fi
 
@@ -51,40 +56,64 @@ NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
 
 echo -e "${GREEN}🚀 Bumping version: $CURRENT_VERSION → $NEW_VERSION${NC}"
 
-# Create backup
-BACKUP_FILE="$CARGO_TOML_PATH.backup"
-cp "$CARGO_TOML_PATH" "$BACKUP_FILE"
+# Create backups so a failed sync can restore every version-owned file.
+PACKAGE_BACKUP=$(mktemp)
+CARGO_BACKUP=$(mktemp)
+CARGO_LOCK_BACKUP=$(mktemp)
+cp "$PACKAGE_JSON_PATH" "$PACKAGE_BACKUP"
+cp "$CARGO_TOML_PATH" "$CARGO_BACKUP"
+cp "$CARGO_LOCK_PATH" "$CARGO_LOCK_BACKUP"
+RESTORE_ON_EXIT=true
 
-# Update version in Cargo.toml
-# Use a more robust sed command that only updates the workspace version
+cleanup_backups() {
+    rm -f "$PACKAGE_BACKUP" "$CARGO_BACKUP" "$CARGO_LOCK_BACKUP"
+}
+
+restore_version_files() {
+    cp "$PACKAGE_BACKUP" "$PACKAGE_JSON_PATH"
+    cp "$CARGO_BACKUP" "$CARGO_TOML_PATH"
+    cp "$CARGO_LOCK_BACKUP" "$CARGO_LOCK_PATH"
+    cleanup_backups
+}
+
+trap 'if [[ "$RESTORE_ON_EXIT" == true ]]; then restore_version_files; fi' EXIT
+
+# Update the root release version.
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS sed requires different syntax
-    sed -i '' "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" "$CARGO_TOML_PATH"
+    sed -i '' "s/\"version\": \"$CURRENT_VERSION\"/\"version\": \"$NEW_VERSION\"/" "$PACKAGE_JSON_PATH"
 else
-    # Linux sed
-    sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" "$CARGO_TOML_PATH"
+    sed -i "s/\"version\": \"$CURRENT_VERSION\"/\"version\": \"$NEW_VERSION\"/" "$PACKAGE_JSON_PATH"
 fi
 
 # Verify the change
-NEW_VERSION_CHECK=$(grep '^\s*version\s*=\s*"' "$CARGO_TOML_PATH" | head -1 | sed 's/.*version\s*=\s*"\([^"]*\)".*/\1/')
+NEW_VERSION_CHECK=$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$PACKAGE_JSON_PATH" | head -1)
 
 if [[ "$NEW_VERSION_CHECK" == "$NEW_VERSION" ]]; then
-    echo -e "${GREEN}✅ Version successfully updated to $NEW_VERSION${NC}"
-    rm -f "$BACKUP_FILE"
+    echo -e "${BLUE}🔄 Synchronizing $CARGO_TOML from $PACKAGE_JSON...${NC}"
+    cd "$PROJECT_ROOT"
+    if ! cargo run --manifest-path "$CARGO_TOML_PATH" --package version-sync --quiet -- sync; then
+        echo -e "${RED}❌ Error: Version synchronization failed${NC}"
+        exit 1
+    fi
 
     # Update Cargo.lock
     echo -e "${BLUE}📦 Updating Cargo.lock...${NC}"
-    cd "$PROJECT_ROOT/rust"
-    cargo check --workspace --quiet 2>/dev/null || cargo check --workspace
+    if ! cargo check --manifest-path "$CARGO_TOML_PATH" --workspace --quiet; then
+        echo -e "${RED}❌ Error: Cargo.lock update failed${NC}"
+        exit 1
+    fi
+
+    RESTORE_ON_EXIT=false
+    cleanup_backups
+    echo -e "${GREEN}✅ Version successfully updated to $NEW_VERSION${NC}"
 
     echo -e "${GREEN}✨ Version bump complete!${NC}"
     echo ""
     echo -e "${YELLOW}Don't forget to commit the changes:${NC}"
-    echo -e "  git add rust/Cargo.toml rust/Cargo.lock"
+    echo -e "  git add package.json rust/Cargo.toml rust/Cargo.lock"
     echo -e "  git commit -m \"chore: bump version to $NEW_VERSION\""
 else
     echo -e "${RED}❌ Error: Version update verification failed${NC}"
     echo -e "${YELLOW}Restoring backup...${NC}"
-    mv "$BACKUP_FILE" "$CARGO_TOML_PATH"
     exit 1
 fi
