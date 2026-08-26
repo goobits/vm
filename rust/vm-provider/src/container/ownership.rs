@@ -43,7 +43,7 @@ pub(super) fn list_instances(
             }
             let project = parts.get(5).copied().unwrap_or_default();
             let role = parts.get(6).copied().unwrap_or_default();
-            is_environment_container(role).then(|| {
+            is_environment_container(role, parts[0], project).then(|| {
                 create_container_instance_info(
                     engine.name(),
                     parts[0],
@@ -124,15 +124,32 @@ fn host_ports_from_bindings(bindings: &str) -> Result<Vec<u16>> {
     Ok(ports)
 }
 
-pub(super) fn is_environment_container(role: &str) -> bool {
-    role == "environment"
+pub(super) fn is_environment_container(role: &str, name: &str, project: &str) -> bool {
+    if role == "environment" {
+        return true;
+    }
+    if !role.is_empty() || project.is_empty() {
+        return false;
+    }
+
+    let name = name.strip_prefix('/').unwrap_or(name);
+    let Some(suffix) = name.strip_prefix(project) else {
+        return false;
+    };
+    suffix == "-dev"
+        || suffix
+            .strip_prefix('-')
+            .is_some_and(|instance| instance.len() > 4 && instance.ends_with("-dev"))
 }
 
 pub(super) fn config_path_from_inspect(container: &serde_json::Value) -> Option<PathBuf> {
     let labels = &container["Config"]["Labels"];
     let project = labels["com.vm.project"].as_str().unwrap_or_default();
     let role = labels["com.vm.role"].as_str().unwrap_or_default();
-    if labels["com.vm.managed"].as_str() != Some("true") || !is_environment_container(role) {
+    let name = container["Name"].as_str().unwrap_or_default();
+    if labels["com.vm.managed"].as_str() != Some("true")
+        || !is_environment_container(role, name, project)
+    {
         return None;
     }
 
@@ -196,10 +213,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn environment_filter_requires_the_canonical_role() {
-        assert!(is_environment_container("environment"));
-        assert!(!is_environment_container(""));
-        assert!(!is_environment_container("service"));
+    fn environment_filter_adopts_only_safe_legacy_names() {
+        assert!(is_environment_container("environment", "anything", "demo"));
+        assert!(is_environment_container("", "demo-dev", "demo"));
+        assert!(is_environment_container("", "demo-feature-dev", "demo"));
+        assert!(!is_environment_container("", "demo-postgres", "demo"));
+        assert!(!is_environment_container("", "other-dev", "demo"));
+        assert!(!is_environment_container("service", "demo-dev", "demo"));
     }
 
     #[test]
@@ -242,7 +262,6 @@ mod tests {
                 "Labels": {
                     "com.vm.managed": "true",
                     "com.vm.project": "demo",
-                    "com.vm.role": "environment",
                     "com.docker.compose.service": "demo-dev"
                 }
             },
