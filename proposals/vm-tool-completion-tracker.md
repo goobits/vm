@@ -13,10 +13,9 @@ history needed to assess the release workflow.
 ## Current Verdict
 
 Package infrastructure and managed-tool release behavior are complete for v5.
-The remaining work is evidence-gated compatibility retirement for v6, not a v5
-release blocker. Removal cannot begin until v5 safeguards are verified, managed
-state and known consumers are migrated, external automation is accounted for,
-and the owner approves the cutoff.
+The v6 compatibility inventory is clean for the current user and repository,
+known consumers are migrated, and the owner has approved the cutoff. The
+remaining work is removal and verification of the retired compatibility code.
 
 ## Remaining Tasks In Order
 
@@ -49,7 +48,7 @@ and the owner approves the cutoff.
 
 ### Phase 3: 🫵 Approve the v6 cutoff
 
-- [ ] Record owner approval of the v6 compatibility cutoff after all evidence
+- [x] Record owner approval of the v6 compatibility cutoff after all evidence
   above is present.
 
 ## Completed Foundations
@@ -95,6 +94,9 @@ and the owner approves the cutoff.
 
 ## Verification Log
 
+- 2026-08-25: After the compatibility inventory and tracked migrations were
+  complete, the owner explicitly approved proceeding through every remaining
+  phase, including the v6 cutoff.
 - 2026-08-25: The current user and repository compatibility inventory found no
   managed environments or guests, persisted package state, retained snapshot
   archives, custom filesystem presets, or user-level lifecycle automation. The
