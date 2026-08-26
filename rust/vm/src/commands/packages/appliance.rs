@@ -84,6 +84,9 @@ pub(super) async fn up(
     job_image: Option<String>,
 ) -> VmResult<()> {
     let previous = files.read_state()?;
+    if let Some(previous) = previous.as_ref() {
+        ensure_supported_definition(previous)?;
+    }
     let engine_name = resolve_engine(
         requested,
         previous.as_ref().map(|state| state.engine.clone()),
@@ -139,12 +142,14 @@ pub(super) fn repair_client_access(
     files: &ApplianceFiles,
     fallback: ApplianceState,
 ) -> VmResult<ApplianceState> {
+    ensure_supported_definition(&fallback)?;
     if state_client_access_is_current(files, &fallback)? {
         return Ok(fallback);
     }
 
     let _lifecycle_lock = files.acquire_lifecycle_lock()?;
     let mut state = files.read_state()?.unwrap_or(fallback);
+    ensure_supported_definition(&state)?;
     if state_client_access_is_current(files, &state)? {
         return Ok(state);
     }
@@ -180,8 +185,22 @@ pub(super) fn state_client_access_is_current(
     files: &ApplianceFiles,
     state: &ApplianceState,
 ) -> VmResult<bool> {
+    ensure_supported_definition(state)?;
     Ok(state.definition_revision == APPLIANCE_DEFINITION_REVISION
         && files.runtime_credentials_ready()?)
+}
+
+fn ensure_supported_definition(state: &ApplianceState) -> VmResult<()> {
+    if state.definition_revision > APPLIANCE_DEFINITION_REVISION {
+        return Err(VmError::validation(
+            format!(
+                "Package infrastructure uses newer definition revision {}; this VM CLI supports {}",
+                state.definition_revision, APPLIANCE_DEFINITION_REVISION
+            ),
+            Some("Run `vm update`, then retry"),
+        ));
+    }
+    Ok(())
 }
 
 pub(super) fn down(files: &ApplianceFiles) -> VmResult<()> {
@@ -364,9 +383,26 @@ fn workflow_client(
 
 #[cfg(test)]
 mod tests {
-    use super::{default_registry_image, resolve_engine, resolve_image};
+    use super::{
+        default_registry_image, ensure_supported_definition, resolve_engine, resolve_image,
+    };
     use crate::cli::PackageInfrastructureEngine;
+    use crate::commands::packages::state::ApplianceState;
     use vm_config::config::ProviderName;
+    use vm_packages::APPLIANCE_DEFINITION_REVISION;
+
+    fn state_with_revision(definition_revision: u32) -> ApplianceState {
+        ApplianceState {
+            definition_revision,
+            engine: ProviderName::Docker,
+            gateway_url: "http://127.0.0.1:3080".into(),
+            gateway_port: 3080,
+            registry_image: "registry:1".into(),
+            registry_image_identity: "sha256:registry".into(),
+            job_image: "jobs:1".into(),
+            controller_version: "1".into(),
+        }
+    }
 
     #[test]
     fn auto_engine_reuses_state_before_platform_default() {
@@ -420,5 +456,19 @@ mod tests {
             "registry.example/packages:current".into(),
         );
         assert_eq!(image, "registry.local/packages:new");
+    }
+
+    #[test]
+    fn older_cli_refuses_to_downgrade_newer_appliance_definition() {
+        assert!(
+            ensure_supported_definition(&state_with_revision(APPLIANCE_DEFINITION_REVISION))
+                .is_ok()
+        );
+
+        let error =
+            ensure_supported_definition(&state_with_revision(APPLIANCE_DEFINITION_REVISION + 1))
+                .unwrap_err();
+        assert!(error.to_string().contains("newer definition revision"));
+        assert_eq!(error.hint(), Some("Run `vm update`, then retry"));
     }
 }

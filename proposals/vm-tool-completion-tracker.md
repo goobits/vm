@@ -104,6 +104,12 @@ state instead of waiting silently.
   All inspected project container IDs and all eighteen package volumes remained
   unchanged, and a synthetic UID-10002 stale workspace was reclaimed on builder
   restart while the exact builder container ID remained stable.
+- 2026-08-25: Reproduced host/controller version skew after the fixed appliance
+  was reconciled before its matching host CLI was installed. The older CLI
+  attempted to downgrade Compose metadata and left the builder restarting when
+  interrupted. The current CLI repaired the appliance, installed atomically,
+  passed doctor and a real `vm exec vm-dev -- true`, and now fails closed before
+  any older CLI can materialize over a newer appliance definition revision.
 - 2026-08-25: Source installation atomically copied the host CLI into
   `~/.local/bin/vm`; the executable remained usable after scoped Cargo cleanup
   removed 8.8 GiB from three validated temporary build targets. `pdx.fun`

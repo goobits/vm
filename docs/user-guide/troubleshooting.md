@@ -217,6 +217,11 @@ with `vm packages up`; the builder starts by removing only stale directories in
 its dedicated managed work root, without changing workflow records, artifacts,
 project environments, or named volumes.
 
+An older VM CLI never rewrites a package appliance with a newer definition
+revision. It stops before materializing Compose files and tells you to run `vm
+update`; this prevents host/controller version skew from downgrading a healthy
+worker configuration.
+
 For an existing environment, run this on the controller host:
 
 ```bash
