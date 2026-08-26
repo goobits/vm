@@ -52,13 +52,6 @@ impl EnvironmentKind {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum Command {
-    /// Create/configure an environment from vm.yaml
-    #[command(hide = true)]
-    Create {
-        environment: Option<String>,
-        #[arg(long)]
-        force: bool,
-    },
     /// Start an existing environment
     Start {
         /// Environment name, not provider; omit to use the project default
@@ -270,9 +263,6 @@ pub enum Command {
     },
     #[command(hide = true)]
     InternalCompletion { shell: String },
-    /// Get workspace directory
-    #[command(hide = true)]
-    GetSyncDirectory,
 }
 
 #[cfg(test)]

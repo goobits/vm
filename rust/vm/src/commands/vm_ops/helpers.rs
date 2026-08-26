@@ -3,7 +3,7 @@
 //! This module provides utilities and service management functions
 //! used by multiple VM command handlers.
 
-use tracing::{debug, warn};
+use tracing::warn;
 
 use crate::error::VmResult;
 use crate::services::service_lifecycle;
@@ -11,7 +11,6 @@ use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::msg;
 use vm_core::{vm_println, vm_success, vm_warning};
 use vm_messages::messages::MESSAGES;
-use vm_provider::Provider;
 
 pub(super) fn has_enabled_services(config: &VmConfig, global: &GlobalConfig) -> bool {
     config.services.values().any(|service| service.enabled)
@@ -20,14 +19,6 @@ pub(super) fn has_enabled_services(config: &VmConfig, global: &GlobalConfig) -> 
         || global.services.redis.enabled
         || global.services.mongodb.enabled
         || global.services.mysql.enabled
-}
-
-/// Handle get sync directory
-pub fn handle_get_sync_directory(provider: Box<dyn Provider>) {
-    debug!("Getting sync directory for provider '{}'", provider.name());
-    let sync_dir = provider.get_sync_directory();
-    debug!("Sync directory: '{}'", sync_dir);
-    vm_println!("{sync_dir}");
 }
 
 /// Helper function to register VM services

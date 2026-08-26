@@ -119,7 +119,7 @@ ports:
     fs::write(&vm_yaml_path, config)?;
 
     // Create and start VM
-    fixture.run_vm_command(&["create"])?;
+    fixture.run_vm_command(&["run", "container"])?;
 
     // Verify port mapping exists
     let container_name = format!("{}-dev", project_name);
@@ -169,7 +169,7 @@ ports:
     fs::write(&vm_yaml_path, config)?;
 
     // Create and start VM
-    fixture.run_vm_command(&["create"])?;
+    fixture.run_vm_command(&["run", "container"])?;
 
     let container_name = format!("{}-dev", project_name);
 

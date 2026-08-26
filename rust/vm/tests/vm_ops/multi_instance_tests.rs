@@ -18,18 +18,16 @@ fn test_vm_multi_instance_lifecycle() -> Result<()> {
     // Create and start the first VM
     fixture1.create_test_config()?;
     assert!(fixture1
-        .run_vm_command(&["create", "--force"])?
+        .run_vm_command(&["run", "container"])?
         .status
         .success());
-    assert!(fixture1.run_vm_command(&["start"])?.status.success());
 
     // Create and start the second VM
     fixture2.create_test_config()?;
     assert!(fixture2
-        .run_vm_command(&["create", "--force"])?
+        .run_vm_command(&["run", "container"])?
         .status
         .success());
-    assert!(fixture2.run_vm_command(&["start"])?.status.success());
 
     // Verify both VMs are listed as running
     let list_output = fixture1.run_vm_command(&["list"])?;

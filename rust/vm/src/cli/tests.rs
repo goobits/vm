@@ -92,10 +92,6 @@ fn remove_parses_environment_and_force() {
 #[test]
 fn lifecycle_commands_parse() {
     assert!(matches!(
-        Args::parse_from(["vm", "create", "--force"]).command,
-        Command::Create { force: true, .. }
-    ));
-    assert!(matches!(
         Args::parse_from(["vm", "start", "backend", "--no-wait"]).command,
         Command::Start {
             environment: Some(environment),
@@ -124,7 +120,14 @@ fn stop_parses_environment() {
 
 #[test]
 fn retired_lifecycle_aliases_are_rejected() {
-    for command in ["down", "halt", "rm", "destroy"] {
+    for command in [
+        "create",
+        "get-sync-directory",
+        "down",
+        "halt",
+        "rm",
+        "destroy",
+    ] {
         assert!(Args::try_parse_from(["vm", command, "backend"]).is_err());
     }
 }
@@ -192,7 +195,7 @@ fn import_parses_portable_snapshot_archive() {
     assert!(matches!(
         Args::parse_from(["vm", "import", "stable.snapshot.tar.gz", "--name", "stable", "--force"]).command,
         Command::Import { archive, name, force }
-            if archive == std::path::PathBuf::from("stable.snapshot.tar.gz")
+            if archive == std::path::Path::new("stable.snapshot.tar.gz")
                 && name.as_deref() == Some("stable")
                 && force
     ));

@@ -4,7 +4,7 @@ use std::process::Command;
 
 #[test]
 #[ignore = "Creates real Docker containers; run with --ignored"]
-fn test_vm_create_command() -> Result<()> {
+fn test_vm_run_container_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
 
@@ -17,11 +17,11 @@ fn test_vm_create_command() -> Result<()> {
     fixture.create_test_config()?;
     fixture.create_test_dockerfile()?;
 
-    // Test VM creation
-    let output = fixture.run_vm_command(&["create"])?;
+    // Test VM creation and startup
+    let output = fixture.run_vm_command(&["run", "container"])?;
     assert!(
         output.status.success(),
-        "VM create failed: {}",
+        "VM run failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -38,7 +38,7 @@ fn test_vm_create_command() -> Result<()> {
 
 #[test]
 #[ignore = "Creates real Docker containers; run with --ignored"]
-fn test_vm_create_with_force() -> Result<()> {
+fn test_vm_remove_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
 
@@ -51,39 +51,8 @@ fn test_vm_create_with_force() -> Result<()> {
     fixture.create_test_config()?;
     fixture.create_test_dockerfile()?;
 
-    // Create VM first time
-    let output = fixture.run_vm_command(&["create"])?;
-    assert!(output.status.success());
-
-    // Create again with force flag - should succeed
-    let output = fixture.run_vm_command(&["create", "--force"])?;
-    assert!(
-        output.status.success(),
-        "VM create --force failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    fixture.cleanup_test_containers()?;
-    Ok(())
-}
-
-#[test]
-#[ignore = "Creates real Docker containers; run with --ignored"]
-fn test_vm_destroy_command() -> Result<()> {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    let fixture = VmOpsTestFixture::new()?;
-
-    if !fixture.is_docker_available() {
-        println!("Skipping test - Docker not available");
-        return Ok(());
-    }
-
-    fixture.cleanup_test_containers()?;
-    fixture.create_test_config()?;
-    fixture.create_test_dockerfile()?;
-
-    // Create VM
-    fixture.run_vm_command(&["create"])?;
+    // Create and start VM
+    fixture.run_vm_command(&["run", "container"])?;
 
     // Verify container exists
     let check_output = Command::new("docker")
@@ -91,14 +60,14 @@ fn test_vm_destroy_command() -> Result<()> {
         .output()?;
     assert!(
         check_output.status.success(),
-        "Container should exist before destroy"
+        "Container should exist before removal"
     );
 
-    // Test destroy command with force flag (to avoid confirmation prompt)
+    // Test remove command with force flag (to avoid confirmation prompt)
     let output = fixture.run_vm_command(&["remove", "--force"])?;
     assert!(
         output.status.success(),
-        "VM destroy failed: {}",
+        "VM remove failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -108,7 +77,7 @@ fn test_vm_destroy_command() -> Result<()> {
         .output()?;
     assert!(
         !check_output.status.success(),
-        "Container should not exist after destroy"
+        "Container should not exist after removal"
     );
 
     Ok(())

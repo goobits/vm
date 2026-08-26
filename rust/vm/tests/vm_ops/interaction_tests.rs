@@ -18,8 +18,7 @@ fn test_vm_exec_command() -> Result<()> {
     fixture.create_test_dockerfile()?;
 
     // Create and start VM
-    fixture.run_vm_command(&["create"])?;
-    fixture.run_vm_command(&["start"])?;
+    fixture.run_vm_command(&["run", "container"])?;
     assert!(fixture.wait_for_container_state("running", 30));
 
     // Test exec command
@@ -93,8 +92,7 @@ fn test_vm_logs_command() -> Result<()> {
     fixture.create_test_dockerfile()?;
 
     // Create and start VM
-    fixture.run_vm_command(&["create"])?;
-    fixture.run_vm_command(&["start"])?;
+    fixture.run_vm_command(&["run", "container"])?;
     assert!(fixture.wait_for_container_state("running", 30));
 
     // Give container a moment to generate logs
@@ -128,8 +126,7 @@ fn test_vm_ssh_command() -> Result<()> {
     fixture.create_test_dockerfile()?;
 
     // Create and start VM
-    fixture.run_vm_command(&["create"])?;
-    fixture.run_vm_command(&["start"])?;
+    fixture.run_vm_command(&["run", "container"])?;
     assert!(fixture.wait_for_container_state("running", 30));
 
     // Note: SSH command is interactive, so we can't easily test it in an automated way

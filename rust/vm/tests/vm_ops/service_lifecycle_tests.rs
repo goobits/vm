@@ -18,9 +18,10 @@ fn test_vm_start_command() -> Result<()> {
     fixture.create_test_config()?;
     fixture.create_test_dockerfile()?;
 
-    // Create VM first
-    let output = fixture.run_vm_command(&["create"])?;
+    // Create and start the VM, then stop it so start is exercised explicitly.
+    let output = fixture.run_vm_command(&["run", "container"])?;
     assert!(output.status.success());
+    assert!(fixture.run_vm_command(&["stop"])?.status.success());
 
     // Start the VM
     let output = fixture.run_vm_command(&["start"])?;
@@ -56,8 +57,7 @@ fn test_vm_stop_command() -> Result<()> {
     fixture.create_test_dockerfile()?;
 
     // Create and start VM
-    fixture.run_vm_command(&["create"])?;
-    fixture.run_vm_command(&["start"])?;
+    fixture.run_vm_command(&["run", "container"])?;
 
     // Wait for it to be running
     assert!(fixture.wait_for_container_state("running", 30));
@@ -126,8 +126,7 @@ fn test_vm_restart_command() -> Result<()> {
     fixture.create_test_dockerfile()?;
 
     // Create and start VM
-    fixture.run_vm_command(&["create"])?;
-    fixture.run_vm_command(&["start"])?;
+    fixture.run_vm_command(&["run", "container"])?;
     assert!(fixture.wait_for_container_state("running", 30));
 
     // Restart the VM
@@ -164,8 +163,7 @@ fn test_vm_apply_command() -> Result<()> {
     fixture.create_test_dockerfile()?;
 
     // Create and start VM first
-    fixture.run_vm_command(&["create"])?;
-    fixture.run_vm_command(&["start"])?;
+    fixture.run_vm_command(&["run", "container"])?;
     assert!(fixture.wait_for_container_state("running", 30));
 
     // Test apply command

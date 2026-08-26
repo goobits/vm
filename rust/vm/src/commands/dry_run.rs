@@ -18,11 +18,6 @@ fn dry_run_description(command: &Command) -> String {
     };
 
     match command {
-        Command::Create { environment, force } => format!(
-            "{} {}",
-            if *force { "recreate" } else { "create" },
-            target(environment)
-        ),
         Command::Start {
             environment, fleet, ..
         } => {
@@ -111,6 +106,5 @@ fn dry_run_description(command: &Command) -> String {
         Command::Db { .. } => "run a database operation".to_string(),
         Command::Secret { .. } => "run a secret operation (values redacted)".to_string(),
         Command::InternalCompletion { .. } => "generate shell completions".to_string(),
-        Command::GetSyncDirectory => "print the workspace directory".to_string(),
     }
 }
