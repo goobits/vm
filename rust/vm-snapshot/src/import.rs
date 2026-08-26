@@ -165,9 +165,10 @@ mod tests {
 
         let manifest = ArchiveManifest::parse(
             r#"{
-                "version": "1.0",
+                "version": "2.0",
                 "snapshot_name": "demo",
                 "is_global": true,
+                "platform": {"os": "linux", "arch": "x86_64"},
                 "project_name": "global"
             }"#,
         )

@@ -52,17 +52,8 @@ image: "@my-snapshot"
     }
 
     #[test]
-    fn legacy_box_deserializes_and_serializes_as_canonical_image() {
-        let yaml = r#"
-box: "@vibe-box"
-"#;
-        let vm: VmSettings = serde_yaml_ng::from_str(yaml).unwrap();
-
-        assert_eq!(vm.image, Some(ImageSpec::String("@vibe-box".to_string())));
-
-        let serialized = serde_yaml_ng::to_string(&vm).unwrap();
-        assert!(serialized.contains("image: '@vibe-box'"));
-        assert!(!serialized.contains("box:"));
+    fn retired_box_field_is_rejected() {
+        assert!(serde_yaml_ng::from_str::<VmSettings>("box: '@vibe-box'\n").is_err());
     }
 
     #[test]
