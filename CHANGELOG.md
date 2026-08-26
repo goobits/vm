@@ -17,7 +17,7 @@
 
 ### ✨ Added
 
-- 🚀 `vm import <archive>` restores portable snapshot artifacts with typed manifests, mandatory platform checks, and explicit support for platform-less v1 archives.
+- 🚀 `vm import <archive>` restores portable snapshot artifacts with typed manifests and mandatory platform checks.
 - 🪟 `vm restart` provides the same humane environment targeting as start and stop operations.
 - ☁️ Container storage configuration supports scoped named volumes, bounded tmpfs mounts, PID limits, graceful-stop timing, and log rotation.
 - 🚀 Targeted status reports include writable-layer size, volume and tmpfs usage, memory and PID peaks, mounts, logging, and lifecycle settings.
@@ -43,10 +43,9 @@
 
 ### 🔧 Changed
 
-- 🪟 Legacy managed-environment, managed-guest, package-state, filesystem-preset, and hidden lifecycle paths now emit actionable v6 migration warnings when exercised.
+- 🪟 The v6 compatibility cutoff removes pre-role environment discovery, inferred managed-guest identity, retired package-state fields, filesystem presets, `vm.box`, platform-less v1 snapshot imports, and hidden lifecycle commands.
 - 🧩 Plugin scaffolding accepts only supported preset/service definition types, reuses canonical name validation, emits current configuration examples, and no longer describes built-in database or secret commands as plugin-backed.
 - 📦 Preset operations now resolve directly within each CLI invocation; the redundant process-global cache, cache-only benchmark/tests, orphan workspace test file, and unused configuration exports are removed.
-- 🪟 Compatibility paths now name their exact pre-role or approved scope, all managed-settings reconciliation writes the canonical guest marker, and the active tracker records evidence required before v6 removals.
 - 📦 Configuration initialization and loading now have library-owned implementations used by `vm`; the redundant standalone `vm-config` executable and its generic YAML query/transform surface are removed.
 - 🚀 Docker vibe base builds stage the definition embedded in the installed binary, and the repository-only provider validation workflow is no longer exposed as a public CLI command.
 - ☁️ Vibe base builds replace deprecated Gemini CLI with Antigravity and use one shared native installer contract for Antigravity, Claude Code, and Codex; `agent-skills` remains managed by `vm tools`.
@@ -73,13 +72,10 @@
 - 🪟 Source installation fails closed when the official Rust installer checksum is unavailable or malformed instead of executing a size-only-verified download.
 - 🪟 Source installation atomically copies `vm` into the stable user binary directory and keeps reusable Cargo artifacts in the platform cache, so temporary-build cleanup cannot break the installed CLI.
 - ☁️ Vendor-tool migration safely adopts broken symlinks inside a declared approved installer scope while continuing to refuse unrelated launchers.
-- 🪟 Existing `vm.box` configurations remain readable as a deprecated alias for canonical `vm.image`.
 - 📦 Deterministic package review permits only bounded, comment-only `.env.example` templates while continuing to reject environment values, credentials, private keys, and other sensitive paths.
 - 📦 Managed tool checkouts remain available until fleet activation succeeds, and release waits long enough for the activation worker's bounded per-target retries, making its retry guidance executable on larger fleets.
 - 📦 Restored managed checkouts recreate their durable submission ref before integration, allowing compacted and first-release checkouts to proceed without another agent commit.
 - 📦 The first managed checkout of an unpublished source can release its canonical committed tree directly, without requiring a meaningless empty commit.
-- 📦 Existing managed Docker environments created before or during ownership-label rollout remain discoverable from their exact project identity and workspace configuration, preventing shell connections and tool activation from entering a create/recreate or unresolved-owner path.
-- 📦 Existing package appliances migrate their persisted `runtime` and `review_image` metadata to the canonical state shape before normal commands run, so upgrades do not block `vm ssh` or `vm packages up`.
 - 📦 macOS source builds now compile and start the launchd tool-activation worker correctly.
 - 📦 Legacy managed collections remain discoverable during schema migration, and quarantine repair preserves equivalent GitHub SSH origins instead of requiring HTTPS.
 - 📦 The built-in `agent-skills` source and equivalent catalog migrations now retain SSH as their canonical Git transport.
