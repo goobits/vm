@@ -20,6 +20,8 @@ fn run() -> Result<()> {
     // The guard must be kept in scope for the lifetime of the application
     // to ensure that all buffered logs are flushed to the file.
     let _guard = init_subscriber();
+    let span = tracing::info_span!("installer", component = "vm_installer");
+    let _enter = span.enter();
     let args = Args::parse();
 
     vm_println!("{}", MESSAGES.service.installer_installing);

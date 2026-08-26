@@ -103,6 +103,13 @@ stderr by default and correlate request spans and response headers with the
 same bounded `x-request-id`. Command diagnostics name executables but omit
 arguments because arguments can contain credentials.
 
+`LOG_LEVEL`, `LOG_FORMAT=human|json|auto`, and
+`LOG_OUTPUT=console|file|both` control the shared subscriber. `RUST_LOG` is the
+advanced target-filter override, `LOG_TAGS=key:value` filters span context, and
+`LOG_FILE_PATH` selects the rolling file base when file output is enabled. CLI
+defaults are error-level human logs in the file sink; services default to
+info-level JSON on stderr.
+
 ## Provider Boundaries
 
 Callers borrow the narrowest capability they need: `CommandProvider` for guest

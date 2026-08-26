@@ -2,7 +2,7 @@
 use std::path::PathBuf;
 
 // External crates
-use tracing::{error, info};
+use tracing::{debug, info};
 use vm_core::error::{Result, VmError};
 use vm_core::msg;
 use vm_messages::messages::MESSAGES;
@@ -86,25 +86,42 @@ impl TempVmOps {
         state_manager.save_state(&temp_state)?;
 
         info!(
-            "{}",
-            msg!(
-                MESSAGES.service.temp_vm_created_with_mounts,
-                count = temp_state.mount_count().to_string()
-            )
+            component = "temp_vm",
+            operation = "create",
+            provider = provider.name(),
+            mount_count = temp_state.mount_count(),
+            auto_destroy,
+            "temporary VM created"
         );
 
         if auto_destroy {
             // SSH then destroy
-            info!("{}", MESSAGES.service.temp_vm_connecting);
+            debug!(
+                component = "temp_vm",
+                operation = "connect",
+                environment = %temp_state.container_name,
+                "connecting to temporary VM"
+            );
             provider.ssh(Some(&temp_state.container_name), &PathBuf::from("."))?;
-            info!("{}", MESSAGES.service.temp_vm_auto_destroying);
+            debug!(
+                component = "temp_vm",
+                operation = "destroy",
+                environment = %temp_state.container_name,
+                reason = "auto_destroy",
+                "removing temporary VM"
+            );
             provider.destroy(
                 Some(&temp_state.container_name),
                 &ProviderContext::default(),
             )?;
             state_manager.delete_state()?;
         } else {
-            info!("{}", MESSAGES.service.temp_vm_usage_hint);
+            info!(
+                component = "temp_vm",
+                operation = "create",
+                outcome = "ready",
+                "temporary VM ready"
+            );
         }
 
         Ok(())
@@ -174,18 +191,10 @@ impl TempVmOps {
 
         info!("{}", MESSAGES.service.temp_vm_stopping);
 
-        match provider.stop(None) {
-            Ok(()) => {
-                info!("{}", MESSAGES.service.temp_vm_stopped_success);
-                info!("{}", MESSAGES.service.temp_vm_restart_hint);
-                Ok(())
-            }
-            Err(e) => {
-                error!("{}", MESSAGES.service.temp_vm_failed_to_stop);
-                error!("   Error: {}", e);
-                Err(e)
-            }
-        }
+        provider.stop(None)?;
+        info!("{}", MESSAGES.service.temp_vm_stopped_success);
+        info!("{}", MESSAGES.service.temp_vm_restart_hint);
+        Ok(())
     }
 
     /// Start temporary VM
@@ -207,34 +216,22 @@ impl TempVmOps {
 
         info!("{}", MESSAGES.service.temp_vm_starting);
 
-        match provider.start(None, &ProviderContext::default()) {
-            Ok(()) => {
-                info!("{}", MESSAGES.service.temp_vm_started_success);
+        provider.start(None, &ProviderContext::default())?;
+        info!("{}", MESSAGES.service.temp_vm_started_success);
 
-                // Show mount info if any
-                if state.mount_count() > 0 {
-                    info!(
-                        "{}",
-                        msg!(
-                            MESSAGES.service.temp_vm_mounts_configured,
-                            count = state.mount_count().to_string()
-                        )
-                    );
-                }
-
-                info!("{}", MESSAGES.service.temp_vm_connect_hint);
-                Ok(())
-            }
-            Err(e) => {
-                error!("{}", MESSAGES.service.temp_vm_failed_to_start);
-                error!(
-                    "   {}",
-                    msg!(MESSAGES.common.error_generic, error = e.to_string())
-                );
-                info!("\n💡 Try: vm temp destroy && vm temp create <directory>");
-                Err(e)
-            }
+        // Show mount info if any
+        if state.mount_count() > 0 {
+            info!(
+                "{}",
+                msg!(
+                    MESSAGES.service.temp_vm_mounts_configured,
+                    count = state.mount_count().to_string()
+                )
+            );
         }
+
+        info!("{}", MESSAGES.service.temp_vm_connect_hint);
+        Ok(())
     }
 
     /// Restart temporary VM
@@ -258,29 +255,21 @@ impl TempVmOps {
         info!("{}", MESSAGES.service.temp_vm_stopping_step);
         info!("{}", MESSAGES.service.temp_vm_starting_step);
 
-        match provider.restart(None, &ProviderContext::default()) {
-            Ok(()) => {
-                info!("{}", MESSAGES.service.temp_vm_services_ready);
-                info!("{}", MESSAGES.service.temp_vm_restarted_success);
+        provider.restart(None, &ProviderContext::default())?;
+        info!("{}", MESSAGES.service.temp_vm_services_ready);
+        info!("{}", MESSAGES.service.temp_vm_restarted_success);
 
-                if state.mount_count() > 0 {
-                    info!(
-                        "{}",
-                        msg!(
-                            MESSAGES.service.temp_vm_mounts_active,
-                            count = state.mount_count().to_string()
-                        )
-                    );
-                }
-
-                info!("{}", MESSAGES.service.temp_vm_connect_hint);
-                Ok(())
-            }
-            Err(e) => {
-                error!("{}", MESSAGES.service.temp_vm_failed_to_restart);
-                error!("   Error: {}", e);
-                Err(e)
-            }
+        if state.mount_count() > 0 {
+            info!(
+                "{}",
+                msg!(
+                    MESSAGES.service.temp_vm_mounts_active,
+                    count = state.mount_count().to_string()
+                )
+            );
         }
+
+        info!("{}", MESSAGES.service.temp_vm_connect_hint);
+        Ok(())
     }
 }

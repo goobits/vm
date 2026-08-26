@@ -110,7 +110,11 @@ async fn main() {
     let _guard = init_subscriber();
 
     if std::env::var("VM_TEST_MODE").is_err() {
-        let span = info_span!("request", request_id = %get_request_id());
+        let span = info_span!(
+            "request",
+            component = "vm_cli",
+            request_id = %get_request_id()
+        );
         run_command(invocation).instrument(span).await;
     } else {
         run_command(invocation).await;

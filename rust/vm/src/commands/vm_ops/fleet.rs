@@ -78,8 +78,10 @@ pub fn handle_fleet_exec(targets: &FleetArgs, command: &[String]) -> VmResult<()
         let provider = provider_for(&provider_name)?;
         for instance in provider_instances {
             debug!(
-                "Fleet exec: provider={}, instance={}, command={:?}",
-                provider_name, instance.name, command
+                provider = %provider_name,
+                instance = %instance.name,
+                argument_count = command.len(),
+                "Executing fleet command"
             );
             match provider.exec(Some(&instance.name), command) {
                 Ok(()) => {
@@ -98,6 +100,7 @@ pub fn handle_fleet_exec(targets: &FleetArgs, command: &[String]) -> VmResult<()
 pub fn handle_fleet_copy(targets: &FleetArgs, source: &str, destination: &str) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "fleet_copy");
     let _enter = span.enter();
+    let direction = if source.contains(':') { "from" } else { "to" };
 
     let instances = resolve_fleet_targets(targets, InstanceStateFilter::Running)?;
 
@@ -112,8 +115,10 @@ pub fn handle_fleet_copy(targets: &FleetArgs, source: &str, destination: &str) -
         let provider = provider_for(&provider_name)?;
         for instance in provider_instances {
             debug!(
-                "Fleet copy: provider={}, instance={}, source={}, destination={}",
-                provider_name, instance.name, source, destination
+                provider = %provider_name,
+                instance = %instance.name,
+                direction,
+                "Copying fleet file"
             );
             match provider.copy(source, destination, Some(&instance.name)) {
                 Ok(()) => {

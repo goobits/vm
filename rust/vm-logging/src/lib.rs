@@ -4,7 +4,7 @@ use std::{
     io::{self, IsTerminal, Write},
     path::Path,
 };
-use tracing::{field::Visit, span, Metadata, Subscriber};
+use tracing::{field::Visit, span, subscriber::Interest, Metadata, Subscriber};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{
     fmt::MakeWriter,
@@ -78,6 +78,14 @@ impl<S> Layer<S> for TagFilterLayer
 where
     S: Subscriber + for<'lookup> tracing_subscriber::registry::LookupSpan<'lookup>,
 {
+    fn register_callsite(&self, metadata: &'static Metadata<'static>) -> Interest {
+        if self.filters.is_empty() || metadata.is_span() {
+            Interest::always()
+        } else {
+            Interest::sometimes()
+        }
+    }
+
     fn on_new_span(&self, attrs: &span::Attributes<'_>, id: &span::Id, ctx: Context<'_, S>) {
         let span = ctx.span(id).expect("Span should exist for just created ID");
         let mut fields = HashMap::new();
@@ -86,18 +94,35 @@ where
         span.extensions_mut().insert(fields);
     }
 
-    fn enabled(&self, _meta: &Metadata<'_>, ctx: Context<'_, S>) -> bool {
+    fn on_record(&self, id: &span::Id, values: &span::Record<'_>, ctx: Context<'_, S>) {
+        let Some(span) = ctx.span(id) else {
+            return;
+        };
+        let mut extensions = span.extensions_mut();
+        let Some(fields) = extensions.get_mut::<HashMap<String, String>>() else {
+            return;
+        };
+        values.record(&mut FieldVisitor(fields));
+    }
+
+    fn enabled(&self, meta: &Metadata<'_>, ctx: Context<'_, S>) -> bool {
         if self.filters.is_empty() {
             return true;
         }
 
-        let scope = match ctx.current_span().id().and_then(|id| ctx.span_scope(id)) {
-            Some(scope) => scope,
+        // Spans must be created before their fields can participate in tag
+        // filtering. Events are filtered against the active span context.
+        if meta.is_span() {
+            return true;
+        }
+
+        let current_span = match ctx.lookup_current() {
+            Some(span) => span,
             None => return false, // If tags are specified, events outside a span are filtered.
         };
 
         let mut all_fields = HashMap::new();
-        for span_ref in scope {
+        for span_ref in current_span.scope() {
             if let Some(fields) = span_ref.extensions().get::<HashMap<String, String>>() {
                 for (k, v) in fields {
                     all_fields.entry(k.clone()).or_insert_with(|| v.clone());
@@ -304,10 +329,39 @@ fn init_with_defaults(defaults: LogDefaults) -> Option<WorkerGuard> {
 
 #[cfg(test)]
 mod tests {
-    use super::{LogFormat, LogOutput, Tee};
+    use super::{LogFormat, LogOutput, Tag, TagFilterLayer, Tee};
     use std::io::{self, Write};
+    use std::sync::{Arc, Mutex};
+    use tracing_subscriber::{fmt::MakeWriter, prelude::*};
 
     struct FailingWriter;
+
+    #[derive(Clone)]
+    struct BufferWriter(Arc<Mutex<Vec<u8>>>);
+
+    struct BufferGuard(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for BufferGuard {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0
+                .lock()
+                .map_err(|_| io::Error::other("log buffer lock poisoned"))?
+                .extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> MakeWriter<'a> for BufferWriter {
+        type Writer = BufferGuard;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            BufferGuard(Arc::clone(&self.0))
+        }
+    }
 
     impl Write for FailingWriter {
         fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
@@ -374,5 +428,41 @@ mod tests {
             LogFormat::parse(Some("invalid"), LogFormat::Human),
             LogFormat::Human
         );
+    }
+
+    #[test]
+    fn tag_filter_keeps_matching_root_and_recorded_span_events() {
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::registry()
+            .with(TagFilterLayer {
+                filters: vec![Tag {
+                    key: "request_id".into(),
+                    value: "keep".into(),
+                }],
+            })
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .without_time()
+                    .with_ansi(false)
+                    .with_writer(BufferWriter(Arc::clone(&output))),
+            );
+
+        tracing::subscriber::with_default(subscriber, || {
+            let matching = tracing::info_span!("request", request_id = "keep-1");
+            matching.in_scope(|| tracing::info!("included event"));
+
+            let recorded = tracing::info_span!("request", request_id = tracing::field::Empty);
+            recorded.record("request_id", "keep-2");
+            recorded.in_scope(|| tracing::info!("recorded event"));
+
+            let excluded = tracing::info_span!("request", request_id = "drop-1");
+            excluded.in_scope(|| tracing::info!("excluded event"));
+        });
+
+        let bytes = output.lock().unwrap().clone();
+        let logs = String::from_utf8(bytes).unwrap();
+        assert!(logs.contains("included event"), "captured logs: {logs:?}");
+        assert!(logs.contains("recorded event"), "captured logs: {logs:?}");
+        assert!(!logs.contains("excluded event"), "captured logs: {logs:?}");
     }
 }

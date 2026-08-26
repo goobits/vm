@@ -152,19 +152,14 @@ pub fn handle_copy(
     container: Option<&str>,
     config: VmConfig,
 ) -> VmResult<()> {
-    debug!(
-        source,
-        destination,
-        provider = provider.name(),
-        "Copying files"
-    );
+    let direction = if source.contains(':') { "from" } else { "to" };
+    debug!(provider = provider.name(), direction, "Copying files");
 
     let vm_name = config
         .project
         .as_ref()
         .and_then(|project| project.name.as_deref())
         .unwrap_or("vm-project");
-    let direction = if source.contains(':') { "from" } else { "to" };
     vm_progress!("Copying file {direction} environment '{vm_name}'...");
 
     provider

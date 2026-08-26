@@ -56,7 +56,12 @@ impl ManagedService for AuthProxyService {
             )
             .await
             {
-                warn!("Auth proxy exited with error: {}", e);
+                warn!(
+                    component = "auth_proxy",
+                    operation = "run",
+                    error = %e,
+                    "auth proxy stopped"
+                );
             }
         });
 
@@ -64,7 +69,11 @@ impl ManagedService for AuthProxyService {
     }
 
     async fn stop(&self, _global_config: &GlobalConfig) -> Result<()> {
-        tracing::debug!("Auth proxy stop requested");
+        tracing::debug!(
+            component = "auth_proxy",
+            operation = "stop",
+            "auth proxy stop requested"
+        );
 
         // Get shutdown handle
         let shutdown_tx = {
@@ -81,17 +90,29 @@ impl ManagedService for AuthProxyService {
             // Send shutdown signal
             if shutdown_tx.send(()).is_err() {
                 warn!(
-                    "Failed to send shutdown signal to auth proxy (receiver may have been dropped)"
+                    component = "auth_proxy",
+                    operation = "stop",
+                    error_code = "shutdown_receiver_unavailable",
+                    "auth proxy shutdown signal failed"
                 );
             } else {
-                info!("Shutdown signal sent to auth proxy");
+                info!(
+                    component = "auth_proxy",
+                    operation = "stop",
+                    "auth proxy shutdown requested"
+                );
 
                 // Give the server a brief moment to shut down gracefully
                 // Reduced from 1000ms to 200ms for faster stops
                 tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
             }
         } else {
-            warn!("No shutdown handle found for auth proxy - it may not be running or was started externally");
+            warn!(
+                component = "auth_proxy",
+                operation = "stop",
+                error_code = "shutdown_handle_missing",
+                "auth proxy shutdown handle unavailable"
+            );
         }
 
         Ok(())
