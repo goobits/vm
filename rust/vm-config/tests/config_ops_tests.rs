@@ -15,7 +15,6 @@ struct SimpleTestFixture {
     _temp_dir: TempDir,
     test_dir: PathBuf,
     original_home: Option<String>,
-    original_vm_tool_dir: Option<String>,
     original_cwd: PathBuf,
 }
 
@@ -29,20 +28,15 @@ impl SimpleTestFixture {
 
         // Save original environment variables
         let original_home = std::env::var("HOME").ok();
-        let original_vm_tool_dir = std::env::var("VM_TOOL_DIR").ok();
         let original_cwd = std::env::current_dir()?;
 
         // Set environment variables to use our temp directory
         std::env::set_var("HOME", &test_dir);
-        let tool_dir = test_dir.join("vm-tool");
-        fs::create_dir_all(tool_dir.join("configs").join("presets"))?;
-        std::env::set_var("VM_TOOL_DIR", &tool_dir);
 
         Ok(Self {
             _temp_dir: temp_dir,
             test_dir,
             original_home,
-            original_vm_tool_dir,
             original_cwd,
         })
     }
@@ -53,29 +47,16 @@ impl SimpleTestFixture {
     }
 
     fn create_preset(name: &str, content: &str) -> Result<()> {
-        // In testing, get_presets_dir uses VM_TOOL_DIR/configs/presets
-        // But SimpleTestFixture sets VM_TOOL_DIR to temp_dir/vm-tool
-        // We need to make sure we write to the same place the code reads from
-        let tool_dir = std::env::var("VM_TOOL_DIR")
-            .expect("VM_TOOL_DIR environment variable not set - test fixture setup failed");
-
-        // Use get_presets_dir logic: $VM_TOOL_DIR/configs/presets
-        let presets_dir = PathBuf::from(tool_dir).join("configs").join("presets");
-
-        // Ensure directory exists
-        fs::create_dir_all(&presets_dir)?;
-
-        let preset_path = presets_dir.join(format!("{}.yaml", name));
-        fs::write(&preset_path, content)?;
-
-        // Also create the fallback path that get_tool_dir might be falling back to
-        // SimpleTestFixture sets VM_TOOL_DIR to temp_dir/vm-tool
-        // But get_tool_dir might be finding "target" directory and going up from there
-        // We can't easily mock std::env::current_exe() or force get_tool_dir to respect VM_TOOL_DIR exclusively
-        // without changing the implementation.
-        // However, get_tool_dir respects VM_TOOL_DIR if set.
-
-        println!("Created test preset at: {:?}", preset_path);
+        let home = std::env::var("HOME").expect("HOME must be set for the test fixture");
+        let plugin_dir = PathBuf::from(home).join(".vm/plugins/presets").join(name);
+        fs::create_dir_all(&plugin_dir)?;
+        fs::write(
+            plugin_dir.join("plugin.yaml"),
+            format!(
+                "name: {name}\nversion: 1.0.0\ndescription: Test preset\nplugin_type: preset\npreset_category: provision\n"
+            ),
+        )?;
+        fs::write(plugin_dir.join("preset.yaml"), content)?;
         Ok(())
     }
 }
@@ -89,10 +70,6 @@ impl Drop for SimpleTestFixture {
             Some(home) => std::env::set_var("HOME", home),
             None => std::env::remove_var("HOME"),
         }
-        match &self.original_vm_tool_dir {
-            Some(vm_tool_dir) => std::env::set_var("VM_TOOL_DIR", vm_tool_dir),
-            None => std::env::remove_var("VM_TOOL_DIR"),
-        }
     }
 }
 
@@ -100,31 +77,17 @@ impl Drop for SimpleTestFixture {
 mod config_ops_tests {
     use super::*;
 
-    const TART_PRESET: &str = r#"preset:
-  name: tart-test
-  description: test
-provider: tart
-networking:
-  networks: [spacebase]
-profiles:
-  macos:
-    provider: tart
-  tart:
-    provider: tart
-"#;
-
     fn tart_preset_fixture() -> Result<SimpleTestFixture> {
         let fixture = SimpleTestFixture::new()?;
         fixture.set_working_dir()?;
-        SimpleTestFixture::create_preset("tart-test", TART_PRESET)?;
         fs::write(
             fixture.test_dir.join("vm.yaml"),
-            "version: '2.0'\npreset: tart-test\nprovider: tart\nproject:\n  name: demo\n",
+            "version: '2.0'\npreset: vibe-tart\nprovider: tart\nproject:\n  name: demo\n",
         )?;
         Ok(fixture)
     }
 
-    fn assert_only_tart_profile_remains(fixture: &SimpleTestFixture) -> Result<()> {
+    fn assert_supported_profiles_remain(fixture: &SimpleTestFixture) -> Result<()> {
         let config: VmConfig =
             serde_yaml::from_str(&fs::read_to_string(fixture.test_dir.join("vm.yaml"))?)?;
         assert_eq!(config.preset, None);
@@ -132,7 +95,8 @@ profiles:
             .profiles
             .as_ref()
             .expect("profiles should be materialized");
-        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles.len(), 2);
+        assert!(profiles.contains_key("docker"));
         assert!(profiles.contains_key("tart"));
         assert!(config.networking.is_none());
         Ok(())
@@ -247,16 +211,7 @@ profiles:
         fixture.set_working_dir()?;
 
         // Create a test preset
-        let test_preset = r#"
-preset:
-  name: test-preset
-  description: Test preset for unit tests
-services:
-  redis:
-    enabled: true
-vm:
-  memory: 2048
-"#;
+        let test_preset = "category: provision\nservices:\n  - redis\n";
         SimpleTestFixture::create_preset("test-preset", test_preset)?;
 
         // Apply the preset locally
@@ -268,13 +223,6 @@ vm:
         let config_content = fs::read_to_string(&config_path)?;
         let config: VmConfig = serde_yaml::from_str(&config_content)?;
 
-        assert_eq!(
-            config
-                .vm
-                .as_ref()
-                .and_then(|v| v.memory.as_ref().and_then(|m| m.to_mb())),
-            Some(2048)
-        );
         assert_eq!(
             config
                 .services
@@ -388,9 +336,8 @@ vm:
         let fixture = tart_preset_fixture()?;
 
         ConfigOps::unset("profiles.macos", false)?;
-        ConfigOps::unset("networking", false)?;
 
-        assert_only_tart_profile_remains(&fixture)
+        assert_supported_profiles_remain(&fixture)
     }
 
     #[test]
@@ -402,8 +349,7 @@ vm:
 
         ConfigOps::unset("preset", false)?;
         ConfigOps::unset("profiles.macos", false)?;
-        ConfigOps::unset("networking", false)?;
 
-        assert_only_tart_profile_remains(&fixture)
+        assert_supported_profiles_remain(&fixture)
     }
 }

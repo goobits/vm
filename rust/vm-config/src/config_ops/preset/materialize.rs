@@ -5,7 +5,6 @@ use vm_core::error::{Result, VmError};
 use crate::config::VmConfig;
 use crate::config_ops::port_placeholders::load_preset_with_placeholders;
 use crate::merge::ConfigMerger;
-use crate::paths;
 use crate::preset::PresetDetector;
 
 pub(crate) fn resolve_declared_presets(config: VmConfig, project_dir: &Path) -> Result<VmConfig> {
@@ -13,7 +12,7 @@ pub(crate) fn resolve_declared_presets(config: VmConfig, project_dir: &Path) -> 
         return Ok(config);
     };
 
-    let detector = PresetDetector::new(project_dir.to_path_buf(), paths::get_presets_dir());
+    let detector = PresetDetector::new(project_dir.to_path_buf());
     let port_range = config
         .ports
         .range

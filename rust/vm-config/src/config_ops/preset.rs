@@ -9,7 +9,6 @@ use crate::config::VmConfig;
 use crate::config_ops::io::get_or_create_global_config_path;
 use crate::config_ops::port_placeholders::load_preset_with_placeholders;
 use crate::merge::ConfigMerger;
-use crate::paths;
 use crate::preset::PresetDetector;
 use crate::yaml::core::CoreOperations;
 use vm_core::error::{Result, VmError};
@@ -22,9 +21,8 @@ pub(crate) use materialize::resolve_declared_presets;
 
 /// Apply preset(s) to configuration
 pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) -> Result<()> {
-    let presets_dir = paths::get_presets_dir();
     let project_dir = std::env::current_dir()?;
-    let detector = PresetDetector::new(project_dir, presets_dir);
+    let detector = PresetDetector::new(project_dir);
 
     if list {
         return list_presets(&detector);

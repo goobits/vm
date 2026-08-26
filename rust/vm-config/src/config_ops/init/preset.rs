@@ -2,7 +2,7 @@ use tracing::{info, instrument};
 use vm_core::error::{Result, VmError};
 use vm_plugin::PresetCategory;
 
-use crate::{config::VmConfig, merge::ConfigMerger, paths, preset::PresetDetector};
+use crate::{config::VmConfig, merge::ConfigMerger, preset::PresetDetector};
 
 use super::build_initial_config;
 
@@ -11,7 +11,7 @@ pub(super) fn build_config_from_preset(
     sanitized_name: &str,
     preset_name: &str,
 ) -> Result<VmConfig> {
-    let detector = PresetDetector::new(std::env::current_dir()?, paths::get_presets_dir());
+    let detector = PresetDetector::new(std::env::current_dir()?);
     let available = detector.list_all_presets()?;
     if !available.iter().any(|name| name == preset_name) {
         return Err(VmError::Config(format!(

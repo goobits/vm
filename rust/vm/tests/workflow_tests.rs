@@ -114,19 +114,22 @@ impl WorkflowTestFixture {
         Ok(())
     }
 
-    /// Create a preset file for testing
+    /// Create an installed preset plugin for testing.
     fn create_preset(&self, name: &str, content: &str) -> Result<()> {
-        let presets_dir = self.test_dir.join("configs").join("presets");
-        fs::create_dir_all(&presets_dir)?;
-        let preset_path = presets_dir.join(format!("{}.yaml", name));
-
-        // Add preset metadata header to the content
-        let full_content = format!(
-            "---\npreset:\n  name: {}\n  description: \"Test preset for {}\"\n\n{}",
-            name, name, content
-        );
-
-        fs::write(preset_path, full_content)?;
+        let plugin_dir = self
+            .test_dir
+            .parent()
+            .unwrap()
+            .join(".vm/plugins/presets")
+            .join(name);
+        fs::create_dir_all(&plugin_dir)?;
+        fs::write(
+            plugin_dir.join("plugin.yaml"),
+            format!(
+                "name: {name}\nversion: 1.0.0\ndescription: Test preset\nplugin_type: preset\npreset_category: provision\n"
+            ),
+        )?;
+        fs::write(plugin_dir.join("preset.yaml"), content)?;
         Ok(())
     }
 }
@@ -214,14 +217,9 @@ fn test_preset_application_workflow() -> Result<()> {
     fixture.create_preset(
         "workflow-test",
         r#"
-vm:
-  memory: 8192
-  cpus: 4
 services:
-  redis:
-    enabled: true
-  postgresql:
-    enabled: true
+  - redis
+  - postgresql
 npm_packages:
   - eslint
   - prettier
@@ -242,13 +240,9 @@ npm_packages:
     assert!(fixture.file_exists("vm.yaml"));
     let config_content = fixture.read_file("vm.yaml")?;
 
-    // Parse YAML to check numeric values
+    // Parse YAML to check plugin-provided values.
     let config_value: serde_yaml::Value =
         serde_yaml::from_str(&config_content).expect("Failed to parse vm.yaml");
-
-    // Check numeric values (can be strings or numbers)
-    assert_yaml_value_eq(&config_value["vm"]["memory"], "8192", "vm.memory");
-    assert_yaml_value_eq(&config_value["vm"]["cpus"], "4", "vm.cpus");
 
     // Check services are present
     assert!(
@@ -489,12 +483,8 @@ fn test_preset_composition_workflow() -> Result<()> {
     fixture.create_preset(
         "base-preset",
         r#"
-vm:
-  memory: 2048
-  cpus: 2
 services:
-  redis:
-    enabled: true
+  - redis
 npm_packages:
   - eslint
 "#,
@@ -504,17 +494,10 @@ npm_packages:
     fixture.create_preset(
         "override-preset",
         r#"
-vm:
-  memory: 4096  # Override memory
-  swap: 1024    # Add new field
 services:
-  postgresql:
-    enabled: true  # Add new service
-    port: 3000
+  - postgresql
 npm_packages:
-  - prettier      # Replace packages
-ports:
-  _range: [3000, 3010]  # Add port range
+  - prettier
 "#,
     )?;
 
@@ -525,30 +508,9 @@ ports:
     // Step 4: Verify composition results
     let config_content = fixture.read_file("vm.yaml")?;
 
-    // Parse YAML to check numeric values
+    // Parse YAML to check composed plugin values.
     let config_value: serde_yaml::Value =
         serde_yaml::from_str(&config_content).expect("Failed to parse vm.yaml");
-
-    // Memory should be from override preset
-    assert_yaml_value_eq(
-        &config_value["vm"]["memory"],
-        "4096",
-        "vm.memory (from override preset)",
-    );
-
-    // CPUs should be from base preset (not overridden)
-    assert_yaml_value_eq(
-        &config_value["vm"]["cpus"],
-        "2",
-        "vm.cpus (from base preset)",
-    );
-
-    // Swap should be added from override
-    assert_yaml_value_eq(
-        &config_value["vm"]["swap"],
-        "1024",
-        "vm.swap (from override preset)",
-    );
 
     // Both services should be present
     assert!(
@@ -571,12 +533,6 @@ ports:
         .iter()
         .any(|p| p.as_str() == Some("prettier"));
     assert!(has_prettier, "Expected prettier in npm_packages");
-
-    // Ports range should be added
-    assert!(
-        !config_value["ports"]["_range"].is_null(),
-        "Expected ports._range to be set"
-    );
 
     Ok(())
 }
@@ -638,10 +594,6 @@ fn test_project_type_detection_workflow() -> Result<()> {
     fixture.create_preset(
         "nodejs",
         r#"
-provider: docker
-vm:
-  memory: 2048
-  cpus: 2
 npm_packages:
   - nodemon
   - eslint

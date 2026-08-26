@@ -33,7 +33,6 @@ mod global_config;
 mod limit_parser;
 mod loader;
 mod merge;
-mod paths;
 pub mod ports;
 mod preset;
 mod schema;

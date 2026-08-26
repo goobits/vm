@@ -121,23 +121,6 @@ fn hidden_lifecycle_commands_emit_v6_migration_warnings() {
 }
 
 #[test]
-fn filesystem_preset_discovery_emits_v6_migration_warning() {
-    let temp_dir = TempDir::new().unwrap();
-    let presets_dir = temp_dir.path().join(".vm/configs/presets");
-    fs::create_dir_all(&presets_dir).unwrap();
-    fs::write(presets_dir.join("legacy-custom.yaml"), "preset: {}\n").unwrap();
-
-    let output = run(&temp_dir, &["config", "preset", "--list"]);
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    let stderr = String::from_utf8(output.stderr).unwrap();
-
-    assert!(output.status.success(), "{stderr}");
-    assert!(stdout.contains("legacy-custom"), "{stdout}");
-    assert!(stderr.contains("Filesystem presets are deprecated"));
-    assert!(stderr.contains("v6.0.0"));
-}
-
-#[test]
 fn compose_render_is_raw_redacted_stdout() {
     let temp_dir = TempDir::new().unwrap();
     let config = temp_dir.path().join("vm.yaml");

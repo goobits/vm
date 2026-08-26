@@ -69,19 +69,22 @@ impl CliTestFixture {
             .join("config.yaml")
     }
 
-    /// Create a preset file for testing
+    /// Create an installed preset plugin for testing.
     fn create_preset(&self, name: &str, content: &str) -> Result<()> {
-        let presets_dir = self.test_dir.join("configs").join("presets");
-        fs::create_dir_all(&presets_dir)?;
-        let preset_path = presets_dir.join(format!("{}.yaml", name));
-
-        // Add preset metadata header to the content
-        let full_content = format!(
-            "---\npreset:\n  name: {}\n  description: \"Test preset for {}\"\n\n{}",
-            name, name, content
-        );
-
-        fs::write(preset_path, full_content)?;
+        let plugin_dir = self
+            .test_dir
+            .parent()
+            .unwrap()
+            .join(".vm/plugins/presets")
+            .join(name);
+        fs::create_dir_all(&plugin_dir)?;
+        fs::write(
+            plugin_dir.join("plugin.yaml"),
+            format!(
+                "name: {name}\nversion: 1.0.0\ndescription: Test preset\nplugin_type: preset\npreset_category: provision\n"
+            ),
+        )?;
+        fs::write(plugin_dir.join("preset.yaml"), content)?;
         Ok(())
     }
 }
@@ -209,10 +212,7 @@ mod cli_integration_tests {
             "test-preset",
             r#"
 services:
-  redis:
-    enabled: true
-vm:
-  memory: 2048
+  - redis
 npm_packages:
   - eslint
 "#,
@@ -237,7 +237,6 @@ npm_packages:
         assert!(stdout.contains("Preset 'test-preset' configuration:"));
         assert!(stdout.contains("redis:"));
         assert!(stdout.contains("enabled: true"));
-        assert!(stdout.contains("memory: 2048"));
 
         Ok(())
     }
@@ -251,12 +250,8 @@ npm_packages:
             "test-preset",
             r#"
 services:
-  redis:
-    enabled: true
-  postgresql:
-    enabled: true
-vm:
-  memory: 2048
+  - redis
+  - postgresql
 npm_packages:
   - eslint
   - prettier
@@ -276,7 +271,6 @@ npm_packages:
         let config_content = fixture.read_file("vm.yaml")?;
         assert!(config_content.contains("redis:"));
         assert!(config_content.contains("enabled: true"));
-        assert!(config_content.contains("memory: 2048"));
         assert!(config_content.contains("eslint"));
         assert!(config_content.contains("prettier"));
 
@@ -292,10 +286,7 @@ npm_packages:
             "preset1",
             r#"
 services:
-  redis:
-    enabled: true
-vm:
-  memory: 2048
+  - redis
 npm_packages:
   - eslint
 "#,
@@ -306,16 +297,9 @@ npm_packages:
             "preset2",
             r#"
 services:
-  postgresql:
-    enabled: true
-    port: 3000
-vm:
-  memory: 4096  # Should override preset1
-  cpus: 4
+  - postgresql
 npm_packages:
   - prettier
-ports:
-  _range: [3000, 3010]
 "#,
         )?;
 
@@ -329,18 +313,9 @@ ports:
         // Verify both presets were merged correctly
         let config_content = fixture.read_file("vm.yaml")?;
 
-        // Memory should be from preset2 (later preset wins)
-        assert!(config_content.contains("memory: 4096"));
-
         // Both services should be present
         assert!(config_content.contains("redis:"));
         assert!(config_content.contains("postgresql:"));
-
-        // CPUs should be from preset2
-        assert!(config_content.contains("cpus: 4"));
-
-        // Port range should be from preset2
-        assert!(config_content.contains("_range:"));
 
         // NPM packages should be from preset2 (arrays replace)
         assert!(config_content.contains("prettier"));
@@ -356,13 +331,8 @@ ports:
         fixture.create_preset(
             "global-preset",
             r#"
-provider: tart
-vm:
-  memory: 8192
-  cpus: 4
 services:
-  docker:
-    enabled: true
+  - docker
 "#,
         )?;
 
@@ -381,9 +351,6 @@ services:
         assert!(output.status.success());
 
         let stdout = String::from_utf8(output.stdout)?;
-        assert!(stdout.contains("provider: tart"));
-        assert!(stdout.contains("memory: 8192"));
-        assert!(stdout.contains("cpus: 4"));
         assert!(stdout.contains("docker:"));
 
         Ok(())

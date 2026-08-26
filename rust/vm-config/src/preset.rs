@@ -1,6 +1,5 @@
 use crate::config::{ImageSpec, VmConfig, VmSettings};
 use crate::detector::detect_preset_for_project;
-use glob::glob;
 use serde::{Deserialize, Serialize};
 use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
@@ -27,13 +26,11 @@ pub struct PresetFile {
 
 /// Preset detection and loading
 ///
-/// Manages preset discovery from multiple sources:
+/// Manages preset discovery from canonical sources:
 /// - Plugin presets from `~/.vm/plugins/presets/`
 /// - Embedded presets (base, tart-*, etc.)
-/// - Filesystem presets from `~/.vm/presets/`
 pub struct PresetDetector {
     project_dir: PathBuf,
-    presets_dir: PathBuf,
 }
 
 impl PresetDetector {
@@ -42,12 +39,8 @@ impl PresetDetector {
     /// # Arguments
     ///
     /// * `project_dir` - Directory to scan for project-specific detection
-    /// * `presets_dir` - Directory containing filesystem-based preset files
-    pub fn new(project_dir: PathBuf, presets_dir: PathBuf) -> Self {
-        Self {
-            project_dir,
-            presets_dir,
-        }
+    pub fn new(project_dir: PathBuf) -> Self {
+        Self { project_dir }
     }
 
     /// Detects the appropriate preset based on project files
@@ -68,7 +61,6 @@ impl PresetDetector {
     /// Searches for presets in order:
     /// 1. Plugin presets (user-installed)
     /// 2. Embedded presets (system defaults)
-    /// 3. Filesystem presets (custom YAML files)
     ///
     /// # Arguments
     ///
@@ -96,25 +88,9 @@ impl PresetDetector {
             return Ok(preset_file.config);
         }
 
-        // Fallback to file system (for custom presets)
-        let preset_path = self.presets_dir.join(format!("{name}.yaml"));
-        if !preset_path.exists() {
-            return Err(VmError::Config(format!(
-                "Preset '{name}' not found (no embedded preset or file at {})",
-                preset_path.display()
-            )));
-        }
-
-        vm_warning!(
-            "Filesystem preset '{}' is deprecated; install it as a preset plugin before v6.0.0",
-            preset_path.display()
-        );
-        let content = std::fs::read_to_string(&preset_path)?;
-        let source_desc = format!("preset file '{}'", preset_path.display());
-        let preset_file: PresetFile =
-            crate::yaml::CoreOperations::parse_yaml_with_diagnostics(&content, &source_desc)?;
-
-        Ok(preset_file.config)
+        Err(VmError::Config(format!(
+            "Preset '{name}' not found (no installed plugin or embedded preset)"
+        )))
     }
 
     /// Load a preset from plugins
@@ -251,8 +227,6 @@ impl PresetDetector {
             }
         }
 
-        self.add_filesystem_presets(&mut presets)?;
-
         presets.sort();
         Ok(presets)
     }
@@ -292,7 +266,7 @@ impl PresetDetector {
     ///
     /// # Returns
     ///
-    /// Sorted vector of preset names from all sources (plugins, embedded, filesystem).
+    /// Sorted vector of preset names from installed plugins and embedded presets.
     #[instrument(skip(self))]
     pub fn list_all_presets(&self) -> Result<Vec<String>> {
         let mut presets = Vec::new();
@@ -312,43 +286,8 @@ impl PresetDetector {
             }
         }
 
-        self.add_filesystem_presets(&mut presets)?;
-
         presets.sort();
         Ok(presets)
-    }
-
-    fn add_filesystem_presets(&self, presets: &mut Vec<String>) -> Result<()> {
-        if !self.presets_dir.exists() {
-            return Ok(());
-        }
-
-        let pattern = self
-            .presets_dir
-            .join("*.yaml")
-            .to_string_lossy()
-            .to_string();
-        let mut found_filesystem_preset = false;
-        for path in glob(&pattern)
-            .map_err(|error| VmError::Filesystem(format!("Glob pattern error: {error}")))?
-            .flatten()
-        {
-            let Some(stem) = path.file_stem() else {
-                continue;
-            };
-            let name = stem.to_string_lossy().to_string();
-            if !presets.contains(&name) {
-                presets.push(name);
-                found_filesystem_preset = true;
-            }
-        }
-
-        if found_filesystem_preset {
-            vm_warning!(
-                "Filesystem presets are deprecated; install them as preset plugins before v6.0.0"
-            );
-        }
-        Ok(())
     }
 
     /// Gets description for a preset (from plugin or embedded)
@@ -395,18 +334,10 @@ mod tests {
         let temp_dir = TempDir::new().expect("should create temp dir");
         let project_dir = temp_dir.path().to_path_buf();
 
-        // In unit tests under "cargo test --workspace", environment variables set in other tests
-        // might bleed or interact. But `get_presets_dir()` reads `VM_TOOL_DIR`.
-        // If `VM_TOOL_DIR` is set to a temp dir by another test, `get_presets_dir()` will return that.
-        // It's safer to use a temp dir for presets in this test too if we were testing loading.
-        // But here we are testing `detect()`, which only uses `project_dir`.
-        // `presets_dir` is passed to `new()` but not used by `detect()`.
-        let presets_dir = temp_dir.path().join("presets");
-
         // Create Django indicators
         fs::write(project_dir.join("manage.py"), "").expect("should write manage.py");
 
-        let detector = PresetDetector::new(project_dir, presets_dir);
+        let detector = PresetDetector::new(project_dir);
         let preset = detector.detect();
 
         assert_eq!(preset, Some("django".to_string()));
@@ -416,7 +347,6 @@ mod tests {
     fn test_react_detection() {
         let temp_dir = TempDir::new().expect("should create temp dir");
         let project_dir = temp_dir.path().to_path_buf();
-        let presets_dir = temp_dir.path().join("presets");
 
         // Create package.json with React
         let package_json = r#"{
@@ -428,7 +358,7 @@ mod tests {
         fs::write(project_dir.join("package.json"), package_json)
             .expect("should write package.json");
 
-        let detector = PresetDetector::new(project_dir, presets_dir);
+        let detector = PresetDetector::new(project_dir);
         let preset = detector.detect();
 
         assert_eq!(preset, Some("react".to_string()));

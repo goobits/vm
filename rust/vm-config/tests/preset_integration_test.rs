@@ -26,9 +26,7 @@ struct PresetTestFixture {
     _temp_dir: TempDir,
     project_dir: PathBuf,
     plugins_dir: PathBuf,
-    presets_dir: PathBuf,
     original_home: Option<String>,
-    original_vm_tool_dir: Option<String>,
 }
 
 impl PresetTestFixture {
@@ -40,27 +38,20 @@ impl PresetTestFixture {
         let project_dir = test_root.join("test-project");
         let vm_state_dir = test_root.join(".vm");
         let plugins_dir = vm_state_dir.join("plugins");
-        let tool_dir = test_root.join("vm-tool");
-        let presets_dir = tool_dir.join("configs").join("presets");
 
         fs::create_dir_all(&project_dir)?;
         fs::create_dir_all(&plugins_dir)?;
-        fs::create_dir_all(&presets_dir)?;
 
         // Save and override environment variables
         let original_home = std::env::var("HOME").ok();
-        let original_vm_tool_dir = std::env::var("VM_TOOL_DIR").ok();
 
         std::env::set_var("HOME", &test_root);
-        std::env::set_var("VM_TOOL_DIR", &tool_dir);
 
         Ok(Self {
             _temp_dir: temp_dir,
             project_dir,
             plugins_dir,
-            presets_dir,
             original_home,
-            original_vm_tool_dir,
         })
     }
 
@@ -163,7 +154,7 @@ services:
     }
 
     fn create_detector(&self) -> PresetDetector {
-        PresetDetector::new(self.project_dir.clone(), self.presets_dir.clone())
+        PresetDetector::new(self.project_dir.clone())
     }
 }
 
@@ -173,10 +164,6 @@ impl Drop for PresetTestFixture {
         match &self.original_home {
             Some(home) => std::env::set_var("HOME", home),
             None => std::env::remove_var("HOME"),
-        }
-        match &self.original_vm_tool_dir {
-            Some(vm_tool_dir) => std::env::set_var("VM_TOOL_DIR", vm_tool_dir),
-            None => std::env::remove_var("VM_TOOL_DIR"),
         }
     }
 }
