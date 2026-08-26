@@ -1,4 +1,6 @@
 [build]
+# Host builds stay out of the repository. Managed guests inject a higher-priority
+# CARGO_TARGET_DIR backed by their Docker named cache volume.
 target-dir = "/tmp/vm-rust-target"
 
 [alias]

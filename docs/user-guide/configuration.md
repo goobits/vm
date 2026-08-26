@@ -209,9 +209,10 @@ Package-level symlink directories in a workspace may remain on the source bind.
 `vm` also gives Docker environments a persistent platform-scoped home cache
 and applies the same cache layout inside Tart. Cargo targets and Node, Go,
 Python, uv, Corepack, npm, and Playwright caches stay out of the source bind.
-Docker keeps them across container recreation; Tart keeps them on the guest
-disk. Explicit values in `environment` override these generated defaults, so a
-Tart-specific `CARGO_TARGET_DIR` is not needed.
+Docker stores this cache in a named volume, not a macOS host bind, and keeps it
+across container recreation. Tart keeps it on the guest disk. Explicit values
+in `environment` override these generated defaults, so a Tart-specific
+`CARGO_TARGET_DIR` is not needed.
 
 ## macOS Tart Guests With Docker
 

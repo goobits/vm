@@ -296,6 +296,13 @@ fn renders_stable_scoped_storage_and_runtime_policy() {
     let tool_cache = volume_mount(dev, "tool_cache");
     assert_eq!(
         tool_cache
+            .get("type")
+            .and_then(serde_yaml_ng::Value::as_str),
+        Some("volume"),
+        "tool caches must use Docker storage rather than a host bind"
+    );
+    assert_eq!(
+        tool_cache
             .get("target")
             .and_then(serde_yaml_ng::Value::as_str),
         Some("/home/developer/.cache")
