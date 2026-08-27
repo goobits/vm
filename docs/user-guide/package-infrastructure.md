@@ -243,9 +243,11 @@ That resumable command submits the exact Git bundle, waits for isolated review,
 integrates against the latest canonical source, reruns checks, and lets
 credential-isolated jobs publish the immutable artifact. Binary build commands
 run first in a separate no-egress builder that has no Git, release, or publish
-credential; the release worker consumes only its durable digest-addressed
-archives. No host checkout, host approval, npmjs.org, crates.io, or PyPI
-publication participates.
+credential. When the source contains a recognized Node lockfile, the builder
+restores those exact dependencies through the private read-only package edge
+before invoking the manifest command. The release worker consumes only its
+durable digest-addressed archives. No host checkout, host approval, npmjs.org,
+crates.io, or PyPI publication participates.
 
 After a binary or collection is published, the durable host worker activates it
 in every running environment where it is globally enabled. Stopped environments

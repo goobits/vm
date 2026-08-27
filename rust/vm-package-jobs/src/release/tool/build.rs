@@ -18,6 +18,7 @@ mod sandbox;
 mod sources;
 mod staging;
 
+use super::dependencies::restore_locked_node_dependencies;
 use sandbox::prepare_unprivileged_build;
 use sources::materialize;
 use staging::stage;
@@ -176,6 +177,7 @@ async fn build_submission_in(
     }
     prepare_isolated_package_configuration(release_root)?;
     prepare_unprivileged_build(release_root, &source, &build_sources)?;
+    restore_locked_node_dependencies(&source, release_root)?;
     let tag = format!("v{version}");
     let context = ToolArtifactContext {
         source: &source,

@@ -24,6 +24,7 @@ mod archive;
 mod artifact;
 mod build;
 mod build_workspace;
+mod dependencies;
 mod publication;
 
 pub use build::{build_submission, prepare_build_work_root};
