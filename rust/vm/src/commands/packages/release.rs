@@ -1,7 +1,7 @@
 use vm_core::{vm_hint, vm_println, vm_success, vm_warning};
 use vm_packages::{
-    LeaseRequest, PackageEcosystem, SourceKind, ToolActivationState, ToolActivationTargetState,
-    WorkflowState,
+    LeaseRequest, PackageEcosystem, RetryToolBuildRequest, SourceKind, ToolActivationState,
+    ToolActivationTargetState, WorkflowState,
 };
 
 use crate::error::{VmError, VmResult};
@@ -106,6 +106,7 @@ pub(super) async fn handle_guest() -> VmResult<()> {
         ));
     }
     renew_release_lease(&subject, &client, &checkout).await?;
+    let build_retry = retry_failed_tool_build(&client, &checkout).await?;
     let mut package_ecosystem = if matches!(
         checkout.state,
         WorkflowState::Active | WorkflowState::NeedsChanges | WorkflowState::Submitted
@@ -133,21 +134,28 @@ pub(super) async fn handle_guest() -> VmResult<()> {
             )
             .await?
         }
-        WorkflowState::Active | WorkflowState::NeedsChanges => match workspace.as_ref() {
-            Some(workspace) => {
-                submission::handle_workspace(
-                    &subject,
-                    &client,
-                    &checkout,
-                    &workspace.source,
-                    package_ecosystem,
-                )
-                .await?
+        WorkflowState::Active | WorkflowState::NeedsChanges => {
+            if let Some(retried) = build_retry {
+                retried
+            } else {
+                match workspace.as_ref() {
+                    Some(workspace) => {
+                        submission::handle_workspace(
+                            &subject,
+                            &client,
+                            &checkout,
+                            &workspace.source,
+                            package_ecosystem,
+                        )
+                        .await?
+                    }
+                    None => {
+                        submission::handle_guest(&subject, &client, &checkout, package_ecosystem)
+                            .await?
+                    }
+                }
             }
-            None => {
-                submission::handle_guest(&subject, &client, &checkout, package_ecosystem).await?
-            }
-        },
+        }
         WorkflowState::Submitted => match workspace.as_ref() {
             Some(workspace) => {
                 submission::resume_workspace(
@@ -225,6 +233,50 @@ pub(super) async fn handle_guest() -> VmResult<()> {
         }
     }
     Ok(())
+}
+
+async fn retry_failed_tool_build(
+    client: &vm_packages::PackageInfrastructureClient,
+    checkout: &vm_packages::CheckoutRecord,
+) -> VmResult<Option<vm_packages::SubmissionRecord>> {
+    if checkout.state != WorkflowState::NeedsChanges
+        || checkout.source_kind != SourceKind::ToolBinary
+    {
+        return Ok(None);
+    }
+    let submission = client.checkout_submission(&checkout.checkout_id).await?;
+    if !submission
+        .review
+        .as_ref()
+        .is_some_and(|review| review.reviewer == "tool-build-service")
+    {
+        return Ok(None);
+    }
+    let generation = submission
+        .integration
+        .as_ref()
+        .map(|integration| integration.integration_commit.as_str())
+        .unwrap_or(&submission.submitted_commit)
+        .chars()
+        .take(16)
+        .collect::<String>();
+    let retried = client
+        .retry_tool_build(
+            &submission.submission_id,
+            &RetryToolBuildRequest {
+                actor: checkout.agent.clone(),
+                idempotency_key: format!(
+                    "retry-tool-build-{}-{generation}",
+                    submission.submission_id
+                ),
+            },
+        )
+        .await?;
+    vm_success!(
+        "Requeued approved build {} without changing the current worktree",
+        submission.submission_id
+    );
+    Ok(Some(retried))
 }
 
 async fn checkout_package_ecosystem(

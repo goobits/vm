@@ -67,6 +67,8 @@
 ### 🐛 Fixed
 
 - 📦 Isolated binary builders keep their private work shelf non-listable but traversable by the configured build UID, classify launcher and worker I/O failures as retryable infrastructure, and report the failing stage, program, and directory.
+- 📦 Retrying a failed isolated binary build requeues its approved immutable integration without reading or changing newer checkout edits; version failures still require a new commit.
+- 📦 Source installs retain their workspace marker beside the stable `vm` executable, so package-appliance upgrades can use the documented local-build fallback.
 - 🪟 Configuration failures print their bounded source cause, identify the retired `vm.box` migration directly, and no longer misdiagnose repeated nested keys as top-level duplicates.
 - 🪟 Secret and cleanup commands now stop on invalid configuration or failed engine operations instead of silently switching to defaults or reporting an empty cleanup.
 - 🌐 Port allocation locks a stable sidecar across atomic registry replacement, so concurrent project initialization preserves every reservation and cannot select duplicate ranges.

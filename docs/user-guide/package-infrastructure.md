@@ -493,6 +493,11 @@ artifacts it cannot verify. A deterministic command, archive, or verification
 failure returns the same workspace release to `NeedsChanges`; infrastructure
 failures remain retryable.
 
+After an isolated build-service failure, rerunning `vm packages release`
+requeues the already approved immutable integration. It does not reset, stash,
+submit, or delete newer worktree edits made after that approval. Version
+preflight failures still require a new committed version.
+
 The Vibe base owns Antigravity, Claude Code, and Codex executables. VM updates
 them directly from their official installers through one transactional vendor
 engine; they do not require this appliance or entries in project repositories.

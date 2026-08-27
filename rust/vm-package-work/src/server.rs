@@ -171,6 +171,10 @@ pub(crate) fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router 
             "/v1/submissions/{submission_id}/integration/complete",
             post(agent::complete_integration),
         )
+        .route(
+            "/v1/submissions/{submission_id}/build/retry",
+            post(agent::retry_tool_build),
+        )
         .merge(crate::tools::agent_routes())
         .route_layer(middleware::from_fn_with_state(state.clone(), auth::agent));
     let reviews = Router::new()

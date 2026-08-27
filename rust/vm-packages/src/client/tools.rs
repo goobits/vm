@@ -1,9 +1,9 @@
 use anyhow::Result;
 
 use crate::{
-    CompleteToolBuildRequest, PublishToolArtifact, RegisterTool, SubmissionRecord,
-    ToolArtifactRecord, ToolBuildRecord, ToolDefinition, ToolIndex, ToolInventory,
-    ToolPublicationReceipt,
+    CompleteToolBuildRequest, PublishToolArtifact, RegisterTool, RetryToolBuildRequest,
+    SubmissionRecord, ToolArtifactRecord, ToolBuildRecord, ToolDefinition, ToolIndex,
+    ToolInventory, ToolPublicationReceipt,
 };
 
 use super::PackageInfrastructureClient;
@@ -96,6 +96,18 @@ impl PackageInfrastructureClient {
                 .as_deref()
                 .or(self.controller_token.as_deref()),
             "build",
+        )
+        .await
+    }
+
+    pub async fn retry_tool_build(
+        &self,
+        submission_id: &str,
+        request: &RetryToolBuildRequest,
+    ) -> Result<SubmissionRecord> {
+        self.post_work(
+            &format!("v1/submissions/{submission_id}/build/retry"),
+            request,
         )
         .await
     }

@@ -34,6 +34,12 @@ pub struct CompleteToolBuildRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RetryToolBuildRequest {
+    pub actor: String,
+    pub idempotency_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolBuildRecord {
     pub submission_id: String,
     pub source_commit: String,
@@ -45,6 +51,8 @@ pub struct ToolBuildRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure_kind: Option<ToolBuildFailureKind>,
     pub actor: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_idempotency_key: Option<String>,
     pub completed_at: DateTime<Utc>,
 }
 

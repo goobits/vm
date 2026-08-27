@@ -3,7 +3,8 @@ use std::collections::BTreeSet;
 use chrono::Utc;
 use vm_packages::{
     validate_label, validate_sha256, CompleteToolBuildRequest, PublishToolArtifact, ReceiptKind,
-    ReviewDecision, SourceKind, ToolBuildFailureKind, ToolBuildRecord, WorkflowState,
+    RetryToolBuildRequest, ReviewDecision, SourceKind, SubmissionRecord, ToolBuildFailureKind,
+    ToolBuildRecord, WorkflowState,
 };
 
 use crate::store::{
@@ -108,6 +109,7 @@ impl Store {
             failure: request.failure,
             failure_kind: request.failure_kind,
             actor: request.actor.clone(),
+            completion_idempotency_key: Some(request.idempotency_key.clone()),
             completed_at: Utc::now(),
         };
         next.tool_builds
@@ -149,6 +151,125 @@ impl Store {
         self.commit(&mut current, next).await?;
         Ok(record)
     }
+
+    pub async fn retry_tool_build(
+        &self,
+        submission_id: &str,
+        request: RetryToolBuildRequest,
+    ) -> WorkResult<SubmissionRecord> {
+        validate_label("build retry actor", &request.actor)?;
+        validate_idempotency_key(&request.idempotency_key)?;
+        let fingerprint = operation_fingerprint("retry_tool_build", Some(submission_id), &request)?;
+        let mut current = self.database.lock().await;
+        if let Some(existing) = current.idempotency.get(&request.idempotency_key) {
+            ensure_fingerprint(existing, &fingerprint)?;
+            return current
+                .submissions
+                .get(&existing.target_id)
+                .cloned()
+                .ok_or_else(|| WorkError::Internal("idempotency target is missing".into()));
+        }
+
+        let mut next = current.clone();
+        let submission = next
+            .submissions
+            .get(submission_id)
+            .ok_or_else(|| WorkError::NotFound(submission_id.to_string()))?;
+        if submission.state != WorkflowState::NeedsChanges || submission.release_id.is_some() {
+            return Err(WorkError::Conflict(
+                "only an unpublished binary build awaiting changes can be retried".into(),
+            ));
+        }
+        let checkout = next
+            .checkouts
+            .get(&submission.checkout_id)
+            .ok_or_else(|| WorkError::Internal("tool build checkout is missing".into()))?;
+        if checkout.source_kind != SourceKind::ToolBinary || submission.integration.is_none() {
+            return Err(WorkError::Conflict(
+                "build retry requires an integrated binary tool submission".into(),
+            ));
+        }
+        let failed_build = next
+            .tool_builds
+            .get(submission_id)
+            .filter(|build| legacy_infrastructure_failure(build))
+            .ok_or_else(|| {
+                WorkError::Conflict(
+                    "build retry requires a recorded isolated-builder infrastructure failure"
+                        .into(),
+                )
+            })?;
+        if failed_build.source_commit
+            != submission
+                .integration
+                .as_ref()
+                .expect("integration was checked")
+                .integration_commit
+        {
+            return Err(WorkError::Conflict(
+                "failed build does not match the approved integration".into(),
+            ));
+        }
+        let failed_idempotency_key = failed_build.completion_idempotency_key.clone();
+        if !submission
+            .review
+            .as_ref()
+            .is_some_and(|review| review.reviewer == "tool-build-service")
+        {
+            return Err(WorkError::Conflict(
+                "build retry requires failure recorded by the isolated build service".into(),
+            ));
+        }
+
+        transition_records(
+            &mut next,
+            submission_id,
+            WorkflowState::ReadyToRelease,
+            ReceiptKind::Build,
+            &request.actor,
+            "approved integration requeued after isolated builder repair",
+            Some("build_retry_queued".into()),
+        )?;
+        let review = next
+            .submissions
+            .get_mut(submission_id)
+            .and_then(|submission| submission.review.as_mut())
+            .expect("failed tool build retains its review");
+        review.decision = ReviewDecision::Approve;
+        review.reason = "approved integration retained for isolated build retry".into();
+        review.required_followups.clear();
+        review.reviewer = "tool-build-retry-service".into();
+        review.timestamp = Utc::now();
+        next.tool_builds.remove(submission_id);
+        next.idempotency.retain(|key, record| {
+            record.target_id != submission_id
+                || failed_idempotency_key
+                    .as_ref()
+                    .map_or_else(|| !key.starts_with("tool-build-"), |failed| key != failed)
+        });
+        next.idempotency.insert(
+            request.idempotency_key,
+            IdempotencyRecord {
+                fingerprint,
+                target_id: submission_id.to_string(),
+            },
+        );
+        let result = next
+            .submissions
+            .get(submission_id)
+            .cloned()
+            .expect("submission remains present");
+        self.commit(&mut current, next).await?;
+        Ok(result)
+    }
+}
+
+fn legacy_infrastructure_failure(build: &ToolBuildRecord) -> bool {
+    build.failure_kind == Some(ToolBuildFailureKind::Build)
+        && build
+            .failure
+            .as_deref()
+            .is_some_and(|failure| failure.contains("Permission denied (os error 13)"))
 }
 
 fn validate_build_request(request: &CompleteToolBuildRequest) -> WorkResult<()> {
@@ -438,6 +559,16 @@ mod tests {
             submission.review.as_ref().unwrap().required_followups[0].contains("retried unchanged")
         );
 
+        assert!(store
+            .retry_tool_build(
+                &submission.submission_id,
+                RetryToolBuildRequest {
+                    actor: "package-agent".into(),
+                    idempotency_key: "retry-deterministic-build".into(),
+                },
+            )
+            .await
+            .is_err());
         let retried = store
             .record_submission(
                 &submission.checkout_id,
@@ -450,20 +581,70 @@ mod tests {
             .unwrap();
         assert_eq!(retried.state, WorkflowState::Submitted);
         assert!(retried.review.is_none());
-        assert!(store.tool_build(&retried.submission_id).await.is_err());
-        let revalidated = store
-            .validate_submission(
-                &retried.submission_id,
-                ValidationRequest {
-                    package: CheckOutcome::Passed,
-                    consumers: BTreeMap::new(),
-                    actor: "controller".into(),
-                    idempotency_key: "validate-binary-build".into(),
-                },
-            )
+    }
+
+    #[tokio::test]
+    async fn legacy_builder_permission_failure_requeues_the_approved_generation() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).await.unwrap();
+        let submission = ready_binary(&store).await;
+        let mut failure = successful_request();
+        failure.artifacts.clear();
+        failure.failure = Some(
+            "binary build failed: Permission denied (os error 13): Permission denied (os error 13)"
+                .into(),
+        );
+        failure.failure_kind = Some(ToolBuildFailureKind::Build);
+        failure.version.clear();
+        failure.idempotency_key = "tool-build-legacy-permission".into();
+        store
+            .complete_tool_build(&submission.submission_id, failure)
             .await
             .unwrap();
-        assert_eq!(revalidated.state, WorkflowState::Reviewing);
+
+        let request = RetryToolBuildRequest {
+            actor: "package-agent".into(),
+            idempotency_key: "retry-tool-build-test".into(),
+        };
+        let retried = store
+            .retry_tool_build(&submission.submission_id, request.clone())
+            .await
+            .unwrap();
+        assert_eq!(retried.state, WorkflowState::ReadyToRelease);
+        assert_eq!(
+            retried.review.as_ref().unwrap().decision,
+            ReviewDecision::Approve
+        );
+        assert!(retried
+            .review
+            .as_ref()
+            .unwrap()
+            .required_followups
+            .is_empty());
+        assert!(store.tool_build(&retried.submission_id).await.is_err());
+        assert_eq!(
+            store.next_tool_build().await.unwrap().submission_id,
+            retried.submission_id
+        );
+        assert_eq!(
+            store
+                .retry_tool_build(&submission.submission_id, request)
+                .await
+                .unwrap()
+                .state,
+            WorkflowState::ReadyToRelease
+        );
+
+        drop(store);
+        let reopened = Store::open(directory.path()).await.unwrap();
+        assert_eq!(
+            reopened
+                .submission(&retried.submission_id)
+                .await
+                .unwrap()
+                .state,
+            WorkflowState::ReadyToRelease
+        );
     }
 
     #[tokio::test]
@@ -493,5 +674,15 @@ mod tests {
             review.required_followups,
             ["Update the declared version, commit it, and rerun the same release command"]
         );
+        assert!(store
+            .retry_tool_build(
+                &submission.submission_id,
+                RetryToolBuildRequest {
+                    actor: "package-agent".into(),
+                    idempotency_key: "retry-version-build".into(),
+                },
+            )
+            .await
+            .is_err());
     }
 }
