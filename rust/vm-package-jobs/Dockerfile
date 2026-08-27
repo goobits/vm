@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Build with the repository root as context:
 # docker build -f rust/vm-package-jobs/Dockerfile .
-FROM rust:1.97-bookworm AS builder
+FROM rust:1.97-bookworm@sha256:0e2bcaef56d041a486784e54104a81aebe0da44bd03019bd70bc0401e42e4a97 AS builder
 
 ARG VM_PACKAGE_BUILD_PROFILE=release
 WORKDIR /source
@@ -19,14 +19,15 @@ RUN --mount=type=cache,id=vm-packages-cargo-registry,target=/usr/local/cargo/reg
     install -m 0755 "$CARGO_TARGET_DIR/$VM_PACKAGE_BUILD_PROFILE/pkg-rollout" /usr/local/bin/pkg-rollout && \
     install -m 0755 "$CARGO_TARGET_DIR/$VM_PACKAGE_BUILD_PROFILE/pkg-git-askpass" /usr/local/bin/pkg-git-askpass
 
-FROM node:22-bookworm
+FROM node:22-bookworm@sha256:8a34c4ab3ea2c5cd194f07e317b2a8f09461d3c8b05c4e34c8ccd56d56024c4d
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential ca-certificates curl git libssl-dev pkg-config \
       python3 python3-pip python3-venv && \
     rm -rf /var/lib/apt/lists/* && \
     python3 -m venv /opt/package-tools && \
-    /opt/package-tools/bin/pip install --no-cache-dir build twine uv && \
+    /opt/package-tools/bin/pip install --no-cache-dir \
+      build==1.6.0 twine==7.0.0 uv==0.12.7 && \
     corepack disable && \
     npm install --global pnpm@10.34.5 yarn@1.22.22 && \
     npm cache clean --force && \

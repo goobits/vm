@@ -4,7 +4,7 @@
 # =============================================================================
 # STAGE: base
 # =============================================================================
-FROM ubuntu:22.04 AS base
+FROM ubuntu:22.04@sha256:2edbbc5dc405e9612ba3584ce95480277e3eb374407b5505fe26f17df77c7dbc AS base
 
 ARG USER_NAME=developer
 ARG USER_UID=1000
@@ -56,8 +56,8 @@ FROM base AS node-builder
 ARG USER_NAME=developer
 ARG USER_UID=1000
 ARG USER_GID=1000
-ARG NVM_VERSION=v0.40.3
-ARG NODE_VERSION=22
+ARG NVM_COMMIT=d025499c7f5466d0dc0a324dc98eab72cce8377d
+ARG NODE_VERSION=22.23.2
 
 USER ${USER_NAME}
 ENV NVM_DIR="/home/${USER_NAME}/.nvm"
@@ -65,7 +65,10 @@ ENV NVM_DIR="/home/${USER_NAME}/.nvm"
 RUN mkdir -p $NVM_DIR
 
 RUN --mount=type=cache,target=/home/${USER_NAME}/.nvm/.cache,uid=${USER_UID},gid=${USER_GID} \
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash && \
+    curl --fail --show-error --location \
+      "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_COMMIT}/install.sh" \
+      --output /tmp/install-nvm.sh && \
+    bash /tmp/install-nvm.sh && rm -f /tmp/install-nvm.sh && \
     . $NVM_DIR/nvm.sh && \
     nvm install ${NODE_VERSION} && \
     nvm use ${NODE_VERSION} && \
@@ -73,7 +76,8 @@ RUN --mount=type=cache,target=/home/${USER_NAME}/.nvm/.cache,uid=${USER_UID},gid
 
 RUN --mount=type=cache,target=/home/${USER_NAME}/.npm,uid=${USER_UID},gid=${USER_GID} \
     . $NVM_DIR/nvm.sh && npm install -g \
-    playwright prettier eslint typescript ts-node tsx nodemon npm-check-updates
+    playwright@1.62.1 prettier@3.9.6 eslint@10.9.1 typescript@7.0.2 \
+    ts-node@10.9.2 tsx@4.23.12 nodemon@3.1.14 npm-check-updates@23.1.0
 
 # Chrome for Testing only available on x86_64
 RUN --mount=type=cache,target=/home/${USER_NAME}/.cache/ms-playwright,uid=${USER_UID},gid=${USER_GID} \
@@ -89,6 +93,8 @@ FROM base AS rust-builder
 ARG USER_NAME=developer
 ARG USER_UID=1000
 ARG USER_GID=1000
+ARG TARGETARCH
+ARG RUST_TOOLCHAIN=1.98.0
 
 USER ${USER_NAME}
 
@@ -96,13 +102,22 @@ RUN mkdir -p /home/${USER_NAME}/.cargo /home/${USER_NAME}/.cargo/git /home/${USE
 
 RUN --mount=type=cache,target=/home/${USER_NAME}/.cargo/registry,uid=${USER_UID},gid=${USER_GID} \
     --mount=type=cache,target=/home/${USER_NAME}/.cargo/git,uid=${USER_UID},gid=${USER_GID} \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile default && \
+    case "${TARGETARCH}" in amd64) rust_arch=x86_64 ;; arm64) rust_arch=aarch64 ;; *) exit 2 ;; esac && \
+    rustup_url="https://static.rust-lang.org/rustup/dist/${rust_arch}-unknown-linux-gnu/rustup-init" && \
+    curl --proto '=https' --tlsv1.2 -sSfL "$rustup_url" -o /tmp/rustup-init && \
+    curl --proto '=https' --tlsv1.2 -sSfL "$rustup_url.sha256" -o /tmp/rustup-init.sha256 && \
+    expected=$(awk '{print $1}' /tmp/rustup-init.sha256) && \
+    echo "$expected  /tmp/rustup-init" | sha256sum --check - && \
+    chmod 700 /tmp/rustup-init && \
+    /tmp/rustup-init -y --default-toolchain "$RUST_TOOLCHAIN" --profile default && \
+    rm -f /tmp/rustup-init /tmp/rustup-init.sha256 && \
     . $HOME/.cargo/env && \
     rustup component add rustfmt clippy rust-analyzer
 
 RUN --mount=type=cache,target=/home/${USER_NAME}/.cargo/registry,uid=${USER_UID},gid=${USER_GID} \
     --mount=type=cache,target=/home/${USER_NAME}/.cargo/git,uid=${USER_UID},gid=${USER_GID} \
-    . $HOME/.cargo/env && cargo install cargo-watch cargo-edit cargo-audit cargo-outdated
+    . $HOME/.cargo/env && cargo install --locked \
+      cargo-watch@8.5.3 cargo-edit@0.13.13 cargo-audit@0.22.2 cargo-outdated@0.19.0
 
 # =============================================================================
 # STAGE: final
@@ -110,7 +125,7 @@ RUN --mount=type=cache,target=/home/${USER_NAME}/.cargo/registry,uid=${USER_UID}
 FROM base AS final
 
 ARG USER_NAME=developer
-ARG NODE_VERSION=22
+ARG NODE_VERSION=22.23.2
 
 COPY --from=node-builder --chown=${USER_NAME}:${USER_NAME} /home/${USER_NAME}/.nvm /home/${USER_NAME}/.nvm
 
@@ -123,7 +138,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && \
     apt-get install -y python3.11 python3.11-venv python3.11-dev && \
     update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
-    curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11 && \
+    python3.11 -m ensurepip --upgrade && \
     python3.11 -m pip install --no-cache-dir --root-user-action=ignore --upgrade \
     pip==26.0.1 setuptools==82.0.1 wheel==0.47.0 && \
     python3.11 -m pip install --no-cache-dir --root-user-action=ignore \
@@ -144,11 +159,21 @@ ENV CARGO_TARGET_DIR="/tmp/vm-rust-target"
 # agent-skills.
 USER ${USER_NAME}
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ARG ANTIGRAVITY_INSTALLER_SHA256=ee1ea43ce4e9e56356c4ab6dad907ef357ae4bdfcaadb682735909fb57c9c640
+ARG CLAUDE_INSTALLER_SHA256=3a68d3406cf674e17bed1733a4dcf37805e2e47d87417700007d7e1aa766a944
+ARG CODEX_INSTALLER_SHA256=ba92dd27e5c06f0d3bbc58bfa4b9cfb6599cd2742fbb1f92a2765e6c07dedb5a
 RUN export HOME="/home/${USER_NAME}" && \
     export PATH="$HOME/.local/bin:$PATH" && \
-    curl -fsSL https://antigravity.google/cli/install.sh | bash && \
-    curl -fsSL https://claude.ai/install.sh | bash -s -- stable && \
-    curl -fsSL https://chatgpt.com/codex/install.sh | sh && \
+    curl -fsSL https://antigravity.google/cli/install.sh -o /tmp/install-antigravity.sh && \
+    echo "$ANTIGRAVITY_INSTALLER_SHA256  /tmp/install-antigravity.sh" | sha256sum --check - && \
+    bash /tmp/install-antigravity.sh && \
+    curl -fsSL https://claude.ai/install.sh -o /tmp/install-claude.sh && \
+    echo "$CLAUDE_INSTALLER_SHA256  /tmp/install-claude.sh" | sha256sum --check - && \
+    bash /tmp/install-claude.sh stable && \
+    curl -fsSL https://chatgpt.com/codex/install.sh -o /tmp/install-codex.sh && \
+    echo "$CODEX_INSTALLER_SHA256  /tmp/install-codex.sh" | sha256sum --check - && \
+    sh /tmp/install-codex.sh && \
+    rm -f /tmp/install-antigravity.sh /tmp/install-claude.sh /tmp/install-codex.sh && \
     command -v agy >/dev/null && \
     command -v claude >/dev/null && \
     command -v codex >/dev/null

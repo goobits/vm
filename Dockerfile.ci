@@ -1,14 +1,16 @@
 # Stage 1: Build environment with VM tool
-FROM rust:1.70 AS builder
+FROM rust:1.97-bookworm@sha256:0e2bcaef56d041a486784e54104a81aebe0da44bd03019bd70bc0401e42e4a97 AS builder
 
-# Install VM tool
-RUN cargo install vm
+# Build the reviewed checkout instead of an unrelated mutable crates.io release.
+WORKDIR /source
+COPY rust/ .
+RUN cargo install --locked --path vm
 
 # Verify installation
 RUN vm --version
 
 # Stage 2: Runtime environment
-FROM ubuntu:22.04
+FROM ubuntu:22.04@sha256:2edbbc5dc405e9612ba3584ce95480277e3eb374407b5505fe26f17df77c7dbc
 
 # Copy VM binary from builder
 COPY --from=builder /usr/local/cargo/bin/vm /usr/local/bin/vm

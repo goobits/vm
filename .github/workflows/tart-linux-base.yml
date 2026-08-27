@@ -13,16 +13,21 @@ concurrency:
 
 jobs:
   publish:
+    if: github.ref == 'refs/heads/main'
+    environment: release
     runs-on: [self-hosted, macOS, ARM64, tart-builder]
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Install Tart
         run: |
-          if ! command -v tart >/dev/null 2>&1; then
-            brew install cirruslabs/cli/tart
-          fi
+          command -v tart >/dev/null 2>&1 || {
+            echo "The protected Tart runner must provide Tart ahead of time" >&2
+            exit 1
+          }
           test "$(uname -m)" = arm64
           tart --version
 
@@ -44,6 +49,12 @@ jobs:
           version=$(awk -F '"' '/^version = / { print $2; exit }' rust/Cargo.toml)
           owner=$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
           image="ghcr.io/${owner}/vm-tart-linux"
+          probe="vm-tart-existing-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          trap 'tart delete "$probe" >/dev/null 2>&1 || true' EXIT
+          if tart clone "${image}:v${version}" "$probe" >/dev/null 2>&1; then
+            echo "Refusing to overwrite ${image}:v${version}" >&2
+            exit 1
+          fi
           tart push vibe-tart-linux-base \
             "${image}:v${version}" \
             "${image}:latest"

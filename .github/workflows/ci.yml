@@ -9,12 +9,15 @@ on:
     branches: [ main ]
   workflow_dispatch:  # Manual trigger option
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     env:
-      CARGO_TARGET_DIR: ${{ runner.temp }}/vm-rust-target
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cache/vm-rust-target
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
@@ -22,10 +25,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Cache cargo dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
@@ -34,7 +39,9 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
 
       - name: Set up Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: stable
 
       - name: Run unit tests
         continue-on-error: ${{ matrix.os != 'ubuntu-latest' }}
@@ -50,13 +57,15 @@ jobs:
     name: Run clippy
     runs-on: ubuntu-latest
     env:
-      CARGO_TARGET_DIR: ${{ runner.temp }}/vm-rust-target
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cache/vm-rust-target
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Cache cargo dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
@@ -65,8 +74,9 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
 
       - name: Set up Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
         with:
+          toolchain: stable
           components: rustfmt, clippy
 
       - name: Check formatting
@@ -85,10 +95,12 @@ jobs:
       CARGO_TARGET_DIR: target
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Cache cargo dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
@@ -97,7 +109,9 @@ jobs:
           key: ${{ runner.os }}-package-workflow-${{ hashFiles('rust/Cargo.lock') }}
 
       - name: Set up Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: stable
 
       - name: Build VM CLI
         working-directory: rust
@@ -118,17 +132,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Install cargo-deny
-        uses: taiki-e/install-action@cargo-deny
+        uses: taiki-e/install-action@d865e9aac326f15b06ac52b57abb58cd0e3330e4 # cargo-deny
+        with:
+          tool: cargo-deny@0.20.2
 
       - name: Install jscpd
-        run: npm install -g jscpd
+        run: npm install --global jscpd@5.0.16
 
       - name: Run cargo-deny
         working-directory: rust
-        run: cargo deny check advisories
+        run: cargo deny check
 
       - name: Check for duplicates
         run: jscpd -c .jscpd.json rust/

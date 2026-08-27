@@ -3,14 +3,50 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'  # Only trigger on version tags
+      - 'v*'
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  package-images:
-    name: Publish ${{ matrix.image }} image
+  validate:
+    name: Validate immutable release input
+    runs-on: ubuntu-latest
+    outputs:
+      owner: ${{ steps.release.outputs.owner }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate tag, version, and ancestry
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version=$(awk -F '"' '/^version = / { print $2; exit }' rust/Cargo.toml)
+          owner=$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          test "$GITHUB_REF_NAME" = "v${version}"
+          test "$(git cat-file -t "refs/tags/$GITHUB_REF_NAME")" = tag
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Refusing to overwrite existing release $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          echo "owner=$owner" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build-package-images:
+    name: Build ${{ matrix.image }} image
+    needs: validate
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -23,55 +59,58 @@ jobs:
           - image: vm-package-jobs
             dockerfile: vm-package-jobs/Dockerfile
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
-    - name: Log in to GHCR
-      uses: docker/login-action@v4
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Generate image metadata
-      id: metadata
-      uses: docker/metadata-action@v6
-      with:
-        images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
-        tags: |
-          type=semver,pattern={{version}}
+      - name: Build and stage image by digest
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: rust/${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          outputs: type=image,name=ghcr.io/${{ needs.validate.outputs.owner }}/${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          provenance: true
+          sbom: true
 
-    - name: Build and publish image
-      uses: docker/build-push-action@v7
-      with:
-        context: .
-        file: rust/${{ matrix.dockerfile }}
-        platforms: linux/amd64,linux/arm64
-        push: true
-        tags: ${{ steps.metadata.outputs.tags }}
-        labels: ${{ steps.metadata.outputs.labels }}
-        cache-from: type=gha,scope=${{ matrix.image }}
-        cache-to: type=gha,mode=max,scope=${{ matrix.image }}
-        provenance: true
-        sbom: true
+      - name: Record staged image digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_NAME: ${{ matrix.image }}
+        run: |
+          test "${DIGEST#sha256:}" != "$DIGEST"
+          mkdir -p /tmp/image-digests
+          printf '%s\n' "$DIGEST" > "/tmp/image-digests/$IMAGE_NAME"
 
-    - name: Verify the image is anonymously pullable
-      env:
-        IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ steps.metadata.outputs.version }}
-      run: |
-        docker logout ghcr.io
-        docker pull "$IMAGE"
+      - name: Upload staged image digest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: image-${{ matrix.image }}
+          path: /tmp/image-digests/${{ matrix.image }}
+          if-no-files-found: error
 
-  release:
-    name: Create GitHub Release
+  build-assets:
+    name: Build ${{ matrix.target }} release asset
+    needs: validate
     runs-on: ${{ matrix.os }}
     env:
-      CARGO_TARGET_DIR: ${{ runner.temp }}/vm-rust-target
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cache/vm-rust-target
     strategy:
       matrix:
         include:
@@ -85,72 +124,149 @@ jobs:
             target: aarch64-apple-darwin
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Build release binary
+        working-directory: rust
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: cargo build --locked --workspace --release --target ${{ matrix.target }}
+
+      - name: Package binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p "$RUNNER_TEMP/release-assets"
+          cp "$CARGO_TARGET_DIR/${{ matrix.target }}/release/vm" "$RUNNER_TEMP/release-assets/vm-${{ matrix.target }}"
+          cd "$RUNNER_TEMP/release-assets"
+          tar czf vm-${{ matrix.target }}.tar.gz vm-${{ matrix.target }}
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum vm-${{ matrix.target }}.tar.gz > vm-${{ matrix.target }}.tar.gz.sha256
+          else
+            shasum -a 256 vm-${{ matrix.target }}.tar.gz > vm-${{ matrix.target }}.tar.gz.sha256
+          fi
+
+      - name: Package binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/release-assets"
+          Copy-Item "$env:CARGO_TARGET_DIR/${{ matrix.target }}/release/vm.exe" "$env:RUNNER_TEMP/release-assets/vm-${{ matrix.target }}.exe"
+          Set-Location "$env:RUNNER_TEMP/release-assets"
+          Compress-Archive -Path vm-${{ matrix.target }}.exe -DestinationPath vm-${{ matrix.target }}.zip
+          $hash = (Get-FileHash vm-${{ matrix.target }}.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  vm-${{ matrix.target }}.zip" | Out-File vm-${{ matrix.target }}.zip.sha256 -Encoding ascii
+
+      - name: Stage release asset
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-${{ matrix.target }}
+          path: ${{ runner.temp }}/release-assets/
+          if-no-files-found: error
+
+  publish-images:
+    name: Publish complete package image set
+    needs: [validate, build-package-images, build-assets]
+    environment: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download staged image digests
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: image-*
+          path: image-digests
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate and publish immutable image tags
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          owner=$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          for image in vm-package-server vm-package-jobs; do
+            digest=$(cat "image-digests/$image")
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            repository="ghcr.io/${owner}/${image}"
+            docker buildx imagetools inspect "${repository}@${digest}" >/dev/null
+            if docker buildx imagetools inspect "${repository}:${VERSION}" >/dev/null 2>&1; then
+              echo "Refusing to overwrite ${repository}:${VERSION}" >&2
+              exit 1
+            fi
+          done
+          for image in vm-package-server vm-package-jobs; do
+            digest=$(cat "image-digests/$image")
+            repository="ghcr.io/${owner}/${image}"
+            docker buildx imagetools create \
+              --tag "${repository}:${VERSION}" \
+              "${repository}@${digest}"
+          done
+
+      - name: Verify images are anonymously pullable
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          docker logout ghcr.io
+          owner=$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          for image in vm-package-server vm-package-jobs; do
+            docker pull "ghcr.io/${owner}/${image}:${VERSION}"
+          done
+
+  publish-release:
+    name: Publish complete GitHub release
+    needs: [validate, publish-images, build-assets]
+    environment: release
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-    - uses: actions/checkout@v4
+      - name: Download all verified assets
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
 
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        targets: ${{ matrix.target }}
+      - name: Verify the complete asset set
+        run: |
+          set -euo pipefail
+          test "$(find release-assets -maxdepth 1 -type f -name 'vm-*.sha256' | wc -l)" -eq 5
+          test "$(find release-assets -maxdepth 1 -type f \( -name 'vm-*.tar.gz' -o -name 'vm-*.zip' \) | wc -l)" -eq 5
+          (cd release-assets && sha256sum --check *.sha256)
 
-    - name: Install cross-compilation tools
-      if: matrix.target == 'aarch64-unknown-linux-gnu'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Publish immutable release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: release-assets/*
+          fail_on_unmatched_files: true
+          body: |
+            ## Installation
 
-    - name: Build release binary
-      run: |
-        cargo build --workspace --release --target ${{ matrix.target }}
-      working-directory: rust
-      env:
-        CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-
-    - name: Package binary (Unix)
-      if: runner.os != 'Windows'
-      run: |
-        mkdir -p "$RUNNER_TEMP/release-assets"
-        cp "$CARGO_TARGET_DIR/${{ matrix.target }}/release/vm" "$RUNNER_TEMP/release-assets/vm-${{ matrix.target }}"
-        cd "$RUNNER_TEMP/release-assets"
-        tar czf vm-${{ matrix.target }}.tar.gz vm-${{ matrix.target }}
-        sha256sum vm-${{ matrix.target }}.tar.gz > vm-${{ matrix.target }}.tar.gz.sha256
-
-    - name: Package binary (Windows)
-      if: runner.os == 'Windows'
-      run: |
-        New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/release-assets"
-        Copy-Item "$env:CARGO_TARGET_DIR/${{ matrix.target }}/release/vm.exe" "$env:RUNNER_TEMP/release-assets/vm-${{ matrix.target }}.exe"
-        cd "$env:RUNNER_TEMP/release-assets"
-        Compress-Archive -Path vm-${{ matrix.target }}.exe -DestinationPath vm-${{ matrix.target }}.zip
-        $hash = (Get-FileHash vm-${{ matrix.target }}.zip -Algorithm SHA256).Hash.ToLowerInvariant()
-        "$hash  vm-${{ matrix.target }}.zip" | Out-File vm-${{ matrix.target }}.zip.sha256 -Encoding ascii
-
-    - name: Upload release assets
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          ${{ runner.temp }}/release-assets/vm-*.tar.gz
-          ${{ runner.temp }}/release-assets/vm-*.tar.gz.sha256
-          ${{ runner.temp }}/release-assets/vm-*.zip
-          ${{ runner.temp }}/release-assets/vm-*.zip.sha256
-        body: |
-          ## Installation
-
-          Download the appropriate binary for your platform and extract it:
-
-          ### Linux/macOS
-          ```bash
-          curl -LO https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/vm-<TARGET>.tar.gz
-          tar xzf vm-<TARGET>.tar.gz
-          sudo mv vm-<TARGET> /usr/local/bin/vm
-          chmod +x /usr/local/bin/vm
-          ```
-
-          ### Windows
-          Download and extract the `.zip` file, then add to your PATH.
-
-          ## Checksums
-          Verify your download with the `.sha256` files.
-        prerelease: false
+            Download the archive for your platform and verify its `.sha256` file before installation.
+          prerelease: false

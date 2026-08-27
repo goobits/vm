@@ -5,8 +5,9 @@ set -euo pipefail
 GUEST_OS="${GUEST_OS:-macos}"
 BASE_NAME="${BASE_NAME:-}"
 BASE_IMAGE="${BASE_IMAGE:-}"
-NODE_VERSION="${NODE_VERSION:-22}"
-NVM_VERSION="${NVM_VERSION:-v0.40.3}"
+NODE_VERSION="${NODE_VERSION:-22.23.2}"
+NVM_COMMIT="${NVM_COMMIT:-d025499c7f5466d0dc0a324dc98eab72cce8377d}"
+RUST_TOOLCHAIN="${RUST_TOOLCHAIN:-1.98.0}"
 WAIT_SECONDS="${WAIT_SECONDS:-120}"
 
 usage() {
@@ -20,8 +21,9 @@ Environment overrides:
   GUEST_OS       Guest OS type to build (default: macos)
   BASE_NAME       Target Tart VM name (default depends on guest OS)
   BASE_IMAGE      Source Tart image (default depends on guest OS)
-  NODE_VERSION    Default Node version to preinstall (default: 22)
-  NVM_VERSION     NVM installer version (default: v0.40.3)
+  NODE_VERSION    Default Node version to preinstall (default: 22.23.2)
+  NVM_COMMIT      Pinned NVM installer commit
+  RUST_TOOLCHAIN  Pinned Rust toolchain (default: 1.98.0)
   WAIT_SECONDS    SSH readiness timeout in seconds (default: 120)
 EOF
 }
@@ -58,11 +60,11 @@ done
 
 case "$GUEST_OS" in
   macos)
-    : "${BASE_IMAGE:=ghcr.io/cirruslabs/macos-sequoia-base:latest}"
+    : "${BASE_IMAGE:=ghcr.io/cirruslabs/macos-sequoia-base@sha256:785c3acb40fa5af6dd5aab96cd60408372c26125e173c14ea417498d086f829c}"
     : "${BASE_NAME:=vibe-tart-sequoia-base}"
     ;;
   linux)
-    : "${BASE_IMAGE:=ghcr.io/cirruslabs/ubuntu:latest}"
+    : "${BASE_IMAGE:=ghcr.io/cirruslabs/ubuntu@sha256:e018055c421f9d594da78c8a9a5f4c45683e4509ccbdc03091aa928c172c0135}"
     : "${BASE_NAME:=vibe-tart-linux-base}"
     ;;
   *)
@@ -70,6 +72,17 @@ case "$GUEST_OS" in
     exit 1
     ;;
 esac
+
+if [[ ! "$BASE_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; then
+  echo "Invalid Tart base name: $BASE_NAME" >&2
+  exit 1
+fi
+if [[ ! "$NODE_VERSION" =~ ^[0-9]+([.][0-9]+){2}$ ]] || \
+   [[ ! "$RUST_TOOLCHAIN" =~ ^[0-9]+([.][0-9]+){2}$ ]] || \
+   [[ ! "$NVM_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "Invalid pinned toolchain version" >&2
+  exit 1
+fi
 
 require_tool() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -92,12 +105,23 @@ if [[ -z "${VIBE_AI_TOOLS_INSTALLER:-}" ]]; then
 fi
 
 cleanup_running_vm() {
-  if tart list | grep -Eq "^${BASE_NAME}[[:space:]]+running"; then
+  if [[ "${started_vm:-false}" == true ]]; then
     tart stop "$BASE_NAME" >/dev/null
   fi
 }
 
+started_vm=false
 trap cleanup_running_vm EXIT
+
+log_dir="${XDG_STATE_HOME:-$HOME/.local/state}/vm/tart"
+if [[ -L "$log_dir" ]]; then
+  echo "Refusing symlinked Tart log directory: $log_dir" >&2
+  exit 1
+fi
+mkdir -p "$log_dir"
+chmod 700 "$log_dir"
+run_log=$(mktemp "$log_dir/build.XXXXXX.log")
+chmod 600 "$run_log"
 
 echo "[1/5] Creating staged Tart base '${BASE_NAME}' from '${BASE_IMAGE}'..."
 if tart list | awk '{print $1}' | grep -Fxq "$BASE_NAME"; then
@@ -107,13 +131,14 @@ fi
 tart clone "$BASE_IMAGE" "$BASE_NAME"
 
 echo "[2/5] Starting '${BASE_NAME}'..."
-nohup tart run --no-graphics "$BASE_NAME" >/tmp/"${BASE_NAME}".log 2>&1 &
+nohup tart run --no-graphics "$BASE_NAME" >"$run_log" 2>&1 &
+started_vm=true
 
 echo "[3/5] Waiting for guest shell..."
 deadline=$((SECONDS + WAIT_SECONDS))
 until tart exec "$BASE_NAME" bash -lc 'echo ready' >/dev/null 2>&1; do
   if (( SECONDS >= deadline )); then
-    echo "Timed out waiting for Tart guest readiness. See /tmp/${BASE_NAME}.log" >&2
+    echo "Timed out waiting for Tart guest readiness. See $run_log" >&2
     exit 1
   fi
   sleep 2
@@ -144,7 +169,9 @@ if [[ "${GUEST_OS}" == "macos" ]]; then
     pipx ensurepath >/dev/null 2>&1 || true
 
     if [ ! -s \"\$HOME/.nvm/nvm.sh\" ]; then
-      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash
+      curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_COMMIT}/install.sh -o /tmp/install-nvm.sh
+      bash /tmp/install-nvm.sh
+      rm -f /tmp/install-nvm.sh
     fi
     export NVM_DIR=\"\$HOME/.nvm\"
     . \"\$NVM_DIR/nvm.sh\"
@@ -154,24 +181,39 @@ if [[ "${GUEST_OS}" == "macos" ]]; then
 
     for pkg in git-filter-repo httpie tldr; do
       if ! pipx list --short 2>/dev/null | grep -Fxq \"\$pkg\"; then
-        pipx install \"\$pkg\"
+        case \"\$pkg\" in
+          git-filter-repo) version=2.47.0 ;;
+          httpie) version=3.2.4 ;;
+          tldr) version=3.4.4 ;;
+        esac
+        pipx install \"\$pkg==\$version\"
       fi
     done
 
     if [ ! -x \"\$HOME/.cargo/bin/cargo\" ]; then
-      curl https://sh.rustup.rs -sSf | sh -s -- -y
+      rust_arch=\$(uname -m)
+      [ \"\$rust_arch\" = arm64 ] && rust_arch=aarch64
+      rustup_url=\"https://static.rust-lang.org/rustup/dist/\${rust_arch}-apple-darwin/rustup-init\"
+      curl --proto '=https' --tlsv1.2 -fsSL \"\$rustup_url\" -o /tmp/rustup-init
+      curl --proto '=https' --tlsv1.2 -fsSL \"\$rustup_url.sha256\" -o /tmp/rustup-init.sha256
+      expected=\$(awk '{print \$1}' /tmp/rustup-init.sha256)
+      actual=\$(shasum -a 256 /tmp/rustup-init | awk '{print \$1}')
+      [ \"\$actual\" = \"\$expected\" ]
+      chmod 700 /tmp/rustup-init
+      /tmp/rustup-init -y --default-toolchain ${RUST_TOOLCHAIN}
+      rm -f /tmp/rustup-init /tmp/rustup-init.sha256
     fi
     export PATH=\"\$HOME/.cargo/bin:\$PATH\"
-    rustup default stable
+    rustup default ${RUST_TOOLCHAIN}
 
     if ! command -v go >/dev/null 2>&1; then
       brew install go
     fi
 
     npm install -g \
-      eslint \
-      npm-check-updates \
-      prettier
+      eslint@10.9.1 \
+      npm-check-updates@23.1.0 \
+      prettier@3.9.6
   "
 else
   tart exec "$BASE_NAME" bash -lc "
@@ -215,7 +257,9 @@ else
     sudo update-locale LANG=en_US.UTF-8
 
     if [ ! -s \"\$HOME/.nvm/nvm.sh\" ]; then
-      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash
+      curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_COMMIT}/install.sh -o /tmp/install-nvm.sh
+      bash /tmp/install-nvm.sh
+      rm -f /tmp/install-nvm.sh
     fi
     export NVM_DIR=\"\$HOME/.nvm\"
     . \"\$NVM_DIR/nvm.sh\"
@@ -227,24 +271,38 @@ else
     pipx ensurepath >/dev/null 2>&1 || true
     for pkg in git-filter-repo httpie tldr; do
       if ! pipx list --short 2>/dev/null | grep -Fxq \"\$pkg\"; then
-        pipx install \"\$pkg\"
+        case \"\$pkg\" in
+          git-filter-repo) version=2.47.0 ;;
+          httpie) version=3.2.4 ;;
+          tldr) version=3.4.4 ;;
+        esac
+        pipx install \"\$pkg==\$version\"
       fi
     done
 
     if [ ! -x \"\$HOME/.cargo/bin/cargo\" ]; then
-      curl https://sh.rustup.rs -sSf | sh -s -- -y
+      rust_arch=\$(uname -m)
+      [ \"\$rust_arch\" = x86_64 ] || rust_arch=aarch64
+      rustup_url=\"https://static.rust-lang.org/rustup/dist/\${rust_arch}-unknown-linux-gnu/rustup-init\"
+      curl --proto '=https' --tlsv1.2 -fsSL \"\$rustup_url\" -o /tmp/rustup-init
+      curl --proto '=https' --tlsv1.2 -fsSL \"\$rustup_url.sha256\" -o /tmp/rustup-init.sha256
+      expected=\$(awk '{print \$1}' /tmp/rustup-init.sha256)
+      echo \"\$expected  /tmp/rustup-init\" | sha256sum --check -
+      chmod 700 /tmp/rustup-init
+      /tmp/rustup-init -y --default-toolchain ${RUST_TOOLCHAIN}
+      rm -f /tmp/rustup-init /tmp/rustup-init.sha256
     fi
     export PATH=\"\$HOME/.cargo/bin:\$PATH\"
-    rustup default stable
+    rustup default ${RUST_TOOLCHAIN}
 
     if ! command -v go >/dev/null 2>&1; then
       sudo apt-get install -y golang-go
     fi
 
     npm install -g \
-      eslint \
-      npm-check-updates \
-      prettier
+      eslint@10.9.1 \
+      npm-check-updates@23.1.0 \
+      prettier@3.9.6
   "
 fi
 
