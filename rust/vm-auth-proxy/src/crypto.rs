@@ -8,7 +8,8 @@ use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use pbkdf2::pbkdf2_hmac;
 use sha2::Sha256;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::Path;
 
 /// Number of PBKDF2 iterations for key derivation
@@ -109,28 +110,51 @@ pub fn generate_auth_token() -> String {
 
 pub fn get_or_create_master_password(data_dir: &Path) -> Result<String> {
     let key_path = data_dir.join(MASTER_KEY_FILE);
-    if key_path.exists() {
-        let password = fs::read_to_string(&key_path)
-            .with_context(|| format!("Failed to read master key at {}", key_path.display()))?;
-        let password = password.trim().to_string();
-        if password.is_empty() {
-            return Err(anyhow!("Master key at {} is empty", key_path.display()));
+    match fs::symlink_metadata(&key_path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() || !metadata.is_file() {
+                return Err(anyhow!(
+                    "Master key path is not a regular file: {}",
+                    key_path.display()
+                ));
+            }
+            vm_core::file_system::set_permissions_mode(&key_path, 0o600).with_context(|| {
+                format!("Failed to secure master key at {}", key_path.display())
+            })?;
+            let password = fs::read_to_string(&key_path)
+                .with_context(|| format!("Failed to read master key at {}", key_path.display()))?;
+            let password = password.trim().to_string();
+            if password.is_empty() {
+                return Err(anyhow!("Master key at {} is empty", key_path.display()));
+            }
+            return Ok(password);
         }
-        return Ok(password);
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("Failed to inspect master key at {}", key_path.display()))
+        }
     }
 
     let mut key_bytes = [0u8; MASTER_KEY_BYTES];
     OsRng.fill_bytes(&mut key_bytes);
     let password = STANDARD.encode(key_bytes);
-    fs::write(&key_path, format!("{password}\n"))
-        .with_context(|| format!("Failed to write master key at {}", key_path.display()))?;
-
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&key_path, fs::Permissions::from_mode(0o600))
-            .with_context(|| format!("Failed to secure master key at {}", key_path.display()))?;
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
     }
+    let mut key_file = options
+        .open(&key_path)
+        .with_context(|| format!("Failed to create master key at {}", key_path.display()))?;
+    key_file
+        .write_all(format!("{password}\n").as_bytes())
+        .and_then(|()| key_file.sync_all())
+        .with_context(|| format!("Failed to write master key at {}", key_path.display()))?;
+    vm_core::file_system::set_permissions_mode(&key_path, 0o600)
+        .with_context(|| format!("Failed to secure master key at {}", key_path.display()))?;
 
     Ok(password)
 }
@@ -201,5 +225,17 @@ mod tests {
 
         assert_eq!(first, second);
         assert!(temp_dir.path().join(MASTER_KEY_FILE).exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn master_password_refuses_symlinked_key() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let victim = temp_dir.path().join("victim");
+        std::fs::write(&victim, "owner-data").unwrap();
+        std::os::unix::fs::symlink(&victim, temp_dir.path().join(MASTER_KEY_FILE)).unwrap();
+
+        assert!(get_or_create_master_password(temp_dir.path()).is_err());
+        assert_eq!(std::fs::read_to_string(victim).unwrap(), "owner-data");
     }
 }

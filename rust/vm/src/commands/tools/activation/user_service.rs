@@ -129,9 +129,7 @@ fn write_if_changed(path: &std::path::Path, content: &[u8]) -> VmResult<bool> {
     if std::fs::read(path).is_ok_and(|current| current == content) {
         return Ok(false);
     }
-    let temporary = path.with_extension(format!("tmp-{}", std::process::id()));
-    std::fs::write(&temporary, content).map_err(VmError::from)?;
-    std::fs::rename(&temporary, path).map_err(VmError::from)?;
+    vm_core::file_system::atomic_write(path, content).map_err(VmError::from)?;
     Ok(true)
 }
 
@@ -210,5 +208,20 @@ mod tests {
         assert!(service.contains("/Users/example/A&amp;B/vm"));
         assert!(service.contains("/opt/homebrew/bin"));
         assert!(service.contains("/usr/local/bin"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn service_write_does_not_follow_the_old_predictable_temp_path() {
+        let directory = tempfile::tempdir().unwrap();
+        let service = directory.path().join("service.conf");
+        let old_temporary = service.with_extension(format!("tmp-{}", std::process::id()));
+        let victim = directory.path().join("victim");
+        std::fs::write(&victim, "owner-data").unwrap();
+        std::os::unix::fs::symlink(&victim, old_temporary).unwrap();
+
+        assert!(write_if_changed(&service, b"service-data").unwrap());
+        assert_eq!(std::fs::read_to_string(service).unwrap(), "service-data");
+        assert_eq!(std::fs::read_to_string(victim).unwrap(), "owner-data");
     }
 }

@@ -6,6 +6,9 @@ use walkdir::WalkDir;
 use crate::manager::snapshot_file_path;
 use crate::metadata::SnapshotMetadata;
 
+const MAX_ARCHIVE_ENTRIES: usize = 100_000;
+const MAX_UNPACKED_BYTES: u64 = 256 * 1024 * 1024 * 1024;
+
 pub(crate) fn directory_size(path: &Path) -> Result<u64> {
     let mut total = 0_u64;
     for entry in WalkDir::new(path) {
@@ -31,6 +34,15 @@ pub(crate) fn directory_size(path: &Path) -> Result<u64> {
 }
 
 pub(crate) async fn copy_directory(src: &Path, dst: &Path) -> Result<()> {
+    let source_metadata = tokio::fs::symlink_metadata(src).await.map_err(|error| {
+        VmError::filesystem(error, src.display().to_string(), "symlink_metadata")
+    })?;
+    if source_metadata.file_type().is_symlink() || !source_metadata.is_dir() {
+        return Err(VmError::validation(
+            format!("Snapshot source is not a real directory: {}", src.display()),
+            None::<String>,
+        ));
+    }
     tokio::fs::create_dir_all(dst)
         .await
         .map_err(|error| VmError::filesystem(error, dst.display().to_string(), "create_dir_all"))?;
@@ -46,14 +58,36 @@ pub(crate) async fn copy_directory(src: &Path, dst: &Path) -> Result<()> {
     {
         let source = entry.path();
         let destination = dst.join(entry.file_name());
-        if source.is_dir() {
+        let metadata = tokio::fs::symlink_metadata(&source)
+            .await
+            .map_err(|error| {
+                VmError::filesystem(error, source.display().to_string(), "symlink_metadata")
+            })?;
+        if metadata.file_type().is_symlink() {
+            return Err(VmError::validation(
+                format!(
+                    "Snapshot source contains symlink '{}'; refusing to copy",
+                    source.display()
+                ),
+                None::<String>,
+            ));
+        }
+        if metadata.is_dir() {
             Box::pin(copy_directory(&source, &destination)).await?;
-        } else {
+        } else if metadata.is_file() {
             tokio::fs::copy(&source, &destination)
                 .await
                 .map_err(|error| {
                     VmError::filesystem(error, destination.display().to_string(), "copy")
                 })?;
+        } else {
+            return Err(VmError::validation(
+                format!(
+                    "Snapshot source contains unsupported file '{}'; only files and directories are allowed",
+                    source.display()
+                ),
+                None::<String>,
+            ));
         }
     }
 
@@ -65,9 +99,20 @@ pub(crate) fn create_gzip_archive(
     output: &Path,
     compression_level: u8,
 ) -> Result<()> {
-    let temporary_output = temporary_archive_path(output)?;
-    let archive_file = std::fs::File::create(&temporary_output).map_err(|error| {
-        VmError::filesystem(error, temporary_output.display().to_string(), "create")
+    let parent = output
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let temporary_output = tempfile::Builder::new()
+        .prefix(".vm-snapshot-")
+        .tempfile_in(parent)
+        .map_err(|error| VmError::filesystem(error, parent.display().to_string(), "tempfile"))?;
+    let archive_file = temporary_output.reopen().map_err(|error| {
+        VmError::filesystem(
+            error,
+            temporary_output.path().display().to_string(),
+            "reopen",
+        )
     })?;
     let encoder = flate2::write::GzEncoder::new(
         archive_file,
@@ -75,25 +120,22 @@ pub(crate) fn create_gzip_archive(
     );
     let mut archive = tar::Builder::new(encoder);
 
-    let result = (|| -> Result<()> {
-        archive
-            .append_dir_all(".", source)
-            .map_err(|error| VmError::general(error, "Failed to create tar archive"))?;
-        let encoder = archive
-            .into_inner()
-            .map_err(|error| VmError::general(error, "Failed to finish tar archive"))?;
-        encoder
-            .finish()
-            .map_err(|error| VmError::general(error, "Failed to finish gzip archive"))?;
-        std::fs::rename(&temporary_output, output)
-            .map_err(|error| VmError::filesystem(error, output.display().to_string(), "rename"))?;
-        Ok(())
-    })();
-
-    if result.is_err() {
-        let _ = std::fs::remove_file(&temporary_output);
-    }
-    result
+    archive
+        .append_dir_all(".", source)
+        .map_err(|error| VmError::general(error, "Failed to create tar archive"))?;
+    let encoder = archive
+        .into_inner()
+        .map_err(|error| VmError::general(error, "Failed to finish tar archive"))?;
+    let archive_file = encoder
+        .finish()
+        .map_err(|error| VmError::general(error, "Failed to finish gzip archive"))?;
+    archive_file
+        .sync_all()
+        .map_err(|error| VmError::filesystem(error, output.display().to_string(), "sync_all"))?;
+    temporary_output.persist(output).map_err(|error| {
+        VmError::filesystem(error.error, output.display().to_string(), "persist")
+    })?;
+    Ok(())
 }
 
 pub(crate) fn extract_gzip_archive(file_path: &Path, destination: &Path) -> Result<()> {
@@ -107,9 +149,30 @@ pub(crate) fn extract_gzip_archive(file_path: &Path, destination: &Path) -> Resu
     let entries = archive
         .entries()
         .map_err(|error| VmError::general(error, "Failed to read tar archive entries"))?;
+    let mut count = 0_usize;
+    let mut unpacked = 0_u64;
     for entry in entries {
         let mut entry =
             entry.map_err(|error| VmError::general(error, "Failed to read tar archive entry"))?;
+        count += 1;
+        if count > MAX_ARCHIVE_ENTRIES {
+            return Err(VmError::validation(
+                format!("Snapshot exceeds the {MAX_ARCHIVE_ENTRIES} entry limit"),
+                None::<String>,
+            ));
+        }
+        unpacked = unpacked.checked_add(entry.size()).ok_or_else(|| {
+            VmError::validation(
+                "Snapshot unpacked size exceeds supported range",
+                None::<String>,
+            )
+        })?;
+        if unpacked > MAX_UNPACKED_BYTES {
+            return Err(VmError::validation(
+                format!("Snapshot exceeds the {MAX_UNPACKED_BYTES} byte unpacked limit"),
+                None::<String>,
+            ));
+        }
         let entry_path = entry
             .path()
             .map_err(|error| VmError::general(error, "Failed to decode tar entry path"))?
@@ -188,24 +251,9 @@ pub(crate) fn validate_snapshot_files(
     Ok(())
 }
 
-fn temporary_archive_path(output: &Path) -> Result<std::path::PathBuf> {
-    let mut name = output
-        .file_name()
-        .map(|name| name.to_os_string())
-        .ok_or_else(|| {
-            VmError::filesystem(
-                std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing file name"),
-                output.display().to_string(),
-                "tempname",
-            )
-        })?;
-    name.push(".tmp");
-    Ok(output.with_file_name(name))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::directory_size;
+    use super::{copy_directory, create_gzip_archive, directory_size};
 
     #[test]
     fn directory_size_counts_every_file_and_reports_missing_roots() {
@@ -216,5 +264,37 @@ mod tests {
 
         assert_eq!(directory_size(directory.path()).unwrap(), 7);
         assert!(directory_size(&directory.path().join("missing")).is_err());
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn copy_directory_rejects_symlinks() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("source");
+        let destination = directory.path().join("destination");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::write(directory.path().join("outside"), "owner-data").unwrap();
+        std::os::unix::fs::symlink(directory.path().join("outside"), source.join("link")).unwrap();
+
+        assert!(copy_directory(&source, &destination).await.is_err());
+        assert!(!destination.join("link").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn archive_creation_does_not_follow_a_predictable_temp_symlink() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("source");
+        let output = directory.path().join("snapshot.tar.gz");
+        let victim = directory.path().join("victim");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::write(source.join("file"), "snapshot").unwrap();
+        std::fs::write(&victim, "owner-data").unwrap();
+        std::os::unix::fs::symlink(&victim, directory.path().join("snapshot.tar.gz.tmp")).unwrap();
+
+        create_gzip_archive(&source, &output, 1).unwrap();
+
+        assert_eq!(std::fs::read_to_string(victim).unwrap(), "owner-data");
+        assert!(output.is_file());
     }
 }

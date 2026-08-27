@@ -58,4 +58,12 @@ if [ ! -f "$VM_WORKTREES/partial/partial-marker" ]; then
 fi
 grep -q "Leaving partial worktree in place" "$partial_output"
 
+mkdir -p "$VM_WORKTREES/foo"
+printf '%s\n' keep > "$VM_WORKTREES/foo/owner-data"
+if bash "$TEST_DIR/rust/vm-provider/src/container/vm-worktree.sh" remove 'foo!' >/dev/null 2>&1; then
+    echo "expected an invalid removal name to be rejected" >&2
+    exit 1
+fi
+test "$(cat "$VM_WORKTREES/foo/owner-data")" = keep
+
 echo "vm-worktree safety tests passed"

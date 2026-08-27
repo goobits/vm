@@ -2,14 +2,34 @@
 # Test WebGL/WebGPU support in Docker before rebuilding @vibe-image
 # Usage: ./scripts/dev/test-webgl-docker.sh [--no-cache] [--skip-build]
 #   --no-cache   Force fresh build (ignore Docker cache)
-#   --skip-build Reuse existing vibe-image-test image (for quick retests)
+#   --skip-build Reuse VM_WEBGL_TEST_IMAGE (defaults to vibe-image-test:latest)
 
-set -e
+set -euo pipefail
 
-IMAGE_NAME="vibe-image-test"
-CONTAINER_NAME="vibe-webgl-test"
-BUILD_ARGS=""
+RUN_DIRECTORY=$(mktemp -d "${TMPDIR:-/tmp}/vm-webgl.XXXXXX")
+RUN_ID=${RUN_DIRECTORY##*/}
+IMAGE_NAME="vibe-image-test:$RUN_ID"
+CONTAINER_NAME="vibe-webgl-test-$RUN_ID"
+BUILD_ARGS=()
 SKIP_BUILD=false
+IMAGE_OWNED=false
+CONTAINER_ID=""
+
+cleanup() {
+    status=$?
+    trap - EXIT INT TERM
+    if [ -n "$CONTAINER_ID" ]; then
+        docker rm -f "$CONTAINER_ID" >/dev/null 2>&1 || true
+    fi
+    if [ "$IMAGE_OWNED" = true ]; then
+        docker image rm "$IMAGE_NAME" >/dev/null 2>&1 || true
+    fi
+    rmdir "$RUN_DIRECTORY" 2>/dev/null || true
+    exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 if ! command -v docker >/dev/null 2>&1; then
     echo "ERROR: Docker is required but was not found in PATH." >&2
@@ -20,7 +40,7 @@ fi
 for arg in "$@"; do
     case $arg in
         --no-cache)
-            BUILD_ARGS="--no-cache"
+            BUILD_ARGS+=(--no-cache)
             echo "Note: Using --no-cache, this will take 15-25 minutes"
             ;;
         --skip-build)
@@ -43,6 +63,7 @@ echo ""
 
 # Build test image
 if [ "$SKIP_BUILD" = true ]; then
+    IMAGE_NAME="${VM_WEBGL_TEST_IMAGE:-vibe-image-test:latest}"
     echo "[1/4] Skipping build, reusing existing image..."
     if ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
         echo "ERROR: Image $IMAGE_NAME not found. Run without --skip-build first, or build it with:"
@@ -51,13 +72,16 @@ if [ "$SKIP_BUILD" = true ]; then
     fi
 else
     echo "[1/4] Building test image from Dockerfile.vibe..."
-    docker build $BUILD_ARGS -t "$IMAGE_NAME" -f Dockerfile.vibe .
+    docker build "${BUILD_ARGS[@]}" -t "$IMAGE_NAME" -f Dockerfile.vibe .
+    IMAGE_OWNED=true
 fi
 
 echo ""
 echo "[2/4] Starting container..."
-docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
-docker run -d --name "$CONTAINER_NAME" "$IMAGE_NAME" sleep 300
+CONTAINER_ID=$(docker run -d \
+    --name "$CONTAINER_NAME" \
+    --label "com.goobits.vm.webgl-test=$RUN_ID" \
+    "$IMAGE_NAME" sleep 300)
 
 echo ""
 echo "[3/4] Running WebGL/WebGPU tests..."
@@ -65,12 +89,12 @@ echo "[3/4] Running WebGL/WebGPU tests..."
 # Test 1: Check tini is running as PID 1
 echo ""
 echo "--- Test: tini init system ---"
-docker exec "$CONTAINER_NAME" bash -c 'ps -p 1 -o comm=' | grep -q tini && echo "PASS: tini is PID 1" || echo "FAIL: tini is not PID 1"
+docker exec "$CONTAINER_ID" bash -c 'ps -p 1 -o comm=' | grep -q tini && echo "PASS: tini is PID 1" || echo "FAIL: tini is not PID 1"
 
 # Test 2: Check Mesa/EGL libraries are installed
 echo ""
 echo "--- Test: Mesa/EGL libraries ---"
-docker exec "$CONTAINER_NAME" bash -c '
+docker exec "$CONTAINER_ID" bash -c '
     # Check for actual library files (search all lib paths including arch-specific)
     check_lib() {
         name="$1"
@@ -98,7 +122,7 @@ docker exec "$CONTAINER_NAME" bash -c '
 # Test 3: Check Vulkan ICD file exists
 echo ""
 echo "--- Test: Vulkan ICD configuration ---"
-docker exec "$CONTAINER_NAME" bash -c '
+docker exec "$CONTAINER_ID" bash -c '
     ARCH=$(uname -m)
     ICD_FILE="/usr/share/vulkan/icd.d/lvp_icd.${ARCH}.json"
     if [ -f "$ICD_FILE" ]; then
@@ -113,7 +137,7 @@ docker exec "$CONTAINER_NAME" bash -c '
 # Test 4: Check environment variables
 echo ""
 echo "--- Test: Environment variables ---"
-docker exec "$CONTAINER_NAME" bash -c '
+docker exec "$CONTAINER_ID" bash -c '
     [ "$DISPLAY" = ":99" ] && echo "PASS: DISPLAY=:99" || echo "FAIL: DISPLAY=$DISPLAY (expected :99)"
     [ "$LIBGL_ALWAYS_SOFTWARE" = "1" ] && echo "PASS: LIBGL_ALWAYS_SOFTWARE=1" || echo "FAIL: LIBGL_ALWAYS_SOFTWARE=$LIBGL_ALWAYS_SOFTWARE"
 '
@@ -121,12 +145,12 @@ docker exec "$CONTAINER_NAME" bash -c '
 # Test 5: Check xvfb is installed
 echo ""
 echo "--- Test: Xvfb installation ---"
-docker exec "$CONTAINER_NAME" bash -c 'command -v Xvfb && echo "PASS: Xvfb installed" || echo "FAIL: Xvfb not found"'
+docker exec "$CONTAINER_ID" bash -c 'command -v Xvfb && echo "PASS: Xvfb installed" || echo "FAIL: Xvfb not found"'
 
 # Test 6: Run Playwright WebGL check (the real test!)
 echo ""
 echo "--- Test: Playwright WebGL rendering ---"
-docker exec "$CONTAINER_NAME" bash -c '
+if docker exec "$CONTAINER_ID" bash -c '
     source ~/.nvm/nvm.sh
 
     # Start Xvfb in background (as root it would create /tmp/.X11-unix, but we can ignore the warning)
@@ -331,13 +355,20 @@ CHROME_SCRIPT
     fi
 
     exit $EXIT_CODE
-'
-
-WEBGL_EXIT=$?
+'; then
+    WEBGL_EXIT=0
+else
+    WEBGL_EXIT=$?
+fi
 
 echo ""
 echo "[4/4] Cleanup..."
-docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
+docker rm -f "$CONTAINER_ID" >/dev/null 2>&1 || true
+CONTAINER_ID=""
+if [ "$IMAGE_OWNED" = true ]; then
+    docker image rm "$IMAGE_NAME" >/dev/null 2>&1 || true
+    IMAGE_OWNED=false
+fi
 
 echo ""
 echo "=== Test Summary ==="

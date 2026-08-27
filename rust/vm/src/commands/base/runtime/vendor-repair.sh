@@ -221,10 +221,10 @@ restore_path() {
   backup_name=$1
   destination=$2
   if path_exists "$backup/$backup_name"; then
-    delete_installed_path "$destination" >/dev/null 2>&1 || true
-    run_install mv "$backup/$backup_name" "$destination" >/dev/null 2>&1 || true
+    delete_installed_path "$destination"
+    run_install mv "$backup/$backup_name" "$destination"
   elif path_exists "$backup/.absent-$backup_name"; then
-    delete_installed_path "$destination" >/dev/null 2>&1 || true
+    delete_installed_path "$destination"
   fi
 }
 
@@ -232,20 +232,25 @@ cleanup() {
   status=$?
   trap - EXIT HUP INT TERM
   if test "$rollback_needed" = yes; then
-    restore_path package "$target"
+    rollback_failed=no
+    if ! restore_path package "$target"; then rollback_failed=yes; fi
     IFS=,
     for executable in $required; do
-      restore_path "root-$executable" "$root/$executable"
-      restore_path "bin-$executable" "$bin_root/$executable"
-      restore_path "user-$executable" "$user_bin/$executable"
+      if ! restore_path "root-$executable" "$root/$executable"; then rollback_failed=yes; fi
+      if ! restore_path "bin-$executable" "$bin_root/$executable"; then rollback_failed=yes; fi
+      if ! restore_path "user-$executable" "$user_bin/$executable"; then rollback_failed=yes; fi
     done
     IFS=$old_ifs
+    if test "$rollback_failed" = yes; then
+      printf 'Vendor-tool rollback failed; backup retained at %s\n' "$backup" >&2
+      status=1
+    fi
   fi
   delete_user_tree "$temporary" >/dev/null 2>&1 || true
   if test -n "$stage"; then
     delete_installed_path "$stage" >/dev/null 2>&1 || true
   fi
-  if test -n "$backup"; then
+  if test -n "$backup" && { test "$rollback_needed" != yes || test "${rollback_failed:-no}" != yes; }; then
     delete_installed_path "$backup" >/dev/null 2>&1 || true
   fi
   exit "$status"

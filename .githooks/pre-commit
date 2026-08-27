@@ -3,7 +3,7 @@
 # Pre-commit hook for VM project
 #
 # Runs fast code quality checks:
-# 1. rustfmt - code formatting (auto-fixes)
+# 1. rustfmt - code formatting check
 # 2. clippy - linting
 #
 # Tests run in CI, not here (too slow for commit feedback loop)
@@ -22,7 +22,21 @@ NC='\033[0m'
 
 # Ensure we're in the project root
 cd "$(git rev-parse --show-toplevel)"
-export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-/tmp/vm-rust-target}"
+if [ -z "${CARGO_TARGET_DIR:-}" ]; then
+    REPOSITORY_KEY=$(pwd -P | cksum | awk '{print $1}')
+    TARGET_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/vm/pre-commit"
+    mkdir -p "$TARGET_ROOT"
+    if [ -L "$TARGET_ROOT" ] || [ ! -d "$TARGET_ROOT" ]; then
+        echo -e "${RED}❌ Unsafe pre-commit cache path: $TARGET_ROOT${NC}" >&2
+        exit 1
+    fi
+    chmod 700 "$TARGET_ROOT"
+    export CARGO_TARGET_DIR="$TARGET_ROOT/$REPOSITORY_KEY"
+    if [ -L "$CARGO_TARGET_DIR" ]; then
+        echo -e "${RED}❌ Refusing symlinked Cargo target: $CARGO_TARGET_DIR${NC}" >&2
+        exit 1
+    fi
+fi
 
 # Check if we have Rust code changes
 RUST_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.rs$' || true)
@@ -38,15 +52,10 @@ echo -e "${BLUE}🔍 Pre-commit: checking ${NC}$(echo "$RUST_FILES" | wc -l | tr
 
 cd rust
 
-# 1. Format check (auto-fix)
+# 1. Format check. Hooks must never rewrite or stage user files.
 if ! cargo fmt --all -- --check 2>/dev/null; then
-    echo -e "${YELLOW}   Formatting...${NC}"
-    cargo fmt --all
-    cd ..
-    echo "$RUST_FILES" | while read -r file; do
-        [ -f "$file" ] && git add "$file"
-    done
-    cd rust
+    echo -e "${YELLOW}   Run: cd rust && cargo fmt --all${NC}"
+    exit 1
 fi
 
 # 2. Clippy (this also compiles the code)

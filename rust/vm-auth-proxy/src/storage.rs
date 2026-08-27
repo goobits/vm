@@ -29,25 +29,27 @@ pub struct SecretStore {
 impl SecretStore {
     /// Create or load secret store from data directory
     pub fn new(data_dir: PathBuf) -> Result<Self> {
-        // Ensure data directory exists with proper permissions
-        if !data_dir.exists() {
-            fs::create_dir_all(&data_dir).context("Failed to create auth data directory")?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let perms = fs::Permissions::from_mode(DIR_PERMISSIONS);
-                fs::set_permissions(&data_dir, perms)
-                    .context("Failed to set directory permissions")?;
-            }
-        }
+        Self::secure_data_directory(&data_dir)?;
 
         let storage_file = data_dir.join(SECRETS_FILE);
 
         // Load or create storage
-        let mut storage = if storage_file.exists() {
-            Self::load_storage(&storage_file)?
-        } else {
-            Self::create_new_storage()?
+        let mut storage = match fs::symlink_metadata(&storage_file) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() || !metadata.is_file() {
+                    bail!(
+                        "Secrets path is not a regular file: {}",
+                        storage_file.display()
+                    );
+                }
+                vm_core::file_system::set_permissions_mode(&storage_file, FILE_PERMISSIONS)
+                    .context("Failed to secure secrets file")?;
+                Self::load_storage(&storage_file)?
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                Self::create_new_storage()?
+            }
+            Err(error) => return Err(error).context("Failed to inspect secrets file"),
         };
         if storage.version != SECRET_STORAGE_VERSION {
             bail!(
@@ -180,6 +182,20 @@ impl SecretStore {
         })
     }
 
+    fn secure_data_directory(path: &Path) -> Result<()> {
+        fs::create_dir_all(path).context("Failed to create auth data directory")?;
+        let metadata =
+            fs::symlink_metadata(path).context("Failed to inspect auth data directory")?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            bail!(
+                "Auth data path is not a private directory: {}",
+                path.display()
+            );
+        }
+        vm_core::file_system::set_permissions_mode(path, DIR_PERMISSIONS)
+            .context("Failed to secure auth data directory")
+    }
+
     /// Load storage from file
     fn load_storage(path: &Path) -> Result<SecretStorage> {
         let content = fs::read_to_string(path).context("Failed to read secrets file")?;
@@ -227,6 +243,33 @@ mod tests {
         assert!(temp_dir.path().join(SECRETS_FILE).exists());
         assert!(store.get_auth_token().is_some());
         assert_eq!(store.secret_count(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn secret_store_repairs_permissions_and_refuses_symlinks() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+
+        let temp_dir = TempDir::new().unwrap();
+        let data_dir = temp_dir.path().join("auth");
+        fs::create_dir(&data_dir).unwrap();
+        fs::set_permissions(&data_dir, fs::Permissions::from_mode(0o755)).unwrap();
+        SecretStore::new(data_dir.clone()).unwrap();
+        assert_eq!(
+            fs::metadata(&data_dir).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+
+        let linked_dir = temp_dir.path().join("linked-auth");
+        symlink(&data_dir, &linked_dir).unwrap();
+        assert!(SecretStore::new(linked_dir).is_err());
+
+        let victim = temp_dir.path().join("victim");
+        fs::write(&victim, "owner-data").unwrap();
+        fs::remove_file(data_dir.join(SECRETS_FILE)).unwrap();
+        symlink(&victim, data_dir.join(SECRETS_FILE)).unwrap();
+        assert!(SecretStore::new(data_dir).is_err());
+        assert_eq!(fs::read_to_string(victim).unwrap(), "owner-data");
     }
 
     #[test]

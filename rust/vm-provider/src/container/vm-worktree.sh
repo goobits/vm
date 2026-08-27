@@ -43,8 +43,8 @@ if [ ! -w "$VM_WORKTREES" ]; then
     exit 1
 fi
 
-# Helper: Comprehensive name sanitization with validation
-sanitize_name() {
+# Helper: Validate names exactly. Never transform deletion targets.
+validate_name() {
     local name="$1"
 
     # Check for empty
@@ -53,34 +53,22 @@ sanitize_name() {
         return 1
     fi
 
-    # Check for . or ..
-    if [[ "$name" == "." ]] || [[ "$name" == ".." ]]; then
-        echo -e "${RED}Error: Invalid name '$name'${NC}" >&2
-        return 1
-    fi
-
-    # Check for path traversal sequences
-    if [[ "$name" == *".."* ]] || [[ "$name" == *"/./"* ]] || [[ "$name" == *//* ]]; then
-        echo -e "${RED}Error: Name contains path traversal sequences${NC}" >&2
-        return 1
-    fi
-
-    # Remove dangerous characters (keep only alphanumeric, dash, underscore, slash)
-    local clean=$(echo "$name" | sed 's/[^a-zA-Z0-9/_-]//g')
-
-    # Check if name was all invalid characters
-    if [ -z "$clean" ]; then
-        echo -e "${RED}Error: Name contains only invalid characters${NC}" >&2
+    if [[ "$name" == "." ]] || [[ "$name" == ".." ]] \
+        || [[ "$name" == /* ]] || [[ "$name" == */ ]] \
+        || [[ "$name" == *".."* ]] || [[ "$name" == *"/./"* ]] \
+        || [[ "$name" == *//* ]] || [[ "$name" == *[^a-zA-Z0-9/_-]* ]]; then
+        echo -e "${RED}Error: Invalid worktree name '$name'${NC}" >&2
+        echo "Names may contain only letters, numbers, '/', '_', and '-', without traversal." >&2
         return 1
     fi
 
     # Check length (be conservative for cross-platform compatibility)
-    if [ ${#clean} -gt 200 ]; then
+    if [ ${#name} -gt 200 ]; then
         echo -e "${RED}Error: Name too long (max 200 characters)${NC}" >&2
         return 1
     fi
 
-    echo "$clean"
+    echo "$name"
 }
 
 # Helper: Validate that resolved path is within VM_WORKTREES (prevent traversal)
@@ -176,11 +164,7 @@ case "${1:-help}" in
             exit 1
         fi
 
-        # Sanitize and validate name
-        NAME=$(sanitize_name "$2") || exit 1
-        if [ "$NAME" != "$2" ]; then
-            echo -e "${YELLOW}Warning: Sanitized name '$2' → '$NAME'${NC}"
-        fi
+        NAME=$(validate_name "$2") || exit 1
 
         WORKTREE_PATH="$VM_WORKTREES/$NAME"
 
@@ -246,7 +230,7 @@ case "${1:-help}" in
             exit 1
         fi
 
-        NAME=$(sanitize_name "$2") || exit 1
+        NAME=$(validate_name "$2") || exit 1
         WORKTREE_PATH="$VM_WORKTREES/$NAME"
 
         # Validate path doesn't escape base directory
@@ -271,7 +255,7 @@ case "${1:-help}" in
         if [ -z "${2:-}" ]; then
             safe_exec_shell "$VM_WORKTREES"
         else
-            NAME=$(sanitize_name "$2") || exit 1
+            NAME=$(validate_name "$2") || exit 1
             WORKTREE_PATH="$VM_WORKTREES/$NAME"
 
             # Validate path doesn't escape base directory

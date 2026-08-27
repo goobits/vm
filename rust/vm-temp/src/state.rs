@@ -50,7 +50,6 @@ impl From<StateError> for VmError {
 pub struct StateManager {
     state_dir: PathBuf,
     state_file: PathBuf,
-    temp_file_registry: PathBuf,
     lock_file: PathBuf,
 }
 
@@ -65,13 +64,11 @@ impl StateManager {
         let state_dir = Self::default_state_dir()?;
         fs::create_dir_all(&state_dir)?;
         let state_file = vm_core::user_paths::temp_vms_state_path()?;
-        let temp_file_registry = state_dir.join(".temp_files.registry");
         let lock_file = state_dir.join(".temp-vm.lock");
 
         Ok(Self {
             state_dir,
             state_file,
-            temp_file_registry,
             lock_file,
         })
     }
@@ -85,12 +82,10 @@ impl StateManager {
     /// A new `StateManager` instance using the specified directory.
     pub fn with_state_dir(state_dir: PathBuf) -> Self {
         let state_file = state_dir.join("temp-vm.state");
-        let temp_file_registry = state_dir.join(".temp_files.registry");
         let lock_file = state_dir.join(".temp-vm.lock");
         Self {
             state_dir,
             state_file,
-            temp_file_registry,
             lock_file,
         }
     }
@@ -243,50 +238,6 @@ impl StateManager {
         Ok(())
     }
 
-    /// Creates a new temporary file and registers it for cleanup.
-    ///
-    /// # Arguments
-    /// * `prefix` - The prefix to use for the temporary file name
-    ///
-    /// # Returns
-    /// A `Result` containing the path to the created temporary file.
-    pub fn create_temp_file(&self, prefix: &str) -> Result<PathBuf> {
-        let temp_file = tempfile::Builder::new()
-            .prefix(prefix)
-            .tempfile_in(&self.state_dir)?;
-        let path = temp_file.into_temp_path().to_path_buf();
-
-        let mut registry = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.temp_file_registry)?;
-        writeln!(registry, "{}", path.display())?;
-
-        Ok(path)
-    }
-
-    /// Cleans up all registered temporary files.
-    ///
-    /// This method removes all files that were registered through `create_temp_file`.
-    /// It silently ignores any errors that occur during cleanup.
-    pub fn cleanup_temp_files(&self) {
-        if !self.temp_file_registry.exists() {
-            return;
-        }
-
-        if let Ok(content) = fs::read_to_string(&self.temp_file_registry) {
-            for path_str in content.lines() {
-                let path = Path::new(path_str);
-                if path.is_file() {
-                    let _ = fs::remove_file(path);
-                } else if path.is_dir() {
-                    let _ = fs::remove_dir_all(path);
-                }
-            }
-            let _ = fs::remove_file(&self.temp_file_registry);
-        }
-    }
-
     /// Validate temp VM state for consistency and security
     pub fn validate_state(state: &TempVmState) -> std::result::Result<(), StateError> {
         // Validate container name is not empty
@@ -415,25 +366,6 @@ impl StateManager {
         }
 
         false
-    }
-}
-
-// Safe default implementation with fallback to current directory
-impl Default for StateManager {
-    fn default() -> Self {
-        match Self::new() {
-            Ok(manager) => manager,
-            Err(_) => {
-                // Fallback to current directory if state directory creation fails
-                let fallback_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-                Self {
-                    state_dir: fallback_dir.clone(),
-                    state_file: fallback_dir.join(".vm_temp_state.yaml"),
-                    temp_file_registry: fallback_dir.join(".temp_files.registry"),
-                    lock_file: fallback_dir.join(".temp_vm.lock"),
-                }
-            }
-        }
     }
 }
 
