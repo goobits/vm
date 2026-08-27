@@ -510,6 +510,12 @@ fn tool_refresh_status_and_batch_update_commands_parse() {
         }
     ));
     assert!(matches!(
+        Args::parse_from(["vm", "tools", "reconcile-worker", "backend"]).command,
+        Command::Tools {
+            command: ToolsSubcommand::ReconcileWorker { environment }
+        } if environment == "backend"
+    ));
+    assert!(matches!(
         Args::parse_from([
             "vm",
             "tools",

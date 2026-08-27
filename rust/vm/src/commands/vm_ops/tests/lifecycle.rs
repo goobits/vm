@@ -370,7 +370,7 @@ async fn exec_starts_a_stopped_environment_before_running() {
 }
 
 #[tokio::test]
-async fn shell_and_exec_reconcile_managed_package_access() {
+async fn shell_defers_maintenance_while_exec_reconciles_managed_package_access() {
     let provider = FakeProvider::new(Some(InstanceState::Running));
     let mut config = project_config();
     config.package_edge = Some(vm_config::config::PackageEdgeConfig {
@@ -400,7 +400,7 @@ async fn shell_and_exec_reconcile_managed_package_access() {
     .await
     .unwrap();
 
-    assert_eq!(provider.runtime_reconciliations.load(Ordering::SeqCst), 2);
+    assert_eq!(provider.runtime_reconciliations.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]

@@ -72,11 +72,12 @@ fn managed_guest_guard_precedes_dry_run_and_prints_the_exact_host_command() {
 #[test]
 fn application_errors_are_rendered_once_on_stderr() {
     let temp_dir = TempDir::new().unwrap();
-    for (name, contents) in [
-        ("broken.yaml", "project: ["),
+    for (name, contents, has_cause) in [
+        ("broken.yaml", "project: [", true),
         (
             "invalid.yaml",
             "version: '2.0'\nprovider: docker\nproject:\n  name: 'bad name'\n",
+            false,
         ),
     ] {
         let config = temp_dir.path().join(name);
@@ -91,6 +92,7 @@ fn application_errors_are_rendered_once_on_stderr() {
         assert!(!output.status.success());
         assert!(stdout.is_empty(), "{stdout}");
         assert_eq!(stderr.matches("Error:").count(), 1, "{stderr}");
+        assert_eq!(stderr.contains("Cause:"), has_cause, "{stderr}");
         assert!(!stderr.contains("\u{1b}["));
     }
 }

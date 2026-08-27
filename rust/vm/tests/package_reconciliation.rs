@@ -34,7 +34,10 @@ impl FakeGateway {
         let worker = thread::spawn(move || {
             while !worker_stopped.load(Ordering::Relaxed) {
                 match listener.accept() {
-                    Ok((mut stream, _)) => handle_request(&mut stream, &worker_requests),
+                    Ok((mut stream, _)) => {
+                        stream.set_nonblocking(false).unwrap();
+                        handle_request(&mut stream, &worker_requests);
+                    }
                     Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                         thread::sleep(Duration::from_millis(2));
                     }

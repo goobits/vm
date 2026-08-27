@@ -137,6 +137,9 @@ pub(in crate::commands) async fn handle(
             .await
         }
         ToolsSubcommand::ActivationWorker { once } => activation::run_worker(once).await,
+        ToolsSubcommand::ReconcileWorker { environment } => {
+            super::background::run(&environment).await
+        }
         ToolsSubcommand::Disable { tools } => {
             set_global_selection(&tools, false)?;
             if GlobalConfig::load()?.tools.is_empty() {

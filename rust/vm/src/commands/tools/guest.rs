@@ -15,30 +15,12 @@ const CONSUMABLE_SCRIPT: &str = include_str!("guest/consumable.sh");
 const PROJECT_COLLECTION_OVERRIDES_SCRIPT: &str =
     include_str!("guest/project-collection-overrides.sh");
 
-const PLATFORM_SECTION: &str = "__VM_TOOL_PLATFORM__";
-const INSTALLED_SECTION: &str = "__VM_TOOL_INSTALLED__";
-const CONSUMABLE_SECTION: &str = "__VM_TOOL_CONSUMABLE__";
-
-fn shell_state_script() -> String {
-    format!(
-        "printf '%s\\n' {PLATFORM_SECTION}; uname -s; uname -m; \
-         printf '%s\\n' {INSTALLED_SECTION}; {STATE_SCRIPT}
-         printf '%s\\n' {CONSUMABLE_SECTION}; {CONSUMABLE_SCRIPT}"
-    )
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct InstalledTool {
     pub(super) name: String,
     pub(super) version: String,
     pub(super) target: String,
     pub(super) digest: String,
-}
-
-pub(super) struct ShellState {
-    pub(super) target: String,
-    pub(super) installed: BTreeMap<String, InstalledTool>,
-    pub(super) consumable: BTreeMap<String, bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,17 +77,6 @@ pub(super) fn consumable(
         )
         .map_err(VmError::from)?;
     Ok(parse_consumable(&output))
-}
-
-pub(super) fn shell_state(
-    provider: &dyn CommandProvider,
-    environment: &str,
-) -> VmResult<ShellState> {
-    let script = shell_state_script();
-    let output = provider
-        .exec_output(Some(environment), &["sh".into(), "-c".into(), script])
-        .map_err(VmError::from)?;
-    parse_shell_state(&output)
 }
 
 pub(super) fn project_collection_overrides(
@@ -269,36 +240,6 @@ fn parse_consumable(output: &str) -> BTreeMap<String, bool> {
             }
         })
         .collect()
-}
-
-fn parse_shell_state(output: &str) -> VmResult<ShellState> {
-    let mut section = "";
-    let mut platform = String::new();
-    let mut installed = String::new();
-    let mut consumable = String::new();
-    for line in output.lines() {
-        match line {
-            PLATFORM_SECTION | INSTALLED_SECTION | CONSUMABLE_SECTION => section = line,
-            _ if section == PLATFORM_SECTION => {
-                platform.push_str(line);
-                platform.push('\n');
-            }
-            _ if section == INSTALLED_SECTION => {
-                installed.push_str(line);
-                installed.push('\n');
-            }
-            _ if section == CONSUMABLE_SECTION => {
-                consumable.push_str(line);
-                consumable.push('\n');
-            }
-            _ => {}
-        }
-    }
-    Ok(ShellState {
-        target: platform_target_from_uname(&platform)?,
-        installed: parse_installed(&installed),
-        consumable: parse_consumable(&consumable),
-    })
 }
 
 fn parse_project_collection_overrides(

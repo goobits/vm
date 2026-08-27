@@ -45,26 +45,6 @@ fn parses_consumability_without_trusting_unknown_rows() {
         .success());
 }
 
-#[test]
-fn parses_one_combined_shell_state_probe() {
-    let digest = "a".repeat(64);
-    let output = format!(
-        "{PLATFORM_SECTION}\nLinux\naarch64\n{INSTALLED_SECTION}\nagent-skills\t1.0.0\tlinux-arm64\t{digest}\n{CONSUMABLE_SECTION}\nagent-skills\tyes\n"
-    );
-
-    let state = parse_shell_state(&output).unwrap();
-
-    assert_eq!(state.target, "linux-arm64");
-    assert_eq!(state.installed["agent-skills"].version, "1.0.0");
-    assert_eq!(state.consumable.get("agent-skills"), Some(&true));
-    #[cfg(unix)]
-    assert!(std::process::Command::new("/bin/sh")
-        .args(["-n", "-c", &shell_state_script()])
-        .status()
-        .unwrap()
-        .success());
-}
-
 #[cfg(unix)]
 #[test]
 fn consumability_requires_links_to_the_recorded_release() {

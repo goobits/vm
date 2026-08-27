@@ -7,7 +7,7 @@ use tracing::debug;
 use crate::error::{VmError, VmResult};
 use vm_config::{config::VmConfig, ConfigLoader, GlobalConfig};
 use vm_core::{vm_progress, vm_success};
-use vm_provider::{Provider, ProviderContext};
+use vm_provider::Provider;
 
 use super::lifecycle::{ensure_running, ensure_running_for_shell};
 
@@ -53,22 +53,19 @@ pub async fn handle_ssh(
         "Connecting to VM"
     );
     vm_progress!("Connecting to '{vm_name}'...");
+    let started = std::time::Instant::now();
     ensure_running_for_shell(provider.as_ref(), container, &config, &global_config).await?;
-    reconcile_managed_guest(
-        provider.as_ref(),
-        container,
-        vm_name,
-        &config,
-        &global_config,
-    )?;
-    if let Err(error) = crate::commands::base::reconcile_vendor_tools_in_background(
-        provider.as_ref(),
-        vm_name,
-        &config,
-    ) {
-        debug!(%error, "Could not start background vendor-tool reconciliation");
+    debug!(
+        elapsed_ms = started.elapsed().as_millis(),
+        "Shell target is ready"
+    );
+    if let Err(error) = crate::commands::tools::schedule(vm_name) {
+        debug!(%error, "Could not schedule background guest reconciliation");
     }
-    crate::commands::tools::before_shell(provider.as_ref(), vm_name, &config);
+    debug!(
+        elapsed_ms = started.elapsed().as_millis(),
+        "Handing off interactive shell"
+    );
     provider
         .ssh(container, &relative_path)
         .map_err(VmError::from)
@@ -96,7 +93,7 @@ pub async fn handle_exec(
             .and_then(|project| project.name.as_deref())
             .unwrap_or("vm-project")
     });
-    reconcile_managed_guest(
+    crate::commands::tools::reconcile_managed_guest(
         provider.as_ref(),
         container,
         vm_name,
@@ -104,25 +101,6 @@ pub async fn handle_exec(
         &global_config,
     )?;
     provider.exec(container, &command).map_err(VmError::from)
-}
-
-fn reconcile_managed_guest(
-    provider: &dyn Provider,
-    container: Option<&str>,
-    environment: &str,
-    config: &VmConfig,
-    global_config: &GlobalConfig,
-) -> VmResult<()> {
-    if config.package_edge.is_some() {
-        provider
-            .reconcile_runtime(
-                container,
-                &ProviderContext::default().with_config(global_config.clone()),
-            )
-            .map_err(VmError::from)?;
-        crate::commands::packages::reconcile_client_settings(provider, environment, config)?;
-    }
-    crate::commands::managed_guest::reconcile_remote_commands(provider, environment)
 }
 
 /// View environment logs.

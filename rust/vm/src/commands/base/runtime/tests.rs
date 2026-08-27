@@ -20,9 +20,9 @@ use vm_provider::{
 };
 
 use super::{
-    parse_vendor_tool_status, reconcile_vendor_tools, reconcile_vendor_tools_in_background,
-    update_vendor_tools, vendor_tool_info, vendor_tools_expected, VendorToolState, VENDOR_PROBE,
-    VENDOR_RECONCILE_LAUNCHER, VENDOR_RECONCILE_WORKER, VENDOR_REPAIR,
+    parse_vendor_tool_status, reconcile_vendor_tools, update_vendor_tools, vendor_tool_info,
+    vendor_tools_expected, VendorToolState, VENDOR_PROBE, VENDOR_RECONCILE_LAUNCHER,
+    VENDOR_RECONCILE_WORKER, VENDOR_REPAIR,
 };
 
 #[derive(Clone)]
@@ -336,7 +336,7 @@ fn detects_vibe_runtimes_and_validates_reconciliation_scripts() {
 }
 
 #[test]
-fn foreground_and_background_modes_use_one_guest_launch() {
+fn foreground_reconciliation_uses_one_guest_launch_per_vendor() {
     let provider = FakeProvider::new([]);
     let config = VmConfig {
         preset: Some("vibe".into()),
@@ -344,31 +344,16 @@ fn foreground_and_background_modes_use_one_guest_launch() {
     };
 
     reconcile_vendor_tools(&provider, "demo", &config).unwrap();
-    assert!(reconcile_vendor_tools_in_background(&provider, "demo", &config).unwrap());
 
-    assert_eq!(
-        provider.calls(),
-        ["exec", "exec", "exec", "exec", "exec", "exec"]
-    );
+    assert_eq!(provider.calls(), ["exec", "exec", "exec"]);
     let commands = provider.commands();
     assert_eq!(commands[0][7], "wait");
-    assert_eq!(commands[3][7], "background");
     assert_eq!(commands[0][8], "repair");
     assert_eq!(commands[0][9], "yes");
     assert_eq!(commands[0][10], "demo");
     assert_eq!(commands[0][11], "antigravity");
     assert_eq!(commands[2][11], "codex");
     assert!(commands[0][2].contains("nohup"));
-}
-
-#[test]
-fn background_reconciliation_skips_non_vibe_environments() {
-    let provider = FakeProvider::new([]);
-
-    assert!(
-        !reconcile_vendor_tools_in_background(&provider, "demo", &VmConfig::default()).unwrap()
-    );
-    assert!(provider.calls().is_empty());
 }
 
 #[test]

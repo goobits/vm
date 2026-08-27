@@ -1,7 +1,8 @@
 //! User interaction with containers (SSH/exec/logs)
 use std::io::IsTerminal;
 use std::path::Path;
-use tracing::info;
+use std::time::Instant;
+use tracing::{debug, info};
 
 use super::LifecycleOperations;
 use crate::{container::UserConfig, security::SecurityValidator, shell_session};
@@ -81,6 +82,7 @@ impl<'a> LifecycleOperations<'a> {
 
     #[must_use = "SSH connection results should be handled"]
     pub fn ssh_into_container(&self, container: Option<&str>, relative_path: &Path) -> Result<()> {
+        let started = Instant::now();
         let workspace_path = self
             .config
             .project
@@ -121,18 +123,28 @@ impl<'a> LifecycleOperations<'a> {
                 "--type",
                 "container",
                 "--format",
-                "{{.State.Running}}",
+                "{{.State.Running}} {{.Id}}",
                 &container_name,
             ],
         )
         .stderr_null()
         .read()
         .map_err(|_| VmError::Internal(format!("No such container: {container_name}")))?;
-        if status.trim() != "true" {
+        let mut status = status.split_whitespace();
+        if status.next() != Some("true") {
             return Err(VmError::Internal(format!(
                 "Container {container_name} is not running"
             )));
         }
+        let identity = status.next().ok_or_else(|| {
+            VmError::Internal(format!(
+                "Container identity is unavailable for {container_name}"
+            ))
+        })?;
+        debug!(
+            elapsed_ms = started.elapsed().as_millis(),
+            "Container shell target confirmed"
+        );
 
         if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
             info!(
@@ -146,7 +158,18 @@ impl<'a> LifecycleOperations<'a> {
             );
         }
 
-        Self::repair_home_state(self.executable, &container_name, &user_config)?;
+        let receipt_root = vm_core::user_paths::vm_state_dir()?.join("home-repair");
+        Self::repair_home_state_for_identity(
+            self.executable,
+            &container_name,
+            &user_config,
+            identity,
+            &receipt_root,
+        )?;
+        debug!(
+            elapsed_ms = started.elapsed().as_millis(),
+            "Container home state is ready"
+        );
 
         // Container is running, proceed with exec
         let result = duct::cmd(

@@ -154,27 +154,6 @@ pub(in crate::commands) fn reconcile_vendor_tools(
     Ok(())
 }
 
-pub(in crate::commands) fn reconcile_vendor_tools_in_background(
-    provider: &dyn CommandProvider,
-    environment: &str,
-    config: &VmConfig,
-) -> VmResult<bool> {
-    if !vendor_tools_expected(config) {
-        return Ok(false);
-    }
-    for definition in VENDOR_TOOLS {
-        launch_reconciliation(
-            provider,
-            environment,
-            definition,
-            true,
-            ReconcileMode::Background,
-            ReconcileAction::Repair,
-        )?;
-    }
-    Ok(true)
-}
-
 pub(in crate::commands) fn update_vendor_tools(
     provider: &dyn CommandProvider,
     environment: &str,

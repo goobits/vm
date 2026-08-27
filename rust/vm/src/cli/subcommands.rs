@@ -138,6 +138,8 @@ pub enum ToolsSubcommand {
         #[arg(long)]
         once: bool,
     },
+    #[command(hide = true)]
+    ReconcileWorker { environment: String },
     /// Register one trusted tool source with package infrastructure
     Register {
         name: String,

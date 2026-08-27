@@ -268,10 +268,6 @@ pub(super) struct UpdatePlan {
 }
 
 impl UpdatePlan {
-    pub(super) fn automatic(self) -> Vec<ToolArtifactRecord> {
-        self.automatic
-    }
-
     /// All changes allowed by an explicit update command. `Off` updates never
     /// enter either collection, while required installs and pin repairs do.
     pub(super) fn eligible(mut self) -> Vec<ToolArtifactRecord> {
@@ -517,7 +513,7 @@ mod tests {
             &installed,
             &BTreeMap::from([("codex".into(), true)]),
         )
-        .automatic();
+        .automatic;
 
         assert!(selected.is_empty());
     }

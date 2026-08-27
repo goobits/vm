@@ -254,8 +254,9 @@ tail -n 50 "${XDG_STATE_HOME:-$HOME/.local/state}/vm-runtime/<vendor>.log"
 
 If an older environment prints zsh job lines such as `[5] 26237` around a
 `git worktree repair` command, reinstall the current host CLI and connect once.
-The pre-shell runtime repair removes that obsolete per-shell hook; worktree
-repair remains targeted to a broken linked worktree and stays silent.
+The detached runtime repair removes that obsolete per-shell hook; worktree
+repair remains targeted to a broken linked worktree and stays silent. Shell
+attachment itself does not wait for package or tool maintenance.
 
 For a deterministic foreground result, run `vm tools refresh` followed by `vm
 tools update --to <environment>` on the host. The update waits for an in-flight

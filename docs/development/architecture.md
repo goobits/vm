@@ -134,6 +134,13 @@ Provider-independent config validation runs before lifecycle operations.
 `vm config render` is a redacted, provider-free preview and must remain safe to
 run without Docker, Podman, or Tart.
 
+Interactive shell orchestration has a strict latency boundary: configuration,
+target readiness, and provider attachment remain foreground; mutable package,
+remote-command, vendor-tool, and managed-tool reconciliation runs through one
+detached host worker per environment. That worker calls the same reconciliation
+functions as explicit foreground commands and owns only scheduling, locking,
+cooldown receipts, and diagnostics.
+
 ## Dependency Direction
 
 Dependencies flow from foundation crates through configuration and providers

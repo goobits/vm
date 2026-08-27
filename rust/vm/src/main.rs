@@ -54,6 +54,12 @@ async fn run_command(invocation: Invocation) {
             "vm command failed"
         );
         vm_error!("Error: {}", error);
+        if let Some(source) = error
+            .source_chain()
+            .filter(|source| source != &error.to_string())
+        {
+            vm_error!("Cause: {}", source);
+        }
         if let Some(hint) = error.hint() {
             vm_hint!("{}", hint);
         }

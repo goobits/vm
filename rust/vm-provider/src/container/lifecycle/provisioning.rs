@@ -2,7 +2,11 @@
 use super::LifecycleOperations;
 use crate::container::UserConfig;
 use crate::context::ProviderContext;
+use fs2::FileExt;
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
+use std::fs::OpenOptions;
+use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 use vm_core::command_stream::stream_command_with_timeout;
 use vm_core::error::{Result, VmError};
@@ -26,13 +30,79 @@ impl<'a> LifecycleOperations<'a> {
     ) -> Result<()> {
         use std::process::Command;
 
+        let identity = Command::new(executable)
+            .args([
+                "inspect",
+                "--type",
+                "container",
+                "--format",
+                "{{.Id}}",
+                container_name,
+            ])
+            .output()
+            .map_err(|error| {
+                VmError::Internal(format!("Failed to inspect guest home state: {error}"))
+            })?;
+        if !identity.status.success() {
+            return Err(VmError::Internal(format!(
+                "Failed to inspect guest home state for {container_name}"
+            )));
+        }
+        let identity = String::from_utf8_lossy(&identity.stdout).trim().to_string();
+        if identity.is_empty() {
+            return Err(VmError::Internal(format!(
+                "Container identity is unavailable for {container_name}"
+            )));
+        }
+        let receipt_root = vm_core::user_paths::vm_state_dir()?.join("home-repair");
+        Self::repair_home_state_for_identity(
+            executable,
+            container_name,
+            user_config,
+            &identity,
+            &receipt_root,
+        )
+    }
+
+    pub(super) fn repair_home_state_for_identity(
+        executable: &str,
+        container_name: &str,
+        user_config: &UserConfig,
+        identity: &str,
+        receipt_root: &Path,
+    ) -> Result<()> {
+        use std::process::Command;
+
         let home_dir = format!("/home/{}", user_config.username);
-        let repair_key = format!("{executable}\0{container_name}\0{home_dir}");
+        let repair_key = format!("{executable}\0{identity}\0{home_dir}");
         let mut repaired = REPAIRED_HOMES
             .get_or_init(|| Mutex::new(HashSet::new()))
             .lock()
             .map_err(|_| VmError::Internal("Guest home-state repair lock is poisoned".into()))?;
         if repaired.contains(&repair_key) {
+            return Ok(());
+        }
+        std::fs::create_dir_all(receipt_root)?;
+        let receipt_key = hex_digest(format!("{container_name}\0{}", user_config.username));
+        let receipt = receipt_root.join(format!("{receipt_key}.receipt"));
+        let lock_path = receipt_root.join(format!("{receipt_key}.lock"));
+        let expected = hex_digest(format!(
+            "{identity}\0{home_dir}\0{}",
+            crate::resources::HOME_STATE_REPAIR
+        ));
+        if receipt_matches(&receipt, &expected) {
+            repaired.insert(repair_key);
+            return Ok(());
+        }
+        let lock = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&lock_path)?;
+        lock.lock_exclusive()?;
+        if receipt_matches(&receipt, &expected) {
+            repaired.insert(repair_key);
             return Ok(());
         }
         let output = Command::new(executable)
@@ -60,6 +130,7 @@ impl<'a> LifecycleOperations<'a> {
             )));
         }
 
+        vm_core::file_system::atomic_write(&receipt, format!("{expected}\n").as_bytes())?;
         repaired.insert(repair_key);
         Ok(())
     }
@@ -225,6 +296,21 @@ impl<'a> LifecycleOperations<'a> {
     }
 }
 
+fn hex_digest(value: impl AsRef<[u8]>) -> String {
+    use std::fmt::Write;
+
+    Sha256::digest(value.as_ref())
+        .iter()
+        .fold(String::with_capacity(64), |mut encoded, byte| {
+            write!(encoded, "{byte:02x}").expect("writing to a String cannot fail");
+            encoded
+        })
+}
+
+fn receipt_matches(path: &Path, expected: &str) -> bool {
+    std::fs::read_to_string(path).is_ok_and(|value| value.trim() == expected)
+}
+
 #[cfg(test)]
 mod tests {
     use super::LifecycleOperations;
@@ -242,7 +328,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn home_state_repair_runs_once_per_cli_target() {
+    fn home_state_repair_receipt_is_reused_until_container_identity_changes() {
         use std::fs;
         use std::os::unix::fs::PermissionsExt;
 
@@ -262,9 +348,33 @@ mod tests {
         };
         let executable = executable.to_str().unwrap();
 
-        LifecycleOperations::repair_home_state(executable, "demo-dev", &user).unwrap();
-        LifecycleOperations::repair_home_state(executable, "demo-dev", &user).unwrap();
+        LifecycleOperations::repair_home_state_for_identity(
+            executable,
+            "demo-dev",
+            &user,
+            "container-1",
+            directory.path(),
+        )
+        .unwrap();
+        LifecycleOperations::repair_home_state_for_identity(
+            executable,
+            "demo-dev",
+            &user,
+            "container-1",
+            directory.path(),
+        )
+        .unwrap();
 
-        assert_eq!(fs::read_to_string(log).unwrap().lines().count(), 1);
+        assert_eq!(fs::read_to_string(&log).unwrap().lines().count(), 1);
+
+        LifecycleOperations::repair_home_state_for_identity(
+            executable,
+            "demo-dev",
+            &user,
+            "container-2",
+            directory.path(),
+        )
+        .unwrap();
+        assert_eq!(fs::read_to_string(&log).unwrap().lines().count(), 2);
     }
 }

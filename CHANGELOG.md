@@ -66,6 +66,7 @@
 
 ### 🐛 Fixed
 
+- 🪟 Configuration failures print their bounded source cause, identify the retired `vm.box` migration directly, and no longer misdiagnose repeated nested keys as top-level duplicates.
 - 🪟 Secret and cleanup commands now stop on invalid configuration or failed engine operations instead of silently switching to defaults or reporting an empty cleanup.
 - 🌐 Port allocation locks a stable sidecar across atomic registry replacement, so concurrent project initialization preserves every reservation and cannot select duplicate ranges.
 - ☁️ Worktree creation refuses pre-existing non-worktree directories, rejects sibling-prefix escapes, and preserves failed partial worktrees for explicit inspection instead of recursively deleting them.
@@ -133,10 +134,11 @@
 
 ### ⚡ Performance
 
+- 🚀 Warm shell connections hand off before package and tool maintenance; one host-side, per-environment worker reuses the foreground reconciliation engine, coalesces concurrent shells, and caches successful work for 60 seconds.
 - ☁️ Fingerprinted bootstrap skips locked dependency and browser installation when the relevant inputs have not changed.
 - ☁️ Provider-neutral Cargo, Node, Go, Python, uv, Corepack, npm, and Playwright caches persist across Docker recreation and remain off source binds in every provider.
 - 🚀 Tart provisioning batches ordered guest work and reuses one host-detected project plan, reducing SSH round trips and repeated filesystem probes.
-- 🚀 Shell startup defers NVM loading, while versioned home repair and AI installers skip work when the guest state is current.
+- 🚀 Shell startup defers NVM loading, while versioned home repair uses a container-identity receipt and AI installers skip work when the guest state is current.
 - 🚀 Host package discovery performs one Cargo, npm, or pipx inventory lookup per package manager instead of one subprocess per requested package.
 
 ### 🔒 Security

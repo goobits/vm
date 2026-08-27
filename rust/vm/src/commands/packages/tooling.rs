@@ -16,7 +16,6 @@ use super::appliance::configured_state_and_client;
 use super::files::ApplianceFiles;
 
 const CACHE_MAX_AGE: Duration = Duration::from_secs(6 * 60 * 60);
-const BACKGROUND_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const REFRESH_MARKER: &str = "last-refresh";
 const TOOL_TARGETS: [&str; 3] = ["linux-arm64", "linux-amd64", "darwin-arm64"];
 
@@ -43,23 +42,6 @@ pub(in crate::commands) async fn refresh_many(configs: &[VmConfig]) -> VmResult<
     };
     refresh_locked(&files, configs, lock).await?;
     Ok(RefreshOutcome::Refreshed)
-}
-
-pub(in crate::commands) fn refresh_in_background(config: VmConfig) -> VmResult<()> {
-    let files = ApplianceFiles::discover()?;
-    let Some(lock) = files.acquire_tool_cache_lock()? else {
-        return Ok(());
-    };
-    if !background_refresh_due(&files)? {
-        return Ok(());
-    }
-
-    tokio::spawn(async move {
-        if let Err(error) = refresh_locked(&files, &[config], lock).await {
-            tracing::debug!(%error, "Background tool catalog refresh failed");
-        }
-    });
-    Ok(())
 }
 
 async fn refresh_locked(
@@ -135,27 +117,6 @@ pub(in crate::commands) fn cached(
 ) -> VmResult<Option<CachedToolCatalog>> {
     let files = ApplianceFiles::discover()?;
     cached_from(&files, config, target)
-}
-
-pub(in crate::commands) fn has_fresh_catalog() -> bool {
-    ApplianceFiles::discover().is_ok_and(|files| has_fresh_catalog_in(&files))
-}
-
-fn has_fresh_catalog_in(files: &ApplianceFiles) -> bool {
-    TOOL_TARGETS.iter().any(|target| {
-        files
-            .read_tool_cache(&index_cache_name(target), CACHE_MAX_AGE)
-            .is_ok_and(|content| content.is_some())
-    })
-}
-
-fn background_refresh_due(files: &ApplianceFiles) -> VmResult<bool> {
-    if !has_fresh_catalog_in(files) {
-        return Ok(true);
-    }
-    Ok(files
-        .read_tool_cache(REFRESH_MARKER, BACKGROUND_REFRESH_INTERVAL)?
-        .is_none())
 }
 
 fn cached_from(
@@ -287,17 +248,9 @@ mod tests {
     }
 
     #[test]
-    fn background_refresh_reuses_recent_success_and_one_lock() {
+    fn refresh_lock_is_single_flight() {
         let directory = tempfile::tempdir().unwrap();
         let files = ApplianceFiles::at(directory.path().join("packages"));
-
-        assert!(background_refresh_due(&files).unwrap());
-        files.write_tool_cache(REFRESH_MARKER, b"ok\n").unwrap();
-        assert!(background_refresh_due(&files).unwrap());
-        files
-            .write_tool_cache(&index_cache_name("linux-arm64"), b"cached\n")
-            .unwrap();
-        assert!(!background_refresh_due(&files).unwrap());
 
         let lock = files.acquire_tool_cache_lock().unwrap().unwrap();
         assert!(files.acquire_tool_cache_lock().unwrap().is_none());

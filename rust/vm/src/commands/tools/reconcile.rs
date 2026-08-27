@@ -25,71 +25,32 @@ pub(super) async fn reconcile_subject(subject: &RuntimeSubject) -> VmResult<()> 
     reconcile_environment(subject)
 }
 
-fn reconcile_environment(subject: &RuntimeSubject) -> VmResult<()> {
-    let context = ProviderContext::default().with_config(subject.global_config.clone());
-    subject
-        .provider
-        .reconcile_runtime(Some(&subject.target), &context)
-        .map_err(VmError::from)?;
-    reconcile_guest_settings(subject.provider.as_ref(), &subject.target, &subject.config)?;
+pub(super) fn reconcile_environment(subject: &RuntimeSubject) -> VmResult<()> {
+    reconcile_managed_guest(
+        subject.provider.as_ref(),
+        Some(&subject.target),
+        &subject.target,
+        &subject.config,
+        &subject.global_config,
+    )?;
     base::reconcile_vendor_tools(subject.provider.as_ref(), &subject.target, &subject.config)
 }
 
-fn reconcile_guest_settings(
+pub(in crate::commands) fn reconcile_managed_guest(
     provider: &dyn Provider,
+    target: Option<&str>,
     environment: &str,
     config: &VmConfig,
+    global_config: &vm_config::GlobalConfig,
 ) -> VmResult<()> {
-    packages::reconcile_client_settings(provider, environment, config)?;
+    let context = ProviderContext::default().with_config(global_config.clone());
+    provider
+        .reconcile_runtime(target, &context)
+        .map_err(VmError::from)?;
+    if config.package_edge.is_some() {
+        packages::reconcile_client_settings(provider, environment, config)?;
+    }
     crate::commands::managed_guest::reconcile_remote_commands(provider, environment)
-}
-
-/// Fast interactive-shell hook: cached local state only, with refresh detached.
-pub(in crate::commands) fn before_shell(
-    provider: &dyn Provider,
-    environment: &str,
-    config: &VmConfig,
-) {
-    if config.tools.entries.is_empty() {
-        return;
-    }
-    let has_catalog = tooling::has_fresh_catalog();
-    if let Err(error) = tooling::refresh_in_background(config.clone()) {
-        tracing::debug!(%error, "Could not schedule tool catalog refresh");
-    }
-    if !has_catalog {
-        return;
-    }
-
-    let result = (|| -> VmResult<()> {
-        let state = guest::shell_state(provider, environment)?;
-        let Some(catalog) = tooling::cached(config, &state.target)? else {
-            return Ok(());
-        };
-        report_missing(&catalog);
-        let selected = updates::plan(
-            config,
-            &catalog.artifacts,
-            &state.installed,
-            &state.consumable,
-        )
-        .automatic();
-        if selected.is_empty() {
-            return Ok(());
-        }
-        guest::install(
-            provider,
-            environment,
-            &selected,
-            &tooling::gateway(provider.name())?,
-            &tooling::read_token()?,
-            InstallMode::BackgroundIfIdle,
-        )?;
-        Ok(())
-    })();
-    if let Err(error) = result {
-        tracing::debug!(%error, "Skipped cached guest tool activation");
-    }
 }
 
 pub(super) fn apply_updates(

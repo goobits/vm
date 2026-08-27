@@ -534,10 +534,10 @@ Omitted versions track the latest release. Explicit semantic versions remain
 pinned. An explicit `update` installs every eligible selected change without a
 checklist. A persisted `off` policy disables newer-release upgrades, but not a
 required first install or pinned-version repair. Normal startup never waits for
-the registry, an update prompt, a guest download, or base-owned vendor repair.
-It launches only cached automatic tool work and the Vibe vendor probes/repairs in
-the background. Prompt-policy upgrades remain pending for an explicit `vm tools
-update`. The
+the registry, package-client repair, a guest download, or base-owned vendor
+repair. One detached host worker reconciles the complete managed runtime after
+the shell handoff. Prompt-policy upgrades remain pending for an explicit `vm
+tools update`. The
 [configuration guide](configuration.md#managed-tools-and-ai-state) owns the
 `tools` policy syntax.
 An explicitly selected vendor tool does not require global selection, a tool
@@ -565,9 +565,9 @@ metadata and updates only a missing or stale `package-edge` sidecar with
 paths preserve the edge cache named volume and leave the primary environment
 and base image intact. Both also repair managed client files in place so a new
 shell no longer depends on the primary container's creation-time environment.
-`vm ssh` and `vm exec` perform that package-edge and client-file repair before
-entering the guest or running the requested command. Package-tool and vendor-tool
-reconciliation remains shell-specific.
+`vm exec` performs package-edge, client-file, and remote-command repair before
+running the requested command. `vm ssh` schedules the same shared repair engine,
+plus package-tool and vendor-tool reconciliation, without delaying the shell.
 The explicit tool update then
 repairs base-owned vendor tools in the foreground, waiting for any
 shell-triggered repair already in flight. Explicitly selected vendor tools are
@@ -580,9 +580,11 @@ A matching installed release with broken links is treated as non-consumable and
 retried, including by the cached background startup path.
 
 Interactive-shell reconciliation is single-flight at each ownership boundary:
-one controller catalog refresh may run at a time, as may one job of each guest
-reconciliation type. A successful shell-triggered pass is reused for 60
-seconds, so a burst of `vm ssh` sessions does not repeat downloads or probes.
+one host worker runs per environment, one controller catalog refresh may run at
+a time, and each guest reconciliation type retains its own lock. The host worker
+uses the same implementation as explicit updates. A successful shell-triggered
+pass is reused for 60 seconds, so a burst of `vm ssh` sessions neither delays
+attachment nor repeats downloads or probes.
 Explicit `refresh` and `update` commands bypass the recent-success window while
 still respecting active locks.
 

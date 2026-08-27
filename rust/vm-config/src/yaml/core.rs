@@ -36,7 +36,7 @@ impl CoreOperations {
             message.push_str(&format!("Cause: {}\n", e));
 
             // Check for common issues and provide hints
-            if let Some(hint) = Self::detect_common_yaml_issues(content, &e) {
+            if let Some(hint) = Self::detect_common_yaml_issue(&e) {
                 message.push_str(&format!("\nPossible issue: {}\n", hint));
             }
 
@@ -45,8 +45,15 @@ impl CoreOperations {
     }
 
     /// Detects common YAML issues and provides helpful hints
-    fn detect_common_yaml_issues(contents: &str, error: &serde_yaml::Error) -> Option<String> {
+    fn detect_common_yaml_issue(error: &serde_yaml::Error) -> Option<String> {
         let error_msg = error.to_string();
+
+        if error_msg.contains("unknown field `box`") {
+            return Some(
+                "`vm.box` was removed in v6. Rename it to `vm.image`; use `@vibe-image` for the standard Docker base."
+                    .to_string(),
+            );
+        }
 
         // Check for duplicate keys in error message
         if error_msg.contains("duplicate") || error_msg.contains("found duplicate key") {
@@ -54,15 +61,6 @@ impl CoreOperations {
                 "Duplicate key detected in YAML. Each key can only appear once at the same level."
                     .to_string(),
             );
-        }
-
-        // Manual check for duplicate keys by scanning the content
-        if let Some(duplicate_key) = Self::find_duplicate_keys(contents) {
-            return Some(format!(
-                "Duplicate key '{}' found. Each key can only appear once at the same level.\n\
-                 Please remove or rename the duplicate key.",
-                duplicate_key
-            ));
         }
 
         // Check for indentation issues
@@ -76,54 +74,6 @@ impl CoreOperations {
         // Check for invalid syntax
         if error_msg.contains("expected") {
             return Some("YAML syntax error. Check for missing colons, improper quotes, or malformed values.".to_string());
-        }
-
-        None
-    }
-
-    /// Attempts to find duplicate keys in the YAML content
-    fn find_duplicate_keys(contents: &str) -> Option<String> {
-        use std::collections::HashMap;
-
-        let mut seen_keys: HashMap<usize, Vec<String>> = HashMap::new();
-        let mut indent_stack: Vec<usize> = vec![0];
-
-        for line in contents.lines() {
-            // Skip comments and empty lines
-            let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with('#') {
-                continue;
-            }
-
-            // Calculate indentation level
-            let indent = line.len() - line.trim_start().len();
-
-            // Adjust indent stack
-            while indent_stack.last().is_some_and(|&last| indent < last) {
-                indent_stack.pop();
-            }
-            if indent_stack.last().map_or(true, |&last| indent > last) {
-                indent_stack.push(indent);
-            }
-
-            // Check if this line defines a key
-            let Some(colon_pos) = line.find(':') else {
-                continue;
-            };
-
-            let key_part = line[..colon_pos].trim();
-            // Skip if it's a list item or empty
-            if key_part.starts_with('-') || key_part.is_empty() {
-                continue;
-            }
-
-            let current_indent = *indent_stack.last().unwrap_or(&0);
-            let keys_at_level = seen_keys.entry(current_indent).or_default();
-
-            if keys_at_level.contains(&key_part.to_string()) {
-                return Some(key_part.to_string());
-            }
-            keys_at_level.push(key_part.to_string());
         }
 
         None
@@ -182,5 +132,25 @@ impl CoreOperations {
         }
 
         Ok(current)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CoreOperations;
+    use vm_core::error::VmError;
+
+    #[test]
+    fn retired_box_field_reports_the_exact_v6_migration() {
+        let error = CoreOperations::parse_yaml_with_diagnostics::<crate::config::VmConfig>(
+            "vm:\n  box: '@vibe-box'\nservices:\n  one:\n    enabled: true\n  two:\n    enabled: true\n",
+            "vm.yaml",
+        )
+        .unwrap_err();
+        let VmError::Serialization(message) = error else {
+            panic!("expected serialization error");
+        };
+        assert!(message.contains("Rename it to `vm.image`"));
+        assert!(!message.contains("Duplicate key"));
     }
 }
