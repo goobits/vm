@@ -28,7 +28,8 @@ readonly SCRIPT_NAME="$(basename "$0")"
 readonly LOG_PREFIX="🔧 VM Installer"
 readonly TIMEOUT_SECONDS=30
 readonly CARGO_TIMEOUT_SECONDS=600  # 10 minutes for cargo operations (clean builds take 2-3 minutes)
-readonly LOG_FILE="$HOME/.vm-install.log"
+readonly LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/vm"
+readonly LOG_FILE="$LOG_DIR/install.log"
 readonly REPO_URL="https://github.com/goobits/vm"  # Replace with your repo
 
 # Error codes
@@ -115,6 +116,18 @@ handle_error() {
 
 command_exists() {
     command -v "$1" &>/dev/null
+}
+
+initialize_log_file() {
+    umask 077
+    if [[ -L "$LOG_DIR" ]] || [[ -L "$LOG_FILE" ]] || [[ -e "$LOG_FILE" && ! -f "$LOG_FILE" ]]; then
+        echo "Refusing unsafe installer log path: $LOG_FILE" >&2
+        return 1
+    fi
+    mkdir -p -- "$LOG_DIR"
+    chmod 700 "$LOG_DIR"
+    : > "$LOG_FILE"
+    chmod 600 "$LOG_FILE"
 }
 
 # ============================================================================
@@ -282,6 +295,27 @@ verify_rustup_checksum() {
     fi
 }
 
+rustup_target() {
+    local rust_arch
+    local rust_platform
+    case "$ARCH" in
+        x86_64) rust_arch="x86_64" ;;
+        aarch64|arm64) rust_arch="aarch64" ;;
+        *) return 1 ;;
+    esac
+    case "$OS_TYPE" in
+        macos) rust_platform="apple-darwin" ;;
+        *) rust_platform="unknown-linux-gnu" ;;
+    esac
+    printf '%s-%s\n' "$rust_arch" "$rust_platform"
+}
+
+rustup_init_url() {
+    local target
+    target=$(rustup_target) || return 1
+    printf 'https://static.rust-lang.org/rustup/dist/%s/rustup-init\n' "$target"
+}
+
 install_rust_secure() {
     if command_exists cargo; then
         local rust_version
@@ -301,8 +335,14 @@ install_rust_secure() {
     # Ensure cleanup on exit
     trap "rm -f '$temp_installer'" EXIT
 
-    # Download rustup installer with timeout and security flags
+    # Download the target-specific rustup-init binary whose published checksum
+    # is verified below. Do not compare the checksum of a different bootstrap
+    # script from sh.rustup.rs.
     log_info "Downloading Rust installer..."
+    local rustup_url
+    rustup_url=$(rustup_init_url) || handle_error $ERR_PLATFORM_DETECT \
+        "Unsupported platform for Rust installation" \
+        "Install Rust manually from https://rustup.rs"
     if ! timeout "$TIMEOUT_SECONDS" curl \
         --proto '=https' \
         --tlsv1.2 \
@@ -311,7 +351,7 @@ install_rust_secure() {
         --fail \
         --location \
         --output "$temp_installer" \
-        https://sh.rustup.rs; then
+        "$rustup_url"; then
 
         handle_error $ERR_NETWORK_TIMEOUT \
             "Failed to download Rust installer" \
@@ -327,7 +367,8 @@ install_rust_secure() {
 
     # Execute the verified installer
     log_info "Running Rust installer..."
-    if ! bash "$temp_installer" -y --no-modify-path 2>&1 | tee -a "$LOG_FILE"; then
+    chmod 700 "$temp_installer"
+    if ! "$temp_installer" -y --no-modify-path 2>&1 | tee -a "$LOG_FILE"; then
         handle_error $ERR_INSTALL_FAILED \
             "Rust installation failed" \
             "Check the log file for details: $LOG_FILE"
@@ -693,7 +734,8 @@ EOF
 
 main() {
     # Initialize log file
-    echo "═══════════════════════════════════════════" > "$LOG_FILE"
+    initialize_log_file || exit $ERR_INSTALL_FAILED
+    echo "═══════════════════════════════════════════" >> "$LOG_FILE"
     echo "VM Installation Log - $(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
     echo "Version: $SCRIPT_VERSION" >> "$LOG_FILE"
     echo "Mode: source" >> "$LOG_FILE"

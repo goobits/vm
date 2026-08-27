@@ -29,10 +29,49 @@ pub(super) fn project_root() -> Result<PathBuf> {
     root.ok_or_else(|| VmError::Internal("Project root not found".to_string()))
 }
 
-fn target_directory() -> PathBuf {
+fn configured_target_directory() -> PathBuf {
     env::var_os("CARGO_TARGET_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(default_target_directory)
+}
+
+fn target_directory(project_root: &Path) -> Result<PathBuf> {
+    let configured = configured_target_directory();
+    let target = if configured.exists() {
+        fs::canonicalize(&configured).map_err(|error| {
+            VmError::filesystem(error, configured.display().to_string(), "canonicalize")
+        })?
+    } else {
+        configured
+    };
+    if !target.is_absolute() {
+        return Err(VmError::validation(
+            format!(
+                "Cargo target directory must be absolute: {}",
+                target.display()
+            ),
+            None::<String>,
+        ));
+    }
+    let home = user_paths::home_dir()?;
+    let home = home.canonicalize().unwrap_or(home);
+    let project_root = project_root
+        .canonicalize()
+        .unwrap_or_else(|_| project_root.to_path_buf());
+    if target == Path::new("/")
+        || target == home
+        || target == project_root.as_path()
+        || project_root.starts_with(&target)
+    {
+        return Err(VmError::validation(
+            format!(
+                "Refusing unsafe Cargo target directory: {}",
+                target.display()
+            ),
+            Some("Use a dedicated cache directory such as ~/.cache/vm/cargo-target"),
+        ));
+    }
+    Ok(target)
 }
 
 fn default_target_directory() -> PathBuf {
@@ -46,10 +85,13 @@ pub(super) fn clean(project_root: &Path) -> Result<()> {
     let span = info_span!("cargo_clean", operation = "cargo_clean", %platform);
     let _enter = span.enter();
 
+    let target = target_directory(project_root)?;
+    verify_clean_target(&target, project_root)?;
+
     vm_progress!("Cleaning build artifacts...");
     let status = Command::new("cargo")
         .arg("clean")
-        .env("CARGO_TARGET_DIR", target_directory())
+        .env("CARGO_TARGET_DIR", target)
         .current_dir(project_root)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
@@ -62,6 +104,35 @@ pub(super) fn clean(project_root: &Path) -> Result<()> {
         )));
     }
     vm_success!("Build artifacts cleaned.");
+    Ok(())
+}
+
+fn verify_clean_target(target: &Path, project_root: &Path) -> Result<()> {
+    let marker = target.join(vm_core::SOURCE_WORKSPACE_MARKER);
+    let recorded_root = fs::read_to_string(&marker).map_err(|_| {
+        VmError::validation(
+            format!(
+                "Refusing to clean unmanaged Cargo target directory: {}",
+                target.display()
+            ),
+            Some("Run the installer once without --clean to establish its managed cache"),
+        )
+    })?;
+    let recorded_root = Path::new(recorded_root.trim())
+        .canonicalize()
+        .unwrap_or_else(|_| PathBuf::from(recorded_root.trim()));
+    let project_root = project_root
+        .canonicalize()
+        .unwrap_or_else(|_| project_root.to_path_buf());
+    if recorded_root != project_root {
+        return Err(VmError::validation(
+            format!(
+                "Cargo target directory belongs to a different workspace: {}",
+                target.display()
+            ),
+            None::<String>,
+        ));
+    }
     Ok(())
 }
 
@@ -84,7 +155,7 @@ pub(super) fn workspace(project_root: &Path) -> Result<PathBuf> {
         vm_warning!("sccache not found - builds will be slower. Install: cargo install sccache");
     }
 
-    let target_dir = target_directory();
+    let target_dir = target_directory(project_root)?;
     let profile = env::var("VM_INSTALL_PROFILE").unwrap_or_else(|_| "source-install".to_string());
     let mut command = Command::new("cargo");
     command
@@ -134,11 +205,14 @@ pub(super) fn workspace(project_root: &Path) -> Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{default_target_directory, target_directory};
+    use super::{
+        configured_target_directory, default_target_directory, target_directory,
+        verify_clean_target,
+    };
 
     #[test]
     fn target_directory_honors_configuration_or_uses_the_machine_cache() {
-        let target_dir = target_directory();
+        let target_dir = configured_target_directory();
         assert!(target_dir.is_absolute());
         if let Some(configured) = std::env::var_os("CARGO_TARGET_DIR") {
             assert_eq!(target_dir, std::path::PathBuf::from(configured));
@@ -152,5 +226,43 @@ mod tests {
         let target_dir = default_target_directory();
         assert!(target_dir.is_absolute());
         assert!(target_dir.ends_with("cargo-target"));
+    }
+
+    #[test]
+    fn target_directory_rejects_workspace_ancestors() {
+        let project = tempfile::tempdir().unwrap();
+        let previous = std::env::var_os("CARGO_TARGET_DIR");
+        std::env::set_var("CARGO_TARGET_DIR", project.path());
+        let result = target_directory(project.path());
+        if let Some(previous) = previous {
+            std::env::set_var("CARGO_TARGET_DIR", previous);
+        } else {
+            std::env::remove_var("CARGO_TARGET_DIR");
+        }
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn clean_requires_a_matching_workspace_marker() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path().join("project");
+        let target = temp.path().join("target");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        assert!(verify_clean_target(&target, &project).is_err());
+
+        std::fs::write(
+            target.join(vm_core::SOURCE_WORKSPACE_MARKER),
+            temp.path().join("other").to_string_lossy().as_bytes(),
+        )
+        .unwrap();
+        assert!(verify_clean_target(&target, &project).is_err());
+
+        std::fs::write(
+            target.join(vm_core::SOURCE_WORKSPACE_MARKER),
+            project.to_string_lossy().as_bytes(),
+        )
+        .unwrap();
+        assert!(verify_clean_target(&target, &project).is_ok());
     }
 }

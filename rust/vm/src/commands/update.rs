@@ -1,5 +1,6 @@
 use crate::error::VmError;
 use serde::Deserialize;
+use std::io::Write;
 use std::path::Path;
 use std::process::Command;
 use vm_core::{vm_hint, vm_println, vm_progress, vm_success};
@@ -128,6 +129,8 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
 
         // Extract the archive
         vm_progress!("Extracting vm binary...");
+        let binary_name = format!("vm-{target}{}", std::env::consts::EXE_SUFFIX);
+        validate_release_archive(&archive_path, &binary_name)?;
         let archive_path_str = path_as_str(&archive_path, "Archive")?;
         let temp_dir_str = temp_dir.path().to_str().ok_or_else(|| {
             VmError::general(
@@ -146,46 +149,22 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
             ));
         }
 
-        // Find the vm binary
-        let binary_name = format!("vm-{target}{}", std::env::consts::EXE_SUFFIX);
-        let temp_binary = if temp_dir.path().join(&binary_name).exists() {
-            temp_dir.path().join(&binary_name)
-        } else if temp_dir
-            .path()
-            .join(format!("vm{}", std::env::consts::EXE_SUFFIX))
-            .exists()
-        {
-            temp_dir
-                .path()
-                .join(format!("vm{}", std::env::consts::EXE_SUFFIX))
-        } else {
+        // The release archive is required to contain exactly one regular file
+        // with the platform-specific name validated above.
+        let temp_binary = temp_dir.path().join(&binary_name);
+        if !std::fs::symlink_metadata(&temp_binary).is_ok_and(|metadata| {
+            metadata.file_type().is_file() && !metadata.file_type().is_symlink()
+        }) {
             return Err(VmError::general(
                 std::io::Error::new(std::io::ErrorKind::NotFound, "Binary not found"),
                 "Could not find vm binary in extracted archive".to_string(),
             ));
-        };
+        }
 
         // Get the current executable path
         let current_exe = std::env::current_exe()?;
-        let backup_exe = current_exe.with_extension("backup");
-        let staged_exe = current_exe.with_extension(format!("update-{}", std::process::id()));
-
         vm_progress!("Installing vm update...");
-        #[cfg(unix)]
-        std::fs::copy(&current_exe, &backup_exe)?;
-        std::fs::copy(&temp_binary, &staged_exe)?;
-
-        // Make it executable on Unix
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = std::fs::metadata(&staged_exe)?.permissions();
-            perms.set_mode(0o755);
-            std::fs::set_permissions(&staged_exe, perms)?;
-        }
-
-        replace_executable(&staged_exe, &current_exe, &backup_exe)?;
-        let _ = std::fs::remove_file(&backup_exe);
+        install_executable_update(&temp_binary, &current_exe)?;
 
         vm_success!("Updated vm to {}", release.tag_name);
     }
@@ -200,6 +179,68 @@ pub fn handle_update(version: Option<&str>, force: bool) -> Result<(), VmError> 
         vm_hint!("Installed version: {}", version_str.trim());
     }
 
+    Ok(())
+}
+
+fn validate_release_archive(archive: &Path, expected_binary: &str) -> Result<(), VmError> {
+    let archive = path_as_str(archive, "Archive")?;
+    let listing = Command::new("tar").args(["-tf", archive]).output()?;
+    if !listing.status.success() {
+        return Err(VmError::validation(
+            "Release archive could not be inspected",
+            Some("The downloaded release was not installed"),
+        ));
+    }
+    let listing = std::str::from_utf8(&listing.stdout)
+        .map_err(|error| VmError::general(error, "Release archive listing is not UTF-8"))?;
+    let mut entries = listing.lines();
+    let entry = entries.next().unwrap_or_default();
+    if !archive_entry_matches(entry, expected_binary) || entries.next().is_some() {
+        return Err(VmError::validation(
+            "Release archive must contain exactly the expected vm binary",
+            Some("The downloaded release was not installed"),
+        ));
+    }
+    Ok(())
+}
+
+fn archive_entry_matches(entry: &str, expected_binary: &str) -> bool {
+    let entry = entry.strip_prefix("./").unwrap_or(entry);
+    entry == expected_binary
+        && !entry.starts_with('/')
+        && !Path::new(entry)
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+}
+
+fn install_executable_update(source: &Path, current: &Path) -> Result<(), VmError> {
+    let parent = current.parent().ok_or_else(|| {
+        VmError::validation("Current executable has no parent directory", None::<String>)
+    })?;
+    let mut staged = tempfile::Builder::new()
+        .prefix(".vm-update-")
+        .tempfile_in(parent)?;
+    let mut source = std::fs::File::open(source)?;
+    std::io::copy(&mut source, staged.as_file_mut())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        staged
+            .as_file()
+            .set_permissions(std::fs::Permissions::from_mode(0o755))?;
+    }
+    staged.as_file_mut().flush()?;
+    staged.as_file().sync_all()?;
+    let staged = staged.into_temp_path();
+
+    // Windows cannot replace the running executable directly. Reserve a
+    // random sibling path for its short-lived rollback file instead of using a
+    // predictable `.backup` name. Unix ignores this path and renames atomically.
+    let backup = tempfile::Builder::new()
+        .prefix(".vm-backup-")
+        .tempfile_in(parent)?
+        .into_temp_path();
+    replace_executable(staged.as_ref(), current, backup.as_ref())?;
     Ok(())
 }
 
@@ -362,7 +403,8 @@ fn detect_target() -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        normalize_cargo_version, parse_release_checksum, verify_release_checksum, GitHubRelease,
+        archive_entry_matches, normalize_cargo_version, parse_release_checksum,
+        verify_release_checksum, GitHubRelease,
     };
 
     #[test]
@@ -421,5 +463,25 @@ mod tests {
 
         assert_eq!(std::fs::read_to_string(current).unwrap(), "new");
         assert!(!staged.exists());
+    }
+
+    #[test]
+    fn release_archive_entry_must_be_the_exact_binary() {
+        assert!(archive_entry_matches(
+            "vm-x86_64-unknown-linux-gnu",
+            "vm-x86_64-unknown-linux-gnu"
+        ));
+        assert!(archive_entry_matches(
+            "./vm-x86_64-unknown-linux-gnu",
+            "vm-x86_64-unknown-linux-gnu"
+        ));
+        assert!(!archive_entry_matches(
+            "../vm-x86_64-unknown-linux-gnu",
+            "vm-x86_64-unknown-linux-gnu"
+        ));
+        assert!(!archive_entry_matches(
+            "bin/vm-x86_64-unknown-linux-gnu",
+            "vm-x86_64-unknown-linux-gnu"
+        ));
     }
 }
