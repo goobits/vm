@@ -192,7 +192,7 @@ impl Store {
         let failed_build = next
             .tool_builds
             .get(submission_id)
-            .filter(|build| legacy_infrastructure_failure(build))
+            .filter(|build| build.is_legacy_retryable_infrastructure_failure())
             .ok_or_else(|| {
                 WorkError::Conflict(
                     "build retry requires a recorded isolated-builder infrastructure failure"
@@ -262,14 +262,6 @@ impl Store {
         self.commit(&mut current, next).await?;
         Ok(result)
     }
-}
-
-fn legacy_infrastructure_failure(build: &ToolBuildRecord) -> bool {
-    build.failure_kind == Some(ToolBuildFailureKind::Build)
-        && build
-            .failure
-            .as_deref()
-            .is_some_and(|failure| failure.contains("Permission denied (os error 13)"))
 }
 
 fn validate_build_request(request: &CompleteToolBuildRequest) -> WorkResult<()> {

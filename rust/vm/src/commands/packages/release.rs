@@ -254,6 +254,10 @@ async fn retry_failed_tool_build(
     {
         return Ok(None);
     }
+    let build = client.tool_build(&submission.submission_id).await?;
+    if !build.is_legacy_retryable_infrastructure_failure() {
+        return Ok(None);
+    }
     let generation = submission
         .integration
         .as_ref()
@@ -268,8 +272,9 @@ async fn retry_failed_tool_build(
             &RetryToolBuildRequest {
                 actor: checkout.agent.clone(),
                 idempotency_key: format!(
-                    "retry-tool-build-{}-{generation}",
-                    submission.submission_id
+                    "retry-tool-build-{}-{generation}-{}",
+                    submission.submission_id,
+                    build.completed_at.timestamp_micros()
                 ),
             },
         )
