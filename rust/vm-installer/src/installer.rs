@@ -1,6 +1,6 @@
 use std::{
     fs::{self, File, OpenOptions},
-    io,
+    io::{self, Write},
     path::{Path, PathBuf},
 };
 
@@ -22,9 +22,36 @@ pub fn install(clean: bool) -> Result<()> {
 
     let source_binary = build::workspace(&project_root)?;
     install_executable(&source_binary, &bin_dir)?;
+    install_source_workspace_marker(&project_root, &bin_dir)?;
     plugins::install(&project_root)?;
     platform::ensure_path(&bin_dir)?;
     completion::install(&bin_dir)
+}
+
+fn install_source_workspace_marker(project_root: &Path, bin_dir: &Path) -> Result<()> {
+    fs::create_dir_all(bin_dir).map_err(|error| {
+        vm_core::error::VmError::Internal(format!(
+            "Failed to create user bin directory {}: {error}",
+            bin_dir.display()
+        ))
+    })?;
+    let destination = bin_dir.join(vm_core::SOURCE_WORKSPACE_MARKER);
+    let (staged_path, mut staged_file) = create_staged_file(&destination)?;
+    let result = (|| {
+        staged_file.write_all(project_root.to_string_lossy().as_bytes())?;
+        staged_file.sync_all()?;
+        drop(staged_file);
+        replace_file(&staged_path, &destination)
+    })();
+
+    if let Err(error) = result {
+        let _ = fs::remove_file(&staged_path);
+        return Err(vm_core::error::VmError::Internal(format!(
+            "Failed to record source workspace at {}: {error}",
+            destination.display()
+        )));
+    }
+    Ok(())
 }
 
 fn install_executable(source_binary: &Path, bin_dir: &Path) -> Result<()> {
@@ -130,7 +157,7 @@ fn replace_file(staged: &Path, destination: &Path) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::install_executable;
+    use super::{install_executable, install_source_workspace_marker};
     use std::fs;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
@@ -178,5 +205,20 @@ mod tests {
                 .to_string_lossy()
                 .starts_with(".vm.install-")
         }));
+    }
+
+    #[test]
+    fn source_installation_records_workspace_beside_the_stable_executable() {
+        let temp_dir = tempdir().expect("create temp directory");
+        let bin_dir = temp_dir.path().join("bin");
+        let project_root = temp_dir.path().join("checkout");
+        fs::create_dir_all(&project_root).expect("create project root");
+
+        install_source_workspace_marker(&project_root, &bin_dir).expect("record source workspace");
+
+        assert_eq!(
+            fs::read_to_string(bin_dir.join(vm_core::SOURCE_WORKSPACE_MARKER)).unwrap(),
+            project_root.to_string_lossy()
+        );
     }
 }
