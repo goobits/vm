@@ -113,10 +113,17 @@ fn validate_work_root(root: &Path) -> Result<()> {
 
 #[cfg(unix)]
 fn restrict_work_root(root: &Path) -> Result<()> {
+    restrict_work_root_for(root, std::env::var_os("PKG_BUILD_UID").is_some())
+}
+
+#[cfg(unix)]
+fn restrict_work_root_for(root: &Path, unprivileged_build: bool) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
 
     let mut permissions = fs::metadata(root)?.permissions();
-    permissions.set_mode(0o700);
+    // The service owns and lists this directory. Isolated build users need only
+    // traverse it to reach their individually chowned, unpredictable workspace.
+    permissions.set_mode(if unprivileged_build { 0o711 } else { 0o700 });
     fs::set_permissions(root, permissions)
         .with_context(|| format!("restrict binary build work root {}", root.display()))
 }
@@ -205,6 +212,23 @@ mod tests {
     fn broad_work_roots_are_rejected() {
         assert!(prepare_build_work_root(Path::new("relative")).is_err());
         assert!(prepare_build_work_root(Path::new("/tmp")).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unprivileged_build_root_is_traversable_but_not_listable() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("builder/work");
+        fs::create_dir_all(&root).unwrap();
+
+        restrict_work_root_for(&root, true).unwrap();
+
+        assert_eq!(
+            fs::metadata(&root).unwrap().permissions().mode() & 0o777,
+            0o711
+        );
     }
 
     #[cfg(unix)]

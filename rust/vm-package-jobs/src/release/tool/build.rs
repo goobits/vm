@@ -2,6 +2,7 @@ use std::path::Path;
 
 use anyhow::{bail, Context, Result};
 use semver::Version;
+use vm_core::command_capture::CommandCaptureError;
 use vm_packages::{
     sha256_hex, CompleteToolBuildRequest, PackageInfrastructureClient, SubmissionRecord,
     ToolBuildFailureKind, ToolKind, ToolSourceManifest, VersionRecommendation, WorkflowState,
@@ -187,6 +188,12 @@ async fn build_submission_in(
     };
     let artifacts = match build_binary_artifacts(&context, &manifest) {
         Ok(artifacts) => artifacts,
+        Err(error) if is_infrastructure_failure(&error) => {
+            return Err(error.context(format!(
+                "isolated binary builder infrastructure failed for submission {}",
+                submission.submission_id
+            )));
+        }
         Err(error) => {
             record_build_failure(
                 client,
@@ -228,6 +235,17 @@ async fn build_submission_in(
         "tool build completed"
     );
     Ok(())
+}
+
+fn is_infrastructure_failure(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        cause
+            .downcast_ref::<CommandCaptureError>()
+            .is_some_and(CommandCaptureError::is_infrastructure_failure)
+            || cause
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)
+    })
 }
 
 async fn record_build_failure(
@@ -308,5 +326,19 @@ mod tests {
     #[test]
     fn reviewed_patch_version_passes_preflight() {
         validate_declared_version("1.1.0", "1.1.1", VersionRecommendation::Patch).unwrap();
+    }
+
+    #[test]
+    fn process_spawn_failure_is_retryable_infrastructure() {
+        let error = anyhow::Error::new(CommandCaptureError::Spawn {
+            operation: "build binary tool target linux-arm64".into(),
+            source: std::io::Error::from(std::io::ErrorKind::PermissionDenied),
+        })
+        .context("run isolated program `sh`");
+
+        assert!(is_infrastructure_failure(&error));
+        assert!(!is_infrastructure_failure(&anyhow::anyhow!(
+            "build command exited unsuccessfully"
+        )));
     }
 }

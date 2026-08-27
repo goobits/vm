@@ -50,6 +50,7 @@ pub(in crate::release::tool) fn run_isolated(
     let (program, arguments) = arguments
         .split_first()
         .context("isolated command cannot be empty")?;
+    let program_name = program.clone();
     let sandbox = release_root.join("untrusted");
     let sandbox = if sandbox.is_dir() {
         sandbox.as_path()
@@ -110,7 +111,12 @@ pub(in crate::release::tool) fn run_isolated(
             .context("PKG_BUILD_GID must be a numeric group ID")?;
         command.uid(uid).gid(gid);
     }
-    run_command(&mut command, operation)?;
+    run_command(&mut command, operation).with_context(|| {
+        format!(
+            "run isolated program `{program_name}` via `timeout` from {}",
+            directory.display()
+        )
+    })?;
     Ok(())
 }
 

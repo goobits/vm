@@ -163,6 +163,9 @@ fn source_fingerprint(workspace: &Path, dockerfile: &str) -> VmResult<String> {
             workspace.join("vm-package-jobs"),
             workspace.join("vm-package-git-askpass"),
             workspace.join("vm-packages"),
+            workspace.join("vm-core"),
+            workspace.join("vm-platform"),
+            workspace.join("vm-logging"),
         ];
         if let Some(root) = workspace.parent() {
             inputs.push(root.join(".dockerignore"));
@@ -438,13 +441,16 @@ mod tests {
     }
 
     #[test]
-    fn job_fingerprint_ignores_unrelated_workflow_server_changes() {
+    fn job_fingerprint_tracks_only_the_job_dependency_closure() {
         let directory = tempfile::tempdir().unwrap();
         let workspace = directory.path().join("rust");
         for path in [
             "vm-package-jobs/src",
             "vm-package-git-askpass/src",
             "vm-packages/src",
+            "vm-core/src",
+            "vm-platform/src",
+            "vm-logging/src",
             "vm-package-work/src",
         ] {
             fs::create_dir_all(workspace.join(path)).unwrap();
@@ -458,6 +464,12 @@ mod tests {
             "vm-package-git-askpass/src/main.rs",
             "vm-packages/Cargo.toml",
             "vm-packages/src/lib.rs",
+            "vm-core/Cargo.toml",
+            "vm-core/src/lib.rs",
+            "vm-platform/Cargo.toml",
+            "vm-platform/src/lib.rs",
+            "vm-logging/Cargo.toml",
+            "vm-logging/src/lib.rs",
             "vm-package-work/src/submission.rs",
         ] {
             fs::write(workspace.join(path), path).unwrap();
@@ -475,6 +487,17 @@ mod tests {
         fs::write(workspace.join("vm-package-jobs/src/lib.rs"), "job change").unwrap();
         assert_ne!(
             after,
+            source_fingerprint(&workspace, "vm-package-jobs/Dockerfile").unwrap()
+        );
+
+        let before = source_fingerprint(&workspace, "vm-package-jobs/Dockerfile").unwrap();
+        fs::write(
+            workspace.join("vm-core/src/lib.rs"),
+            "shared runtime change",
+        )
+        .unwrap();
+        assert_ne!(
+            before,
             source_fingerprint(&workspace, "vm-package-jobs/Dockerfile").unwrap()
         );
     }

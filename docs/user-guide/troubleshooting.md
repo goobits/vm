@@ -217,6 +217,13 @@ with `vm packages up`; the builder starts by removing only stale directories in
 its dedicated managed work root, without changing workflow records, artifacts,
 project environments, or named volumes.
 
+An isolated binary-build launcher or worker I/O failure is infrastructure, not
+source rework. The job stays queued with retry backoff and logs the failing
+stage, manifest program, and managed working directory. Repair the appliance
+with `vm packages doctor --fix` or `vm packages up`, then rerun `vm packages
+release`; the already approved commit may be retried unchanged. A build command
+that runs and exits unsuccessfully still requests source changes normally.
+
 An older VM CLI never rewrites a package appliance with a newer definition
 revision. It stops before materializing Compose files and tells you to run `vm
 update`; this prevents host/controller version skew from downgrading a healthy

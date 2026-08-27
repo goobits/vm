@@ -72,6 +72,18 @@ impl CommandCaptureError {
     pub fn is_command_constraint(&self) -> bool {
         matches!(self, Self::Timeout { .. } | Self::OutputLimit { .. })
     }
+
+    /// Whether the command runner itself failed rather than the child command.
+    pub fn is_infrastructure_failure(&self) -> bool {
+        matches!(
+            self,
+            Self::Spawn { .. }
+                | Self::Wait { .. }
+                | Self::Read { .. }
+                | Self::ReaderTask { .. }
+                | Self::ReaderPanicked { .. }
+        )
+    }
 }
 
 pub fn capture_output(

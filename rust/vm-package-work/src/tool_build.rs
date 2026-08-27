@@ -134,7 +134,7 @@ impl Store {
                     "Update the declared version, commit it, and rerun the same release command"
                         .into()
                 }
-                _ => "Fix the binary build and resubmit".into(),
+                _ => "Fix the reported binary-build or worker problem and resubmit; an approved commit may be retried unchanged after infrastructure repair".into(),
             }];
             review.reviewer = request.actor.clone();
             review.timestamp = Utc::now();
@@ -429,11 +429,14 @@ mod tests {
         let submission = store.submission(&submission.submission_id).await.unwrap();
         assert_eq!(submission.state, WorkflowState::NeedsChanges);
         assert_eq!(
-            submission.review.unwrap().decision,
+            submission.review.as_ref().unwrap().decision,
             ReviewDecision::NeedsChanges
         );
         assert!(store.next_tool_build().await.is_none());
         assert!(store.next_release().await.is_none());
+        assert!(
+            submission.review.as_ref().unwrap().required_followups[0].contains("retried unchanged")
+        );
 
         let retried = store
             .record_submission(

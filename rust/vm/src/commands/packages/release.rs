@@ -406,11 +406,19 @@ async fn wait_for_review(
                 .as_ref()
                 .map(|review| format!("Package review requested changes: {}", review.reason))
                 .unwrap_or_else(|| "Package review requested changes".into()),
-            Some(if workspace_release {
-                "Edit and commit the canonical workspace, then rerun `vm packages release`"
-            } else {
-                "Edit and commit the checkout, then rerun the same release command"
-            }),
+            Some(
+                if submission
+                    .review
+                    .as_ref()
+                    .is_some_and(|review| review.reviewer == "tool-build-service")
+                {
+                    "Repair the reported build or infrastructure problem, then rerun `vm packages release`; the approved commit can be retried unchanged"
+                } else if workspace_release {
+                    "Edit and commit the canonical workspace, then rerun `vm packages release`"
+                } else {
+                    "Edit and commit the checkout, then rerun the same release command"
+                },
+            ),
         )),
         WorkflowState::Rejected | WorkflowState::Failed => Err(VmError::validation(
             "Package review rejected or failed the release",
