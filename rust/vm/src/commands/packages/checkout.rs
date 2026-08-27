@@ -10,7 +10,7 @@ use super::{
     guest_checkout::{
         checkout_root, create_directory, remove_directory, remove_file, write_checkout_access,
     },
-    guest_runtime::{exec, GuestRuntime},
+    guest_runtime::{exec, exec_output, GuestRuntime},
     overrides::{cleanup_failed_attach, OverrideRecord},
 };
 
@@ -52,6 +52,28 @@ pub(super) fn cleanup_guest(
         }
     }
     remove_directory(&root)
+}
+
+pub(super) fn cleanup_guest_after_release(
+    subject: &GuestRuntime,
+    checkout: &vm_packages::CheckoutRecord,
+    released_commit: &str,
+) -> VmResult<()> {
+    let root = checkout_root(subject, &checkout.checkout_id)?;
+    let source = format!("{root}/source");
+    let status = exec_output(subject, ["git", "-C", &source, "status", "--porcelain"])?;
+    let head = exec_output(subject, ["git", "-C", &source, "rev-parse", "HEAD"])?;
+    if !checkout_is_disposable(&status, &head, released_commit) {
+        return Err(VmError::validation(
+            "Managed checkout contains work newer than the published release",
+            Some("Preserve or move that work before removing the managed checkout"),
+        ));
+    }
+    cleanup_guest(subject, checkout)
+}
+
+fn checkout_is_disposable(status: &str, head: &str, released_commit: &str) -> bool {
+    status.trim().is_empty() && head.trim() == released_commit
 }
 
 pub(super) async fn handle_guest(package: String) -> VmResult<()> {
@@ -346,7 +368,7 @@ fn editable_source(
 mod tests {
     use chrono::Utc;
 
-    use super::{cleanup_ready, editable_source, EditableSource};
+    use super::{checkout_is_disposable, cleanup_ready, editable_source, EditableSource};
     use vm_packages::{
         CheckoutLease, CheckoutRecord, PackageCheckoutContext, PackageEcosystem, SourceKind,
         WorkflowState,
@@ -440,5 +462,17 @@ mod tests {
             editable_source(&checkout(SourceKind::ToolCollection, false, None)).unwrap(),
             (EditableSource::Tool(SourceKind::ToolCollection), None)
         );
+    }
+
+    #[test]
+    fn published_checkout_cleanup_refuses_newer_or_uncommitted_work() {
+        let released = "a".repeat(40);
+        assert!(checkout_is_disposable("", &released, &released));
+        assert!(!checkout_is_disposable(
+            " M src/lib.rs\n",
+            &released,
+            &released
+        ));
+        assert!(!checkout_is_disposable("", &"b".repeat(40), &released));
     }
 }

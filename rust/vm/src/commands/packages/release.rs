@@ -228,7 +228,9 @@ pub(super) async fn handle_guest() -> VmResult<()> {
         wait_for_tool_activation(&client, release_id).await?;
     }
     if managed_checkout {
-        if let Err(error) = checkout::cleanup_guest(&subject, &checkout) {
+        if let Err(error) =
+            checkout::cleanup_guest_after_release(&subject, &checkout, &release.source_commit)
+        {
             vm_hint!("Published successfully; local checkout cleanup was skipped: {error}");
         }
     }
