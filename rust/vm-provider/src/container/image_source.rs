@@ -10,7 +10,6 @@ use vm_core::vm_dbg;
 use vm_snapshot::{SnapshotManager, SnapshotScope};
 
 use super::{BuildOperations, ContainerOps};
-use crate::tart_base;
 
 #[derive(Debug, Clone)]
 pub(super) enum ContainerImageSource {
@@ -53,10 +52,7 @@ impl ContainerImageSource {
                     });
                 }
                 let lower = value.to_ascii_lowercase();
-                if tart_base::guest_os(value).is_some()
-                    || value.starts_with(tart_base::LINUX_REGISTRY)
-                    || lower.contains("cirruslabs/macos")
-                {
+                if is_tart_image(value) || lower.contains("cirruslabs/macos") {
                     return Err(VmError::Config(format!(
                         "'{value}' looks like a Tart image, but the Docker provider was selected. Use provider: tart or choose a Docker image/Dockerfile."
                     )));
@@ -93,6 +89,16 @@ impl ContainerImageSource {
             }
         }
     }
+}
+
+fn is_tart_image(value: &str) -> bool {
+    const LINUX_BASE: &str = "vibe-tart-linux-base";
+    value == LINUX_BASE
+        || value == "vibe-tart-sequoia-base"
+        || value
+            .strip_prefix(LINUX_BASE)
+            .is_some_and(|suffix| suffix.starts_with("-v"))
+        || value.starts_with("ghcr.io/goobits/vm-tart-linux")
 }
 
 impl<'a> BuildOperations<'a> {

@@ -1,17 +1,24 @@
 // Embedded resources for VM provisioning
 // These are compiled into the binary for portability
 
+#[cfg(feature = "docker")]
 use std::fs;
+#[cfg(feature = "docker")]
 use std::path::Path;
+#[cfg(feature = "docker")]
 use vm_core::error::Result;
 
+#[cfg(any(feature = "docker", test))]
 pub const ANSIBLE_PLAYBOOK: &str = include_str!("resources/ansible/playbook.yml");
+#[cfg(any(feature = "docker", test))]
 pub const MANAGE_SERVICE_TASK: &str = include_str!("resources/ansible/tasks/manage-service.yml");
+#[cfg(any(feature = "docker", test))]
 pub const SERVICE_DEFINITIONS: &str = include_str!("resources/services/service_definitions.yml");
 pub const ZSHRC_TEMPLATE: &str = include_str!("resources/templates/zshrc.j2");
 #[cfg(any(feature = "tart", test))]
 pub(crate) const SHELL_CONFIG_VERSION: &str = "6";
 pub const THEMES_JSON: &str = include_str!("resources/templates/themes.json");
+#[cfg(feature = "docker")]
 pub const CLAUDE_SETTINGS_TEMPLATE: &str =
     include_str!("resources/settings/claude-settings.json.j2");
 pub(crate) const NODE_BOOTSTRAP: &str = include_str!("resources/scripts/bootstrap-node.sh");
@@ -20,6 +27,7 @@ pub(crate) const NODE_TOOLCHAIN_INSTALLER: &str =
 pub(crate) const HOME_STATE_REPAIR: &str = include_str!("resources/scripts/repair-home-state.sh");
 
 /// Copy all embedded resources to the specified directory
+#[cfg(feature = "docker")]
 pub fn copy_embedded_resources(shared_dir: &Path) -> Result<()> {
     use rayon::prelude::*;
 
@@ -73,6 +81,7 @@ pub fn copy_embedded_resources(shared_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "docker")]
 fn write_if_changed(path: &Path, content: &str) -> Result<()> {
     match fs::read(path) {
         Ok(existing) if existing == content.as_bytes() => Ok(()),

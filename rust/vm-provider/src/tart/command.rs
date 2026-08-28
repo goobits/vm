@@ -1,5 +1,3 @@
-#![cfg_attr(not(feature = "tart"), allow(dead_code))]
-
 use std::ffi::{OsStr, OsString};
 use std::io::Read;
 use std::net::IpAddr;

@@ -1,5 +1,3 @@
-#![cfg_attr(not(feature = "tart"), allow(dead_code))]
-
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};

@@ -6,6 +6,7 @@
 
 #[cfg(feature = "tart")]
 use vm_config::config::VmConfig;
+#[cfg(any(feature = "docker", feature = "tart", test))]
 use vm_core::error::{Result, VmError};
 
 /// Information about a VM instance
@@ -29,6 +30,7 @@ pub struct InstanceInfo {
 
 /// Shared fuzzy matching logic for instance resolution
 /// This is extracted from Docker's sophisticated resolution logic
+#[cfg(any(feature = "docker", feature = "tart", test))]
 pub(crate) fn fuzzy_match_instances(partial: &str, instances: &[InstanceInfo]) -> Result<String> {
     if instances.is_empty() {
         return Err(VmError::NotFound(format!(
@@ -102,6 +104,7 @@ pub(crate) fn extract_project_name(config: &VmConfig) -> &str {
 }
 
 /// Helper to create instance information for Docker-compatible containers.
+#[cfg(any(feature = "docker", test))]
 pub(crate) fn create_container_instance_info(
     provider: &str,
     name: &str,

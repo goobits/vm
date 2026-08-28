@@ -21,10 +21,10 @@ pub use context::ProviderContext;
 pub use instance::InstanceInfo;
 #[cfg(feature = "test-helpers")]
 pub use mock::MockProvider;
-pub use resources::{ANSIBLE_PLAYBOOK, ZSHRC_TEMPLATE};
 pub use status::{
     InstanceState, MountUsage, ResourceUsage, RuntimeDiagnostics, ServiceStatus, VmStatusReport,
 };
+#[cfg(feature = "tart")]
 pub use tart::{
     build_vibe_base as build_tart_vibe_base,
     ensure_configured_vibe_base as ensure_configured_tart_vibe_base, PreparedTartBase,
@@ -34,22 +34,34 @@ pub use vm_core::error::{Result as VmResult, VmError};
 
 mod capabilities;
 mod context;
+#[cfg(any(feature = "docker", feature = "tart"))]
 mod guest_cache;
 mod instance;
+#[cfg(any(feature = "docker", feature = "tart"))]
 mod project_plan;
+#[cfg(any(feature = "docker", feature = "tart"))]
 mod resource_limits;
+#[cfg(any(feature = "docker", feature = "tart"))]
 mod resources;
+#[cfg(any(feature = "docker", feature = "tart"))]
 mod security;
+#[cfg(any(feature = "docker", feature = "tart"))]
 mod shell_session;
+#[cfg(any(feature = "docker", feature = "tart"))]
 mod stable_name;
 mod status;
+#[cfg(feature = "tart")]
 mod tart;
 mod temp_models;
 
+#[cfg(feature = "tart")]
 pub(crate) use tart::base as tart_base;
 
+#[cfg(feature = "docker")]
 mod audio;
+#[cfg(feature = "docker")]
 mod preflight;
+#[cfg(any(feature = "docker", feature = "tart"))]
 mod user_home;
 
 #[cfg(feature = "docker")]
@@ -58,6 +70,9 @@ mod container;
 // When the `test-helpers` feature is enabled, include the mock provider.
 #[cfg(feature = "test-helpers")]
 mod mock;
+
+#[cfg(all(test, any(feature = "docker", feature = "tart")))]
+mod resources_tests;
 
 pub use temp_models::{Mount, MountPermission, TempVmState};
 
@@ -133,6 +148,7 @@ mod tests {
     use vm_config::config::VmConfig;
 
     #[test]
+    #[cfg(feature = "docker")]
     fn test_get_provider_default_docker() {
         let config = VmConfig::default();
         let result = get_provider(config);
@@ -147,6 +163,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "docker")]
     fn test_get_provider_explicit_docker() {
         let config = VmConfig {
             provider: Some("docker".into()),
@@ -164,6 +181,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "docker")]
     fn test_get_provider_explicit_podman() {
         let config = VmConfig {
             provider: Some("podman".into()),

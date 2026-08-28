@@ -1,4 +1,4 @@
-//! Regression tests for the canonical `.zshrc` template.
+//! Regression tests for embedded provisioning and shell resources.
 
 use std::collections::HashMap;
 
@@ -24,7 +24,7 @@ fn render_zshrc_for_test_with_prompt(
     show_timestamp: bool,
 ) -> String {
     let mut tera = Tera::default();
-    tera.add_raw_template("zshrc", vm_provider::ZSHRC_TEMPLATE)
+    tera.add_raw_template("zshrc", crate::resources::ZSHRC_TEMPLATE)
         .expect("zshrc template should load");
 
     let mut context = Context::new();
@@ -93,7 +93,7 @@ fn render_tart_zshrc_for_test() -> String {
 
 #[test]
 fn test_zshrc_template_exists() {
-    let template = vm_provider::ZSHRC_TEMPLATE;
+    let template = crate::resources::ZSHRC_TEMPLATE;
     assert!(!template.is_empty(), "Zshrc template should be embedded");
     assert!(
         template.contains("Development Environment Shell Configuration"),
@@ -103,7 +103,7 @@ fn test_zshrc_template_exists() {
 
 #[test]
 fn test_zshrc_template_has_key_sections() {
-    let template = vm_provider::ZSHRC_TEMPLATE;
+    let template = crate::resources::ZSHRC_TEMPLATE;
     let key_sections = [
         "NVM Configuration",
         "Shell History",
@@ -123,7 +123,7 @@ fn test_zshrc_template_has_key_sections() {
 
 #[test]
 fn test_zshrc_template_does_not_source_bash_completion() {
-    let template = vm_provider::ZSHRC_TEMPLATE;
+    let template = crate::resources::ZSHRC_TEMPLATE;
     assert!(
         !template.contains("bash_completion"),
         "zshrc should not source Bash-only NVM completion files"
@@ -132,7 +132,7 @@ fn test_zshrc_template_does_not_source_bash_completion() {
 
 #[test]
 fn test_zshrc_template_does_not_source_bashrc() {
-    let template = vm_provider::ZSHRC_TEMPLATE;
+    let template = crate::resources::ZSHRC_TEMPLATE;
     assert!(
         !template.contains("$HOME/.bashrc"),
         "zshrc should not source Bash startup files"
@@ -141,7 +141,7 @@ fn test_zshrc_template_does_not_source_bashrc() {
 
 #[test]
 fn test_zshrc_template_sets_prompt_after_runtime_setup() {
-    let template = vm_provider::ZSHRC_TEMPLATE;
+    let template = crate::resources::ZSHRC_TEMPLATE;
     let runtime_pos = template
         .find("/etc/profile.d/vm-shell-runtime.sh")
         .expect("zshrc should source shared runtime setup");
@@ -257,7 +257,7 @@ fn test_rendered_tart_zshrc_targets_workspace() {
 
 #[test]
 fn test_zshrc_template_has_expected_jinja_variables() {
-    let template = vm_provider::ZSHRC_TEMPLATE;
+    let template = crate::resources::ZSHRC_TEMPLATE;
     let expected_variables = [
         "{{ project_name }}",
         "{{ terminal_emoji }}",
@@ -276,7 +276,7 @@ fn test_zshrc_template_has_expected_jinja_variables() {
 
 #[test]
 fn test_zshrc_template_render_placeholder_substitution() {
-    let template = vm_provider::ZSHRC_TEMPLATE;
+    let template = crate::resources::ZSHRC_TEMPLATE;
 
     let mut vars = HashMap::new();
     vars.insert("{{ project_name }}", "test-project");
@@ -294,7 +294,7 @@ fn test_zshrc_template_render_placeholder_substitution() {
 
 #[test]
 fn test_zshrc_template_uses_fast_lazy_shell_paths() {
-    let template = vm_provider::ZSHRC_TEMPLATE;
+    let template = crate::resources::ZSHRC_TEMPLATE;
 
     assert!(template.contains("vm_update_git_prompt()"));
     assert!(template.contains("git branch --show-current"));
@@ -312,7 +312,7 @@ fn test_zshrc_template_uses_fast_lazy_shell_paths() {
 
 #[test]
 fn test_zshrc_template_has_project_alias_loop() {
-    let template = vm_provider::ZSHRC_TEMPLATE;
+    let template = crate::resources::ZSHRC_TEMPLATE;
     assert!(
         template.contains("{% for alias in project_aliases %}"),
         "Template should render project-specific aliases from config"
@@ -333,7 +333,7 @@ fn test_zshrc_template_checks_ai_home_writability() {
 
 #[test]
 fn test_zshrc_template_avoids_optional_service_dereferences() {
-    let jinja_template = vm_provider::ZSHRC_TEMPLATE;
+    let jinja_template = crate::resources::ZSHRC_TEMPLATE;
 
     let unsafe_paths = [
         "project_config.services.redis.port",
@@ -354,7 +354,7 @@ fn test_zshrc_template_avoids_optional_service_dereferences() {
 
 #[test]
 fn test_docker_database_client_installs_do_not_require_python_apt() {
-    let playbook = vm_provider::ANSIBLE_PLAYBOOK;
+    let playbook = crate::resources::ANSIBLE_PLAYBOOK;
     let client_tools_pos = playbook
         .find("Install database client tools for Docker")
         .expect("playbook should install Docker database client tools");
@@ -375,7 +375,7 @@ fn test_docker_database_client_installs_do_not_require_python_apt() {
 
 #[test]
 fn test_docker_engine_install_does_not_require_python_apt() {
-    let playbook = vm_provider::ANSIBLE_PLAYBOOK;
+    let playbook = crate::resources::ANSIBLE_PLAYBOOK;
     let docker_pos = playbook
         .find("Install Docker")
         .expect("playbook should install Docker");

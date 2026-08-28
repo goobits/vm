@@ -27,7 +27,7 @@ vm/
   preset-content, and service-content rules remain separate private concerns.
 - `rust/vm-provider/` owns Docker, Podman, and Tart implementation. Its factory
   aggregate composes command, instance-lifecycle, and provisioning capabilities;
-  temporary-VM behavior is an explicit optional capability.
+  temporary-VM and tunnel behavior are explicit optional capabilities.
 - `rust/vm-temp/` owns temporary lifecycle orchestration, state, status, and
   mount mutation behind the `TempVmOps` facade.
 - `rust/vm-snapshot/` owns snapshot creation, restoration, import, and export.
@@ -115,11 +115,19 @@ info-level JSON on stderr.
 Callers borrow the narrowest capability they need: `CommandProvider` for guest
 commands, `InstanceProvider` for lifecycle and discovery, and
 `ProvisioningProvider` for mutable runtime reconciliation. `Provider` remains
-the factory-owned aggregate used when orchestration genuinely spans capabilities.
+the factory-owned aggregate used when orchestration genuinely spans capabilities;
+temporary mounts and TCP relays require explicit optional capabilities.
 
 Docker and Podman implement container mounts, named volumes, tmpfs, resource
-limits, and logging. Tart owns macOS/Linux guest provisioning and does not
-accept container-only storage settings.
+limits, and logging through one internal runtime that binds engine identity,
+executable, and Compose form. Tart owns macOS/Linux guest provisioning, managed
+base-image lifecycle, and embedded base-build scripts, and does not accept
+container-only storage settings.
+
+Provider environment checks enter through `validate_provider_environment` and
+delegate to the selected backend. The default `docker` Cargo feature and optional
+`tart` feature isolate backend code and dependencies; a feature-free build keeps
+only provider-neutral traits and data types.
 
 Compose rendering/writing is separate from container execution and package-edge
 reconciliation. Tart combines a package-infrastructure batch with a project-runtime

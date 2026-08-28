@@ -113,19 +113,29 @@ preset-content, and service-content validation are separate private owners.
   traits for command transport, lifecycle/state, and runtime reconciliation
 - `Provider` as the factory-owned aggregate over those capabilities, not a
   second owner of their methods
-- `TempProvider` capability trait for optional temporary VM operations
+- `TempProvider` and `TunnelProvider` capability traits for optional temporary
+  VM and TCP-relay operations
 - Docker, Podman, and Tart provider implementations
 - VM lifecycle management (create, start, stop, destroy)
 - Enhanced status reporting with real-time metrics
 - Service health monitoring and port mapping
 
-**Key Exports**: Provider capability traits, `get_provider()` factory, provider
-implementations
+**Key Exports**: Provider capability traits, `get_provider()` factory,
+`validate_provider_environment()`, and the stable package-infrastructure
+container engine facade
 
 Container Compose code owns rendering and secure writes only. Lifecycle execution
 owns start/stop behavior; package-edge reconciliation and pipx classification have
 separate lifecycle owners. Tart provisioning combines package infrastructure and
 project-runtime command batches without duplicating the shared `ProjectPlan`.
+Docker and Podman operations carry one typed internal runtime so engine identity,
+executable selection, and Compose form cannot drift apart. Tart owns its managed
+base-image lifecycle, receipts, and embedded build scripts; the CLI invokes only
+the high-level provider operation.
+
+The default `docker` and optional `tart` Cargo features compile their respective
+backends and dependencies. The feature-free build retains only provider-neutral
+traits and data types.
 
 #### vm-temp
 **Role**: Temporary VM management for ephemeral development environments.

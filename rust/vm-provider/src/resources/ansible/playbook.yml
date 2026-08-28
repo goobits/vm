@@ -752,11 +752,17 @@
       # Install database client tools for services that run as separate containers in Docker
       # Layered provisioning: install if not already present (works for both fresh and snapshot builds)
       - name: Install database client tools for Docker
-        apt:
-            name: '{{ item.package }}'
-            state: present
-            update_cache: yes
-            install_recommends: no
+        shell: |
+            set -eu
+            if dpkg-query -W -f='${Status}' '{{ item.package }}' 2>/dev/null | grep -q 'install ok installed'; then
+              exit 0
+            fi
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update
+            apt-get install -y --no-install-recommends '{{ item.package }}'
+            printf 'VM_APT_CHANGED=1\n'
+        register: database_client_install
+        changed_when: "'VM_APT_CHANGED=1' in database_client_install.stdout"
         loop:
           - service: postgresql
             package: postgresql-client
@@ -775,13 +781,17 @@
       # Handle Docker service separately (requires user group management)
       # Layered provisioning: install if not already present
       - name: Install Docker
-        apt:
-            name:
-              - docker.io
-              - docker-compose
-            state: present
-            update_cache: yes
-            install_recommends: no
+        shell: |
+            set -eu
+            if command -v docker >/dev/null 2>&1 && command -v docker-compose >/dev/null 2>&1; then
+              exit 0
+            fi
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update
+            apt-get install -y --no-install-recommends docker.io docker-compose
+            printf 'VM_APT_CHANGED=1\n'
+        register: docker_install
+        changed_when: "'VM_APT_CHANGED=1' in docker_install.stdout"
         when:
           - project_config.services.docker.enabled | default(false)
 

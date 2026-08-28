@@ -2,6 +2,7 @@ use crate::cli::BaseSubcommand;
 use crate::error::{VmError, VmResult};
 use vm_config::{config::VmConfig, AppConfig};
 use vm_core::vm_println;
+#[cfg(any(target_os = "macos", feature = "tart"))]
 use vm_provider::{build_tart_vibe_base, ensure_configured_tart_vibe_base, TartBaseSource};
 
 mod runtime;
@@ -61,18 +62,31 @@ async fn handle_build(preset: &str, provider: &str, guest_os: &str) -> VmResult<
             .await?;
             vm_println!("Built Docker vibe base: {}", DOCKER_BASE_NAME);
         }
-        "tart" => {
-            let guest_os = resolve_tart_guest_os(guest_os)?;
-            let config = VmConfig::load(None).ok();
-            let base_name = build_tart_vibe_base(config.as_ref(), guest_os)?;
-            vm_println!("Built Tart {guest_os} vibe base: {base_name}");
-        }
+        "tart" => build_tart_base(guest_os)?,
         _ => unreachable!(),
     }
 
     Ok(())
 }
 
+#[cfg(any(target_os = "macos", feature = "tart"))]
+fn build_tart_base(requested_guest_os: &str) -> VmResult<()> {
+    let guest_os = resolve_tart_guest_os(requested_guest_os)?;
+    let config = VmConfig::load(None).ok();
+    let base_name = build_tart_vibe_base(config.as_ref(), guest_os)?;
+    vm_println!("Built Tart {guest_os} vibe base: {base_name}");
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", feature = "tart")))]
+fn build_tart_base(_requested_guest_os: &str) -> VmResult<()> {
+    Err(VmError::validation(
+        "Tart provider support is not enabled in this build",
+        None::<String>,
+    ))
+}
+
+#[cfg(any(target_os = "macos", feature = "tart", test))]
 fn resolve_tart_guest_os(requested: &str) -> VmResult<&'static str> {
     match requested {
         "linux" => Ok("linux"),
@@ -85,6 +99,7 @@ fn resolve_tart_guest_os(requested: &str) -> VmResult<&'static str> {
     }
 }
 
+#[cfg(any(target_os = "macos", feature = "tart", test))]
 fn active_tart_guest_os() -> &'static str {
     let Ok(app_config) = AppConfig::load(None, None, Some("tart".to_string())) else {
         return "linux";
@@ -103,6 +118,7 @@ fn active_tart_guest_os() -> &'static str {
     }
 }
 
+#[cfg(any(target_os = "macos", feature = "tart"))]
 pub(super) fn ensure_configured_tart_base(config: &VmConfig) -> VmResult<()> {
     let Some(prepared) = ensure_configured_tart_vibe_base(config)? else {
         return Ok(());
@@ -124,6 +140,11 @@ pub(super) fn ensure_configured_tart_base(config: &VmConfig) -> VmResult<()> {
             )
         }
     }
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", feature = "tart")))]
+pub(super) fn ensure_configured_tart_base(_config: &VmConfig) -> VmResult<()> {
     Ok(())
 }
 
