@@ -1,7 +1,7 @@
 use std::{fs::File, path::PathBuf, process::Stdio};
 
 use tracing::{info, warn};
-use vm_config::config::VmConfig;
+use vm_config::config::{ImageSpec, VmConfig};
 use vm_core::error::Result;
 use vm_messages::messages::MESSAGES;
 
@@ -11,12 +11,43 @@ use super::{
     provider::{tart_run_log_path, TartProvider},
     provisioner::TartProvisioner,
 };
-use crate::{
-    common::instance::extract_project_name, project_plan::ProjectPlan, tart_base, ImageConfig,
-    VmError,
-};
+use crate::{instance::extract_project_name, project_plan::ProjectPlan, tart_base, VmError};
 
 const DEFAULT_TART_IMAGE: &str = "ghcr.io/cirruslabs/macos-sequoia-base:latest";
+
+#[derive(Debug)]
+enum TartImageSource {
+    Image(String),
+    Snapshot(String),
+}
+
+impl TartImageSource {
+    fn parse(spec: &ImageSpec) -> Result<Self> {
+        match spec {
+            ImageSpec::String(value) => {
+                if let Some(name) = value.strip_prefix('@') {
+                    return Ok(Self::Snapshot(name.to_string()));
+                }
+                let lower = value.to_ascii_lowercase();
+                if value.starts_with("./")
+                    || value.starts_with("../")
+                    || std::path::Path::new(value).is_absolute()
+                    || lower == "dockerfile"
+                    || lower.ends_with("/dockerfile")
+                    || lower.ends_with(".dockerfile")
+                {
+                    return Err(VmError::Config(format!(
+                        "'{value}' looks like a Dockerfile path, but the Tart provider cannot build Dockerfiles. Use provider: docker or choose a Tart OCI image."
+                    )));
+                }
+                Ok(Self::Image(value.clone()))
+            }
+            ImageSpec::Build { .. } => Err(VmError::Config(
+                "Tart provider does not support Dockerfile builds".to_string(),
+            )),
+        }
+    }
+}
 
 impl TartProvider {
     pub(super) fn start_vm_background(&self, name: &str) -> Result<()> {
@@ -98,15 +129,14 @@ impl TartProvider {
             .as_ref()
             .and_then(|settings| settings.image.clone())
         {
-            return match ImageConfig::parse_for_tart(&image_spec)? {
-                ImageConfig::TartImage(image) if image == tart_base::LINUX_NAME => {
+            return match TartImageSource::parse(&image_spec)? {
+                TartImageSource::Image(image) if image == tart_base::LINUX_NAME => {
                     Ok(tart_base::versioned_cache_name())
                 }
-                ImageConfig::TartImage(image) => Ok(image),
-                ImageConfig::Snapshot(name) => Err(VmError::Config(format!(
+                TartImageSource::Image(image) => Ok(image),
+                TartImageSource::Snapshot(name) => Err(VmError::Config(format!(
                     "Use 'vm revert {name}' for snapshots"
                 ))),
-                _ => Err(VmError::Internal("Invalid image type for Tart".into())),
             };
         }
         Ok(DEFAULT_TART_IMAGE.to_string())
@@ -206,5 +236,43 @@ impl TartProvider {
         info!("{}", MESSAGES.service.provider_tart_created_success);
         info!("{}", MESSAGES.service.provider_tart_connect_hint);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TartImageSource;
+    use vm_config::config::ImageSpec;
+
+    #[test]
+    fn parses_tart_images_and_snapshots() {
+        assert!(matches!(
+            TartImageSource::parse(&ImageSpec::String("ghcr.io/example/tart:latest".into()))
+                .unwrap(),
+            TartImageSource::Image(image) if image == "ghcr.io/example/tart:latest"
+        ));
+        assert!(matches!(
+            TartImageSource::parse(&ImageSpec::String("@release".into())).unwrap(),
+            TartImageSource::Snapshot(name) if name == "release"
+        ));
+    }
+
+    #[test]
+    fn rejects_dockerfile_sources() {
+        for value in [
+            "Dockerfile",
+            "./Dockerfile",
+            "../Dockerfile",
+            "build.dev.dockerfile",
+        ] {
+            let error = TartImageSource::parse(&ImageSpec::String(value.into())).unwrap_err();
+            assert!(error.to_string().contains("looks like a Dockerfile path"));
+        }
+        assert!(TartImageSource::parse(&ImageSpec::Build {
+            dockerfile: "Dockerfile".into(),
+            context: None,
+            args: None,
+        })
+        .is_err());
     }
 }

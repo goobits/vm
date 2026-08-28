@@ -4,10 +4,8 @@
 //! enabling multi-instance support through native Tart commands.
 
 use super::TartCommand;
-use crate::common::instance::{
-    create_tart_instance_info, extract_project_name, fuzzy_match_instances, InstanceInfo,
-    InstanceResolver,
-};
+use crate::instance::{create_tart_instance_info, extract_project_name, fuzzy_match_instances};
+use crate::InstanceInfo;
 use vm_config::config::VmConfig;
 use vm_core::error::{Result, VmError};
 
@@ -121,8 +119,8 @@ impl<'a> TartInstanceManager<'a> {
     }
 }
 
-impl<'a> InstanceResolver for TartInstanceManager<'a> {
-    fn resolve_instance_name(&self, partial: Option<&str>) -> Result<String> {
+impl TartInstanceManager<'_> {
+    pub(super) fn resolve_instance_name(&self, partial: Option<&str>) -> Result<String> {
         match partial {
             Some(name) => {
                 // First try exact match with project prefix
@@ -144,10 +142,11 @@ impl<'a> InstanceResolver for TartInstanceManager<'a> {
         }
     }
 
-    fn list_instances(&self) -> Result<Vec<InstanceInfo>> {
+    pub(super) fn list_instances(&self) -> Result<Vec<InstanceInfo>> {
         self.parse_tart_list()
     }
 
+    #[cfg(test)]
     fn default_instance_name(&self) -> String {
         // Tart uses project name directly, no -dev suffix
         self.project_name().to_string()

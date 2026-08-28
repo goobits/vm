@@ -1,4 +1,4 @@
-//! Shared instance management types and utilities
+//! Provider-neutral instance metadata and resolution helpers.
 //!
 //! This module provides common types and functions for managing VM instances
 //! across different providers. It defines a unified interface for instance
@@ -27,22 +27,9 @@ pub struct InstanceInfo {
     pub created_at: Option<String>,
 }
 
-/// Common interface for instance resolution across providers
-pub trait InstanceResolver {
-    /// Resolve a partial instance name to a full instance name
-    /// Returns the default instance if partial is None
-    fn resolve_instance_name(&self, partial: Option<&str>) -> Result<String>;
-
-    /// List all instances managed by this provider
-    fn list_instances(&self) -> Result<Vec<InstanceInfo>>;
-
-    /// Get the default instance name for this provider
-    fn default_instance_name(&self) -> String;
-}
-
 /// Shared fuzzy matching logic for instance resolution
 /// This is extracted from Docker's sophisticated resolution logic
-pub fn fuzzy_match_instances(partial: &str, instances: &[InstanceInfo]) -> Result<String> {
+pub(crate) fn fuzzy_match_instances(partial: &str, instances: &[InstanceInfo]) -> Result<String> {
     if instances.is_empty() {
         return Err(VmError::NotFound(format!(
             "No instances found matching '{partial}'. Use 'vm list' to see available instances"
@@ -106,7 +93,7 @@ pub fn fuzzy_match_instances(partial: &str, instances: &[InstanceInfo]) -> Resul
 
 /// Extract project name from config with fallback to default
 #[cfg(feature = "tart")]
-pub fn extract_project_name(config: &VmConfig) -> &str {
+pub(crate) fn extract_project_name(config: &VmConfig) -> &str {
     config
         .project
         .as_ref()
@@ -115,7 +102,7 @@ pub fn extract_project_name(config: &VmConfig) -> &str {
 }
 
 /// Helper to create instance information for Docker-compatible containers.
-pub fn create_container_instance_info(
+pub(crate) fn create_container_instance_info(
     provider: &str,
     name: &str,
     id: &str,
@@ -143,7 +130,7 @@ pub fn create_container_instance_info(
 
 /// Helper to create InstanceInfo for Tart VMs
 #[cfg(any(feature = "tart", test))]
-pub fn create_tart_instance_info(
+pub(crate) fn create_tart_instance_info(
     name: &str,
     status: &str,
     created_at: Option<&str>,

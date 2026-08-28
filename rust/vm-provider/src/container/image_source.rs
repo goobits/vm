@@ -1,28 +1,113 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tracing::info;
 
+use vm_config::config::ImageSpec;
 use vm_core::command_stream::stream_command;
 use vm_core::error::{Result, VmError};
 use vm_core::vm_dbg;
 use vm_snapshot::{SnapshotManager, SnapshotScope};
 
 use super::{BuildOperations, ContainerOps};
-use crate::ImageConfig;
+use crate::tart_base;
+
+#[derive(Debug, Clone)]
+pub(super) enum ContainerImageSource {
+    Image(String),
+    Dockerfile {
+        path: PathBuf,
+        context: PathBuf,
+        args: Option<HashMap<String, String>>,
+    },
+    Snapshot(String),
+}
+
+impl ContainerImageSource {
+    fn parse(spec: &ImageSpec, base_dir: &Path) -> Result<Self> {
+        match spec {
+            ImageSpec::String(value) => {
+                if let Some(name) = value.strip_prefix('@') {
+                    return Ok(Self::Snapshot(name.to_string()));
+                }
+
+                let candidate = Path::new(value);
+                if value.starts_with("./") || value.starts_with("../") || candidate.is_absolute() {
+                    let path = if candidate.is_absolute() {
+                        candidate.to_path_buf()
+                    } else {
+                        base_dir.join(candidate)
+                    };
+                    let context = path.parent().unwrap_or(base_dir).to_path_buf();
+                    return Ok(Self::Dockerfile {
+                        path,
+                        context,
+                        args: None,
+                    });
+                }
+                if value.ends_with(".dockerfile") {
+                    return Ok(Self::Dockerfile {
+                        path: base_dir.join(value),
+                        context: base_dir.to_path_buf(),
+                        args: None,
+                    });
+                }
+                let lower = value.to_ascii_lowercase();
+                if tart_base::guest_os(value).is_some()
+                    || value.starts_with(tart_base::LINUX_REGISTRY)
+                    || lower.contains("cirruslabs/macos")
+                {
+                    return Err(VmError::Config(format!(
+                        "'{value}' looks like a Tart image, but the Docker provider was selected. Use provider: tart or choose a Docker image/Dockerfile."
+                    )));
+                }
+                Ok(Self::Image(value.clone()))
+            }
+            ImageSpec::Build {
+                dockerfile,
+                context,
+                args,
+            } => {
+                let dockerfile = Path::new(dockerfile);
+                let path = if dockerfile.is_absolute() {
+                    dockerfile.to_path_buf()
+                } else {
+                    base_dir.join(dockerfile)
+                };
+                let context = context.as_deref().map_or_else(
+                    || path.parent().unwrap_or(base_dir).to_path_buf(),
+                    |context| {
+                        let context = Path::new(context);
+                        if context.is_absolute() {
+                            context.to_path_buf()
+                        } else {
+                            base_dir.join(context)
+                        }
+                    },
+                );
+                Ok(Self::Dockerfile {
+                    path,
+                    context,
+                    args: args.clone().map(|args| args.into_iter().collect()),
+                })
+            }
+        }
+    }
+}
 
 impl<'a> BuildOperations<'a> {
     /// Get image configuration, parsing ImageSpec from vm.image field
-    pub(super) fn get_image_config(&self) -> Result<ImageConfig> {
+    pub(super) fn get_image_config(&self) -> Result<ContainerImageSource> {
         let base_dir = self.config.project_dir()?;
 
         if let Some(vm_settings) = &self.config.vm {
             if let Some(image_spec) = vm_settings.image.clone() {
-                return ImageConfig::parse_for_docker(&image_spec, &base_dir);
+                return ContainerImageSource::parse(&image_spec, &base_dir);
             }
         }
 
         // Default to ubuntu:24.04
-        Ok(ImageConfig::DockerImage("ubuntu:24.04".to_string()))
+        Ok(ContainerImageSource::Image("ubuntu:24.04".to_string()))
     }
 
     /// Get the generated custom image name for Dockerfiles
@@ -175,16 +260,16 @@ impl<'a> BuildOperations<'a> {
         let image_config = self.get_image_config()?;
 
         // Track if we're using a pre-provisioned snapshot
-        let is_snapshot = matches!(&image_config, ImageConfig::Snapshot(_));
+        let is_snapshot = matches!(&image_config, ContainerImageSource::Snapshot(_));
 
         // Handle different image types
         let (base_image, base_image_identity) = match &image_config {
-            ImageConfig::DockerImage(image) => {
+            ContainerImageSource::Image(image) => {
                 // Pull Docker image from registry
                 let identity = self.pull_image_with_identity(image)?;
                 (image.clone(), Some(identity))
             }
-            ImageConfig::Dockerfile {
+            ContainerImageSource::Dockerfile {
                 path,
                 context,
                 args,
@@ -213,7 +298,7 @@ impl<'a> BuildOperations<'a> {
 
                 (image_name, None)
             }
-            ImageConfig::Snapshot(name) => {
+            ContainerImageSource::Snapshot(name) => {
                 // Load image from global snapshot
                 info!("Loading base image from snapshot '@{}'...", name);
 
@@ -311,15 +396,121 @@ impl<'a> BuildOperations<'a> {
 
                 (image_tag.to_string(), image_identity)
             }
-            _ => {
-                return Err(VmError::Internal(
-                    "Invalid image configuration for container provider".to_string(),
-                ));
-            }
         };
 
         let build_context = self.prepare_compose_build_context()?;
 
         Ok((build_context, base_image, is_snapshot, base_image_identity))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ContainerImageSource;
+    use indexmap::IndexMap;
+    use std::path::{Path, PathBuf};
+    use vm_config::config::ImageSpec;
+
+    #[test]
+    fn parses_registry_images_snapshots_and_dockerfile_paths() {
+        let base = Path::new("/workspace");
+        assert!(matches!(
+            ContainerImageSource::parse(&ImageSpec::String("ubuntu:24.04".into()), base).unwrap(),
+            ContainerImageSource::Image(image) if image == "ubuntu:24.04"
+        ));
+        assert!(matches!(
+            ContainerImageSource::parse(&ImageSpec::String("@release".into()), base).unwrap(),
+            ContainerImageSource::Snapshot(name) if name == "release"
+        ));
+
+        for value in ["./Dockerfile", "../Dockerfile", "build/app.dockerfile"] {
+            assert!(matches!(
+                ContainerImageSource::parse(&ImageSpec::String(value.into()), base).unwrap(),
+                ContainerImageSource::Dockerfile { .. }
+            ));
+        }
+    }
+
+    #[test]
+    fn resolves_build_paths_context_and_arguments() {
+        let mut args = IndexMap::new();
+        args.insert("NODE_VERSION".into(), "20".into());
+        let source = ContainerImageSource::parse(
+            &ImageSpec::Build {
+                dockerfile: "docker/Dockerfile".into(),
+                context: Some("docker".into()),
+                args: Some(args),
+            },
+            Path::new("/workspace"),
+        )
+        .unwrap();
+
+        let ContainerImageSource::Dockerfile {
+            path,
+            context,
+            args,
+        } = source
+        else {
+            panic!("expected Dockerfile source");
+        };
+        assert_eq!(path, PathBuf::from("/workspace/docker/Dockerfile"));
+        assert_eq!(context, PathBuf::from("/workspace/docker"));
+        assert_eq!(
+            args.unwrap().get("NODE_VERSION").map(String::as_str),
+            Some("20")
+        );
+    }
+
+    #[test]
+    fn preserves_absolute_build_paths() {
+        let source = ContainerImageSource::parse(
+            &ImageSpec::Build {
+                dockerfile: "/src/Dockerfile".into(),
+                context: Some("/src".into()),
+                args: None,
+            },
+            Path::new("/workspace"),
+        )
+        .unwrap();
+        assert!(matches!(
+            source,
+            ContainerImageSource::Dockerfile { path, context, .. }
+                if path == Path::new("/src/Dockerfile") && context == Path::new("/src")
+        ));
+    }
+
+    #[test]
+    fn rejects_known_tart_images() {
+        for value in [
+            "vibe-tart-sequoia-base",
+            "ghcr.io/cirruslabs/macos-sequoia-base:latest",
+        ] {
+            let error = ContainerImageSource::parse(
+                &ImageSpec::String(value.into()),
+                Path::new("/workspace"),
+            )
+            .unwrap_err();
+            assert!(error.to_string().contains("looks like a Tart image"));
+        }
+    }
+
+    #[test]
+    fn image_names_are_not_confused_with_paths() {
+        assert!(matches!(
+            ContainerImageSource::parse(
+                &ImageSpec::String("registry.example/path/image:tag".into()),
+                Path::new("/workspace"),
+            )
+            .unwrap(),
+            ContainerImageSource::Image(_)
+        ));
+        assert!(matches!(
+            ContainerImageSource::parse(
+                &ImageSpec::String("app.Dockerfile".into()),
+                Path::new("/workspace"),
+            )
+            .unwrap(),
+            ContainerImageSource::Image(_)
+        ));
     }
 }

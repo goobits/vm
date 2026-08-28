@@ -3,10 +3,8 @@ use super::{
     storage, TartCommand,
 };
 use crate::{
-    common::instance::{extract_project_name, InstanceInfo, InstanceResolver},
-    context::ProviderContext,
-    project_plan::ProjectPlan,
-    shell_session, CommandProvider, InstanceProvider, InstanceState, Provider,
+    context::ProviderContext, instance::extract_project_name, project_plan::ProjectPlan,
+    shell_session, CommandProvider, InstanceInfo, InstanceProvider, InstanceState, Provider,
     ProvisioningProvider, TempProvider, VmError, VmStatusReport,
 };
 use duct::cmd;

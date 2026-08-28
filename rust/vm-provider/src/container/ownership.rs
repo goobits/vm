@@ -4,7 +4,8 @@ use std::process::Command;
 use vm_core::error::{Result, VmError};
 
 use super::{ContainerEngine, ContainerOps};
-use crate::common::instance::{create_container_instance_info, InstanceInfo};
+use crate::instance::create_container_instance_info;
+use crate::InstanceInfo;
 
 pub(super) fn list_instances(
     executable: &str,

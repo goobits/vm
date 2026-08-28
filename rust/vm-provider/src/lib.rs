@@ -4,24 +4,20 @@
 //! such as Docker, Podman, and Tart. It defines core traits and factory functions
 //! for provider instantiation and management.
 
-// Standard library
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-
 // External crates
 use vm_core::error::Result;
 
 // Internal imports
 #[cfg(any(feature = "docker", feature = "tart", feature = "test-helpers"))]
 use vm_config::config::ProviderName;
-use vm_config::config::{ImageSpec, VmConfig};
+use vm_config::config::VmConfig;
 
 // Re-export common types for convenience
 pub use capabilities::{CommandProvider, InstanceProvider, ProvisioningProvider, TempProvider};
-pub use common::instance::{InstanceInfo, InstanceResolver};
 #[cfg(feature = "docker")]
 pub use container::{render_compose_preview, validate_container_environment, ContainerEngine};
 pub use context::ProviderContext;
+pub use instance::InstanceInfo;
 #[cfg(feature = "test-helpers")]
 pub use mock::MockProvider;
 pub use resources::{ANSIBLE_PLAYBOOK, ZSHRC_TEMPLATE};
@@ -36,9 +32,9 @@ pub use tart_base::{
 pub use vm_core::error::{Result as VmResult, VmError};
 
 mod capabilities;
-mod common;
 mod context;
 mod guest_cache;
+mod instance;
 mod project_plan;
 mod resource_limits;
 mod resources;
@@ -62,162 +58,6 @@ mod container;
 mod mock;
 
 pub use temp_models::{Mount, MountPermission, TempVmState};
-
-/// Provider-specific image configuration.
-#[derive(Debug, Clone)]
-pub enum ImageConfig {
-    /// Docker image from registry (e.g., "ubuntu:24.04")
-    DockerImage(String),
-
-    /// Build from Dockerfile
-    Dockerfile {
-        path: PathBuf,
-        context: PathBuf,
-        args: Option<HashMap<String, String>>,
-    },
-
-    /// Tart OCI image (e.g., "ghcr.io/cirruslabs/macos-sequoia-base:latest")
-    TartImage(String),
-
-    /// Snapshot reference (universal across providers)
-    Snapshot(String),
-}
-
-impl ImageConfig {
-    fn looks_like_tart_image(s: &str) -> bool {
-        let lower = s.to_ascii_lowercase();
-        tart_base::guest_os(s).is_some()
-            || s.starts_with(tart_base::LINUX_REGISTRY)
-            || lower.contains("cirruslabs/macos")
-    }
-
-    fn looks_like_dockerfile_path(s: &str) -> bool {
-        let potential_path = Path::new(s);
-        let lower = s.to_ascii_lowercase();
-        s.starts_with("./")
-            || s.starts_with("../")
-            || potential_path.is_absolute()
-            || lower == "dockerfile"
-            || lower.ends_with("/dockerfile")
-            || lower.ends_with(".dockerfile")
-    }
-
-    /// Parse an [`ImageSpec`] for the Docker provider.
-    ///
-    /// # Detection Rules
-    /// - Starts with `@` → Snapshot
-    /// - Starts with `./`, `../`, `/` → Dockerfile path
-    /// - Ends with `.dockerfile` → Dockerfile
-    /// - Otherwise → Docker image
-    pub fn parse_for_docker(spec: &ImageSpec, base_dir: &Path) -> Result<Self> {
-        match spec {
-            ImageSpec::String(s) => {
-                // Snapshot (@prefix)
-                if let Some(name) = s.strip_prefix('@') {
-                    return Ok(ImageConfig::Snapshot(name.to_string()));
-                }
-
-                // Dockerfile (path-like)
-                let potential_path = Path::new(s);
-                if s.starts_with("./") || s.starts_with("../") || potential_path.is_absolute() {
-                    let path = if potential_path.is_absolute() {
-                        PathBuf::from(s)
-                    } else {
-                        base_dir.join(s)
-                    };
-                    let context = path.parent().unwrap_or(base_dir).to_path_buf();
-                    return Ok(ImageConfig::Dockerfile {
-                        path,
-                        context,
-                        args: None,
-                    });
-                }
-
-                // Dockerfile (.dockerfile extension)
-                if s.ends_with(".dockerfile") {
-                    let path = base_dir.join(s);
-                    let context = base_dir.to_path_buf();
-                    return Ok(ImageConfig::Dockerfile {
-                        path,
-                        context,
-                        args: None,
-                    });
-                }
-
-                if Self::looks_like_tart_image(s) {
-                    return Err(VmError::Config(format!(
-                        "'{s}' looks like a Tart image, but the Docker provider was selected. Use provider: tart or choose a Docker image/Dockerfile."
-                    )));
-                }
-
-                // Default: Docker image
-                Ok(ImageConfig::DockerImage(s.to_string()))
-            }
-
-            ImageSpec::Build {
-                dockerfile,
-                context,
-                args,
-            } => {
-                // Handle absolute vs relative paths correctly
-                let dockerfile_path = Path::new(dockerfile);
-                let path = if dockerfile_path.is_absolute() {
-                    PathBuf::from(dockerfile)
-                } else {
-                    base_dir.join(dockerfile)
-                };
-
-                let ctx = if let Some(c) = context {
-                    let context_path = Path::new(c);
-                    if context_path.is_absolute() {
-                        PathBuf::from(c)
-                    } else {
-                        base_dir.join(c)
-                    }
-                } else {
-                    // Default to Dockerfile's parent directory
-                    path.parent().unwrap_or(base_dir).to_path_buf()
-                };
-
-                Ok(ImageConfig::Dockerfile {
-                    path,
-                    context: ctx,
-                    args: args.clone().map(|m| m.into_iter().collect()),
-                })
-            }
-        }
-    }
-
-    /// Parse an [`ImageSpec`] for the Tart provider.
-    ///
-    /// # Detection Rules
-    /// - Starts with `@` → Snapshot
-    /// - Otherwise → OCI image
-    /// - Build variant → Error (not supported)
-    pub fn parse_for_tart(spec: &ImageSpec) -> Result<Self> {
-        match spec {
-            ImageSpec::String(s) => {
-                // Snapshot
-                if let Some(name) = s.strip_prefix('@') {
-                    return Ok(ImageConfig::Snapshot(name.to_string()));
-                }
-
-                if Self::looks_like_dockerfile_path(s) {
-                    return Err(VmError::Config(format!(
-                        "'{s}' looks like a Dockerfile path, but the Tart provider cannot build Dockerfiles. Use provider: docker or choose a Tart OCI image."
-                    )));
-                }
-
-                // OCI image
-                Ok(ImageConfig::TartImage(s.to_string()))
-            }
-
-            ImageSpec::Build { .. } => Err(VmError::Config(
-                "Tart provider does not support Dockerfile builds".to_string(),
-            )),
-        }
-    }
-}
 
 /// Factory-owned aggregate over the provider capabilities used by the CLI.
 pub trait Provider: CommandProvider + InstanceProvider + ProvisioningProvider {

@@ -1,6 +1,7 @@
 //! Helper utilities for lifecycle operations
 use super::LifecycleOperations;
-use crate::common::instance::{fuzzy_match_instances, InstanceInfo};
+use crate::instance::fuzzy_match_instances;
+use crate::InstanceInfo;
 use crate::{
     container::{build::BuildOperations, compose::ComposeOperations, ContainerOps},
     context::ProviderContext,
