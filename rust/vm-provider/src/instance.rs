@@ -163,88 +163,62 @@ pub(crate) fn create_tart_instance_info(
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_fuzzy_match_exact_name() {
-        let instances = vec![InstanceInfo {
-            name: "myproject-dev".to_string(),
-            id: "abc123".to_string(),
+    fn instance(name: &str, id: &str) -> InstanceInfo {
+        InstanceInfo {
+            name: name.to_string(),
+            id: id.to_string(),
             status: "running".to_string(),
             provider: "docker".to_string(),
-            project: Some("myproject".to_string()),
+            project: None,
             uptime: None,
             created_at: None,
-        }];
+        }
+    }
 
-        let result = fuzzy_match_instances("myproject-dev", &instances)
-            .expect("Should find exact match by name");
-        assert_eq!(result, "myproject-dev");
+    fn fields(
+        info: &InstanceInfo,
+    ) -> (
+        &str,
+        &str,
+        &str,
+        &str,
+        Option<&str>,
+        Option<&str>,
+        Option<&str>,
+    ) {
+        (
+            &info.name,
+            &info.id,
+            &info.status,
+            &info.provider,
+            info.project.as_deref(),
+            info.created_at.as_deref(),
+            info.uptime.as_deref(),
+        )
     }
 
     #[test]
-    fn test_fuzzy_match_partial_id() {
-        let instances = vec![InstanceInfo {
-            name: "myproject-dev".to_string(),
-            id: "abc123def456".to_string(),
-            status: "running".to_string(),
-            provider: "docker".to_string(),
-            project: Some("myproject".to_string()),
-            uptime: None,
-            created_at: None,
-        }];
+    fn resolves_exact_name_partial_id_and_project_name() {
+        let instances = [instance("myproject-dev", "abc123def456")];
 
-        let result =
-            fuzzy_match_instances("abc123", &instances).expect("Should find match by partial ID");
-        assert_eq!(result, "myproject-dev");
+        for partial in ["myproject-dev", "abc123", "myproject"] {
+            assert_eq!(
+                fuzzy_match_instances(partial, &instances).unwrap(),
+                "myproject-dev"
+            );
+        }
     }
 
     #[test]
-    fn test_fuzzy_match_project_name() {
-        let instances = vec![InstanceInfo {
-            name: "myproject-dev".to_string(),
-            id: "abc123".to_string(),
-            status: "running".to_string(),
-            provider: "docker".to_string(),
-            project: Some("myproject".to_string()),
-            uptime: None,
-            created_at: None,
-        }];
-
-        let result = fuzzy_match_instances("myproject", &instances)
-            .expect("Should find match by project name");
-        assert_eq!(result, "myproject-dev");
-    }
-
-    #[test]
-    fn test_fuzzy_match_no_matches() {
-        let instances = vec![InstanceInfo {
-            name: "otherproject-dev".to_string(),
-            id: "xyz789".to_string(),
-            status: "running".to_string(),
-            provider: "docker".to_string(),
-            project: Some("otherproject".to_string()),
-            uptime: None,
-            created_at: None,
-        }];
-
-        let error = fuzzy_match_instances("nonexistent", &instances).unwrap_err();
+    fn missing_instance_returns_not_found() {
+        let error = fuzzy_match_instances("nonexistent", &[instance("otherproject-dev", "xyz789")])
+            .unwrap_err();
         assert!(matches!(error, VmError::NotFound(_)));
     }
 
     #[test]
-    fn test_fuzzy_match_rejects_ambiguous_names() {
-        let instances = ["api-one", "api-two"]
-            .into_iter()
-            .enumerate()
-            .map(|(index, name)| InstanceInfo {
-                name: name.to_string(),
-                id: format!("id{index}"),
-                status: "running".to_string(),
-                provider: "docker".to_string(),
-                project: None,
-                uptime: None,
-                created_at: None,
-            })
-            .collect::<Vec<_>>();
+    fn ambiguous_instance_names_are_sorted() {
+        let instances = [instance("api-two", "id2"), instance("api-one", "id1")];
 
         let error = fuzzy_match_instances("api", &instances).unwrap_err();
         assert!(error.to_string().contains("Ambiguous instance name"));
@@ -252,71 +226,52 @@ mod tests {
     }
 
     #[test]
-    fn test_create_container_instance_info() {
-        let info = create_container_instance_info(
-            "docker",
-            "myproject-dev",
-            "abc123",
-            "running",
-            None,
-            None,
-            None,
-        );
-        assert_eq!(info.name, "myproject-dev");
-        assert_eq!(info.id, "abc123");
-        assert_eq!(info.status, "running");
-        assert_eq!(info.provider, "docker");
-        assert_eq!(info.project, Some("myproject".to_string()));
-        assert_eq!(info.uptime, None);
-        assert_eq!(info.created_at, None);
+    fn creates_container_instance_metadata() {
+        for (provider, created_at, uptime) in [
+            ("docker", None, None),
+            ("podman", Some("2023-01-01T00:00:00Z"), Some("2 hours ago")),
+        ] {
+            let info = create_container_instance_info(
+                provider,
+                "myproject-dev",
+                "abc123",
+                "running",
+                created_at,
+                uptime,
+                None,
+            );
+            assert_eq!(
+                fields(&info),
+                (
+                    "myproject-dev",
+                    "abc123",
+                    "running",
+                    provider,
+                    Some("myproject"),
+                    created_at,
+                    uptime,
+                )
+            );
+        }
     }
 
     #[test]
-    fn test_create_tart_instance_info() {
-        let info = create_tart_instance_info("myproject-staging", "running", None, None);
-        assert_eq!(info.name, "myproject-staging");
-        assert_eq!(info.id, "myproject-staging");
-        assert_eq!(info.status, "running");
-        assert_eq!(info.provider, "tart");
-        assert_eq!(info.project, Some("myproject".to_string()));
-        assert_eq!(info.uptime, None);
-        assert_eq!(info.created_at, None);
-    }
-
-    #[test]
-    fn test_create_container_instance_info_with_metadata() {
-        let info = create_container_instance_info(
-            "podman",
-            "myproject-dev",
-            "abc123",
-            "running",
-            Some("2023-01-01T00:00:00Z"),
-            Some("2 hours ago"),
-            None,
-        );
-        assert_eq!(info.name, "myproject-dev");
-        assert_eq!(info.id, "abc123");
-        assert_eq!(info.status, "running");
-        assert_eq!(info.provider, "podman");
-        assert_eq!(info.project, Some("myproject".to_string()));
-        assert_eq!(info.created_at, Some("2023-01-01T00:00:00Z".to_string()));
-        assert_eq!(info.uptime, Some("2 hours ago".to_string()));
-    }
-
-    #[test]
-    fn test_create_tart_instance_info_with_metadata() {
-        let info = create_tart_instance_info(
-            "myproject-staging",
-            "running",
-            Some("Created: 2023-01-01"),
-            Some("running"),
-        );
-        assert_eq!(info.name, "myproject-staging");
-        assert_eq!(info.id, "myproject-staging");
-        assert_eq!(info.status, "running");
-        assert_eq!(info.provider, "tart");
-        assert_eq!(info.project, Some("myproject".to_string()));
-        assert_eq!(info.created_at, Some("Created: 2023-01-01".to_string()));
-        assert_eq!(info.uptime, Some("running".to_string()));
+    fn creates_tart_instance_metadata() {
+        for (created_at, uptime) in [(None, None), (Some("Created: 2023-01-01"), Some("running"))] {
+            let info =
+                create_tart_instance_info("myproject-staging", "running", created_at, uptime);
+            assert_eq!(
+                fields(&info),
+                (
+                    "myproject-staging",
+                    "myproject-staging",
+                    "running",
+                    "tart",
+                    Some("myproject"),
+                    created_at,
+                    uptime,
+                )
+            );
+        }
     }
 }
