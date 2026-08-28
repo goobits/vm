@@ -1,7 +1,7 @@
 use vm_core::{vm_hint, vm_println, vm_success, vm_warning};
 use vm_packages::{
-    LeaseRequest, PackageEcosystem, RetryToolBuildRequest, SourceKind, ToolActivationState,
-    ToolActivationTargetState, WorkflowState,
+    LeaseRequest, PackageEcosystem, SourceKind, ToolActivationState, ToolActivationTargetState,
+    ToolBuildPhase, WorkflowState,
 };
 
 use crate::error::{VmError, VmResult};
@@ -17,10 +17,11 @@ const RELEASE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 *
 const ACTIVATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10 * 60);
 const INITIAL_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
 const MAX_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
-const PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+const PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
 
 struct ReleaseProgress {
     last_state: WorkflowState,
+    last_build_progress: Option<(ToolBuildPhase, Option<String>)>,
     next_heartbeat: tokio::time::Instant,
 }
 
@@ -28,18 +29,33 @@ impl ReleaseProgress {
     fn new(submission: &vm_packages::SubmissionRecord) -> Self {
         Self {
             last_state: submission.state,
+            last_build_progress: build_progress_key(submission),
             next_heartbeat: tokio::time::Instant::now() + PROGRESS_INTERVAL,
         }
     }
 
     fn report(&mut self, submission: &vm_packages::SubmissionRecord) {
         let now = tokio::time::Instant::now();
-        if submission.state != self.last_state || now >= self.next_heartbeat {
+        let build_progress = build_progress_key(submission);
+        if submission.state != self.last_state
+            || build_progress != self.last_build_progress
+            || now >= self.next_heartbeat
+        {
             print_release_phase(submission);
             self.last_state = submission.state;
+            self.last_build_progress = build_progress;
             self.next_heartbeat = now + PROGRESS_INTERVAL;
         }
     }
+}
+
+fn build_progress_key(
+    submission: &vm_packages::SubmissionRecord,
+) -> Option<(ToolBuildPhase, Option<String>)> {
+    submission
+        .build_progress
+        .as_ref()
+        .map(|progress| (progress.phase, progress.target.clone()))
 }
 
 struct PollBackoff {
@@ -106,7 +122,6 @@ pub(super) async fn handle_guest() -> VmResult<()> {
         ));
     }
     renew_release_lease(&subject, &client, &checkout).await?;
-    let build_retry = retry_failed_tool_build(&client, &checkout).await?;
     let mut package_ecosystem = if matches!(
         checkout.state,
         WorkflowState::Active | WorkflowState::NeedsChanges | WorkflowState::Submitted
@@ -134,28 +149,21 @@ pub(super) async fn handle_guest() -> VmResult<()> {
             )
             .await?
         }
-        WorkflowState::Active | WorkflowState::NeedsChanges => {
-            if let Some(retried) = build_retry {
-                retried
-            } else {
-                match workspace.as_ref() {
-                    Some(workspace) => {
-                        submission::handle_workspace(
-                            &subject,
-                            &client,
-                            &checkout,
-                            &workspace.source,
-                            package_ecosystem,
-                        )
-                        .await?
-                    }
-                    None => {
-                        submission::handle_guest(&subject, &client, &checkout, package_ecosystem)
-                            .await?
-                    }
-                }
+        WorkflowState::Active | WorkflowState::NeedsChanges => match workspace.as_ref() {
+            Some(workspace) => {
+                submission::handle_workspace(
+                    &subject,
+                    &client,
+                    &checkout,
+                    &workspace.source,
+                    package_ecosystem,
+                )
+                .await?
             }
-        }
+            None => {
+                submission::handle_guest(&subject, &client, &checkout, package_ecosystem).await?
+            }
+        },
         WorkflowState::Submitted => match workspace.as_ref() {
             Some(workspace) => {
                 submission::resume_workspace(
@@ -237,55 +245,6 @@ pub(super) async fn handle_guest() -> VmResult<()> {
     Ok(())
 }
 
-async fn retry_failed_tool_build(
-    client: &vm_packages::PackageInfrastructureClient,
-    checkout: &vm_packages::CheckoutRecord,
-) -> VmResult<Option<vm_packages::SubmissionRecord>> {
-    if checkout.state != WorkflowState::NeedsChanges
-        || checkout.source_kind != SourceKind::ToolBinary
-    {
-        return Ok(None);
-    }
-    let submission = client.checkout_submission(&checkout.checkout_id).await?;
-    if !submission
-        .review
-        .as_ref()
-        .is_some_and(|review| review.reviewer == "tool-build-service")
-    {
-        return Ok(None);
-    }
-    let build = client.tool_build(&submission.submission_id).await?;
-    if !build.is_legacy_retryable_infrastructure_failure() {
-        return Ok(None);
-    }
-    let generation = submission
-        .integration
-        .as_ref()
-        .map(|integration| integration.integration_commit.as_str())
-        .unwrap_or(&submission.submitted_commit)
-        .chars()
-        .take(16)
-        .collect::<String>();
-    let retried = client
-        .retry_tool_build(
-            &submission.submission_id,
-            &RetryToolBuildRequest {
-                actor: checkout.agent.clone(),
-                idempotency_key: format!(
-                    "retry-tool-build-{}-{generation}-{}",
-                    submission.submission_id,
-                    build.completed_at.timestamp_micros()
-                ),
-            },
-        )
-        .await?;
-    vm_success!(
-        "Requeued approved build {} without changing the current worktree",
-        submission.submission_id
-    );
-    Ok(Some(retried))
-}
-
 async fn checkout_package_ecosystem(
     client: &vm_packages::PackageInfrastructureClient,
     checkout: &vm_packages::CheckoutRecord,
@@ -307,21 +266,29 @@ async fn wait_for_tool_activation(
 ) -> VmResult<()> {
     let deadline = tokio::time::Instant::now() + ACTIVATION_TIMEOUT;
     let mut poll = PollBackoff::new();
+    let mut last_counts = None;
+    let mut next_heartbeat = tokio::time::Instant::now();
     loop {
         let activation = client.tool_activation_for_release(release_id).await?;
-        let pending = activation
-            .targets
-            .iter()
-            .filter(|target| {
-                target.initially_running && target.state == ToolActivationTargetState::Pending
-            })
-            .count();
+        let counts = activation_counts(&activation);
+        let now = tokio::time::Instant::now();
+        if last_counts.as_ref() != Some(&counts) || now >= next_heartbeat {
+            vm_println!(
+                "Phase: activating privately ({}/{} running; {} pending; {} failed)",
+                counts.active,
+                counts.running_total,
+                counts.pending,
+                counts.failed
+            );
+            last_counts = Some(counts);
+            next_heartbeat = now + PROGRESS_INTERVAL;
+        }
         let planned = !activation.targets.is_empty()
             || matches!(
                 activation.state,
                 ToolActivationState::Waiting | ToolActivationState::Complete
             );
-        if planned && pending == 0 {
+        if planned && counts.pending == 0 {
             return activation_result(&activation, false);
         }
         if !poll.wait(deadline).await {
@@ -330,58 +297,83 @@ async fn wait_for_tool_activation(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ActivationCounts {
+    running_total: usize,
+    active: usize,
+    pending: usize,
+    failed: usize,
+    deferred: usize,
+}
+
+fn activation_counts(activation: &vm_packages::ToolActivationRecord) -> ActivationCounts {
+    ActivationCounts {
+        running_total: activation
+            .targets
+            .iter()
+            .filter(|target| target.initially_running)
+            .count(),
+        active: activation
+            .targets
+            .iter()
+            .filter(|target| {
+                target.initially_running && target.state == ToolActivationTargetState::Active
+            })
+            .count(),
+        pending: activation
+            .targets
+            .iter()
+            .filter(|target| {
+                target.initially_running && target.state == ToolActivationTargetState::Pending
+            })
+            .count(),
+        failed: activation
+            .targets
+            .iter()
+            .filter(|target| {
+                target.initially_running && target.state == ToolActivationTargetState::Failed
+            })
+            .count(),
+        deferred: activation
+            .targets
+            .iter()
+            .filter(|target| {
+                !target.initially_running && target.state == ToolActivationTargetState::Deferred
+            })
+            .count(),
+    }
+}
+
 fn activation_result(
     activation: &vm_packages::ToolActivationRecord,
     timed_out: bool,
 ) -> VmResult<()> {
-    let running_total = activation
-        .targets
-        .iter()
-        .filter(|target| target.initially_running)
-        .count();
-    let active = activation
-        .targets
-        .iter()
-        .filter(|target| {
-            target.initially_running && target.state == ToolActivationTargetState::Active
-        })
-        .count();
-    let pending = activation
-        .targets
-        .iter()
-        .filter(|target| {
-            target.initially_running && target.state == ToolActivationTargetState::Pending
-        })
-        .count();
-    let failed = activation
-        .targets
-        .iter()
-        .filter(|target| {
-            target.initially_running && target.state == ToolActivationTargetState::Failed
-        })
-        .count();
-    let deferred = activation
-        .targets
-        .iter()
-        .filter(|target| {
-            !target.initially_running && target.state == ToolActivationTargetState::Deferred
-        })
-        .count();
+    let counts = activation_counts(activation);
 
-    if pending == 0 && failed == 0 && !timed_out {
-        vm_success!("Activated in {active} of {running_total} running environments");
+    if counts.pending == 0 && counts.failed == 0 && !timed_out {
+        vm_success!(
+            "Activated in {} of {} running environments",
+            counts.active,
+            counts.running_total
+        );
     } else {
-        vm_warning!("Activated in {active} of {running_total} running environments");
+        vm_warning!(
+            "Activated in {} of {} running environments",
+            counts.active,
+            counts.running_total
+        );
     }
     vm_success!(
-        "{deferred} stopped environment{} will update when started",
-        if deferred == 1 { "" } else { "s" }
+        "{} stopped environment{} will update when started",
+        counts.deferred,
+        if counts.deferred == 1 { "" } else { "s" }
     );
     vm_success!("No environments or volumes recreated");
-    if failed > 0 || pending > 0 || timed_out {
+    if counts.failed > 0 || counts.pending > 0 || timed_out {
         return Err(VmError::validation(
             format!(
-                "Tool activation remains incomplete: {pending} pending, {failed} failed"
+                "Tool activation remains incomplete: {} pending, {} failed",
+                counts.pending, counts.failed
             ),
             Some("Rerun `vm packages release` to resume, or run `vm packages doctor --fix` on the controller"),
         ));
@@ -465,19 +457,11 @@ async fn wait_for_review(
                 .as_ref()
                 .map(|review| format!("Package review requested changes: {}", review.reason))
                 .unwrap_or_else(|| "Package review requested changes".into()),
-            Some(
-                if submission
-                    .review
-                    .as_ref()
-                    .is_some_and(|review| review.reviewer == "tool-build-service")
-                {
-                    "Repair the reported build or infrastructure problem, then rerun `vm packages release`; the approved commit can be retried unchanged"
-                } else if workspace_release {
-                    "Edit and commit the canonical workspace, then rerun `vm packages release`"
-                } else {
-                    "Edit and commit the checkout, then rerun the same release command"
-                },
-            ),
+            Some(if workspace_release {
+                "Edit and commit the canonical workspace, then rerun `vm packages release`"
+            } else {
+                "Edit and commit the checkout, then rerun the same release command"
+            }),
         )),
         WorkflowState::Rejected | WorkflowState::Failed => Err(VmError::validation(
             "Package review rejected or failed the release",
@@ -537,11 +521,30 @@ async fn wait_for_publication(
 }
 
 fn print_release_phase(submission: &vm_packages::SubmissionRecord) {
-    vm_println!(
-        "Phase: {} (job {})",
-        release_phase_label(submission.state),
-        submission.submission_id
-    );
+    let phase = if submission.state == WorkflowState::ReadyToRelease {
+        submission
+            .build_progress
+            .as_ref()
+            .map(build_phase_label)
+            .unwrap_or_else(|| release_phase_label(submission.state).into())
+    } else {
+        release_phase_label(submission.state).into()
+    };
+    vm_println!("Phase: {} (job {})", phase, submission.submission_id);
+}
+
+fn build_phase_label(progress: &vm_packages::ToolBuildProgress) -> String {
+    match progress.phase {
+        ToolBuildPhase::Preparing => "preparing isolated source".into(),
+        ToolBuildPhase::RestoringDependencies => "restoring locked dependencies".into(),
+        ToolBuildPhase::Building => progress.target.as_ref().map_or_else(
+            || "building binary tool".into(),
+            |target| format!("building binary tool for {target}"),
+        ),
+        ToolBuildPhase::Staging => "verifying and staging artifacts".into(),
+        ToolBuildPhase::Complete => "isolated build complete".into(),
+        ToolBuildPhase::Failed => "isolated build failed".into(),
+    }
 }
 
 fn release_phase_label(state: WorkflowState) -> &'static str {
@@ -580,6 +583,23 @@ mod tests {
             "publishing privately"
         );
         assert_eq!(release_phase_label(WorkflowState::Failed), "failed");
+    }
+
+    #[test]
+    fn binary_build_progress_names_the_active_target() {
+        let progress = vm_packages::ToolBuildProgress {
+            attempt: "vm-build-test".into(),
+            phase: ToolBuildPhase::Building,
+            target: Some("linux-arm64".into()),
+            actor: "tool-build-service".into(),
+            started_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        assert_eq!(
+            build_phase_label(&progress),
+            "building binary tool for linux-arm64"
+        );
     }
 
     fn activation(

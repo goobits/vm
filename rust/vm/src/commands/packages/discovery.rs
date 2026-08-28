@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -24,6 +24,7 @@ pub(super) struct Discovery {
     pub(super) packages: Vec<RegisterPackage>,
     pub(super) tools: Vec<RegisterTool>,
     pub(super) failures: Vec<DiscoveryFailure>,
+    pub(super) conflicts: Vec<DiscoveryConflict>,
 }
 
 #[derive(Debug)]
@@ -33,11 +34,18 @@ pub(super) struct DiscoveryFailure {
     pub(super) message: String,
 }
 
+#[derive(Debug)]
+pub(super) struct DiscoveryConflict {
+    pub(super) identity: String,
+    pub(super) sources: Vec<(PathBuf, SourceRequest)>,
+}
+
 pub(super) struct LocalSource {
     pub(super) root: PathBuf,
     pub(super) request: SourceRequest,
 }
 
+#[derive(Debug)]
 pub(super) enum SourceRequest {
     Package(RegisterPackage),
     Tool(RegisterTool),
@@ -67,15 +75,32 @@ pub(super) fn discover(
 pub(super) fn discover_configured(targets: &[String]) -> VmResult<Discovery> {
     let repositories = configured_repository_paths(targets)?;
     let mut discovery = Discovery::default();
+    let mut candidates = BTreeMap::<String, Vec<(PathBuf, SourceRequest)>>::new();
     for (source_root, repository) in repositories {
-        let result =
-            discover_source(&repository, None, None, true).map(|source| discovery.push(source));
-        if let Err(error) = result {
-            discovery.failures.push(DiscoveryFailure {
+        match discover_source(&repository, None, None, true) {
+            Ok(source) => candidates
+                .entry(source.identity_key())
+                .or_default()
+                .push((repository, source)),
+            Err(error) => discovery.failures.push(DiscoveryFailure {
                 source_root,
                 repository: repository.clone(),
                 message: format!("{}: {error}", repository.display()),
-            });
+            }),
+        }
+    }
+    for (identity, mut sources) in candidates {
+        sources.sort_by(|left, right| left.0.cmp(&right.0));
+        let first_repository = sources[0].1.repository();
+        if sources
+            .iter()
+            .all(|(_, source)| repository_urls_equivalent(first_repository, source.repository()))
+        {
+            discovery.push(sources.remove(0).1);
+        } else {
+            discovery
+                .conflicts
+                .push(DiscoveryConflict { identity, sources });
         }
     }
     Ok(discovery)
@@ -269,6 +294,85 @@ impl Discovery {
             SourceRequest::Tool(request) => self.tools.push(request),
         }
     }
+
+    pub(super) fn prefer_registered(
+        &mut self,
+        packages: &[PackageDefinition],
+        tools: &[ToolDefinition],
+    ) {
+        let conflicts = std::mem::take(&mut self.conflicts);
+        for mut conflict in conflicts {
+            let selected = conflict
+                .sources
+                .iter()
+                .position(|(_, source)| source.matches_registered(packages, tools));
+            if let Some(selected) = selected {
+                self.push(conflict.sources.remove(selected).1);
+            } else {
+                self.conflicts.push(conflict);
+            }
+        }
+    }
+
+    pub(super) fn is_degraded(&self) -> bool {
+        !self.failures.is_empty() || !self.conflicts.is_empty()
+    }
+
+    pub(super) fn diagnostics(&self) -> Vec<String> {
+        self.failures
+            .iter()
+            .map(|failure| failure.message.clone())
+            .chain(self.conflicts.iter().map(DiscoveryConflict::message))
+            .collect()
+    }
+}
+
+impl DiscoveryConflict {
+    pub(super) fn message(&self) -> String {
+        let choices = self
+            .sources
+            .iter()
+            .map(|(path, source)| format!("{} -> {}", path.display(), source.repository()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "Conflicting source '{}': {choices}. Keep the intended source and place an empty .vm-packages-ignore file in each archived or unwanted repository subtree, then rerun `vm packages up`",
+            self.identity
+        )
+    }
+}
+
+impl SourceRequest {
+    fn identity_key(&self) -> String {
+        match self {
+            Self::Package(request) => {
+                format!("package:{}:{}", request.ecosystem, request.name)
+            }
+            Self::Tool(request) => format!("tool:{:?}:{}", request.kind, request.name),
+        }
+    }
+
+    pub(super) fn repository(&self) -> &str {
+        match self {
+            Self::Package(request) => &request.repository,
+            Self::Tool(request) => &request.repository,
+        }
+    }
+
+    fn matches_registered(&self, packages: &[PackageDefinition], tools: &[ToolDefinition]) -> bool {
+        match self {
+            Self::Package(request) => packages.iter().any(|package| {
+                package.name == request.name
+                    && package.ecosystem == request.ecosystem
+                    && repository_urls_equivalent(&package.repository, &request.repository)
+            }),
+            Self::Tool(request) => tools.iter().any(|tool| {
+                tool.name == request.name
+                    && tool.kind == request.kind
+                    && repository_urls_equivalent(&tool.repository, &request.repository)
+            }),
+        }
+    }
 }
 
 fn discover_source(
@@ -361,6 +465,7 @@ fn discover_with_policy(
         packages,
         tools,
         failures: Vec::new(),
+        conflicts: Vec::new(),
     })
 }
 
@@ -444,6 +549,9 @@ fn should_visit(entry: &DirEntry) -> bool {
             | "dist"
             | "build"
     ) {
+        return false;
+    }
+    if entry.path().join(".vm-packages-ignore").is_file() {
         return false;
     }
     !entry
@@ -625,6 +733,130 @@ mod tests {
         assert_eq!(configured.packages.len(), 1);
         assert_eq!(configured.failures.len(), 1);
         assert!(configured.failures[0].message.contains("broken"));
+    }
+
+    #[test]
+    fn configured_discovery_collapses_equivalent_source_aliases() {
+        let directory = tempfile::tempdir().unwrap();
+        let first = package(
+            directory.path(),
+            "first",
+            "package.json",
+            r#"{"name":"@shared/auth","version":"1.0.0"}"#,
+        );
+        let second = package(
+            directory.path(),
+            "second",
+            "package.json",
+            r#"{"name":"@shared/auth","version":"1.0.0"}"#,
+        );
+        Repository::open(&second)
+            .unwrap()
+            .remote_set_url("origin", "ssh://git@example.com/shared/first.git")
+            .unwrap();
+
+        let configured =
+            discover_configured(&[directory.path().to_string_lossy().into_owned()]).unwrap();
+
+        assert_eq!(configured.packages.len(), 1);
+        assert_eq!(
+            configured.packages[0].repository,
+            "ssh://git@example.com/shared/first.git"
+        );
+        assert!(configured.conflicts.is_empty());
+        assert!(first.is_dir());
+    }
+
+    #[test]
+    fn configured_discovery_reports_different_origins_for_one_identity() {
+        let directory = tempfile::tempdir().unwrap();
+        package(
+            directory.path(),
+            "current",
+            "package.json",
+            r#"{"name":"@shared/auth","version":"1.0.0"}"#,
+        );
+        package(
+            directory.path(),
+            "archive",
+            "package.json",
+            r#"{"name":"@shared/auth","version":"0.9.0"}"#,
+        );
+
+        let mut configured =
+            discover_configured(&[directory.path().to_string_lossy().into_owned()]).unwrap();
+
+        assert!(configured.packages.is_empty());
+        assert_eq!(configured.conflicts.len(), 1);
+        assert_eq!(configured.conflicts[0].identity, "package:npm:@shared/auth");
+        assert_eq!(configured.conflicts[0].sources.len(), 2);
+
+        configured.prefer_registered(
+            &[PackageDefinition {
+                name: "@shared/auth".into(),
+                ecosystem: PackageEcosystem::Npm,
+                repository: "ssh://git@example.com/shared/current.git".into(),
+                default_branch: "main".into(),
+                workspace_release: true,
+                registered_at: chrono::Utc::now(),
+            }],
+            &[],
+        );
+        assert_eq!(configured.packages.len(), 1);
+        assert_eq!(
+            configured.packages[0].repository,
+            "ssh://git@example.com/shared/current.git"
+        );
+        assert!(configured.conflicts.is_empty());
+    }
+
+    #[test]
+    fn configured_discovery_keeps_same_name_in_different_ecosystems() {
+        let directory = tempfile::tempdir().unwrap();
+        package(
+            directory.path(),
+            "npm",
+            "package.json",
+            r#"{"name":"shared-name","version":"1.0.0"}"#,
+        );
+        package(
+            directory.path(),
+            "cargo",
+            "Cargo.toml",
+            "[package]\nname = \"shared-name\"\nversion = \"1.0.0\"\n",
+        );
+
+        let configured =
+            discover_configured(&[directory.path().to_string_lossy().into_owned()]).unwrap();
+
+        assert_eq!(configured.packages.len(), 2);
+        assert!(configured.conflicts.is_empty());
+    }
+
+    #[test]
+    fn package_ignore_marker_skips_an_archived_subtree() {
+        let directory = tempfile::tempdir().unwrap();
+        package(
+            directory.path(),
+            "current",
+            "package.json",
+            r#"{"name":"@shared/auth","version":"1.0.0"}"#,
+        );
+        let archive = directory.path().join("archive");
+        fs::create_dir(&archive).unwrap();
+        fs::write(archive.join(".vm-packages-ignore"), "").unwrap();
+        package(
+            &archive,
+            "old",
+            "package.json",
+            r#"{"name":"@shared/auth","version":"0.9.0"}"#,
+        );
+
+        let configured =
+            discover_configured(&[directory.path().to_string_lossy().into_owned()]).unwrap();
+
+        assert_eq!(configured.packages.len(), 1);
+        assert!(configured.conflicts.is_empty());
     }
 
     #[test]

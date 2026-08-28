@@ -5,7 +5,7 @@ use axum::{
 };
 use vm_packages::{
     CheckoutLease, CleanupRequest, CreateCheckout, IntegrationRequest, LeaseRequest,
-    RetryToolBuildRequest, SubmissionRecord, TransitionRequest, ValidationRequest, WorkflowState,
+    SubmissionRecord, TransitionRequest, ValidationRequest, WorkflowState,
 };
 
 use super::{
@@ -194,17 +194,4 @@ pub(super) async fn complete_integration(
         state.source.compact_integrated_checkout(&completed).await?;
     }
     Ok(Json(completed))
-}
-
-pub(super) async fn retry_tool_build(
-    State(state): State<AppState>,
-    Extension(access): Extension<AgentAccess>,
-    Path(id): Path<String>,
-    Json(mut request): Json<RetryToolBuildRequest>,
-) -> WorkResult<Json<SubmissionRecord>> {
-    let checkout = ensure_submission_access(&state.store, &access, &id).await?;
-    if access.is_agent() {
-        request.actor = checkout.agent;
-    }
-    Ok(Json(state.store.retry_tool_build(&id, request).await?))
 }

@@ -11,26 +11,39 @@ export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 
 changed=0
 installer=""
+installer_profile=""
 cleanup() {
   if [ -n "$installer" ]; then
     rm -f -- "$installer"
+  fi
+  if [ -n "$installer_profile" ]; then
+    rm -f -- "$installer_profile"
   fi
 }
 trap cleanup EXIT
 
 if [ ! -s "$NVM_DIR/nvm.sh" ]; then
   installer="$(mktemp)"
+  installer_profile="$(mktemp)"
   curl -fsSL \
     "https://raw.githubusercontent.com/nvm-sh/nvm/$nvm_target/install.sh" \
     -o "$installer"
-  PROFILE=/dev/null bash "$installer"
+  installer_status=0
+  PROFILE="$installer_profile" bash "$installer" || installer_status=$?
+  if [ ! -s "$NVM_DIR/nvm.sh" ]; then
+    if [ "$installer_status" -eq 0 ]; then
+      installer_status=1
+    fi
+    echo "nvm installer failed before creating $NVM_DIR/nvm.sh (status $installer_status)" >&2
+    exit "$installer_status"
+  fi
   changed=1
 fi
 
 # shellcheck disable=SC1090
 . "$NVM_DIR/nvm.sh"
 
-node_version="$(nvm version "$node_target")"
+node_version="$(nvm version "$node_target" 2>/dev/null || true)"
 if [ "$node_version" = "N/A" ]; then
   nvm install "$node_target"
   node_version="$(nvm version "$node_target")"

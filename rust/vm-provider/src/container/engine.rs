@@ -3,8 +3,10 @@ use std::process::Command;
 use std::time::Duration;
 
 use vm_config::config::ProviderName;
-use vm_core::command_stream::{is_tool_installed, stream_command};
+use vm_core::command_stream::{is_tool_installed, stream_command_with_timeout};
 use vm_core::error::{Result, VmError};
+
+const COMPOSE_COMMAND_TIMEOUT_SECONDS: u64 = 30 * 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PodmanCompose {
@@ -310,7 +312,7 @@ impl ComposeInvocation {
 
     pub(crate) fn stream(&self) -> Result<()> {
         let args = self.args.iter().map(String::as_str).collect::<Vec<_>>();
-        stream_command(&self.program, &args)
+        stream_command_with_timeout(&self.program, &args, Some(COMPOSE_COMMAND_TIMEOUT_SECONDS))
     }
 }
 
@@ -348,7 +350,7 @@ fn install_error(engine: ContainerEngine) -> VmError {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_container_network, ComposeRuntime, PodmanCompose};
+    use super::{parse_container_network, ComposeInvocation, ComposeRuntime, PodmanCompose};
     use std::path::Path;
 
     #[test]
@@ -375,5 +377,21 @@ mod tests {
             ("project_default".into(), "172.20.0.3".into())
         );
         assert!(parse_container_network("", "demo").is_err());
+    }
+
+    #[test]
+    fn compose_failure_includes_recent_output() {
+        let invocation = ComposeInvocation {
+            program: "/bin/sh".into(),
+            args: vec![
+                "-c".into(),
+                "printf 'specific compose failure\\n'; exit 9".into(),
+            ],
+        };
+
+        let error = invocation.stream().unwrap_err().to_string();
+
+        assert!(error.contains("specific compose failure"));
+        assert!(!error.contains("printf 'specific compose failure"));
     }
 }

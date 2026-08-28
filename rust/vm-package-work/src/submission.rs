@@ -96,6 +96,7 @@ impl Store {
             record.validation = None;
             record.review = None;
             record.integration = None;
+            record.build_progress = None;
             record.release_id = None;
             record.updated_at = now;
             next.tool_builds.remove(&submission_id);
@@ -114,6 +115,7 @@ impl Store {
                 validation: None,
                 review: None,
                 integration: None,
+                build_progress: None,
                 release_id: None,
                 created_at: now,
                 updated_at: now,

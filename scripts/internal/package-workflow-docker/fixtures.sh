@@ -42,6 +42,31 @@ initialize_fixture_repository() {
   git -C "$root" commit -m "$message"
 }
 
+prepare_source_discovery_fixtures() {
+  local root
+  for root in "$source_shelf/alias-a" "$source_shelf/alias-b"; do
+    mkdir -p "$root"
+    printf '%s\n' '{"name":"vm-acceptance-alias","version":"1.0.0"}' > "$root/package.json"
+    initialize_fixture_repository "$root" 'test: add equivalent package source alias'
+    git -C "$root" remote add origin ssh://git@example.invalid/shared-alias.git
+  done
+
+  root=$source_shelf/ignored
+  mkdir -p "$root/duplicate"
+  : > "$root/.vm-packages-ignore"
+  printf '%s\n' '{"name":"vm-acceptance-ignored","version":"1.0.0"}' > "$root/duplicate/package.json"
+  initialize_fixture_repository "$root/duplicate" 'test: add ignored package source'
+  git -C "$root/duplicate" remote add origin ssh://git@example.invalid/ignored.git
+}
+
+prepare_registered_source_conflict_fixture() {
+  local root=$source_shelf/archive/old-alias
+  mkdir -p "$root"
+  printf '%s\n' '{"name":"vm-acceptance-alias","version":"0.9.0"}' > "$root/package.json"
+  initialize_fixture_repository "$root" 'test: add old package source identity'
+  git -C "$root" remote add origin ssh://git@example.invalid/old-alias.git
+}
+
 prepare_acceptance_fixtures() {
   mkdir -p "$acceptance_home" "$project_root" "$consumer_root" \
     "$stopped_root" "$fixture_root" "$language_root" "$fake_bin"
@@ -52,9 +77,9 @@ prepare_acceptance_fixtures() {
   for root in "$project_root" "$consumer_root" "$stopped_root"; do
     cp "$fixture_assets/environment.Dockerfile" "$root/Dockerfile.acceptance"
   done
-  write_environment_config "$project_root" "$project_name"
-  write_environment_config "$consumer_root" "$consumer_name" '  agent-skills: {}'
-  write_environment_config "$stopped_root" "$stopped_name"
+  write_environment_config "$project_root" "$project_name" '  release-tool: {}'
+  write_environment_config "$consumer_root" "$consumer_name" $'  release-tool: {}\n  agent-skills: {}'
+  write_environment_config "$stopped_root" "$stopped_name" '  release-tool: {}'
 
   cp -R "$fixture_assets/release-tool/." "$project_root/"
   initialize_fixture_repository "$project_root" 'feat: initial binary tool'
@@ -84,13 +109,21 @@ packages:
   canonical_sources:
     - $project_root
 YAML
+  prepare_source_discovery_fixtures
+  run_vm packages up
+  prepare_registered_source_conflict_fixture
+  run_vm packages up
   test "$(run_vm packages status)" = 'Package infrastructure: healthy'
+  test "$(run_vm packages list | grep -c 'vm-acceptance-alias')" = 1
+  test "$(run_vm packages list | grep -c 'vm-acceptance-ignored' || true)" = 0
 
-  run_vm --config "$project_root/vm.yaml" create
-  run_vm --config "$consumer_root/vm.yaml" create
-  run_vm --config "$stopped_root/vm.yaml" create
-  run_vm --config "$stopped_root/vm.yaml" stop
-  run_vm tools enable release-tool
+  run_project_vm "$project_root" shell --command true
+  run_project_vm "$consumer_root" shell --command true
+  run_project_vm "$stopped_root" shell --command true
+  wait_for_guest_vm "$environment_name"
+  wait_for_guest_vm "$consumer_environment"
+  wait_for_guest_vm "$stopped_environment"
+  run_project_vm "$stopped_root" stop
 
   docker run --rm --user 0:0 \
     --volume "${compose_project}_source-mirrors:/data/sources" \

@@ -49,8 +49,9 @@ pub enum PackagesSubcommand {
     Up {
         #[arg(long, value_enum, default_value = "auto")]
         engine: PackageInfrastructureEngine,
-        #[arg(long, default_value = "3080")]
-        port: u16,
+        /// Override the configured host gateway port
+        #[arg(long)]
+        port: Option<u16>,
         /// Override the immutable registry service image
         #[arg(long)]
         registry_image: Option<String>,

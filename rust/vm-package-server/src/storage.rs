@@ -1,14 +1,15 @@
 use crate::error::{AppError, AppResult};
 use crate::validation;
 use std::future::Future;
-use std::path::Path;
-use std::time::Duration;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{Mutex, MutexGuard};
 use tracing::{debug, warn};
 
 static PUBLISH_LOCK: Mutex<()> = Mutex::const_new(());
+static CACHE_MAINTENANCE_LOCK: Mutex<()> = Mutex::const_new(());
 pub const METADATA_CACHE_TTL: Duration = Duration::from_secs(5);
 
 /// Serialize release commits so multi-file registry metadata remains deterministic.
@@ -124,6 +125,12 @@ where
     }
 
     let content = fetch().await?;
+    let _cache_guard = CACHE_MAINTENANCE_LOCK.lock().await;
+    match read_file(path).await {
+        Ok(content) => return Ok(content),
+        Err(AppError::NotFound(_)) => {}
+        Err(error) => return Err(error),
+    }
     save_immutable(path, &content).await?;
     Ok(content)
 }
@@ -171,6 +178,79 @@ where
             Err(cache_error) => Err(cache_error),
         },
     }
+}
+
+/// Bound a disposable read-through cache by deleting its oldest regular files.
+pub(crate) async fn prune_cache(root: PathBuf, max_bytes: u64) -> AppResult<u64> {
+    let _cache_guard = CACHE_MAINTENANCE_LOCK.lock().await;
+    tokio::task::spawn_blocking(move || prune_cache_sync(&root, max_bytes))
+        .await
+        .map_err(|error| std::io::Error::other(format!("cache prune task failed: {error}")))?
+        .map_err(AppError::from)
+}
+
+fn prune_cache_sync(root: &Path, max_bytes: u64) -> std::io::Result<u64> {
+    if !root.exists() {
+        return Ok(0);
+    }
+    let mut files = Vec::new();
+    let mut total = 0_u64;
+    for entry in walkdir::WalkDir::new(root).follow_links(false) {
+        let entry = entry.map_err(std::io::Error::other)?;
+        if !entry.file_type().is_file() || entry.file_type().is_symlink() {
+            continue;
+        }
+        if entry
+            .file_name()
+            .to_str()
+            .is_some_and(|name| name.starts_with(".vm-write-"))
+        {
+            continue;
+        }
+        let metadata = entry.metadata().map_err(std::io::Error::other)?;
+        total = total.saturating_add(metadata.len());
+        files.push((
+            metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
+            entry.path().to_path_buf(),
+            metadata.len(),
+        ));
+    }
+    files.sort_by(|left, right| (&left.0, &left.1).cmp(&(&right.0, &right.1)));
+    let mut removed = 0_u64;
+    for (_, path, size) in files {
+        if total <= max_bytes {
+            break;
+        }
+        match std::fs::remove_file(&path) {
+            Ok(()) => {
+                total = total.saturating_sub(size);
+                removed = removed.saturating_add(size);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+    }
+    let mut directories = walkdir::WalkDir::new(root)
+        .min_depth(1)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_dir())
+        .map(|entry| entry.into_path())
+        .collect::<Vec<_>>();
+    directories.sort_by_key(|path| std::cmp::Reverse(path.components().count()));
+    for directory in directories {
+        match std::fs::remove_dir(directory) {
+            Ok(()) => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::DirectoryNotEmpty | std::io::ErrorKind::NotFound
+                ) => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(removed)
 }
 
 async fn cache_is_fresh(path: &Path, max_age: Duration) -> AppResult<bool> {
@@ -257,14 +337,14 @@ pub async fn append_to_file<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C)
 #[cfg(test)]
 mod tests {
     use super::{
-        append_to_file, read_file, read_local_or_cache, read_refreshing_cache, save_file,
-        save_immutable,
+        append_to_file, prune_cache, read_file, read_local_or_cache, read_refreshing_cache,
+        save_file, save_immutable,
     };
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     };
-    use std::time::Duration;
+    use std::time::{Duration, SystemTime};
 
     use crate::AppError;
 
@@ -301,6 +381,49 @@ mod tests {
 
         assert_eq!(fetches.load(Ordering::SeqCst), 1);
         assert_eq!(tokio::fs::read(cached).await.unwrap(), b"upstream");
+    }
+
+    #[tokio::test]
+    async fn cache_pruning_removes_only_enough_old_regular_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("cache");
+        tokio::fs::create_dir_all(root.join("nested"))
+            .await
+            .unwrap();
+        let oldest = root.join("a");
+        let middle = root.join("nested/b");
+        let newest = root.join("c");
+        for (path, age) in [(&oldest, 1), (&middle, 2), (&newest, 3)] {
+            tokio::fs::write(path, b"four").await.unwrap();
+            std::fs::File::open(path)
+                .unwrap()
+                .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(age))
+                .unwrap();
+        }
+
+        assert_eq!(prune_cache(root.clone(), 8).await.unwrap(), 4);
+        assert!(!oldest.exists());
+        assert!(middle.exists());
+        assert!(newest.exists());
+        let remaining = walkdir::WalkDir::new(root)
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_type().is_file())
+            .map(|entry| entry.metadata().unwrap().len())
+            .sum::<u64>();
+        assert_eq!(remaining, 8);
+    }
+
+    #[tokio::test]
+    async fn cache_pruning_preserves_atomic_writes() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("cache");
+        tokio::fs::create_dir_all(&root).await.unwrap();
+        let pending = root.join(".vm-write-active");
+        tokio::fs::write(&pending, b"pending").await.unwrap();
+
+        assert_eq!(prune_cache(root, 0).await.unwrap(), 0);
+        assert_eq!(tokio::fs::read(pending).await.unwrap(), b"pending");
     }
 
     #[tokio::test]

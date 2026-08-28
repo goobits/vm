@@ -34,12 +34,6 @@ pub struct CompleteToolBuildRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RetryToolBuildRequest {
-    pub actor: String,
-    pub idempotency_key: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolBuildRecord {
     pub submission_id: String,
     pub source_commit: String,
@@ -59,41 +53,5 @@ pub struct ToolBuildRecord {
 impl ToolBuildRecord {
     pub fn succeeded(&self) -> bool {
         self.failure.is_none() && !self.artifacts.is_empty()
-    }
-
-    pub fn is_legacy_retryable_infrastructure_failure(&self) -> bool {
-        self.failure_kind == Some(ToolBuildFailureKind::Build)
-            && self
-                .failure
-                .as_deref()
-                .is_some_and(|failure| failure.contains("Permission denied (os error 13)"))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn failed_build(failure: &str) -> ToolBuildRecord {
-        ToolBuildRecord {
-            submission_id: "submission-1".into(),
-            source_commit: "a".repeat(40),
-            manifest_digest: "b".repeat(64),
-            version: String::new(),
-            artifacts: Vec::new(),
-            failure: Some(failure.into()),
-            failure_kind: Some(ToolBuildFailureKind::Build),
-            actor: "tool-build-service".into(),
-            completion_idempotency_key: Some("build-1".into()),
-            completed_at: Utc::now(),
-        }
-    }
-
-    #[test]
-    fn only_legacy_permission_failures_are_directly_retryable() {
-        assert!(failed_build("Permission denied (os error 13)")
-            .is_legacy_retryable_infrastructure_failure());
-        assert!(!failed_build("Cannot find module 'dependency'")
-            .is_legacy_retryable_infrastructure_failure());
     }
 }

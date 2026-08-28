@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use futures_util::{stream, StreamExt};
 use vm_config::GlobalConfig;
 use vm_core::vm_warning;
 use vm_packages::{
@@ -21,6 +22,7 @@ use super::worker::worker_id;
 const TARGET_RETRY_INTERVAL: Duration = Duration::from_secs(2);
 const TARGET_RETRY_TIMEOUT: Duration = Duration::from_secs(2 * 60);
 const WORKER_LEASE_SECONDS: u64 = 5 * 60;
+const MAX_CONCURRENT_TARGETS: usize = 4;
 
 pub(in crate::commands) async fn repair() -> VmResult<usize> {
     super::worker::ensure_worker()?;
@@ -98,7 +100,7 @@ pub(super) async fn process_next() -> VmResult<bool> {
         .filter(|target| target.state == ToolActivationTargetState::Pending)
         .map(|target| target.target_id.clone())
         .collect::<Vec<_>>();
-    for target_id in pending {
+    for targets in pending.chunks(MAX_CONCURRENT_TARGETS) {
         let Some(renewed) = client
             .claim_tool_activation(
                 &activation.activation_id,
@@ -115,7 +117,18 @@ pub(super) async fn process_next() -> VmResult<bool> {
             ));
         };
         activation = renewed;
-        activate_target(&client, &activation, &target_id, &worker).await?;
+        let results = stream::iter(targets.iter().cloned().map(|target_id| {
+            let client = client.clone();
+            let activation = activation.clone();
+            let worker = worker.clone();
+            async move { activate_target(&client, &activation, &target_id, &worker).await }
+        }))
+        .buffer_unordered(MAX_CONCURRENT_TARGETS)
+        .collect::<Vec<_>>()
+        .await;
+        for result in results {
+            result?;
+        }
     }
     finish(&client, &activation, &worker).await?;
     Ok(true)

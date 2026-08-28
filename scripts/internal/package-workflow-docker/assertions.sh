@@ -14,6 +14,54 @@ capture_runtime_state() {
       --format '{{.Name}} {{.CreatedAt}} {{.Mountpoint}}' "$volume"
   done | sort > "$volumes"
 }
+
+wait_for_nonempty_log() {
+  local log=$1
+  local timeout_seconds=$2
+  local deadline=$((SECONDS + timeout_seconds))
+  while ((SECONDS <= deadline)); do
+    test -s "$log" && return 0
+    sleep 0.05
+  done
+  return 1
+}
+
+wait_for_log_count() {
+  local log=$1
+  local text=$2
+  local expected=$3
+  local timeout_seconds=$4
+  local deadline=$((SECONDS + timeout_seconds))
+  while ((SECONDS <= deadline)); do
+    if test -f "$log" && test "$(grep -cF "$text" "$log" || true)" -ge "$expected"; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  return 1
+}
+
+wait_for_guest_vm() {
+  local environment=$1
+  local deadline=$((SECONDS + 60))
+  while ((SECONDS <= deadline)); do
+    if docker exec --user acceptance "$environment" \
+      sh -lc 'command -v vm >/dev/null 2>&1'; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  echo "Managed VM client did not reconcile in $environment" >&2
+  return 1
+}
+
+assert_builder_workspaces_clean() {
+  docker exec "$compose_project-builder-1" sh -ec '
+    root=${PKG_BUILD_WORK_ROOT:?}
+    test -d "$root"
+    test -z "$(find "$root" -mindepth 1 -maxdepth 1 -print -quit)"
+  '
+}
 checkout_source_from_log() {
   local log=$1
   local source
@@ -56,6 +104,10 @@ if (len(releases), len(artifacts), len(activations)) != (1, 2, 1):
         f"expected one release, two artifacts, and one activation for {version}; "
         f"found {len(releases)}, {len(artifacts)}, {len(activations)}"
     )
+submission = state["submissions"][releases[0]["submission_id"]]
+progress = submission.get("build_progress") or {}
+if progress.get("phase") != "complete" or not progress.get("attempt"):
+    raise SystemExit(f"release {version} has no durable completed build progress: {progress}")
 ' "$release_version"
 }
 

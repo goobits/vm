@@ -92,7 +92,7 @@ accept_tool_workflows() {
 
   docker exec --user acceptance "$environment_name" sh -ec '
     clone=/home/acceptance/unregistered-release-clone
-    rm -rf "$clone"
+    test ! -e "$clone" || find "$clone" -depth -delete
     git clone /workspace "$clone" >/dev/null 2>&1
     cd "$clone"
     if vm packages release >/tmp/unregistered-release.log 2>&1; then
@@ -100,10 +100,11 @@ accept_tool_workflows() {
       exit 1
     fi
     grep -F "not the configured canonical workspace" /tmp/unregistered-release.log >/dev/null
-    rm -rf "$clone" /tmp/unregistered-release.log
+    find "$clone" -depth -delete
+    rm -f /tmp/unregistered-release.log
   '
 
-  run_vm --config "$consumer_root/vm.yaml" tools update --to "$consumer_environment"
+  run_project_vm "$consumer_root" tools update --to "$consumer_environment"
   docker exec --user acceptance "$consumer_environment" \
     test -L /home/acceptance/.codex/skills/acceptance
   docker exec --user acceptance "$consumer_environment" \
@@ -135,6 +136,7 @@ accept_tool_workflows() {
   grep -F '1 stopped environment will update when started' "$workspace_log" >/dev/null
   grep -F 'No environments or volumes recreated' "$workspace_log" >/dev/null
   assert_release_published_once 1.0.0
+  assert_builder_workspaces_clean
 
   direct_open_log=$acceptance_root/direct-open.log
   direct_marker=$project_root/.vm-direct-open-acceptance
@@ -217,6 +219,13 @@ accept_tool_workflows() {
   docker exec --user acceptance "$environment_name" sh -ec \
     'cd /workspace && vm packages release' >"$activation_log" 2>&1 &
   release_process=$!
+  if ! wait_for_nonempty_log "$activation_log" 2; then
+    kill -CONT "$worker_pid" 2>/dev/null || true
+    wait "$release_process" || true
+    cat "$activation_log" >&2
+    echo "Release produced no output within two seconds" >&2
+    exit 4
+  fi
   if ! wait_for_queued_activation; then
     kill -CONT "$worker_pid" 2>/dev/null || true
     wait "$release_process" || true
@@ -230,6 +239,14 @@ accept_tool_workflows() {
     exit 4
   fi
   kill -STOP "$worker_pid"
+
+  if ! wait_for_log_count "$activation_log" 'Phase: activating privately' 2 12; then
+    kill -CONT "$worker_pid" 2>/dev/null || true
+    wait "$release_process" || true
+    cat "$activation_log" >&2
+    echo "Release emitted no activation heartbeat within twelve seconds" >&2
+    exit 4
+  fi
 
   if test -n "$docker_restart_command"; then
     bash -lc "$docker_restart_command"
@@ -254,6 +271,7 @@ accept_tool_workflows() {
   grep -F '1.0.1 linux-arm64' <<< "$tool_inventory" >/dev/null
   test "$(grep -c '  1.0.1 linux-' <<< "$tool_inventory")" = 2
   assert_release_published_once 1.0.1
+  assert_builder_workspaces_clean
   test "$(docker exec --user acceptance "$environment_name" \
     /home/acceptance/.local/bin/release-tool --version)" = '1.0.1'
   test "$(docker exec --user acceptance "$consumer_environment" \
@@ -272,7 +290,7 @@ accept_tool_workflows() {
   '
 
   test "$(docker container inspect --format '{{.State.Status}}' "$stopped_environment")" = exited
-  run_vm --config "$stopped_root/vm.yaml" start
+  run_project_vm "$stopped_root" start
   test "$(docker exec --user acceptance "$stopped_environment" \
     /home/acceptance/.local/bin/release-tool --version)" = '1.0.1'
 

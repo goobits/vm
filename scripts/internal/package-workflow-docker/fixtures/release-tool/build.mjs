@@ -3,6 +3,8 @@ import { spawnSync } from 'node:child_process';
 
 const target = process.argv[2];
 if (!['linux-amd64', 'linux-arm64'].includes(target)) process.exit(2);
+const cargo = spawnSync('cargo', ['check', '--locked', '--quiet'], { stdio: 'inherit' });
+if (cargo.status !== 0) process.exit(cargo.status ?? 1);
 for (const key of Object.keys(process.env)) {
   if (key.includes('TOKEN') || key.includes('SECRET')) process.exit(8);
 }

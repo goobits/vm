@@ -4,7 +4,7 @@ pub const COMPOSE_PROJECT: &str = "vm-packages";
 pub const COMPOSE_YAML: &str = include_str!("resources/compose.yaml");
 pub const GATEWAY_CONFIG: &str = include_str!("resources/Caddyfile");
 /// Bump when running appliance services must be rebuilt or recreated.
-pub const APPLIANCE_DEFINITION_REVISION: u32 = 4;
+pub const APPLIANCE_DEFINITION_REVISION: u32 = 5;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplianceConfig {
@@ -169,6 +169,25 @@ mod tests {
             .unwrap()
             .iter()
             .any(|volume| volume == "binary-build-artifacts:/builds:ro"));
+    }
+
+    #[test]
+    fn build_edge_bounds_dependency_cache_and_checks_free_space() {
+        let definition: serde_yaml_ng::Value = serde_yaml_ng::from_str(COMPOSE_YAML).unwrap();
+        let build_edge = &definition["services"]["build-edge"];
+
+        assert_eq!(
+            build_edge["environment"]["PKG_SERVER_CACHE_MAX_BYTES"],
+            "8589934592"
+        );
+        assert!(build_edge["volumes"]
+            .as_sequence()
+            .unwrap()
+            .iter()
+            .any(|volume| volume == "builder-package-cache:/data"));
+        let healthcheck = build_edge["healthcheck"]["test"][1].as_str().unwrap();
+        assert!(healthcheck.contains("df -Pk /data"));
+        assert!(healthcheck.contains("-ge 262144"));
     }
 
     #[test]

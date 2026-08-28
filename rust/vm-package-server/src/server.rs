@@ -25,6 +25,7 @@ pub async fn run_server_with_shutdown(
 ) -> Result<()> {
     let state = setup::app_state(&host, port, &data_dir)?;
     let configured_data_dir = state.data_dir.clone();
+    start_cache_maintenance(&state)?;
     let app = app_router(state);
 
     let addr: SocketAddr = format!("{host}:{port}")
@@ -59,6 +60,42 @@ pub async fn run_server_with_shutdown(
         }
     }
 
+    Ok(())
+}
+
+fn start_cache_maintenance(state: &crate::state::AppState) -> Result<()> {
+    if state.internal_client.is_none() {
+        return Ok(());
+    }
+    let Some(limit) = std::env::var_os("PKG_SERVER_CACHE_MAX_BYTES") else {
+        return Ok(());
+    };
+    let limit = limit
+        .to_string_lossy()
+        .parse::<u64>()
+        .context("PKG_SERVER_CACHE_MAX_BYTES must be a positive integer")?;
+    anyhow::ensure!(limit > 0, "PKG_SERVER_CACHE_MAX_BYTES must be positive");
+    let root = state.data_dir.join("cache");
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            match crate::storage::prune_cache(root.clone(), limit).await {
+                Ok(removed) if removed > 0 => tracing::info!(
+                    operation = "prune_cache",
+                    removed_bytes = removed,
+                    max_bytes = limit,
+                    "worker dependency cache pruned"
+                ),
+                Ok(_) => {}
+                Err(error) => tracing::warn!(
+                    operation = "prune_cache",
+                    error = %error,
+                    "worker dependency cache prune failed"
+                ),
+            }
+        }
+    });
     Ok(())
 }
 

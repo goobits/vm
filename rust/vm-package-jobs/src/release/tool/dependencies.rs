@@ -4,19 +4,23 @@ use anyhow::{bail, Result};
 
 use super::build::run_isolated;
 
-pub(super) fn restore_locked_node_dependencies(source: &Path, release_root: &Path) -> Result<()> {
-    let Some(command) = locked_node_install(source)? else {
+pub(super) fn restore_locked_node_dependencies(
+    source: &Path,
+    release_root: &Path,
+    command: Option<&[String]>,
+) -> Result<()> {
+    let Some(command) = command else {
         return Ok(());
     };
     run_isolated(
-        &command,
+        command,
         source,
         release_root,
         "restore locked Node dependencies",
     )
 }
 
-fn locked_node_install(source: &Path) -> Result<Option<Vec<String>>> {
+pub(super) fn locked_node_install(source: &Path) -> Result<Option<Vec<String>>> {
     let pnpm = source.join("pnpm-lock.yaml").is_file();
     let yarn = source.join("yarn.lock").is_file();
     let npm =

@@ -42,6 +42,7 @@ reqwest = { workspace = true }
 url = { workspace = true }
 bytes = { workspace = true }
 futures-util = { workspace = true }
+walkdir = { workspace = true }
 flate2 = { workspace = true }
 tar = { workspace = true }
 vm-core = { path = "../vm-core" }

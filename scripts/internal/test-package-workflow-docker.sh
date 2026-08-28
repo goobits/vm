@@ -55,6 +55,12 @@ run_vm() {
     PATH="$fake_bin:$(dirname "$vm_binary"):$PATH" "$vm_binary" "$@"
 }
 
+run_project_vm() {
+  local project=$1
+  shift
+  (cd "$project" && run_vm "$@")
+}
+
 capture_failure_evidence() {
   local status=$1
   local evidence=$acceptance_root/failure-evidence
@@ -75,6 +81,30 @@ capture_failure_evidence() {
     grep -E "^(${compose_project}|${project_name}|${consumer_name}|${stopped_name})" || true)
 }
 
+cleanup_environment_resources() {
+  local project container volume network
+  for project in "$project_name" "$consumer_name" "$stopped_name"; do
+    case "$project" in
+      package-*-acceptance-[0-9]*) ;;
+      *)
+        echo "Refusing to clean unexpected acceptance project: $project" >&2
+        continue
+        ;;
+    esac
+    while IFS= read -r container; do
+      test -z "$container" || docker rm --force "$container" >/dev/null 2>&1
+    done < <(docker ps --all --quiet \
+      --filter "label=com.docker.compose.project=$project")
+    while IFS= read -r volume; do
+      test -z "$volume" || docker volume rm "$volume" >/dev/null 2>&1
+    done < <(docker volume ls --quiet --filter "label=com.vm.project=$project")
+    while IFS= read -r network; do
+      test -z "$network" || docker network rm "$network" >/dev/null 2>&1
+    done < <(docker network ls --quiet \
+      --filter "label=com.docker.compose.project=$project")
+  done
+}
+
 cleanup() {
   local status=$?
   trap - EXIT
@@ -82,12 +112,7 @@ cleanup() {
   if test "$status" -ne 0; then
     capture_failure_evidence "$status"
   fi
-  run_vm --config "$project_root/vm.yaml" remove "$environment_name" --force >/dev/null 2>&1
-  run_vm --config "$consumer_root/vm.yaml" remove "$consumer_environment" --force >/dev/null 2>&1
-  run_vm --config "$stopped_root/vm.yaml" remove "$stopped_environment" --force >/dev/null 2>&1
-  docker rm --force "$environment_name" "$edge_name" \
-    "$consumer_environment" "$consumer_edge" \
-    "$stopped_environment" "$stopped_edge" >/dev/null 2>&1
+  cleanup_environment_resources
   package_compose=$acceptance_home/.vm/infrastructure/packages/compose.yaml
   package_environment=$acceptance_home/.vm/infrastructure/packages/environment.env
   if test -f "$package_compose" && test -f "$package_environment"; then
@@ -101,7 +126,7 @@ cleanup() {
   fi
   if test "$status" -eq 0; then
     case "$acceptance_root" in
-      */vm-package-acceptance.*) rm -rf -- "$acceptance_root" ;;
+      */vm-package-acceptance.*) find "$acceptance_root" -depth -delete ;;
     esac
   else
     echo "Docker package workflow evidence preserved: $acceptance_root" >&2

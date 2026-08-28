@@ -219,6 +219,16 @@
         loop: "{{ project_config.get('storage', {}).get('volumes', {}) | dict2items }}"
         become: yes
 
+      - name: Ensure managed guest cache directories are writable
+        file:
+            path: '{{ item }}'
+            state: directory
+            owner: '{{ project_user }}'
+            group: '{{ project_user_group }}'
+            mode: '0755'
+        loop: "{{ ([cache_environment.get('XDG_CACHE_HOME', home_dir ~ '/.cache')] + (cache_environment.values() | list)) | unique }}"
+        become: yes
+
       - name: Verify project user home is writable
         tempfile:
             path: '/home/{{ project_user }}'

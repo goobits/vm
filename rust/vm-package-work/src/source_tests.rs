@@ -144,6 +144,7 @@ async fn binary_build_sources_are_declared_registered_and_immutable() {
             validation: None,
             timestamp: chrono::Utc::now(),
         }),
+        build_progress: None,
         release_id: None,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),

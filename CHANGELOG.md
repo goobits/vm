@@ -17,6 +17,9 @@
 
 ### ✨ Added
 
+- 📦 Binary release submissions persist build-attempt subphases, and release output reports build and activation progress with ten-second heartbeats.
+- 📦 Recursive source discovery collapses equivalent clones, follows an existing catalog origin when different repositories reuse one identity, and supports `.vm-packages-ignore` for intentional archive subtrees.
+- 📦 Routine `vm packages up` runs retain the configured gateway port unless `--port` explicitly changes it.
 - 🚀 `vm import <archive>` restores portable snapshot artifacts with typed manifests and mandatory platform checks.
 - 🪟 `vm restart` provides the same humane environment targeting as start and stop operations.
 - ☁️ Container storage configuration supports scoped named volumes, bounded tmpfs mounts, PID limits, graceful-stop timing, and log rotation.
@@ -137,6 +140,7 @@
 
 ### ⚡ Performance
 
+- 📦 Fleet tool activation processes independent running environments in bounded concurrent batches, while the existing credential-free dependency edge prunes its oldest disposable cache files above 8 GiB.
 - 🚀 Warm shell connections hand off before package and tool maintenance; one host-side, per-environment worker reuses the foreground reconciliation engine, coalesces concurrent shells, and caches successful work for 60 seconds.
 - ☁️ Fingerprinted bootstrap skips locked dependency and browser installation when the relevant inputs have not changed.
 - ☁️ Provider-neutral Cargo, Node, Go, Python, uv, Corepack, npm, and Playwright caches persist across Docker recreation and remain off source binds in every provider.

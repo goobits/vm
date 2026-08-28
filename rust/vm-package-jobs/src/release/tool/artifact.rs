@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use vm_packages::{
-    sha256_hex, tool_artifact_path, PublishToolArtifact, ToolBuildRecord, ToolKind,
+    sha256_hex, tool_artifact_path, PublishToolArtifact, ToolBuild, ToolBuildRecord, ToolKind,
     ToolSourceManifest,
 };
 
@@ -69,6 +69,7 @@ pub(super) fn build_collection_artifact(
     )
 }
 
+#[cfg(test)]
 pub(super) fn build_binary_artifacts(
     context: &ToolArtifactContext<'_>,
     manifest: &ToolSourceManifest,
@@ -82,37 +83,44 @@ pub(super) fn build_binary_artifacts(
     manifest
         .builds
         .iter()
-        .map(|build| {
-            run_isolated(
-                &build.command,
-                context.source,
-                context.release_root,
-                &format!("build binary tool target {}", build.target),
-            )?;
-            let archive = confined_build_archive(context.source, &build.archive)?;
-            verify_binary_archive(&archive, build)?;
-            verify_binary_command(&archive, context.release_root, build)?;
-            let retained = artifact_root.join(format!("{}.tar.gz", build.target));
-            std::fs::copy(&archive, &retained)?;
-            finish_artifact(
-                retained,
-                ToolReleaseManifest {
-                    name: context.name.into(),
-                    version: version.into(),
-                    target: build.target.clone(),
-                    links: build.links.clone(),
-                    source_commit: context.source_commit.into(),
-                    tag: context.tag.into(),
-                    actor: RELEASE_ACTOR.into(),
-                    idempotency_key: operation_key(
-                        "tool-workflow",
-                        &format!("{}:{}", context.submission_id, build.target),
-                    ),
-                },
-                context.gateway,
-            )
-        })
+        .map(|build| build_binary_artifact(context, version, &artifact_root, build))
         .collect()
+}
+
+pub(super) fn build_binary_artifact(
+    context: &ToolArtifactContext<'_>,
+    version: &str,
+    artifact_root: &Path,
+    build: &ToolBuild,
+) -> Result<BuiltToolArtifact> {
+    run_isolated(
+        &build.command,
+        context.source,
+        context.release_root,
+        &format!("build binary tool target {}", build.target),
+    )?;
+    let archive = confined_build_archive(context.source, &build.archive)?;
+    verify_binary_archive(&archive, build)?;
+    verify_binary_command(&archive, context.release_root, build)?;
+    let retained = artifact_root.join(format!("{}.tar.gz", build.target));
+    std::fs::copy(&archive, &retained)?;
+    finish_artifact(
+        retained,
+        ToolReleaseManifest {
+            name: context.name.into(),
+            version: version.into(),
+            target: build.target.clone(),
+            links: build.links.clone(),
+            source_commit: context.source_commit.into(),
+            tag: context.tag.into(),
+            actor: RELEASE_ACTOR.into(),
+            idempotency_key: operation_key(
+                "tool-workflow",
+                &format!("{}:{}", context.submission_id, build.target),
+            ),
+        },
+        context.gateway,
+    )
 }
 
 pub(super) fn staged_binary_artifacts(

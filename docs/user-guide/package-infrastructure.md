@@ -25,11 +25,12 @@ nominate or register another repository. Publication atomically queues durable
 fleet activation before reporting success.
 
 The host worker updates every running environment where the tool is globally
-enabled. It records stopped environments for activation on their next start,
-resumes interrupted work after controller or Docker recovery, and never
-recreates an environment or named volume. The release command waits for at most
-two minutes and reports completed, deferred, pending, and failed work honestly;
-rerunning it resumes the same release instead of publishing again.
+enabled, processing up to four independent targets concurrently. It records
+stopped environments for activation on their next start, resumes interrupted
+work after controller or Docker recovery, and never recreates an environment or
+named volume. The release command waits for at most ten minutes and reports
+completed, deferred, pending, and failed work honestly; rerunning it resumes the
+same release instead of publishing again.
 
 ```text
 ✓ Released typemill@1.2.0
@@ -132,14 +133,23 @@ repaired.
 `vm packages doctor --fix` applies safe deterministic repairs only to managed
 shelves and reports manual instructions for an unhealthy canonical source.
 
+Equivalent clones with the same package identity and Git origin collapse to one
+registration. If different origins claim the same identity, the existing
+catalog registration remains authoritative. A first-time ambiguity is reported
+without moving either repository. Put an empty `.vm-packages-ignore` file in an
+archived or unwanted repository subtree to exclude that whole subtree from
+recursive discovery.
+
 Configured roots are resolved and scanned before the appliance is started or
 updated. A missing root therefore fails without changing appliance state. An
 existing empty shelf is a successful no-op.
 
 The appliance runs once on the controller host through Docker or Podman. The
 first setup follows the configured container provider and later runs reuse the
-stored engine; `vm packages up --engine docker|podman` overrides it. Docker,
-Podman, and Linux Tart project environments all reach this authenticated
+stored engine; `vm packages up --engine docker|podman` overrides it. The
+configured gateway port is also retained; `vm packages up --port <port>`
+changes it explicitly. Docker, Podman, and Linux Tart project environments all
+reach this authenticated
 control plane, so Tart does not carry a second package-appliance lifecycle.
 Explicit appliance image overrides are also reused by later runs of the same
 controller version; upgrading the CLI selects that release's matching images.
@@ -221,7 +231,7 @@ uses the same inference. Controller-side ID lookup remains a hidden diagnostic,
 not part of normal work.
 
 Release prints its durable submission ID and current phase before waiting, then
-prints a heartbeat every 30 seconds while the phase is unchanged. `Ctrl-C`
+prints a heartbeat every 10 seconds while the phase is unchanged. `Ctrl-C`
 detaches the CLI without cancelling controller work; rerun the same command to
 resume. From a managed checkout, `vm packages cancel` is the explicit durable
 cancellation path.
@@ -453,6 +463,10 @@ isolated build starts.
 Binary tools use a versioned, argument-safe manifest. A credential-separated
 builder builds each declared target from the submitted source bundle, validates
 the archive and executable links, and stages immutable content-addressed bytes.
+The submission records preparing, dependency restoration, per-target build,
+staging, and terminal phases durably. `vm packages release` prints each change
+and a heartbeat at least every ten seconds, so detaching and resuming never
+loses the current stage.
 Each build uses one directory beneath the builder's private work root. The
 worker reclaims sandbox ownership and removes that exact directory on every
 success or failure, and startup removes only stale directories bearing the
@@ -462,9 +476,13 @@ marks the service unhealthy before temporary free space becomes critically low.
 Its package managers can resolve registry-backed npm, Cargo, and Python
 dependencies through a private read-only edge. The edge holds the private
 upstream read credential; repository commands receive only unauthenticated edge
-URLs and no credential value. Git dependencies are intentionally unavailable in
-the no-egress builder; publish them to the private registry or replace them with
-registry releases before registering the binary tool.
+URLs and no credential value. Its named-volume cache safely reuses immutable
+dependency downloads while each job keeps writable build output, `node_modules`,
+and Cargo targets private and ephemeral. The edge checks free space and prunes
+its oldest disposable cache files once the cache exceeds 8 GiB. Git dependencies
+are intentionally unavailable in the no-egress builder; publish them to the
+private registry or replace them with registry releases before registering the
+binary tool.
 The release worker cannot run the repository build command; it revalidates and
 publishes those exact staged bytes:
 
@@ -495,10 +513,10 @@ artifacts it cannot verify. A deterministic command, archive, or verification
 failure returns the same workspace release to `NeedsChanges`; infrastructure
 failures remain retryable.
 
-After an isolated build-service failure, rerunning `vm packages release`
-requeues the already approved immutable integration. It does not reset, stash,
-submit, or delete newer worktree edits made after that approval. Version
-preflight failures still require a new committed version.
+After an isolated build-service failure, repair the appliance and rerun `vm
+packages release` to resume the approved immutable integration. This does not
+reset, stash, submit, or delete newer worktree edits made after that approval.
+Version preflight failures still require a new committed version.
 
 The Vibe base owns Antigravity, Claude Code, and Codex executables. VM updates
 them directly from their official installers through one transactional vendor

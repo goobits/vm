@@ -79,7 +79,7 @@ pub(super) fn configured_state_and_client(
 pub(super) async fn up(
     files: &ApplianceFiles,
     requested: PackageInfrastructureEngine,
-    port: u16,
+    requested_port: Option<u16>,
     registry_image: Option<String>,
     job_image: Option<String>,
 ) -> VmResult<()> {
@@ -87,6 +87,10 @@ pub(super) async fn up(
     if let Some(previous) = previous.as_ref() {
         ensure_supported_definition(previous)?;
     }
+    let port = resolve_port(
+        requested_port,
+        previous.as_ref().map(|state| state.gateway_port),
+    );
     let engine_name = resolve_engine(
         requested,
         previous.as_ref().map(|state| state.engine.clone()),
@@ -306,6 +310,10 @@ fn resolve_engine(
     }
 }
 
+fn resolve_port(requested: Option<u16>, previous: Option<u16>) -> u16 {
+    requested.or(previous).unwrap_or(3080)
+}
+
 fn first_run_engine() -> ProviderName {
     AppConfig::load(None, None, None)
         .map(|config| config.container_provider())
@@ -385,6 +393,7 @@ fn workflow_client(
 mod tests {
     use super::{
         default_registry_image, ensure_supported_definition, resolve_engine, resolve_image,
+        resolve_port,
     };
     use crate::cli::PackageInfrastructureEngine;
     use crate::commands::packages::state::ApplianceState;
@@ -424,6 +433,13 @@ mod tests {
             ),
             ProviderName::Docker
         );
+    }
+
+    #[test]
+    fn gateway_port_reuses_state_unless_explicitly_overridden() {
+        assert_eq!(resolve_port(None, Some(39081)), 39081);
+        assert_eq!(resolve_port(Some(4080), Some(39081)), 4080);
+        assert_eq!(resolve_port(None, None), 3080);
     }
 
     #[test]

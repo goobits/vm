@@ -54,16 +54,15 @@ pub(super) fn prepare_source_roots(source_roots: &[String]) -> VmResult<SourcePl
     })
 }
 
-pub(super) async fn prepare_canonical_sources(
-    files: &ApplianceFiles,
+pub(super) fn prepare_canonical_sources(
     canonical_sources: &[String],
+    packages: &[vm_packages::PackageDefinition],
+    tools: &[vm_packages::ToolDefinition],
 ) -> VmResult<SourcePlan> {
     let discovery = if canonical_sources.is_empty() {
         discovery::Discovery::default()
     } else {
-        let client = configured_client(files)?;
-        let (packages, tools) = tokio::try_join!(client.package_definitions(), client.tools())?;
-        discovery::discover_canonical(canonical_sources, &packages, &tools)
+        discovery::discover_canonical(canonical_sources, packages, tools)
     };
     Ok(SourcePlan {
         source_count: canonical_sources.len(),
@@ -76,9 +75,21 @@ pub(super) async fn prepare_sources(
     files: &ApplianceFiles,
     settings: &vm_config::PackageInfrastructureSettings,
 ) -> VmResult<[SourcePlan; 2]> {
+    let managed = prepare_source_roots(&settings.source_roots)?;
+    prepare_sources_with_managed(files, settings, managed).await
+}
+
+pub(super) async fn prepare_sources_with_managed(
+    files: &ApplianceFiles,
+    settings: &vm_config::PackageInfrastructureSettings,
+    mut managed: SourcePlan,
+) -> VmResult<[SourcePlan; 2]> {
+    let client = configured_client(files)?;
+    let (packages, tools) = tokio::try_join!(client.package_definitions(), client.tools())?;
+    managed.discovery.prefer_registered(&packages, &tools);
     Ok([
-        prepare_source_roots(&settings.source_roots)?,
-        prepare_canonical_sources(files, &settings.canonical_sources).await?,
+        managed,
+        prepare_canonical_sources(&settings.canonical_sources, &packages, &tools)?,
     ])
 }
 
@@ -132,6 +143,11 @@ async fn reconcile_sources(
                 failure.repository.display()
             )),
         }
+    }
+    for conflict in plan.discovery.conflicts {
+        let failure = conflict.message();
+        vm_warning!("{failure}");
+        outcome.failures.push(failure);
     }
     outcome.failures.extend(
         registration::apply_registration(files, plan.discovery.packages, plan.discovery.tools)

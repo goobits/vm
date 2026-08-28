@@ -5,7 +5,8 @@ use axum::{
 use vm_packages::{
     BeginReleaseRequest, CleanupRequest, CompleteReleaseRequest, CompleteToolBuildRequest,
     PublicationRequest, ReleaseRecord, ReleaseReworkRequest, ReviewRequest, RolloutRecord,
-    RolloutState, RolloutValidationRequest, SubmissionRecord, ToolBuildRecord, WorkflowState,
+    RolloutState, RolloutValidationRequest, SubmissionRecord, ToolBuildRecord,
+    UpdateToolBuildProgressRequest, WorkflowState,
 };
 
 use super::{controller::cleanup_managed_checkout, AppState};
@@ -31,6 +32,16 @@ pub(super) async fn complete_tool_build(
     Json(request): Json<CompleteToolBuildRequest>,
 ) -> WorkResult<Json<ToolBuildRecord>> {
     Ok(Json(state.store.complete_tool_build(&id, request).await?))
+}
+
+pub(super) async fn update_tool_build_progress(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<UpdateToolBuildProgressRequest>,
+) -> WorkResult<Json<SubmissionRecord>> {
+    Ok(Json(
+        state.store.update_tool_build_progress(&id, request).await?,
+    ))
 }
 
 pub(super) async fn reconcile_rollout_queue(

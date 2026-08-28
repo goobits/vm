@@ -3,8 +3,8 @@ use std::collections::BTreeSet;
 use chrono::Utc;
 use vm_packages::{
     validate_label, validate_sha256, CompleteToolBuildRequest, PublishToolArtifact, ReceiptKind,
-    RetryToolBuildRequest, ReviewDecision, SourceKind, SubmissionRecord, ToolBuildFailureKind,
-    ToolBuildRecord, WorkflowState,
+    ReviewDecision, SourceKind, SubmissionRecord, ToolBuildFailureKind, ToolBuildPhase,
+    ToolBuildProgress, ToolBuildRecord, UpdateToolBuildProgressRequest, WorkflowState,
 };
 
 use crate::store::{
@@ -49,6 +49,93 @@ impl Store {
             .get(submission_id)
             .cloned()
             .ok_or_else(|| WorkError::NotFound(format!("tool build for {submission_id}")))
+    }
+
+    pub async fn update_tool_build_progress(
+        &self,
+        submission_id: &str,
+        request: UpdateToolBuildProgressRequest,
+    ) -> WorkResult<SubmissionRecord> {
+        request.validate()?;
+        validate_idempotency_key(&request.idempotency_key)?;
+        let fingerprint =
+            operation_fingerprint("update_tool_build_progress", Some(submission_id), &request)?;
+        let mut current = self.database.lock().await;
+        if let Some(existing) = current.idempotency.get(&request.idempotency_key) {
+            ensure_fingerprint(existing, &fingerprint)?;
+            return current
+                .submissions
+                .get(&existing.target_id)
+                .cloned()
+                .ok_or_else(|| WorkError::Internal("build progress target is missing".into()));
+        }
+
+        let mut next = current.clone();
+        let submission = next
+            .submissions
+            .get_mut(submission_id)
+            .ok_or_else(|| WorkError::NotFound(submission_id.to_string()))?;
+        if submission.state != WorkflowState::ReadyToRelease || submission.release_id.is_some() {
+            return Err(WorkError::Conflict(
+                "build progress requires an unpublished ready binary release".into(),
+            ));
+        }
+        let checkout = next
+            .checkouts
+            .get(&submission.checkout_id)
+            .ok_or_else(|| WorkError::Internal("tool build checkout is missing".into()))?;
+        if checkout.source_kind != SourceKind::ToolBinary {
+            return Err(WorkError::Conflict(
+                "only binary tool submissions have build progress".into(),
+            ));
+        }
+        let same_attempt = submission
+            .build_progress
+            .as_ref()
+            .is_some_and(|progress| progress.attempt == request.attempt);
+        if !same_attempt && request.phase != ToolBuildPhase::Preparing {
+            return Err(WorkError::Conflict(
+                "a new tool build attempt must begin with preparing progress".into(),
+            ));
+        }
+        if same_attempt
+            && submission
+                .build_progress
+                .as_ref()
+                .is_some_and(|progress| request.phase < progress.phase)
+        {
+            return Err(WorkError::Conflict(
+                "tool build progress cannot move backwards".into(),
+            ));
+        }
+        let now = Utc::now();
+        let started_at = if same_attempt {
+            submission
+                .build_progress
+                .as_ref()
+                .map_or(now, |progress| progress.started_at)
+        } else {
+            now
+        };
+        submission.build_progress = Some(ToolBuildProgress {
+            attempt: request.attempt,
+            phase: request.phase,
+            target: request.target,
+            actor: request.actor,
+            started_at,
+            updated_at: now,
+        });
+        submission.updated_at = now;
+        next.idempotency.insert(
+            request.idempotency_key,
+            IdempotencyRecord {
+                fingerprint,
+                target_id: submission_id.to_string(),
+            },
+        );
+        let result = submission.clone();
+        self.commit(&mut current, next).await?;
+        Ok(result)
     }
 
     pub async fn complete_tool_build(
@@ -114,6 +201,30 @@ impl Store {
         };
         next.tool_builds
             .insert(submission_id.to_string(), record.clone());
+        let now = Utc::now();
+        let submission = next
+            .submissions
+            .get_mut(submission_id)
+            .expect("tool build submission remains present");
+        let started_at = submission
+            .build_progress
+            .as_ref()
+            .map_or(now, |progress| progress.started_at);
+        submission.build_progress = Some(ToolBuildProgress {
+            attempt: submission
+                .build_progress
+                .as_ref()
+                .map_or_else(|| "completion".into(), |progress| progress.attempt.clone()),
+            phase: if record.failure.is_some() {
+                ToolBuildPhase::Failed
+            } else {
+                ToolBuildPhase::Complete
+            },
+            target: None,
+            actor: request.actor.clone(),
+            started_at,
+            updated_at: now,
+        });
         if let Some(reason) = &record.failure {
             transition_records(
                 &mut next,
@@ -136,7 +247,9 @@ impl Store {
                     "Update the declared version, commit it, and rerun the same release command"
                         .into()
                 }
-                _ => "Fix the reported binary-build or worker problem and resubmit; an approved commit may be retried unchanged after infrastructure repair".into(),
+                _ => {
+                    "Fix the reported binary-build problem, commit the repair, and resubmit".into()
+                }
             }];
             review.reviewer = request.actor.clone();
             review.timestamp = Utc::now();
@@ -150,117 +263,6 @@ impl Store {
         );
         self.commit(&mut current, next).await?;
         Ok(record)
-    }
-
-    pub async fn retry_tool_build(
-        &self,
-        submission_id: &str,
-        request: RetryToolBuildRequest,
-    ) -> WorkResult<SubmissionRecord> {
-        validate_label("build retry actor", &request.actor)?;
-        validate_idempotency_key(&request.idempotency_key)?;
-        let fingerprint = operation_fingerprint("retry_tool_build", Some(submission_id), &request)?;
-        let mut current = self.database.lock().await;
-        if let Some(existing) = current.idempotency.get(&request.idempotency_key) {
-            ensure_fingerprint(existing, &fingerprint)?;
-            return current
-                .submissions
-                .get(&existing.target_id)
-                .cloned()
-                .ok_or_else(|| WorkError::Internal("idempotency target is missing".into()));
-        }
-
-        let mut next = current.clone();
-        let submission = next
-            .submissions
-            .get(submission_id)
-            .ok_or_else(|| WorkError::NotFound(submission_id.to_string()))?;
-        if submission.state != WorkflowState::NeedsChanges || submission.release_id.is_some() {
-            return Err(WorkError::Conflict(
-                "only an unpublished binary build awaiting changes can be retried".into(),
-            ));
-        }
-        let checkout = next
-            .checkouts
-            .get(&submission.checkout_id)
-            .ok_or_else(|| WorkError::Internal("tool build checkout is missing".into()))?;
-        if checkout.source_kind != SourceKind::ToolBinary || submission.integration.is_none() {
-            return Err(WorkError::Conflict(
-                "build retry requires an integrated binary tool submission".into(),
-            ));
-        }
-        let failed_build = next
-            .tool_builds
-            .get(submission_id)
-            .filter(|build| build.is_legacy_retryable_infrastructure_failure())
-            .ok_or_else(|| {
-                WorkError::Conflict(
-                    "build retry requires a recorded isolated-builder infrastructure failure"
-                        .into(),
-                )
-            })?;
-        if failed_build.source_commit
-            != submission
-                .integration
-                .as_ref()
-                .expect("integration was checked")
-                .integration_commit
-        {
-            return Err(WorkError::Conflict(
-                "failed build does not match the approved integration".into(),
-            ));
-        }
-        let failed_idempotency_key = failed_build.completion_idempotency_key.clone();
-        if !submission
-            .review
-            .as_ref()
-            .is_some_and(|review| review.reviewer == "tool-build-service")
-        {
-            return Err(WorkError::Conflict(
-                "build retry requires failure recorded by the isolated build service".into(),
-            ));
-        }
-
-        transition_records(
-            &mut next,
-            submission_id,
-            WorkflowState::ReadyToRelease,
-            ReceiptKind::Build,
-            &request.actor,
-            "approved integration requeued after isolated builder repair",
-            Some("build_retry_queued".into()),
-        )?;
-        let review = next
-            .submissions
-            .get_mut(submission_id)
-            .and_then(|submission| submission.review.as_mut())
-            .expect("failed tool build retains its review");
-        review.decision = ReviewDecision::Approve;
-        review.reason = "approved integration retained for isolated build retry".into();
-        review.required_followups.clear();
-        review.reviewer = "tool-build-retry-service".into();
-        review.timestamp = Utc::now();
-        next.tool_builds.remove(submission_id);
-        next.idempotency.retain(|key, record| {
-            record.target_id != submission_id
-                || failed_idempotency_key
-                    .as_ref()
-                    .map_or_else(|| !key.starts_with("tool-build-"), |failed| key != failed)
-        });
-        next.idempotency.insert(
-            request.idempotency_key,
-            IdempotencyRecord {
-                fingerprint,
-                target_id: submission_id.to_string(),
-            },
-        );
-        let result = next
-            .submissions
-            .get(submission_id)
-            .cloned()
-            .expect("submission remains present");
-        self.commit(&mut current, next).await?;
-        Ok(result)
     }
 }
 
@@ -473,6 +475,19 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::open(directory.path()).await.unwrap();
         let submission = ready_binary(&store).await;
+        store
+            .update_tool_build_progress(
+                &submission.submission_id,
+                UpdateToolBuildProgressRequest {
+                    attempt: "build-attempt-success".into(),
+                    phase: ToolBuildPhase::Preparing,
+                    target: None,
+                    actor: "tool-build-service".into(),
+                    idempotency_key: "tool-build-progress-success".into(),
+                },
+            )
+            .await
+            .unwrap();
 
         assert_eq!(
             store.next_tool_build().await.unwrap().submission_id,
@@ -500,6 +515,15 @@ mod tests {
             .await
             .unwrap();
         assert!(built.succeeded());
+        let progress = store
+            .submission(&submission.submission_id)
+            .await
+            .unwrap()
+            .build_progress
+            .unwrap();
+        assert_eq!(progress.phase, ToolBuildPhase::Complete);
+        assert_eq!(progress.attempt, "build-attempt-success");
+        assert!(progress.target.is_none());
         assert!(store.next_tool_build().await.is_none());
         assert_eq!(
             store.next_release().await.unwrap().submission_id,
@@ -524,6 +548,95 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn build_progress_is_durable_idempotent_and_monotonic() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).await.unwrap();
+        let submission = ready_binary(&store).await;
+        let preparing = UpdateToolBuildProgressRequest {
+            attempt: "build-attempt-1".into(),
+            phase: ToolBuildPhase::Preparing,
+            target: None,
+            actor: "tool-build-service".into(),
+            idempotency_key: "tool-build-progress-preparing".into(),
+        };
+
+        let first = store
+            .update_tool_build_progress(&submission.submission_id, preparing.clone())
+            .await
+            .unwrap();
+        let repeated = store
+            .update_tool_build_progress(&submission.submission_id, preparing)
+            .await
+            .unwrap();
+        assert_eq!(first.build_progress, repeated.build_progress);
+
+        store
+            .update_tool_build_progress(
+                &submission.submission_id,
+                UpdateToolBuildProgressRequest {
+                    attempt: "build-attempt-1".into(),
+                    phase: ToolBuildPhase::Building,
+                    target: Some("linux-arm64".into()),
+                    actor: "tool-build-service".into(),
+                    idempotency_key: "tool-build-progress-building".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert!(store
+            .update_tool_build_progress(
+                &submission.submission_id,
+                UpdateToolBuildProgressRequest {
+                    attempt: "build-attempt-1".into(),
+                    phase: ToolBuildPhase::Preparing,
+                    target: None,
+                    actor: "tool-build-service".into(),
+                    idempotency_key: "tool-build-progress-backwards".into(),
+                },
+            )
+            .await
+            .is_err());
+        store
+            .update_tool_build_progress(
+                &submission.submission_id,
+                UpdateToolBuildProgressRequest {
+                    attempt: "build-attempt-2".into(),
+                    phase: ToolBuildPhase::Preparing,
+                    target: None,
+                    actor: "tool-build-service".into(),
+                    idempotency_key: "tool-build-progress-restarted".into(),
+                },
+            )
+            .await
+            .unwrap();
+        store
+            .update_tool_build_progress(
+                &submission.submission_id,
+                UpdateToolBuildProgressRequest {
+                    attempt: "build-attempt-2".into(),
+                    phase: ToolBuildPhase::Building,
+                    target: Some("linux-arm64".into()),
+                    actor: "tool-build-service".into(),
+                    idempotency_key: "tool-build-progress-restarted-building".into(),
+                },
+            )
+            .await
+            .unwrap();
+
+        drop(store);
+        let reopened = Store::open(directory.path()).await.unwrap();
+        let progress = reopened
+            .submission(&submission.submission_id)
+            .await
+            .unwrap()
+            .build_progress
+            .unwrap();
+        assert_eq!(progress.phase, ToolBuildPhase::Building);
+        assert_eq!(progress.attempt, "build-attempt-2");
+        assert_eq!(progress.target.as_deref(), Some("linux-arm64"));
+    }
+
+    #[tokio::test]
     async fn deterministic_build_failure_returns_the_workspace_to_rework() {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::open(directory.path()).await.unwrap();
@@ -541,26 +654,17 @@ mod tests {
         assert!(!record.succeeded());
         let submission = store.submission(&submission.submission_id).await.unwrap();
         assert_eq!(submission.state, WorkflowState::NeedsChanges);
+        let progress = submission.build_progress.as_ref().unwrap();
+        assert_eq!(progress.phase, ToolBuildPhase::Failed);
+        assert!(progress.target.is_none());
         assert_eq!(
             submission.review.as_ref().unwrap().decision,
             ReviewDecision::NeedsChanges
         );
         assert!(store.next_tool_build().await.is_none());
         assert!(store.next_release().await.is_none());
-        assert!(
-            submission.review.as_ref().unwrap().required_followups[0].contains("retried unchanged")
-        );
+        assert!(submission.review.as_ref().unwrap().required_followups[0].contains("resubmit"));
 
-        assert!(store
-            .retry_tool_build(
-                &submission.submission_id,
-                RetryToolBuildRequest {
-                    actor: "package-agent".into(),
-                    idempotency_key: "retry-deterministic-build".into(),
-                },
-            )
-            .await
-            .is_err());
         let retried = store
             .record_submission(
                 &submission.checkout_id,
@@ -573,70 +677,6 @@ mod tests {
             .unwrap();
         assert_eq!(retried.state, WorkflowState::Submitted);
         assert!(retried.review.is_none());
-    }
-
-    #[tokio::test]
-    async fn legacy_builder_permission_failure_requeues_the_approved_generation() {
-        let directory = tempfile::tempdir().unwrap();
-        let store = Store::open(directory.path()).await.unwrap();
-        let submission = ready_binary(&store).await;
-        let mut failure = successful_request();
-        failure.artifacts.clear();
-        failure.failure = Some(
-            "binary build failed: Permission denied (os error 13): Permission denied (os error 13)"
-                .into(),
-        );
-        failure.failure_kind = Some(ToolBuildFailureKind::Build);
-        failure.version.clear();
-        failure.idempotency_key = "tool-build-legacy-permission".into();
-        store
-            .complete_tool_build(&submission.submission_id, failure)
-            .await
-            .unwrap();
-
-        let request = RetryToolBuildRequest {
-            actor: "package-agent".into(),
-            idempotency_key: "retry-tool-build-test".into(),
-        };
-        let retried = store
-            .retry_tool_build(&submission.submission_id, request.clone())
-            .await
-            .unwrap();
-        assert_eq!(retried.state, WorkflowState::ReadyToRelease);
-        assert_eq!(
-            retried.review.as_ref().unwrap().decision,
-            ReviewDecision::Approve
-        );
-        assert!(retried
-            .review
-            .as_ref()
-            .unwrap()
-            .required_followups
-            .is_empty());
-        assert!(store.tool_build(&retried.submission_id).await.is_err());
-        assert_eq!(
-            store.next_tool_build().await.unwrap().submission_id,
-            retried.submission_id
-        );
-        assert_eq!(
-            store
-                .retry_tool_build(&submission.submission_id, request)
-                .await
-                .unwrap()
-                .state,
-            WorkflowState::ReadyToRelease
-        );
-
-        drop(store);
-        let reopened = Store::open(directory.path()).await.unwrap();
-        assert_eq!(
-            reopened
-                .submission(&retried.submission_id)
-                .await
-                .unwrap()
-                .state,
-            WorkflowState::ReadyToRelease
-        );
     }
 
     #[tokio::test]
@@ -666,15 +706,5 @@ mod tests {
             review.required_followups,
             ["Update the declared version, commit it, and rerun the same release command"]
         );
-        assert!(store
-            .retry_tool_build(
-                &submission.submission_id,
-                RetryToolBuildRequest {
-                    actor: "package-agent".into(),
-                    idempotency_key: "retry-version-build".into(),
-                },
-            )
-            .await
-            .is_err());
     }
 }

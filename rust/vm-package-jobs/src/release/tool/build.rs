@@ -5,20 +5,21 @@ use semver::Version;
 use vm_core::command_capture::CommandCaptureError;
 use vm_packages::{
     sha256_hex, CompleteToolBuildRequest, PackageInfrastructureClient, SubmissionRecord,
-    ToolBuildFailureKind, ToolKind, ToolSourceManifest, VersionRecommendation, WorkflowState,
+    ToolBuildFailureKind, ToolBuildPhase, ToolKind, ToolSourceManifest,
+    UpdateToolBuildProgressRequest, VersionRecommendation, WorkflowState,
 };
 
 use crate::release::{git_text, source::clone_at};
 use crate::runtime::{download_bundle, operation_key};
 
 use super::super::workflow::validate_version_bump;
-use super::artifact::{binary_identity, build_binary_artifacts, ToolArtifactContext};
+use super::artifact::{binary_identity, build_binary_artifact, ToolArtifactContext};
 
 mod sandbox;
 mod sources;
 mod staging;
 
-use super::dependencies::restore_locked_node_dependencies;
+use super::dependencies::{locked_node_install, restore_locked_node_dependencies};
 use sandbox::prepare_unprivileged_build;
 use sources::materialize;
 use staging::stage;
@@ -39,6 +40,12 @@ pub async fn build_submission(
     work_root: &Path,
 ) -> Result<()> {
     let workspace = super::build_workspace::BuildWorkspace::create(work_root)?;
+    let attempt = workspace
+        .path()
+        .file_name()
+        .and_then(|name| name.to_str())
+        .context("binary build workspace has no valid attempt identifier")?
+        .to_string();
     let result = build_submission_in(
         client,
         submission,
@@ -46,6 +53,7 @@ pub async fn build_submission(
         gateway,
         staging_root,
         workspace.path(),
+        &attempt,
     )
     .await;
     let cleanup = workspace.close();
@@ -66,10 +74,12 @@ async fn build_submission_in(
     gateway: &str,
     staging_root: &Path,
     release_root: &Path,
+    attempt: &str,
 ) -> Result<()> {
     if submission.state != WorkflowState::ReadyToRelease {
         bail!("binary tool submission is not ready to build");
     }
+    report_progress(client, submission, attempt, ToolBuildPhase::Preparing, None).await?;
     let checkout = client.checkout(&submission.checkout_id).await?;
     if checkout.source_kind != vm_packages::SourceKind::ToolBinary {
         bail!("build queue returned a non-binary tool submission");
@@ -133,14 +143,8 @@ async fn build_submission_in(
             return Ok(());
         }
     };
-    let build_sources = match materialize(
-        client,
-        &submission.submission_id,
-        build_token,
-        release_root,
-        &manifest,
-    ) {
-        Ok(sources) => sources,
+    let node_dependencies = match locked_node_install(&source) {
+        Ok(command) => command,
         Err(error) => {
             record_build_failure(
                 client,
@@ -175,27 +179,14 @@ async fn build_submission_in(
             return Ok(());
         }
     }
-    prepare_isolated_package_configuration(release_root)?;
-    prepare_unprivileged_build(release_root, &source, &build_sources)?;
-    restore_locked_node_dependencies(&source, release_root)?;
-    let tag = format!("v{version}");
-    let context = ToolArtifactContext {
-        source: &source,
+    let build_sources = match materialize(
+        client,
+        &submission.submission_id,
+        build_token,
         release_root,
-        name: &submission.package,
-        source_commit: &source_commit,
-        tag: &tag,
-        submission_id: &submission.submission_id,
-        gateway,
-    };
-    let artifacts = match build_binary_artifacts(&context, &manifest) {
-        Ok(artifacts) => artifacts,
-        Err(error) if is_infrastructure_failure(&error) => {
-            return Err(error.context(format!(
-                "isolated binary builder infrastructure failed for submission {}",
-                submission.submission_id
-            )));
-        }
+        &manifest,
+    ) {
+        Ok(sources) => sources,
         Err(error) => {
             record_build_failure(
                 client,
@@ -209,7 +200,82 @@ async fn build_submission_in(
             return Ok(());
         }
     };
+    prepare_isolated_package_configuration(release_root)?;
+    prepare_unprivileged_build(release_root, &source, &build_sources)?;
+    report_progress(
+        client,
+        submission,
+        attempt,
+        ToolBuildPhase::RestoringDependencies,
+        None,
+    )
+    .await?;
+    if let Err(error) =
+        restore_locked_node_dependencies(&source, release_root, node_dependencies.as_deref())
+    {
+        if is_infrastructure_failure(&error) {
+            return Err(error.context(format!(
+                "isolated binary builder infrastructure failed for submission {}",
+                submission.submission_id
+            )));
+        }
+        record_build_failure(
+            client,
+            submission,
+            &source_commit,
+            &manifest_digest,
+            &error,
+            ToolBuildFailureKind::Build,
+        )
+        .await?;
+        return Ok(());
+    }
+    let tag = format!("v{version}");
+    let context = ToolArtifactContext {
+        source: &source,
+        release_root,
+        name: &submission.package,
+        source_commit: &source_commit,
+        tag: &tag,
+        submission_id: &submission.submission_id,
+        gateway,
+    };
+    let artifact_root = release_root.join("artifacts");
+    std::fs::create_dir(&artifact_root)?;
+    let mut artifacts = Vec::with_capacity(manifest.builds.len());
+    for build in &manifest.builds {
+        report_progress(
+            client,
+            submission,
+            attempt,
+            ToolBuildPhase::Building,
+            Some(build.target.clone()),
+        )
+        .await?;
+        match build_binary_artifact(&context, &version, &artifact_root, build) {
+            Ok(artifact) => artifacts.push(artifact),
+            Err(error) if is_infrastructure_failure(&error) => {
+                return Err(error.context(format!(
+                    "isolated binary builder infrastructure failed for submission {}",
+                    submission.submission_id
+                )));
+            }
+            Err(error) => {
+                record_build_failure(
+                    client,
+                    submission,
+                    &source_commit,
+                    &manifest_digest,
+                    &error,
+                    ToolBuildFailureKind::Build,
+                )
+                .await?;
+                return Ok(());
+            }
+        }
+    }
 
+    report_progress(client, submission, attempt, ToolBuildPhase::Staging, None).await?;
     let staged = stage(staging_root, &submission.submission_id, &artifacts)?;
     let request = CompleteToolBuildRequest {
         source_commit,
@@ -236,6 +302,35 @@ async fn build_submission_in(
         outcome = "staged",
         "tool build completed"
     );
+    Ok(())
+}
+
+async fn report_progress(
+    client: &PackageInfrastructureClient,
+    submission: &SubmissionRecord,
+    attempt: &str,
+    phase: ToolBuildPhase,
+    target: Option<String>,
+) -> Result<()> {
+    let scope = target.as_deref().map_or_else(
+        || format!("{phase:?}"),
+        |target| format!("{phase:?}:{target}"),
+    );
+    client
+        .update_tool_build_progress(
+            &submission.submission_id,
+            &UpdateToolBuildProgressRequest {
+                attempt: attempt.into(),
+                phase,
+                target,
+                actor: "tool-build-service".into(),
+                idempotency_key: operation_key(
+                    "tool-build-progress",
+                    &format!("{}:{attempt}:{scope}", submission.submission_id),
+                ),
+            },
+        )
+        .await?;
     Ok(())
 }
 

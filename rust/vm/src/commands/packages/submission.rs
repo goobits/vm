@@ -463,6 +463,7 @@ mod tests {
             validation: None,
             review: None,
             integration: None,
+            build_progress: None,
             release_id: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),

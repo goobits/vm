@@ -60,7 +60,7 @@ async fn status(files: &ApplianceFiles) -> VmResult<()> {
                 health = appliance::PackageHealth::ActionRequired;
             } else if health == appliance::PackageHealth::Healthy
                 && (sources::has_quarantined_sources(&global.packages.source_roots)
-                    || plans.iter().any(|plan| !plan.discovery.failures.is_empty()))
+                    || plans.iter().any(|plan| plan.discovery.is_degraded()))
             {
                 health = appliance::PackageHealth::Degraded;
             }
@@ -97,12 +97,7 @@ async fn doctor(files: &ApplianceFiles, fix: bool) -> VmResult<()> {
         unresolved.extend(reconciled.failures);
     } else {
         for plan in sources::prepare_sources(files, &global.packages).await? {
-            unresolved.extend(
-                plan.discovery
-                    .failures
-                    .iter()
-                    .map(|failure| failure.message.clone()),
-            );
+            unresolved.extend(plan.discovery.diagnostics());
         }
     }
 
@@ -133,7 +128,7 @@ async fn doctor(files: &ApplianceFiles, fix: bool) -> VmResult<()> {
 async fn up(
     files: &ApplianceFiles,
     engine: crate::cli::PackageInfrastructureEngine,
-    port: u16,
+    port: Option<u16>,
     registry_image: Option<String>,
     job_image: Option<String>,
     config_path: Option<PathBuf>,
@@ -142,10 +137,9 @@ async fn up(
     let global_config = vm_config::GlobalConfig::load()?;
     let managed_sources = sources::prepare_source_roots(&global_config.packages.source_roots)?;
     appliance::up(files, engine, port, registry_image, job_image).await?;
-    let canonical_sources =
-        sources::prepare_canonical_sources(files, &global_config.packages.canonical_sources)
+    let source_plans =
+        sources::prepare_sources_with_managed(files, &global_config.packages, managed_sources)
             .await?;
-    let source_plans = [managed_sources, canonical_sources];
     let outcome = sources::reconcile_source_plans(files, source_plans).await?;
     if outcome.is_degraded() {
         vm_core::vm_warning!(
@@ -226,7 +220,7 @@ pub(super) async fn handle(
             up(
                 &files,
                 engine,
-                port,
+                Some(port),
                 registry_image,
                 job_image,
                 config_path,

@@ -273,7 +273,9 @@ packages:
 does not select an environment or persist an agent launch target. Each `vm
 packages up` scans the roots recursively and idempotently registers detected Git
 package and tool repositories. These managed shelves may quarantine unhealthy
-children.
+children. Recursive discovery ignores a directory subtree containing an empty
+`.vm-packages-ignore` marker. The [Package Infrastructure guide](package-infrastructure.md#advanced-initialize-package-work)
+owns source identity, conflict, and quarantine behavior.
 
 `canonical_sources` is a separate list of exact physical Git roots. Add one with
 `vm packages register /absolute/path/to/project`; successful local registration

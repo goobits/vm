@@ -129,7 +129,7 @@ pub(in crate::commands) async fn handle(
             updates::run(
                 config_path,
                 profile,
-                Vec::new(),
+                tools,
                 Vec::new(),
                 false,
                 InstallMode::Wait,

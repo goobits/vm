@@ -194,6 +194,11 @@ reconciliation. An unhealthy child Git repository is moved intact under
 `degraded`. Repair it with `vm packages doctor --fix`; an existing empty shelf
 remains valid.
 
+If archived repositories reuse a current package name with a different Git
+origin, put an empty `.vm-packages-ignore` file at the archived subtree root and
+rerun `vm packages up`. The [Package Infrastructure guide](package-infrastructure.md#advanced-initialize-package-work)
+owns the full equivalent-clone and conflicting-origin rules.
+
 Canonical project workspaces use a different, read-only policy. If bare `vm
 packages release` reports missing attestation, first run `vm packages doctor
 --fix` on the host to repair registration drift. If the physical repository is
@@ -209,7 +214,8 @@ exact canonical source.
 
 If release remains in `ready_to_release`, inspect `vm tools status
 [environment]` for its durable job ID and workflow. The release command prints
-the same ID, reports phase changes, and emits a heartbeat every 30 seconds.
+the same ID, reports durable build and activation phase changes, and emits a
+heartbeat every 10 seconds.
 `Ctrl-C` only detaches; rerun `vm packages release` to resume, or run `vm
 packages cancel` from a managed checkout to cancel explicitly. A full builder
 temporary filesystem is reported as an unhealthy package service. Reconcile it
@@ -221,9 +227,9 @@ An isolated binary-build launcher or worker I/O failure is infrastructure, not
 source rework. The job stays queued with retry backoff and logs the failing
 stage, manifest program, and managed working directory. Repair the appliance
 with `vm packages doctor --fix` or `vm packages up`, then rerun `vm packages
-release`; VM requeues the already approved immutable integration without reading
-or changing newer worktree edits. A build command that runs and exits
-unsuccessfully still requests source changes normally.
+release`; the approved immutable integration resumes without reading or changing
+newer worktree edits. A build command that runs and exits unsuccessfully still
+requests source changes normally.
 
 An older VM CLI never rewrites a package appliance with a newer definition
 revision. It stops before materializing Compose files and tells you to run `vm

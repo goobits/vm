@@ -240,9 +240,15 @@ fn packages_up_parses_podman_engine() {
         Command::Packages {
             command: PackagesSubcommand::Up {
                 engine: PackageInfrastructureEngine::Podman,
-                port: 4080,
+                port: Some(4080),
                 ..
             }
+        }
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "packages", "up"]).command,
+        Command::Packages {
+            command: PackagesSubcommand::Up { port: None, .. }
         }
     ));
 }

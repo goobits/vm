@@ -168,10 +168,13 @@ services:
     environment:
       PKG_SERVER_INTERNAL_GATEWAY: http://gateway:8080
       PKG_SERVER_INTERNAL_TOKEN_FILE: /run/secrets/build_edge_read_token
+      PKG_SERVER_CACHE_MAX_BYTES: "8589934592"
     secrets: [build_edge_read_token]
     expose: ["3080"]
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:3080/health"]
+      test:
+        - CMD-SHELL
+        - 'curl --fail --silent http://127.0.0.1:3080/health >/dev/null && available=$$(df -Pk /data | awk ''NR == 2 { print $$4 }''); test -n "$$available" && test "$$available" -ge 262144'
       interval: 5s
       timeout: 3s
       retries: 12

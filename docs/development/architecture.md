@@ -85,10 +85,12 @@ then use the consumer-bound capability to close durable checkout state.
 
 Binary and collection publication persists one immutable activation plan in
 the workflow service. A provider-authorized host worker claims that plan and
-updates globally enrolled running environments in place; stopped environments
-remain deferred until their normal start path. The package appliance never
-receives a Docker socket. Worker leases, target receipts, and idempotency keys
-make controller or Docker interruption resumable without republishing.
+updates globally enrolled running environments in bounded concurrent batches;
+stopped environments remain deferred until their normal start path. Binary
+submissions carry durable build-attempt and phase telemetry rather than a
+second job record. The package appliance never receives a Docker socket. Worker
+leases, target receipts, and idempotency keys make controller or Docker
+interruption resumable without republishing.
 
 ## CLI Output
 

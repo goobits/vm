@@ -120,6 +120,7 @@ jobs:
       - name: Prove persistent checkout and workspace release workflows
         env:
           VM_ACCEPTANCE_BIN: ${{ github.workspace }}/rust/target/release/vm
+          VM_ACCEPTANCE_DOCKER_RESTART_COMMAND: sudo systemctl restart docker
         run: scripts/internal/test-package-workflow-docker.sh
 
       - name: Prove persistent managed-guest remote commands

@@ -174,6 +174,7 @@ mod tests {
         assert!(ANSIBLE_PLAYBOOK.contains("_vm_project_plan"));
         assert!(ANSIBLE_PLAYBOOK.contains("_vm_cache_environment"));
         assert!(ANSIBLE_PLAYBOOK.contains("cache_environment | combine"));
+        assert!(ANSIBLE_PLAYBOOK.contains("Ensure managed guest cache directories are writable"));
         assert!(!ANSIBLE_PLAYBOOK.contains("project_package_files"));
         assert!(!ANSIBLE_PLAYBOOK.contains("Inspect project package files"));
     }
@@ -185,6 +186,8 @@ mod tests {
         assert!(!ANSIBLE_PLAYBOOK.contains("tasks/node-toolchain.yml"));
         assert!(!ANSIBLE_PLAYBOOK.contains("tasks/bootstrap-node.yml"));
         assert!(NODE_TOOLCHAIN_INSTALLER.contains("VM_NODE_TOOLCHAIN_CURRENT=1"));
+        assert!(NODE_TOOLCHAIN_INSTALLER.contains("PROFILE=\"$installer_profile\""));
+        assert!(NODE_TOOLCHAIN_INSTALLER.contains("installer_status=$?"));
         assert!(NODE_BOOTSTRAP.contains("VM_BOOTSTRAP_DEPENDENCIES_CURRENT=1"));
         assert!(NODE_BOOTSTRAP.contains("shasum -a 256"));
         assert!(!NODE_BOOTSTRAP.contains("mapfile"));
@@ -224,6 +227,61 @@ mod tests {
 
         assert!(output.status.success());
         assert!(String::from_utf8_lossy(&output.stdout).contains("VM_NODE_TOOLCHAIN_CURRENT=1"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn node_toolchain_accepts_a_valid_runtime_after_installer_status_three() {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("home");
+        let bin = root.path().join("bin");
+        fs::create_dir(&home).unwrap();
+        fs::create_dir(&bin).unwrap();
+        write_test_command(
+            &bin.join("curl"),
+            r#"destination=
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = -o ]; then shift; destination=$1; fi
+  shift
+done
+cat > "$destination" <<'INSTALLER'
+mkdir -p "$NVM_DIR"
+cat > "$NVM_DIR/nvm.sh" <<'NVM'
+nvm() {
+  case "$1" in
+    version)
+      if [ -f "$NVM_DIR/installed" ]; then echo v22.0.0; else echo N/A; return 3; fi
+      ;;
+    install) touch "$NVM_DIR/installed" ;;
+    use|alias) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+NVM
+exit 3
+INSTALLER"#,
+        );
+        write_test_command(&bin.join("npm"), "[ \"$1\" = --version ] && echo 10.0.0");
+        write_test_command(&bin.join("pnpm"), "[ \"$1\" = --version ] && echo 10.12.3");
+        let path = format!(
+            "{}:{}",
+            bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+
+        let output = Command::new("/bin/bash")
+            .args(["-c", NODE_TOOLCHAIN_INSTALLER])
+            .env("HOME", &home)
+            .env("NVM_DIR", home.join(".nvm"))
+            .env("PATH", path)
+            .env("VM_NODE_VERSION", "22")
+            .env("VM_NPM_VERSION", "10.0.0")
+            .env("VM_PNPM_VERSION", "10.12.3")
+            .output()
+            .unwrap();
+
+        assert!(output.status.success());
+        assert!(String::from_utf8_lossy(&output.stdout).contains("VM_NODE_TOOLCHAIN_CHANGED=1"));
     }
 
     #[cfg(unix)]

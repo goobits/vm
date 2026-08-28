@@ -99,6 +99,30 @@ async fn health_is_public_and_workflow_access_is_scoped() {
             .status_code(),
         StatusCode::UNAUTHORIZED
     );
+    let progress = serde_json::json!({
+        "attempt": "build-attempt-route",
+        "phase": "preparing",
+        "actor": "tool-build-service",
+        "idempotency_key": "tool-build-progress-route"
+    });
+    assert_eq!(
+        server
+            .post("/v1/submissions/missing/build/progress")
+            .add_header(header::AUTHORIZATION, "Bearer release")
+            .json(&progress)
+            .await
+            .status_code(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        server
+            .post("/v1/submissions/missing/build/progress")
+            .add_header(header::AUTHORIZATION, "Bearer build")
+            .json(&progress)
+            .await
+            .status_code(),
+        StatusCode::NOT_FOUND
+    );
     assert_eq!(
         server
             .get("/v1/jobs/release/next")

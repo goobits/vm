@@ -25,8 +25,7 @@ pub use appliance::{
     ApplianceConfig, APPLIANCE_DEFINITION_REVISION, COMPOSE_PROJECT, COMPOSE_YAML, GATEWAY_CONFIG,
 };
 pub use build::{
-    CompleteToolBuildRequest, RetryToolBuildRequest, ToolBuildArtifact, ToolBuildFailureKind,
-    ToolBuildRecord,
+    CompleteToolBuildRequest, ToolBuildArtifact, ToolBuildFailureKind, ToolBuildRecord,
 };
 pub use catalog::{PackageDefinition, RegisterPackage};
 pub use client::{InfrastructureStatus, PackageInfrastructureClient, PackageInventory};
@@ -51,8 +50,8 @@ pub use resolver::{
 };
 pub use submission::{
     CheckOutcome, IntegrationRecord, IntegrationRequest, IntegrationReview, PublicApiDiff,
-    ReviewDecision, ReviewRequest, SubmissionRecord, ValidationRequest, ValidationResult,
-    VersionRecommendation,
+    ReviewDecision, ReviewRequest, SubmissionRecord, ToolBuildPhase, ToolBuildProgress,
+    UpdateToolBuildProgressRequest, ValidationRequest, ValidationResult, VersionRecommendation,
 };
 pub use tool_activation::{
     ClaimToolActivationRequest, FinishToolActivationRequest, PlanToolActivationRequest,

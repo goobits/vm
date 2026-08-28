@@ -3669,6 +3669,7 @@ dependencies = [
  "vm-core",
  "vm-logging",
  "vm-packages",
+ "walkdir",
 ]
 
 [[package]]

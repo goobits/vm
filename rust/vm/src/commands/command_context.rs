@@ -276,7 +276,7 @@ mod tests {
         assert!(!guest_allowed_command(&Command::Packages {
             command: PackagesSubcommand::Up {
                 engine: crate::cli::PackageInfrastructureEngine::Auto,
-                port: 3080,
+                port: None,
                 registry_image: None,
                 job_image: None,
             },
