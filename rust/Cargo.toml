@@ -97,7 +97,7 @@ tracing-appender = "0.2"
 assert_cmd = "2.2"
 predicates = "3.1"
 serial_test = "3.5"
-axum-test = "20.1"
+axum-test = "21.0"
 
 
 [profile.release]
