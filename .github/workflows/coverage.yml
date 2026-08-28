@@ -28,7 +28,7 @@ jobs:
           toolchain: stable
 
       - name: Install tarpaulin
-        uses: taiki-e/install-action@94f54106ddd448427843411da73d6b8a35ae69b3 # cargo-tarpaulin
+        uses: taiki-e/install-action@d865e9aac326f15b06ac52b57abb58cd0e3330e4 # cargo-tarpaulin
         with:
           tool: cargo-tarpaulin@0.37.2
 
