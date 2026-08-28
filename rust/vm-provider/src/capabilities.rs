@@ -133,3 +133,18 @@ pub trait TempProvider {
     fn check_container_health(&self, container_name: &str) -> Result<bool>;
     fn is_container_running(&self, container_name: &str) -> Result<bool>;
 }
+
+/// Ephemeral TCP relay operations exposed only by supporting providers.
+pub trait TunnelProvider {
+    fn start_tcp_relay(
+        &self,
+        relay_name: &str,
+        host_port: u16,
+        target_instance: &str,
+        target_port: u16,
+    ) -> Result<String>;
+
+    fn relay_is_running(&self, relay_id: &str) -> bool;
+
+    fn stop_relay(&self, relay_id: &str) -> Result<()>;
+}

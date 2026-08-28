@@ -83,12 +83,12 @@ impl ContainerEngine {
         }
     }
 
-    pub fn validate(self) -> Result<()> {
+    pub(crate) fn validate(self) -> Result<()> {
         let executable = self.executable();
         self.validate_executable(executable)
     }
 
-    pub fn validate_executable(self, executable: &str) -> Result<()> {
+    pub(crate) fn validate_executable(self, executable: &str) -> Result<()> {
         let version = Command::new(executable)
             .arg("--version")
             .output()
@@ -125,7 +125,7 @@ impl ContainerEngine {
     }
 
     /// Start one managed TCP relay beside a target container.
-    pub fn start_tcp_relay(
+    pub(crate) fn start_tcp_relay(
         self,
         relay_name: &str,
         host_port: u16,
@@ -157,7 +157,7 @@ impl ContainerEngine {
     }
 
     /// Resolve the first usable network and address for a container.
-    pub fn container_network(self, container_name: &str) -> Result<(String, String)> {
+    pub(crate) fn container_network(self, container_name: &str) -> Result<(String, String)> {
         let output = Command::new(self.executable())
             .args([
                 "inspect",
@@ -181,7 +181,7 @@ impl ContainerEngine {
     }
 
     /// Return whether a container is currently running.
-    pub fn container_is_running(self, container_id: &str) -> bool {
+    pub(crate) fn container_is_running(self, container_id: &str) -> bool {
         Command::new(self.executable())
             .args([
                 "inspect",
@@ -198,7 +198,7 @@ impl ContainerEngine {
     }
 
     /// Stop one container by immutable ID.
-    pub fn stop_container(self, container_id: &str) -> Result<()> {
+    pub(crate) fn stop_container(self, container_id: &str) -> Result<()> {
         let output = Command::new(self.executable())
             .args(["stop", container_id])
             .output()

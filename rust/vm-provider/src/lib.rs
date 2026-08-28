@@ -8,14 +8,15 @@
 use vm_core::error::Result;
 
 // Internal imports
-#[cfg(any(feature = "docker", feature = "tart", feature = "test-helpers"))]
 use vm_config::config::ProviderName;
 use vm_config::config::VmConfig;
 
 // Re-export common types for convenience
-pub use capabilities::{CommandProvider, InstanceProvider, ProvisioningProvider, TempProvider};
+pub use capabilities::{
+    CommandProvider, InstanceProvider, ProvisioningProvider, TempProvider, TunnelProvider,
+};
 #[cfg(feature = "docker")]
-pub use container::{render_compose_preview, validate_container_environment, ContainerEngine};
+pub use container::{render_compose_preview, ContainerEngine};
 pub use context::ProviderContext;
 pub use instance::InstanceInfo;
 #[cfg(feature = "test-helpers")]
@@ -66,8 +67,28 @@ pub trait Provider: CommandProvider + InstanceProvider + ProvisioningProvider {
         None
     }
 
+    /// Get access to tunnel capabilities if supported.
+    fn as_tunnel_provider(&self) -> Option<&dyn TunnelProvider> {
+        None
+    }
+
     /// Clone the provider into a new Box.
     fn clone_box(&self) -> Box<dyn Provider>;
+}
+
+/// Validate the configured provider through its owning backend.
+pub fn validate_provider_environment(provider: &ProviderName) -> Result<()> {
+    match provider {
+        #[cfg(feature = "docker")]
+        ProviderName::Docker | ProviderName::Podman => {
+            container::ContainerEngine::detect(provider)?.validate()
+        }
+        #[cfg(feature = "tart")]
+        ProviderName::Tart => tart::validate_environment(),
+        _ => Err(VmError::Provider(format!(
+            "Provider '{provider}' is not enabled in this build"
+        ))),
+    }
 }
 
 impl Clone for Box<dyn Provider> {

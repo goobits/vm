@@ -1,6 +1,8 @@
 mod command;
 mod storage;
 
+#[cfg(feature = "tart")]
+pub(crate) use command::validate_environment;
 pub use command::TartCommand;
 
 #[cfg(feature = "tart")]

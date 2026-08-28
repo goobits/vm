@@ -10,10 +10,10 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use tracing::warn;
-use vm_config::{config::ProviderName, config::VmConfig, GlobalConfig};
+use vm_config::{config::VmConfig, GlobalConfig};
 use vm_core::{vm_hint, vm_println, vm_success, vm_warning};
 use vm_platform::platform;
-use vm_provider::{ContainerEngine, InstanceProvider, Provider};
+use vm_provider::{Provider, TunnelProvider};
 
 pub(super) fn handle_command(
     command: TunnelSubcommand,
@@ -63,14 +63,14 @@ pub struct TunnelInfo {
 }
 
 /// Manages port forwarding tunnels state
-pub struct TunnelManager {
+pub struct TunnelManager<'a> {
     state_file: PathBuf,
-    engine: ContainerEngine,
+    provider: &'a dyn TunnelProvider,
 }
 
-impl TunnelManager {
+impl<'a> TunnelManager<'a> {
     /// Create a new tunnel manager
-    pub fn new(engine: ContainerEngine) -> VmResult<Self> {
+    pub fn new(provider: &'a dyn TunnelProvider) -> VmResult<Self> {
         let config_dir = platform::user_config_dir().map_err(|e| {
             VmError::general(
                 std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
@@ -82,7 +82,10 @@ impl TunnelManager {
             .map_err(|e| VmError::general(e, "Failed to create tunnels directory".to_string()))?;
 
         let state_file = tunnel_dir.join("active.json");
-        Ok(Self { state_file, engine })
+        Ok(Self {
+            state_file,
+            provider,
+        })
     }
 
     /// Load active tunnels from state file
@@ -100,7 +103,7 @@ impl TunnelManager {
         // Filter out tunnels with stopped containers
         let active_tunnels: HashMap<u16, TunnelInfo> = tunnels
             .into_iter()
-            .filter(|(_, tunnel)| self.engine.container_is_running(&tunnel.relay_container_id))
+            .filter(|(_, tunnel)| self.provider.relay_is_running(&tunnel.relay_container_id))
             .collect();
 
         Ok(active_tunnels)
@@ -136,7 +139,7 @@ impl TunnelManager {
 
         // Start relay container
         let relay_container_name = format!("vm-tunnel-{container_name}-{host_port}");
-        let relay_container_id = self.engine.start_tcp_relay(
+        let relay_container_id = self.provider.start_tcp_relay(
             &relay_container_name,
             host_port,
             container_name,
@@ -190,7 +193,7 @@ impl TunnelManager {
         let mut tunnels = self.load_tunnels()?;
 
         if let Some(tunnel) = tunnels.remove(&host_port) {
-            self.engine.stop_container(&tunnel.relay_container_id)?;
+            self.provider.stop_relay(&tunnel.relay_container_id)?;
             self.save_tunnels(&tunnels)?;
             vm_success!(
                 "Stopped tunnel: localhost:{} -> {}:{}",
@@ -226,7 +229,7 @@ impl TunnelManager {
 
         for port in to_remove {
             if let Some(tunnel) = tunnels.remove(&port) {
-                if let Err(e) = self.engine.stop_container(&tunnel.relay_container_id) {
+                if let Err(e) = self.provider.stop_relay(&tunnel.relay_container_id) {
                     warn!(
                         "Failed to stop relay container {}: {}",
                         tunnel.relay_container_id, e
@@ -284,7 +287,7 @@ fn handle_tunnel(
     let container_name = provider.resolve_instance_name(container)?;
 
     // Create tunnel
-    let manager = TunnelManager::new(container_engine(provider.as_ref())?)?;
+    let manager = TunnelManager::new(tunnel_provider(provider.as_ref())?)?;
     manager.create_tunnel(host_port, container_port, &container_name)
 }
 
@@ -295,7 +298,7 @@ fn handle_tunnel_list(
     _config: VmConfig,
     _global_config: GlobalConfig,
 ) -> VmResult<()> {
-    let manager = TunnelManager::new(container_engine(provider.as_ref())?)?;
+    let manager = TunnelManager::new(tunnel_provider(provider.as_ref())?)?;
     let resolved_container = container
         .map(|value| provider.resolve_instance_name(Some(value)))
         .transpose()?;
@@ -339,7 +342,7 @@ fn handle_tunnel_stop(
     _config: VmConfig,
     _global_config: GlobalConfig,
 ) -> VmResult<()> {
-    let manager = TunnelManager::new(container_engine(provider.as_ref())?)?;
+    let manager = TunnelManager::new(tunnel_provider(provider.as_ref())?)?;
     let resolved_container = container
         .map(|value| provider.resolve_instance_name(Some(value)))
         .transpose()?;
@@ -365,40 +368,35 @@ fn handle_tunnel_stop(
     Ok(())
 }
 
-fn container_engine(provider: &dyn InstanceProvider) -> VmResult<ContainerEngine> {
-    let provider_name = container_provider_name(provider.name())?;
-    ContainerEngine::detect(&provider_name).map_err(Into::into)
+fn tunnel_provider(provider: &dyn Provider) -> VmResult<&dyn TunnelProvider> {
+    require_tunnel_provider(provider.as_tunnel_provider(), provider.name())
 }
 
-fn container_provider_name(name: &str) -> VmResult<ProviderName> {
-    let provider_name = ProviderName::from(name);
-    if !provider_name.is_container() {
-        return Err(VmError::validation(
+fn require_tunnel_provider<'a>(
+    capability: Option<&'a dyn TunnelProvider>,
+    provider_name: &str,
+) -> VmResult<&'a dyn TunnelProvider> {
+    capability.ok_or_else(|| {
+        VmError::validation(
             format!(
                 "Tunnels require a Docker or Podman environment; '{}' is not supported",
-                name
+                provider_name
             ),
             None::<String>,
-        ));
-    }
-    Ok(provider_name)
+        )
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::container_provider_name;
+    use super::require_tunnel_provider;
 
     #[test]
-    fn tunnels_accept_only_container_providers() {
-        assert_eq!(
-            container_provider_name("docker").unwrap().as_str(),
-            "docker"
-        );
-        assert_eq!(
-            container_provider_name("podman").unwrap().as_str(),
-            "podman"
-        );
-        assert!(container_provider_name("tart").is_err());
-        assert!(container_provider_name("mock").is_err());
+    fn tunnels_require_an_explicit_provider_capability() {
+        let error = match require_tunnel_provider(None, "tart") {
+            Ok(_) => panic!("unsupported provider unexpectedly exposed tunnels"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("'tart' is not supported"));
     }
 }

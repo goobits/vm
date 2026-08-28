@@ -8,6 +8,8 @@ use std::time::{Duration, Instant};
 
 use vm_config::config::VmConfig;
 use vm_core::error::Result;
+#[cfg(feature = "tart")]
+use vm_core::error::VmError;
 
 use super::storage;
 
@@ -156,6 +158,37 @@ impl TartCommand {
     }
 }
 
+#[cfg(feature = "tart")]
+pub(crate) fn validate_environment() -> Result<()> {
+    let output = TartCommand::new(None)
+        .command()
+        .arg("--version")
+        .output()
+        .map_err(|error| VmError::Dependency(format!("tart is not installed: {error}")))?;
+    if !output.status.success() {
+        return Err(VmError::Provider("tart is not available".to_string()));
+    }
+
+    let version = String::from_utf8_lossy(&output.stdout);
+    if tart_version_number(&version) == Some("2.35.0") {
+        Err(VmError::Provider(
+            "known incompatible Tart release 2.35.0".to_string(),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(any(feature = "tart", test))]
+fn tart_version_number(output: &str) -> Option<&str> {
+    output.split_whitespace().find(|value| {
+        value
+            .chars()
+            .next()
+            .is_some_and(|first| first.is_ascii_digit())
+    })
+}
+
 fn parse_ip_address(output: &str) -> Option<IpAddr> {
     output
         .split_whitespace()
@@ -164,7 +197,7 @@ fn parse_ip_address(output: &str) -> Option<IpAddr> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_ip_address, TartCommand, VmConfig};
+    use super::{parse_ip_address, tart_version_number, TartCommand, VmConfig};
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
     use std::path::PathBuf;
 
@@ -210,5 +243,12 @@ mod tests {
             Some(IpAddr::V6("fd00::37".parse::<Ipv6Addr>().unwrap()))
         );
         assert_eq!(parse_ip_address(""), None);
+    }
+
+    #[test]
+    fn parses_tart_version_without_assuming_a_prefix() {
+        assert_eq!(tart_version_number("tart 2.32.1\n"), Some("2.32.1"));
+        assert_eq!(tart_version_number("2.35.0\n"), Some("2.35.0"));
+        assert_eq!(tart_version_number("tart unknown\n"), None);
     }
 }

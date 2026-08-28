@@ -34,11 +34,11 @@ use vm_core::error::Result;
 // Internal imports
 use crate::{
     context::ProviderContext, preflight, CommandProvider, InstanceProvider, InstanceState,
-    Provider, ProvisioningProvider, TempProvider, VmStatusReport,
+    Provider, ProvisioningProvider, TempProvider, TunnelProvider, VmStatusReport,
 };
 use vm_config::config::VmConfig;
 
-pub fn validate_container_environment(engine: ContainerEngine) -> Result<()> {
+fn validate_container_environment(engine: ContainerEngine) -> Result<()> {
     engine.validate()
 }
 
@@ -311,8 +311,34 @@ impl Provider for ContainerProvider {
         Some(self)
     }
 
+    fn as_tunnel_provider(&self) -> Option<&dyn TunnelProvider> {
+        Some(self)
+    }
+
     fn clone_box(&self) -> Box<dyn Provider> {
         Box::new(self.clone())
+    }
+}
+
+impl TunnelProvider for ContainerProvider {
+    fn start_tcp_relay(
+        &self,
+        relay_name: &str,
+        host_port: u16,
+        target_instance: &str,
+        target_port: u16,
+    ) -> Result<String> {
+        self.runtime
+            .engine()
+            .start_tcp_relay(relay_name, host_port, target_instance, target_port)
+    }
+
+    fn relay_is_running(&self, relay_id: &str) -> bool {
+        self.runtime.engine().container_is_running(relay_id)
+    }
+
+    fn stop_relay(&self, relay_id: &str) -> Result<()> {
+        self.runtime.engine().stop_container(relay_id)
     }
 }
 
