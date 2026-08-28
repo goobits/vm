@@ -117,14 +117,16 @@ pub(super) async fn process_next() -> VmResult<bool> {
             ));
         };
         activation = renewed;
-        let results = stream::iter(targets.iter().cloned().map(|target_id| {
-            let client = client.clone();
-            let activation = activation.clone();
-            let worker = worker.clone();
-            async move { activate_target(&client, &activation, &target_id, &worker).await }
-        }))
-        .buffer_unordered(MAX_CONCURRENT_TARGETS)
-        .collect::<Vec<_>>()
+        let results = collect_bounded(
+            targets.iter().cloned(),
+            MAX_CONCURRENT_TARGETS,
+            |target_id| {
+                let client = client.clone();
+                let activation = activation.clone();
+                let worker = worker.clone();
+                async move { activate_target(&client, &activation, &target_id, &worker).await }
+            },
+        )
         .await;
         for result in results {
             result?;
@@ -132,6 +134,22 @@ pub(super) async fn process_next() -> VmResult<bool> {
     }
     finish(&client, &activation, &worker).await?;
     Ok(true)
+}
+
+async fn collect_bounded<I, F, Fut, Output>(
+    items: I,
+    max_concurrent: usize,
+    operation: F,
+) -> Vec<Output>
+where
+    I: IntoIterator,
+    F: FnMut(I::Item) -> Fut,
+    Fut: std::future::Future<Output = Output>,
+{
+    stream::iter(items.into_iter().map(operation))
+        .buffer_unordered(max_concurrent)
+        .collect()
+        .await
 }
 
 async fn plan(
@@ -307,6 +325,7 @@ fn target_id(provider: &str, environment: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::sync::{mpsc, Semaphore};
 
     fn activation(attempts: u32) -> ToolActivationRecord {
         ToolActivationRecord {
@@ -346,5 +365,46 @@ mod tests {
             target_update_key(&activation(2), "target-demo", "active"),
             "active-activate-release-target-demo-3"
         );
+    }
+
+    #[tokio::test]
+    async fn bounded_target_execution_overlaps_four_and_queues_the_fifth() {
+        let gate = std::sync::Arc::new(Semaphore::new(0));
+        let (started_tx, mut started_rx) = mpsc::unbounded_channel();
+        let task = tokio::spawn({
+            let gate = std::sync::Arc::clone(&gate);
+            async move {
+                collect_bounded(0..5, MAX_CONCURRENT_TARGETS, move |target| {
+                    let gate = std::sync::Arc::clone(&gate);
+                    let started_tx = started_tx.clone();
+                    async move {
+                        started_tx.send(target).unwrap();
+                        gate.acquire().await.unwrap().forget();
+                        target
+                    }
+                })
+                .await
+            }
+        });
+
+        let mut first_batch = Vec::new();
+        for _ in 0..MAX_CONCURRENT_TARGETS {
+            first_batch.push(started_rx.recv().await.unwrap());
+        }
+        first_batch.sort_unstable();
+        assert_eq!(first_batch, [0, 1, 2, 3]);
+        assert!(started_rx.try_recv().is_err());
+
+        gate.add_permits(1);
+        let fifth = tokio::time::timeout(Duration::from_secs(1), started_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(fifth, 4);
+
+        gate.add_permits(MAX_CONCURRENT_TARGETS);
+        let mut completed = task.await.unwrap();
+        completed.sort_unstable();
+        assert_eq!(completed, [0, 1, 2, 3, 4]);
     }
 }
