@@ -138,13 +138,26 @@ mod tests {
 
     #[test]
     fn home_repair_is_versioned_and_mount_aware() {
-        assert!(HOME_STATE_REPAIR.contains("REPAIR_VERSION=1"));
+        assert!(HOME_STATE_REPAIR.contains("REPAIR_VERSION=2"));
         assert!(HOME_STATE_REPAIR.contains("home-repair"));
         assert!(HOME_STATE_REPAIR.contains("VM_HOME_REPAIR_FORCE"));
         assert!(HOME_STATE_REPAIR.contains("full_repair"));
         assert!(HOME_STATE_REPAIR.contains("state_fingerprint"));
         assert!(HOME_STATE_REPAIR.contains("find \"$path\" -xdev"));
+        assert!(HOME_STATE_REPAIR.contains("quarantine_file"));
+        assert!(!HOME_STATE_REPAIR.contains("-name '*.json' -size 0 -delete"));
+        assert!(!HOME_STATE_REPAIR.contains("marker.tmp.$$"));
         assert_eq!(ANSIBLE_PLAYBOOK.matches("repair-home-state.sh").count(), 0);
+    }
+
+    #[test]
+    fn ansible_does_not_interpolate_configuration_into_shell_commands() {
+        assert!(!ANSIBLE_PLAYBOOK.contains("pipx install {{"));
+        assert!(!ANSIBLE_PLAYBOOK.contains("git config --global user.name {{"));
+        assert!(!ANSIBLE_PLAYBOOK.contains("https://sh.rustup.rs"));
+        assert!(ANSIBLE_PLAYBOOK.contains("checksum: 'sha256:https://static.rust-lang.org"));
+        assert!(!super::MANAGE_SERVICE_TASK.contains("shell: \"{{ item }}\""));
+        assert!(!super::SERVICE_DEFINITIONS.contains("curl -fsSL"));
     }
 
     #[test]

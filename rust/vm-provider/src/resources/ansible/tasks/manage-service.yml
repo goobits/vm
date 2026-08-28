@@ -7,10 +7,27 @@
 #   - project_config: The full project configuration
 #   - is_docker_container: Boolean indicating if running in Docker
 
-- name: "Run {{ service_name }} pre-installation commands"
-  shell: "{{ item }}"
-  loop: "{{ service_pre_install_commands }}"
-  when: service_pre_install_commands | length > 0
+- name: "Validate {{ service_name }} service definition"
+  assert:
+    that:
+      - service_name is match('^[a-z][a-z0-9_-]{0,63}$')
+      - service_systemd_name == '' or service_systemd_name is match('^[A-Za-z0-9_.@-]{1,128}$')
+      - service_supervisor_user == '' or service_supervisor_user is match('^[a-z_][a-z0-9_-]{0,31}$')
+      - service_port == '' or ((service_port | string) is match('^[0-9]+$') and (service_port | int) >= 1 and (service_port | int) <= 65535)
+    quiet: true
+    fail_msg: "Refusing unsafe {{ service_name }} service definition"
+
+- name: "Validate MySQL database identifier"
+  assert:
+    that:
+      - (project_config.services.mysql.database | default(project_config.project.name + '_dev')) is match('^[A-Za-z0-9_]{1,64}$')
+    quiet: true
+    fail_msg: Refusing unsafe MySQL database identifier
+  when: service_name == 'mysql'
+
+- name: "Reset {{ service_name }} discovered version"
+  set_fact:
+    service_version: ''
 
 - name: "Install {{ service_name }} dependencies"
   apt:
@@ -47,20 +64,34 @@
   when: service_config_lines | length > 0
 
 - name: "Get {{ service_name }} version (if needed)"
-  shell: "{{ service_version_command }}"
+  command:
+    argv: "{{ service_version_command_argv }}"
   register: service_version_result
-  when: service_version_command != ""
+  changed_when: false
+  when: service_version_command_argv | length > 0
+
+- name: "Select {{ service_name }} version"
+  set_fact:
+    service_version: "{{ service_version_result.stdout_lines | select('match', '^[0-9]+$') | sort | first }}"
+  when: service_version_command_argv | length > 0
+
+- name: "Validate {{ service_name }} version"
+  assert:
+    that:
+      - service_version is match('^[0-9]+$')
+    quiet: true
+  when: service_version_command_argv | length > 0
 
 - name: "Configure {{ service_name }} with version-specific paths"
   lineinfile:
-    path: "{{ item.path | replace('VERSION', service_version_result.stdout) }}"
+    path: "{{ item.path | replace('VERSION', service_version) }}"
     regexp: "{{ item.regexp }}"
     line: "{{ item.line }}"
   loop: "{{ service_versioned_config_lines }}"
   notify: "restart {{ service_name }}"
   when:
     - service_versioned_config_lines | length > 0
-    - service_version_result is defined
+    - service_version | length > 0
 
 - name: "Enable and start {{ service_name }} service (systemd)"
   systemd:
@@ -84,7 +115,7 @@
     dest: "/etc/supervisor/conf.d/{{ service_name }}.conf"
     content: |
       [program:{{ service_name }}]
-      command={{ service_supervisor_command | replace('VERSION', service_version_result.stdout) if (service_version_result is defined and service_version_result.stdout is defined) else service_supervisor_command }}
+      command={{ service_supervisor_command | replace('VERSION', service_version) if service_version | length > 0 else service_supervisor_command }}
       user={{ service_supervisor_user if service_supervisor_user != '' else 'root' }}
       autostart=true
       autorestart=true
@@ -114,7 +145,77 @@
     timeout: 30
   when: service_port != ""
 
-- name: "Run {{ service_name }} post-installation commands"
-  shell: "{{ item }}"
-  loop: "{{ service_post_install_commands }}"
-  when: service_post_install_commands | length > 0
+- name: "Check whether PulseAudio is already running"
+  command:
+    argv:
+      - pulseaudio
+      - --check
+      - -v
+  register: pulseaudio_check
+  changed_when: false
+  failed_when: pulseaudio_check.rc not in [0, 1]
+  when: service_name == 'audio'
+
+- name: "Start PulseAudio when needed"
+  command:
+    argv:
+      - pulseaudio
+      - --system
+      - --start
+  when:
+    - service_name == 'audio'
+    - pulseaudio_check.rc != 0
+
+- name: "Check current MySQL root credential"
+  command:
+    argv: [mysql, -u, root, --execute, 'SELECT 1']
+  environment:
+    MYSQL_PWD: "{{ project_config.services.mysql.password | default('mysql') }}"
+  register: mysql_credential_check
+  changed_when: false
+  failed_when: false
+  no_log: true
+  when: service_name == 'mysql'
+
+- name: "Set initial MySQL root credential"
+  command:
+    argv:
+      - mysqladmin
+      - -u
+      - root
+      - password
+      - "{{ project_config.services.mysql.password | default('mysql') }}"
+  no_log: true
+  when:
+    - service_name == 'mysql'
+    - mysql_credential_check.rc != 0
+
+- name: "Create configured MySQL database"
+  command:
+    argv:
+      - mysql
+      - -u
+      - root
+      - --execute
+      - "CREATE DATABASE IF NOT EXISTS `{{ project_config.services.mysql.database | default(project_config.project.name + '_dev') }}`;"
+  environment:
+    MYSQL_PWD: "{{ project_config.services.mysql.password | default('mysql') }}"
+  no_log: true
+  when: service_name == 'mysql'
+
+- name: "Run {{ service_name }} post-installation actions"
+  command:
+    argv: "{{ item.argv }}"
+    chdir: "{{ item.chdir | default(omit) }}"
+  environment: "{{ item.environment | default({}) }}"
+  register: service_post_action
+  failed_when: >-
+    service_post_action.rc not in (item.allowed_rcs | default([0])) and
+    (item.allowed_error | default('') == '' or item.allowed_error not in service_post_action.stderr)
+  changed_when: item.changed | default(true) | bool
+  no_log: "{{ item.no_log | default(false) | bool }}"
+  loop: "{{ service_post_install_actions }}"
+  loop_control:
+    label: "{{ service_name }} action {{ ansible_loop.index }}"
+    extended: true
+  when: service_post_install_actions | length > 0

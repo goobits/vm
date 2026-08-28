@@ -323,7 +323,8 @@ mod tests {
         assert!(HOME_STATE_REPAIR.contains("$home_dir/.claude/projects"));
         assert!(HOME_STATE_REPAIR.contains("$home_dir/.codex/sessions"));
         assert!(HOME_STATE_REPAIR.contains("home_is_writable"));
-        assert!(HOME_STATE_REPAIR.contains("rm -f /etc/profile.d/vm-worktree-repair.sh"));
+        assert!(HOME_STATE_REPAIR.contains("VM Git Worktree Auto-Repair"));
+        assert!(HOME_STATE_REPAIR.contains("Retaining unrecognized legacy profile"));
     }
 
     #[cfg(unix)]

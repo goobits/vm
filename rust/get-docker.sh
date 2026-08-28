@@ -122,6 +122,10 @@ REPO_ONLY=${REPO_ONLY:-0}
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--channel)
+			if [ "$#" -lt 2 ]; then
+				>&2 echo "--channel requires a value"
+				exit 1
+			fi
 			CHANNEL="$2"
 			shift
 			;;
@@ -129,10 +133,18 @@ while [ $# -gt 0 ]; do
 			DRY_RUN=1
 			;;
 		--mirror)
+			if [ "$#" -lt 2 ]; then
+				>&2 echo "--mirror requires a value"
+				exit 1
+			fi
 			mirror="$2"
 			shift
 			;;
 		--version)
+			if [ "$#" -lt 2 ]; then
+				>&2 echo "--version requires a value"
+				exit 1
+			fi
 			VERSION="${2#v}"
 			shift
 			;;
@@ -141,7 +153,12 @@ while [ $# -gt 0 ]; do
 			shift
 			;;
 		--*)
-			echo "Illegal option $1"
+			>&2 echo "Illegal option $1"
+			exit 1
+			;;
+		*)
+			>&2 echo "Unexpected argument $1"
+			exit 1
 			;;
 	esac
 	shift $(( $# > 0 ? 1 : 0 ))
@@ -167,6 +184,44 @@ case "$CHANNEL" in
 		;;
 	*)
 		>&2 echo "unknown CHANNEL '$CHANNEL': use either stable or test."
+		exit 1
+		;;
+esac
+
+# These values are interpolated into privileged `sh -c` commands below. Keep
+# this vendored installer limited to the repositories it explicitly supports,
+# and reject shell metacharacters in versions before any privileged command is
+# assembled.
+case "$DOWNLOAD_URL" in
+	https://download.docker.com|https://download-stage.docker.com|https://mirrors.aliyun.com/docker-ce|https://mirror.azure.cn/docker-ce)
+		;;
+	*)
+		>&2 echo "unsupported DOWNLOAD_URL '$DOWNLOAD_URL'"
+		exit 1
+		;;
+esac
+
+case "$REPO_FILE" in
+	docker-ce.repo|docker-ce-staging.repo)
+		;;
+	*)
+		>&2 echo "unsupported REPO_FILE '$REPO_FILE'"
+		exit 1
+		;;
+esac
+
+case "$VERSION" in
+	'') ;;
+	[0-9]*)
+		case "$VERSION" in
+			*[!0-9A-Za-z.+:~_-]*)
+				>&2 echo "invalid VERSION '$VERSION'"
+				exit 1
+				;;
+		esac
+		;;
+	*)
+		>&2 echo "invalid VERSION '$VERSION'"
 		exit 1
 		;;
 esac

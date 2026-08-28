@@ -2,34 +2,6 @@
 # Service configuration definitions for the reusable service management task
 # Each service defines the variables needed by tasks/manage-service.yml
 
-# YAML anchors for common patterns
-common_patterns: &common_patterns
-  # Common localhost bind configuration
-  localhost_bind_config: &localhost_bind_config
-    bind_address: "127.0.0.1"
-
-  # Common user group management pattern
-  user_group_commands: &user_group_commands
-    docker_group: &docker_group_cmd
-      "usermod -a -G docker {{ 'developer' if is_docker_container else project_config.ssh_user | default('developer') }}"
-    audio_group: &audio_group_cmd
-      "usermod -a -G audio {{ 'developer' if is_docker_container else project_config.ssh_user | default('developer') }}"
-    video_group: &video_group_cmd
-      "usermod -a -G video,render {{ 'developer' if is_docker_container else project_config.ssh_user | default('developer') }}"
-
-  # Common database setup patterns
-  database_patterns: &database_patterns
-    postgresql_db_setup: &postgresql_db_setup
-      - "sudo -u postgres psql -p {{ project_config.services.postgresql.port | default(5432) }} -c \"ALTER USER {{ project_config.services.postgresql.user | default('postgres') }} PASSWORD '{{ project_config.services.postgresql.password | default('postgres') }}';\""
-      - "sudo -u postgres createdb -p {{ project_config.services.postgresql.port | default(5432) }} \"{{ project_config.services.postgresql.database | default(project_config.project.name + '_dev') }}\" || echo \"Database exists\""
-
-    mysql_db_setup: &mysql_db_setup
-      - "mysql -u root -e \"ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ project_config.services.mysql.password | default('mysql') }}';\""
-      - "mysql -u root -p{{ project_config.services.mysql.password | default('mysql') }} -e \"CREATE DATABASE IF NOT EXISTS {{ project_config.services.mysql.database | default(project_config.project.name + '_dev') }};\""
-
-    mongodb_db_setup: &mongodb_db_setup
-      - "mongosh --port {{ project_config.services.mongodb.port | default(27017) }} --eval \"db = db.getSiblingDB('{{ project_config.project.name }}_dev'); db.createCollection('init'); print('Database {{ project_config.project.name }}_dev created');\""
-
 # Service definitions organized by category
 service_definitions:
 
@@ -38,7 +10,17 @@ service_definitions:
     service_packages:
       - postgresql
       - postgresql-contrib
-    service_version_command: "ls /etc/postgresql/ | head -1"
+    service_version_command_argv:
+      - find
+      - /etc/postgresql
+      - -mindepth
+      - '1'
+      - -maxdepth
+      - '1'
+      - -type
+      - d
+      - -printf
+      - '%f\n'
     service_versioned_config_lines:
       - path: "/etc/postgresql/VERSION/main/postgresql.conf"
         regexp: "^#?port ="
@@ -51,7 +33,33 @@ service_definitions:
     service_supervisor_user: "postgres"
     service_supervisor_environment: "LC_ALL=\"en_US.UTF-8\",LC_CTYPE=\"en_US.UTF-8\""
     service_port: "{{ project_config.services.postgresql.port | default(5432) }}"
-    service_post_install_commands: *postgresql_db_setup
+    service_post_install_actions:
+      - argv:
+          - sudo
+          - -u
+          - postgres
+          - --
+          - psql
+          - -p
+          - "{{ project_config.services.postgresql.port | default(5432) | string }}"
+          - --set
+          - "vm_user={{ project_config.services.postgresql.user | default('postgres') }}"
+          - --set
+          - "vm_password={{ project_config.services.postgresql.password | default('postgres') }}"
+          - --command
+          - 'ALTER USER :"vm_user" PASSWORD :''vm_password'';'
+        no_log: true
+      - argv:
+          - sudo
+          - -u
+          - postgres
+          - --
+          - createdb
+          - -p
+          - "{{ project_config.services.postgresql.port | default(5432) | string }}"
+          - --
+          - "{{ project_config.services.postgresql.database | default(project_config.project.name + '_dev') }}"
+        allowed_error: already exists
 
   mysql:
     service_packages:
@@ -68,7 +76,6 @@ service_definitions:
     service_supervisor_command: "/usr/sbin/mysqld --basedir=/usr --datadir=/var/lib/mysql --plugin-dir=/usr/lib/mysql/plugin --user=mysql --log-error=/var/log/mysql/error.log --pid-file=/var/run/mysqld/mysqld.pid"
     service_supervisor_user: "mysql"
     service_port: "{{ project_config.services.mysql.port | default(3306) }}"
-    service_post_install_commands: *mysql_db_setup
 
   mongodb:
     service_dependencies:
@@ -90,7 +97,15 @@ service_definitions:
     service_supervisor_command: "/usr/bin/mongod --config /etc/mongod.conf"
     service_supervisor_user: "mongodb"
     service_port: "{{ project_config.services.mongodb.port | default(27017) }}"
-    service_post_install_commands: *mongodb_db_setup
+    service_post_install_actions:
+      - argv:
+          - mongosh
+          - --port
+          - "{{ project_config.services.mongodb.port | default(27017) | string }}"
+          - --eval
+          - 'db = db.getSiblingDB(process.env.VM_MONGO_DATABASE); if (!db.getCollectionNames().includes("init")) db.createCollection("init");'
+        environment:
+          VM_MONGO_DATABASE: "{{ project_config.project.name }}_dev"
 
   # === CACHE & MESSAGE QUEUE SERVICES ===
   redis:
@@ -124,9 +139,6 @@ service_definitions:
       - docker-compose
     service_optional_packages:
       buildx: docker-buildx
-    service_post_install_commands:
-      - *docker_group_cmd
-      - "{{ 'docker buildx install' if project_config.services.docker.buildx | default(true) else 'echo \"Buildx disabled\"' }}"
     # Note: docker.io CLI is included in base Docker image for Docker provider
 
   # === MULTIMEDIA SERVICES ===
@@ -143,9 +155,9 @@ service_definitions:
       - path: "/etc/pulse/client.conf"
         regexp: "^#?default-sink"
         line: "# default-sink = auto"
-    service_post_install_commands:
-      - *audio_group_cmd
-      - "pulseaudio --check -v || (pulseaudio --system --start && echo 'PulseAudio started')"
+    service_post_install_actions:
+      - argv: [usermod, -a, -G, audio, --, '{{ project_user }}']
+        changed: false
     service_supervisor_command: "/usr/bin/pulseaudio --system --disallow-exit --disallow-module-loading --log-target=stderr"
     service_supervisor_user: "root"
 
@@ -156,16 +168,14 @@ service_definitions:
       - vulkan-tools
       - mesa-vulkan-drivers
       - mesa-va-drivers
-    service_post_install_commands:
-      - *video_group_cmd
+    service_post_install_actions:
+      - argv: [usermod, -a, -G, 'video,render', --, '{{ project_user }}']
+        changed: false
 
   # === SYSTEM & ENVIRONMENT SERVICES ===
   vm:
-    service_dependencies:
-      - curl
-      - gnupg
-      - ca-certificates
-    service_post_install_commands:
-      - "curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -"
-      - "apt-get install -y nodejs"
-      - "cd /workspace && npm link"
+    service_packages:
+      - nodejs
+    service_post_install_actions:
+      - argv: [npm, link]
+        chdir: /workspace
