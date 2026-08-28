@@ -1,8 +1,10 @@
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { dependencyMarker } from 'vm-acceptance-build-dependency';
 
 const target = process.argv[2];
 if (!['linux-amd64', 'linux-arm64'].includes(target)) process.exit(2);
+if (dependencyMarker !== 'locked-dependency-restored') process.exit(10);
 const cargo = spawnSync('cargo', ['check', '--locked', '--quiet'], { stdio: 'inherit' });
 if (cargo.status !== 0) process.exit(cargo.status ?? 1);
 for (const key of Object.keys(process.env)) {
