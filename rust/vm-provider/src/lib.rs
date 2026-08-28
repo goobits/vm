@@ -25,10 +25,10 @@ pub use resources::{ANSIBLE_PLAYBOOK, ZSHRC_TEMPLATE};
 pub use status::{
     InstanceState, MountUsage, ResourceUsage, RuntimeDiagnostics, ServiceStatus, VmStatusReport,
 };
-pub use tart::TartCommand;
-pub use tart_base::{
-    versioned_cache_name as versioned_tart_cache_name, versioned_image as versioned_tart_image,
-    LINUX_NAME as TART_LINUX_NAME, MACOS_NAME as TART_MACOS_NAME,
+pub use tart::{
+    build_vibe_base as build_tart_vibe_base,
+    ensure_configured_vibe_base as ensure_configured_tart_vibe_base, PreparedTartBase,
+    TartBaseSource,
 };
 pub use vm_core::error::{Result as VmResult, VmError};
 
@@ -44,8 +44,9 @@ mod shell_session;
 mod stable_name;
 mod status;
 mod tart;
-mod tart_base;
 mod temp_models;
+
+pub(crate) use tart::base as tart_base;
 
 mod audio;
 mod preflight;

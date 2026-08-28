@@ -1,9 +1,12 @@
 mod command;
 mod storage;
 
+pub(crate) mod base;
+
+pub use base::{build_vibe_base, ensure_configured_vibe_base, PreparedTartBase, TartBaseSource};
 #[cfg(feature = "tart")]
 pub(crate) use command::validate_environment;
-pub use command::TartCommand;
+pub(crate) use command::TartCommand;
 
 #[cfg(feature = "tart")]
 mod creation;

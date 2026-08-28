@@ -1,3 +1,5 @@
+#![cfg_attr(not(feature = "tart"), allow(dead_code))]
+
 use std::ffi::{OsStr, OsString};
 use std::io::Read;
 use std::net::IpAddr;
@@ -14,7 +16,7 @@ use vm_core::error::VmError;
 use super::storage;
 
 #[derive(Clone, Debug)]
-pub struct TartCommand {
+pub(crate) struct TartCommand {
     tart_home: Option<PathBuf>,
     config_path: Option<PathBuf>,
 }

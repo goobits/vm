@@ -3,9 +3,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use vm_core::vm_warning;
-use vm_provider::TartCommand;
 
-use crate::error::{VmError, VmResult};
+use crate::{VmError, VmResult};
+
+use super::{TartCommand, VIBE_AI_TOOLS_INSTALLER};
 
 #[derive(Debug, Deserialize, Serialize)]
 struct BaseReceipt {
@@ -53,7 +54,7 @@ pub(super) fn build(
     let staging = temporary_name(base_name, "staging");
     let mut command = Command::new("bash");
     tart.configure(&mut command);
-    command.env("VIBE_AI_TOOLS_INSTALLER", super::VIBE_AI_TOOLS_INSTALLER);
+    command.env("VIBE_AI_TOOLS_INSTALLER", VIBE_AI_TOOLS_INSTALLER);
     command.args([
         "-c",
         builder,
