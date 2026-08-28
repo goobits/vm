@@ -69,10 +69,9 @@ impl<'a> LifecycleOperations<'a> {
             || self.container_name(),
             |name| self.container_name_with_instance(name),
         );
-        let container_exists =
-            ContainerOps::container_exists(Some(self.executable), &container_name)
-                .map_err(|error| warn!("Failed to check existing containers: {error}"))
-                .unwrap_or(false);
+        let container_exists = ContainerOps::container_exists(&self.runtime, &container_name)
+            .map_err(|error| warn!("Failed to check existing containers: {error}"))
+            .unwrap_or(false);
         if container_exists {
             return Err(VmError::Conflict(format!(
                 "Container '{container_name}' already exists; start it or remove it before creating a replacement"
@@ -95,22 +94,26 @@ impl<'a> LifecycleOperations<'a> {
 
         let modified_config = self.prepare_config_for_build()?;
         mountpoints::prepare(&modified_config, self.project_dir, None)?;
-        let build_ops = BuildOperations::new(&modified_config, self.generated_dir, self.executable);
+        let build_ops = BuildOperations::with_runtime(
+            &modified_config,
+            self.generated_dir,
+            self.runtime.clone(),
+        );
         let (build_context, base_image, is_snapshot, prepared_base_identity) =
             build_ops.prepare_build_context()?;
 
         if let Some(networking) = &modified_config.networking {
             if !networking.networks.is_empty() {
                 info!("Ensuring Docker networks exist: {:?}", networking.networks);
-                ContainerOps::ensure_networks_exist(Some(self.executable), &networking.networks)?;
+                ContainerOps::ensure_networks_exist(&self.runtime, &networking.networks)?;
             }
         }
 
-        let compose_ops = ComposeOperations::new(
+        let compose_ops = ComposeOperations::with_runtime(
             &modified_config,
             self.generated_dir,
             self.project_dir,
-            self.executable,
+            self.runtime.clone(),
         );
         let build_args = build_ops.gather_build_args(&base_image);
         let base_image_identity = match prepared_base_identity {
@@ -146,9 +149,9 @@ impl<'a> LifecycleOperations<'a> {
             } else {
                 vec!["--quiet"]
             };
-            let mut command =
-                self.compose_runtime
-                    .command(self.executable, &compose_path, "build", &flags)?;
+            let mut command = self
+                .runtime
+                .compose_invocation(&compose_path, "build", &flags)?;
             command.extend(build_args.iter().map(String::as_str));
 
             vm_dbg!(
@@ -182,8 +185,8 @@ impl<'a> LifecycleOperations<'a> {
         if has_orphaned_services {
             self.start_orphaned_services_and_dev_container(&compose_path, &container_name)?;
         } else {
-            self.compose_runtime
-                .command(self.executable, &compose_path, "up", &["-d"])?
+            self.runtime
+                .compose_invocation(&compose_path, "up", &["-d"])?
                 .stream()
                 .map_err(|error| {
                     let error_message = error.to_string();

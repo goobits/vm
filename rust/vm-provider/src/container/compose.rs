@@ -12,6 +12,7 @@ use super::compose_context::{
     process_dotfiles,
 };
 use super::compose_model::{RenderedResources, RenderedStorage};
+use super::engine::ContainerRuntime;
 use super::preview::redact_compose;
 use super::UserConfig;
 use crate::guest_cache::GuestCachePolicy;
@@ -23,7 +24,7 @@ pub struct ComposeOperations<'a> {
     pub config: &'a VmConfig,
     pub generated_dir: &'a Path,
     pub project_dir: &'a Path,
-    pub executable: &'a str,
+    pub(crate) runtime: ContainerRuntime,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -33,17 +34,32 @@ enum RenderMode {
 }
 
 impl<'a> ComposeOperations<'a> {
+    #[cfg(test)]
     pub fn new(
         config: &'a VmConfig,
         generated_dir: &'a Path,
         project_dir: &'a Path,
         executable: &'a str,
     ) -> Self {
+        Self::with_runtime(
+            config,
+            generated_dir,
+            project_dir,
+            ContainerRuntime::with_executable(super::ContainerEngine::Docker, executable),
+        )
+    }
+
+    pub(crate) fn with_runtime(
+        config: &'a VmConfig,
+        generated_dir: &'a Path,
+        project_dir: &'a Path,
+        runtime: ContainerRuntime,
+    ) -> Self {
         Self {
             config,
             generated_dir,
             project_dir,
-            executable,
+            runtime,
         }
     }
 
@@ -202,8 +218,12 @@ impl<'a> ComposeOperations<'a> {
         tera_context.insert("port_binding", port_binding);
         tera_context.insert(
             "build_user_args_enabled",
-            &(!BuildOperations::new(self.config, self.generated_dir, self.executable)
-                .uses_preprovisioned_snapshot()),
+            &(!BuildOperations::with_runtime(
+                self.config,
+                self.generated_dir,
+                self.runtime.clone(),
+            )
+            .uses_preprovisioned_snapshot()),
         );
         tera_context.insert(
             "image_tag",
@@ -399,7 +419,8 @@ impl<'a> ComposeOperations<'a> {
     }
 
     pub fn render_docker_compose_with_mounts(&self, state: &TempVmState) -> Result<String> {
-        let build_ops = BuildOperations::new(self.config, self.generated_dir, self.executable);
+        let build_ops =
+            BuildOperations::with_runtime(self.config, self.generated_dir, self.runtime.clone());
         let build_context_dir = build_ops.prepare_compose_build_context()?;
         self.render_docker_compose_internal(
             &build_context_dir,

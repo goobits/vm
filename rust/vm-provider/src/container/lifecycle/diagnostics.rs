@@ -53,7 +53,7 @@ impl<'a> LifecycleOperations<'a> {
 
     fn inspect_layer_sizes(&self, container_name: &str) -> (Option<u64>, Option<u64>) {
         let Some(info) = command_json(
-            self.executable,
+            self.runtime.executable(),
             &["inspect", "--type", "container", "--size", container_name],
         )
         .and_then(|value| value.get(0).cloned()) else {
@@ -68,7 +68,7 @@ impl<'a> LifecycleOperations<'a> {
   file="/sys/fs/cgroup/$key"
   if [ -r "$file" ]; then printf '%s=' "$key"; cat "$file"; fi
 done"#;
-        let output = Command::new(self.executable)
+        let output = Command::new(self.runtime.executable())
             .args(["exec", container_name, "sh", "-c", SCRIPT])
             .output()
             .ok()?;
@@ -165,7 +165,7 @@ done"#;
         container_name: &str,
         target: &str,
     ) -> Option<(Option<u64>, Option<u64>)> {
-        let output = Command::new(self.executable)
+        let output = Command::new(self.runtime.executable())
             .args(["exec", container_name, "df", "-kP", target])
             .output()
             .ok()?;
@@ -174,7 +174,7 @@ done"#;
     }
 
     fn directory_size(&self, container_name: &str, target: &str) -> Option<u64> {
-        let output = Command::new(self.executable)
+        let output = Command::new(self.runtime.executable())
             .args(["exec", container_name, "du", "-sk", target])
             .output()
             .ok()?;

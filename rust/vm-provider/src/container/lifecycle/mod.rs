@@ -22,9 +22,10 @@ use vm_core::{
     error::{Result, VmError},
 };
 
+#[cfg(test)]
+use super::ContainerEngine;
 use super::{
-    artifacts::compose_path, compose::ComposeOperations, engine::ComposeRuntime, mountpoints,
-    ContainerEngine,
+    artifacts::compose_path, compose::ComposeOperations, engine::ContainerRuntime, mountpoints,
 };
 
 // Constants for container lifecycle operations
@@ -39,8 +40,7 @@ pub struct LifecycleOperations<'a> {
     pub config: &'a VmConfig,
     pub generated_dir: &'a std::path::PathBuf,
     pub project_dir: &'a std::path::PathBuf,
-    pub executable: &'a str,
-    pub(crate) compose_runtime: ComposeRuntime,
+    pub(crate) runtime: ContainerRuntime,
 }
 
 impl<'a> LifecycleOperations<'a> {
@@ -55,24 +55,21 @@ impl<'a> LifecycleOperations<'a> {
             config,
             generated_dir,
             project_dir,
-            executable,
-            compose_runtime: ComposeRuntime::BuiltIn,
+            runtime: ContainerRuntime::with_executable(ContainerEngine::Docker, executable),
         }
     }
 
-    pub fn with_engine(
+    pub(crate) fn with_runtime(
         config: &'a VmConfig,
         generated_dir: &'a std::path::PathBuf,
         project_dir: &'a std::path::PathBuf,
-        executable: &'a str,
-        engine: ContainerEngine,
+        runtime: ContainerRuntime,
     ) -> Self {
         Self {
             config,
             generated_dir,
             project_dir,
-            executable,
-            compose_runtime: engine.compose_runtime(),
+            runtime,
         }
     }
 }
@@ -84,7 +81,7 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
 
         if self.is_container_running(&state.container_name)? {
             info!("Stopping container before mount update");
-            stream_command(self.executable, &["stop", &state.container_name])?;
+            stream_command(self.runtime.executable(), &["stop", &state.container_name])?;
         }
 
         info!("Recreating container with new mounts");
@@ -92,8 +89,8 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
 
         info!("Starting container after mount update");
         let compose_path = compose_path(self.generated_dir, None);
-        self.compose_runtime
-            .command(self.executable, &compose_path, "up", &["-d"])?
+        self.runtime
+            .compose_invocation(&compose_path, "up", &["-d"])?
             .stream()?;
 
         info!("Checking container health after mount update");
@@ -113,11 +110,11 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
 
         let temp_config = self.prepare_temp_config()?;
         mountpoints::prepare(&temp_config, self.project_dir, Some(&state.mounts))?;
-        let compose_ops = ComposeOperations::new(
+        let compose_ops = ComposeOperations::with_runtime(
             &temp_config,
             self.generated_dir,
             self.project_dir,
-            self.executable,
+            self.runtime.clone(),
         );
         let content = compose_ops.render_docker_compose_with_mounts(state)?;
         let compose_path = compose_path(self.generated_dir, None);
@@ -126,7 +123,10 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
         crate::container::artifacts::secure_write_if_changed(&compose_path, content.as_bytes())?;
 
         info!("Removing old container before applying mount configuration");
-        if let Err(e) = stream_command(self.executable, &["rm", "-f", &state.container_name]) {
+        if let Err(e) = stream_command(
+            self.runtime.executable(),
+            &["rm", "-f", &state.container_name],
+        ) {
             warn!(
                 "Failed to remove old container {}: {}",
                 &state.container_name, e
@@ -139,7 +139,12 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
 
     fn check_container_health(&self, container_name: &str) -> Result<bool> {
         for _ in 0..CONTAINER_READINESS_MAX_ATTEMPTS {
-            if stream_command(self.executable, &["exec", container_name, "echo", "ready"]).is_ok() {
+            if stream_command(
+                self.runtime.executable(),
+                &["exec", container_name, "echo", "ready"],
+            )
+            .is_ok()
+            {
                 return Ok(true);
             }
             std::thread::sleep(std::time::Duration::from_secs(
@@ -150,7 +155,7 @@ impl<'a> TempProvider for LifecycleOperations<'a> {
     }
 
     fn is_container_running(&self, container_name: &str) -> Result<bool> {
-        let output = std::process::Command::new(self.executable)
+        let output = std::process::Command::new(self.runtime.executable())
             .args([
                 "inspect",
                 "--type",

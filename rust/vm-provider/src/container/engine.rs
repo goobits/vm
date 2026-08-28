@@ -18,6 +18,12 @@ pub enum ContainerEngine {
     Podman(PodmanCompose),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ContainerRuntime {
+    engine: ContainerEngine,
+    executable: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ComposeRuntime {
     BuiltIn,
@@ -204,6 +210,45 @@ impl ContainerEngine {
         } else {
             Err(command_error("stop container", &output.stderr))
         }
+    }
+}
+
+impl ContainerRuntime {
+    pub(crate) fn new(engine: ContainerEngine) -> Self {
+        Self {
+            engine,
+            executable: engine.executable().to_string(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_executable(engine: ContainerEngine, executable: impl Into<String>) -> Self {
+        Self {
+            engine,
+            executable: executable.into(),
+        }
+    }
+
+    pub(crate) fn engine(&self) -> ContainerEngine {
+        self.engine
+    }
+
+    pub(crate) fn executable(&self) -> &str {
+        &self.executable
+    }
+
+    pub(crate) fn compose_runtime(&self) -> ComposeRuntime {
+        self.engine.compose_runtime()
+    }
+
+    pub(crate) fn compose_invocation(
+        &self,
+        compose_path: &Path,
+        subcommand: &str,
+        extra_args: &[&str],
+    ) -> Result<ComposeInvocation> {
+        self.compose_runtime()
+            .command(self.executable(), compose_path, subcommand, extra_args)
     }
 }
 

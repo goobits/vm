@@ -20,6 +20,7 @@ mod preview;
 pub use build::BuildOperations;
 pub use command::ContainerOps;
 pub use engine::ContainerEngine;
+use engine::ContainerRuntime;
 pub use lifecycle::LifecycleOperations;
 
 // Standard library
@@ -77,14 +78,11 @@ pub struct ContainerProvider {
     config: VmConfig,
     project_dir: PathBuf,
     generated_dir: PathBuf,
-    executable: String,
-    engine: ContainerEngine,
+    runtime: ContainerRuntime,
 }
 
 impl ContainerProvider {
     pub fn new(config: VmConfig, engine: ContainerEngine) -> Result<Self> {
-        let executable = engine.executable().to_string();
-
         let project_dir = config.project_dir()?;
 
         let generated_dir = artifacts::project_artifacts_dir(&config, &project_dir)?;
@@ -93,19 +91,17 @@ impl ContainerProvider {
             config,
             project_dir,
             generated_dir,
-            executable,
-            engine,
+            runtime: ContainerRuntime::new(engine),
         })
     }
 
     /// Helper to create LifecycleOperations instance
     fn lifecycle_ops(&self) -> LifecycleOperations<'_> {
-        LifecycleOperations::with_engine(
+        LifecycleOperations::with_runtime(
             &self.config,
             &self.generated_dir,
             &self.project_dir,
-            &self.executable,
-            self.engine,
+            self.runtime.clone(),
         )
     }
 }
@@ -120,8 +116,13 @@ pub fn render_compose_preview(
 ) -> Result<String> {
     let generated_dir = artifacts::project_artifacts_location(config, project_dir)?;
     let build_context = generated_dir.join("build_context");
-    compose::ComposeOperations::new(config, &generated_dir, project_dir, "docker")
-        .render_docker_compose_preview(&build_context, instance_name, context)
+    compose::ComposeOperations::with_runtime(
+        config,
+        &generated_dir,
+        project_dir,
+        ContainerRuntime::new(ContainerEngine::Docker),
+    )
+    .render_docker_compose_preview(&build_context, instance_name, context)
 }
 
 /// Shared template engine for Docker compose operations
@@ -222,27 +223,23 @@ impl CommandProvider for ContainerProvider {
             destination.to_string()
         };
 
-        ContainerOps::copy(
-            Some(&self.executable),
-            &resolved_source,
-            &resolved_destination,
-        )
+        ContainerOps::copy(&self.runtime, &resolved_source, &resolved_destination)
     }
 }
 
 impl InstanceProvider for ContainerProvider {
     fn name(&self) -> &'static str {
-        self.engine.name()
+        self.runtime.engine().name()
     }
 
     fn create(&self, context: &ProviderContext) -> Result<()> {
-        validate_container_environment(self.engine)?;
+        validate_container_environment(self.runtime.engine())?;
         preflight::check_system_resources()?;
         self.lifecycle_ops().create_container(context)
     }
 
     fn create_instance(&self, instance_name: &str, context: &ProviderContext) -> Result<()> {
-        validate_container_environment(self.engine)?;
+        validate_container_environment(self.runtime.engine())?;
         preflight::check_system_resources()?;
         let lifecycle = self.lifecycle_ops();
         lifecycle.create_container_with_instance(instance_name, context)
@@ -281,15 +278,15 @@ impl InstanceProvider for ContainerProvider {
     }
 
     fn list_instances(&self) -> Result<Vec<crate::InstanceInfo>> {
-        ownership::list_instances(&self.executable, self.engine)
+        ownership::list_instances(&self.runtime)
     }
 
     fn instance_config_path(&self, instance: &str) -> Result<Option<PathBuf>> {
-        ownership::instance_config_path(&self.executable, instance)
+        ownership::instance_config_path(&self.runtime, instance)
     }
 
     fn reusable_host_ports(&self, environment: &str) -> Result<Vec<u16>> {
-        ownership::reusable_host_ports(&self.executable, environment)
+        ownership::reusable_host_ports(&self.runtime, environment)
     }
 }
 

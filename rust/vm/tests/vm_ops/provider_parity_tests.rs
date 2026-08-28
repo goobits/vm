@@ -2,19 +2,24 @@ use super::helpers::{VmOpsTestFixture, TEST_MUTEX};
 use anyhow::Result;
 
 #[test]
-#[ignore = "Creates real Docker containers; run with --ignored"]
+#[ignore = "Creates real provider environments; run with --ignored"]
 fn test_vm_lifecycle_provider_parity() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
     fixture.create_test_dockerfile()?;
 
-    let providers = ["docker", "tart"];
+    let providers = ["docker", "podman", "tart"];
 
     for &provider in &providers {
         println!("Testing provider: {}", provider);
 
         if provider == "docker" && !fixture.is_docker_available() {
             println!("Skipping Docker test: Docker not available");
+            continue;
+        }
+
+        if provider == "podman" && !fixture.is_podman_available() {
+            println!("Skipping Podman test: Podman Compose not available");
             continue;
         }
 

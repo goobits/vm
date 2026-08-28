@@ -28,17 +28,12 @@ impl LifecycleOperations<'_> {
             || format!("{container_name}-package-edge"),
             |name| format!("{name}-package-edge"),
         );
-        if package_edge_is_current(self.executable, &edge_container, &edge.revision) {
+        if package_edge_is_current(self.runtime.executable(), &edge_container, &edge.revision) {
             return Ok(());
         }
 
-        self.compose_runtime
-            .command(
-                self.executable,
-                &compose_path,
-                "up",
-                &["--detach", "package-edge"],
-            )?
+        self.runtime
+            .compose_invocation(&compose_path, "up", &["--detach", "package-edge"])?
             .stream()
     }
 }

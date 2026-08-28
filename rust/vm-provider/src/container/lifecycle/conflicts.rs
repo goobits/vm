@@ -13,15 +13,14 @@ impl<'a> LifecycleOperations<'a> {
         container_name: &str,
     ) -> Result<()> {
         let expected_services =
-            ContainerOps::list_managed_service_containers(Some(self.executable), container_name)?;
-        let running =
-            ContainerOps::running_container_names(Some(self.executable)).unwrap_or_default();
+            ContainerOps::list_managed_service_containers(&self.runtime, container_name)?;
+        let running = ContainerOps::running_container_names(&self.runtime).unwrap_or_default();
         for service in &expected_services {
             if running.contains(service) {
                 continue;
             }
 
-            if let Err(error) = ContainerOps::start_container(Some(self.executable), service) {
+            if let Err(error) = ContainerOps::start_container(&self.runtime, service) {
                 warn!("Failed to start existing service container '{service}': {error}");
             } else {
                 info!("Started existing service: {service}");
@@ -29,8 +28,8 @@ impl<'a> LifecycleOperations<'a> {
         }
 
         let flags = ["-d", "--no-deps", "--no-recreate", container_name];
-        self.compose_runtime
-            .command(self.executable, compose_path, "up", &flags)?
+        self.runtime
+            .compose_invocation(compose_path, "up", &flags)?
             .stream()
             .map_err(|error| {
                 VmError::Internal(format!(
@@ -69,8 +68,7 @@ impl<'a> LifecycleOperations<'a> {
             || self.container_name(),
             |instance| self.container_name_with_instance(instance),
         );
-        let orphaned =
-            ContainerOps::list_managed_service_containers(Some(self.executable), &environment)?;
+        let orphaned = ContainerOps::list_managed_service_containers(&self.runtime, &environment)?;
 
         if orphaned.is_empty() {
             return Ok(false);

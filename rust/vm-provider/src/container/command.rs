@@ -7,21 +7,23 @@ use std::process::Command;
 use vm_core::error::{Result, VmError};
 use vm_core::vm_dbg;
 
+use super::engine::ContainerRuntime;
+
 /// Builder for container-engine commands with consistent error handling.
 ///
 /// Provides one way to construct and execute engine commands.
 #[derive(Debug, Clone)]
 pub struct ContainerCommand {
-    executable: String,
+    runtime: ContainerRuntime,
     subcommand: Option<String>,
     args: Vec<String>,
 }
 
 impl ContainerCommand {
     /// Create a new container-engine command builder.
-    pub fn new(executable: Option<&str>) -> Self {
+    pub(crate) fn new(runtime: &ContainerRuntime) -> Self {
         Self {
-            executable: executable.unwrap_or("docker").to_string(),
+            runtime: runtime.clone(),
             subcommand: None,
             args: Vec::new(),
         }
@@ -86,12 +88,13 @@ impl ContainerCommand {
 
     /// Build the underlying Command object.
     fn build_command(self) -> Result<Command> {
-        let mut cmd = Command::new(&self.executable);
+        let mut cmd = Command::new(self.runtime.executable());
 
-        // Enable BuildKit for all Docker commands to leverage parallel builds and cache mounts
-        cmd.env("DOCKER_BUILDKIT", "1");
-        cmd.env("COMPOSE_DOCKER_CLI_BUILD", "1");
-        cmd.env("BUILDKIT_PROGRESS", "plain");
+        if matches!(self.runtime.engine(), super::ContainerEngine::Docker) {
+            cmd.env("DOCKER_BUILDKIT", "1");
+            cmd.env("COMPOSE_DOCKER_CLI_BUILD", "1");
+            cmd.env("BUILDKIT_PROGRESS", "plain");
+        }
 
         if let Some(subcmd) = self.subcommand {
             cmd.arg(subcmd);
@@ -100,12 +103,6 @@ impl ContainerCommand {
         cmd.args(self.args);
 
         Ok(cmd)
-    }
-}
-
-impl Default for ContainerCommand {
-    fn default() -> Self {
-        Self::new(None)
     }
 }
 
@@ -121,8 +118,8 @@ impl ContainerOps {
     /// # Arguments
     /// * `all` - Include stopped containers (uses -a flag)
     /// * `format` - Docker format string (e.g., "{{.Names}}")
-    pub fn list_containers(executable: Option<&str>, all: bool, format: &str) -> Result<String> {
-        let mut cmd = ContainerCommand::new(executable).subcommand("ps");
+    pub fn list_containers(runtime: &ContainerRuntime, all: bool, format: &str) -> Result<String> {
+        let mut cmd = ContainerCommand::new(runtime).subcommand("ps");
 
         if all {
             cmd = cmd.arg("-a");
@@ -133,11 +130,11 @@ impl ContainerOps {
 
     /// List VM-managed service containers owned by one environment.
     pub fn list_managed_service_containers(
-        executable: Option<&str>,
+        runtime: &ContainerRuntime,
         environment: &str,
     ) -> Result<Vec<String>> {
         let instance = environment.strip_suffix("-dev").unwrap_or(environment);
-        let output = ContainerCommand::new(executable)
+        let output = ContainerCommand::new(runtime)
             .subcommand("ps")
             .arg("-a")
             .arg("--filter")
@@ -156,16 +153,16 @@ impl ContainerOps {
     }
 
     /// Check if a container exists by name.
-    pub fn container_exists(executable: Option<&str>, container_name: &str) -> Result<bool> {
-        let output = Self::list_containers(executable, true, "{{.Names}}")?;
+    pub fn container_exists(runtime: &ContainerRuntime, container_name: &str) -> Result<bool> {
+        let output = Self::list_containers(runtime, true, "{{.Names}}")?;
         Ok(output.lines().any(|line| line.trim() == container_name))
     }
 
     /// Return the names of all currently running containers.
     pub fn running_container_names(
-        executable: Option<&str>,
+        runtime: &ContainerRuntime,
     ) -> Result<std::collections::HashSet<String>> {
-        Ok(Self::list_containers(executable, false, "{{.Names}}")?
+        Ok(Self::list_containers(runtime, false, "{{.Names}}")?
             .lines()
             .map(str::trim)
             .filter(|name| !name.is_empty())
@@ -175,10 +172,10 @@ impl ContainerOps {
 
     /// Return the immutable image reference recorded on an existing container.
     pub fn container_image_reference(
-        executable: Option<&str>,
+        runtime: &ContainerRuntime,
         container_name: &str,
     ) -> Result<String> {
-        let image = ContainerCommand::new(executable)
+        let image = ContainerCommand::new(runtime)
             .subcommand("inspect")
             .arg("--format")
             .arg("{{.Config.Image}}")
@@ -199,8 +196,8 @@ impl ContainerOps {
     /// # Arguments
     /// * `source` - Source path (container:path or local path)
     /// * `destination` - Destination path (container:path or local path)
-    pub fn copy(executable: Option<&str>, source: &str, destination: &str) -> Result<()> {
-        ContainerCommand::new(executable)
+    pub fn copy(runtime: &ContainerRuntime, source: &str, destination: &str) -> Result<()> {
+        ContainerCommand::new(runtime)
             .subcommand("cp")
             .arg(source)
             .arg(destination)
@@ -208,8 +205,8 @@ impl ContainerOps {
     }
 
     /// Start a container by name.
-    pub fn start_container(executable: Option<&str>, container_name: &str) -> Result<()> {
-        ContainerCommand::new(executable)
+    pub fn start_container(runtime: &ContainerRuntime, container_name: &str) -> Result<()> {
+        ContainerCommand::new(runtime)
             .subcommand("start")
             .arg(container_name)
             .execute_with_output()
@@ -217,8 +214,8 @@ impl ContainerOps {
     }
 
     /// Resume a paused container by name.
-    pub fn unpause_container(executable: Option<&str>, container_name: &str) -> Result<()> {
-        ContainerCommand::new(executable)
+    pub fn unpause_container(runtime: &ContainerRuntime, container_name: &str) -> Result<()> {
+        ContainerCommand::new(runtime)
             .subcommand("unpause")
             .arg(container_name)
             .execute_with_output()
@@ -227,11 +224,11 @@ impl ContainerOps {
 
     /// Remove a container by name (with force flag).
     pub fn remove_container(
-        executable: Option<&str>,
+        runtime: &ContainerRuntime,
         container_name: &str,
         force: bool,
     ) -> Result<()> {
-        let mut cmd = ContainerCommand::new(executable).subcommand("rm");
+        let mut cmd = ContainerCommand::new(runtime).subcommand("rm");
 
         if force {
             cmd = cmd.arg("-f");
@@ -241,8 +238,8 @@ impl ContainerOps {
     }
 
     /// Test container readiness by executing a simple command.
-    pub fn test_container_readiness(executable: Option<&str>, container_name: &str) -> bool {
-        ContainerCommand::new(executable)
+    pub fn test_container_readiness(runtime: &ContainerRuntime, container_name: &str) -> bool {
+        ContainerCommand::new(runtime)
             .subcommand("exec")
             .arg(container_name)
             .arg("echo")
@@ -252,8 +249,8 @@ impl ContainerOps {
     }
 
     /// Check if a Docker network exists by name.
-    pub fn network_exists(executable: Option<&str>, network_name: &str) -> Result<bool> {
-        let output = ContainerCommand::new(executable)
+    pub fn network_exists(runtime: &ContainerRuntime, network_name: &str) -> Result<bool> {
+        let output = ContainerCommand::new(runtime)
             .subcommand("network")
             .arg("ls")
             .arg("--format")
@@ -264,10 +261,10 @@ impl ContainerOps {
     }
 
     /// Create a Docker network with the specified name.
-    pub fn create_network(executable: Option<&str>, network_name: &str) -> Result<()> {
+    pub fn create_network(runtime: &ContainerRuntime, network_name: &str) -> Result<()> {
         vm_dbg!("Creating Docker network: {}", network_name);
 
-        ContainerCommand::new(executable)
+        ContainerCommand::new(runtime)
             .subcommand("network")
             .arg("create")
             .arg(network_name)
@@ -281,11 +278,11 @@ impl ContainerOps {
     }
 
     /// Ensure all specified networks exist, creating them if necessary.
-    pub fn ensure_networks_exist(executable: Option<&str>, networks: &[String]) -> Result<()> {
+    pub fn ensure_networks_exist(runtime: &ContainerRuntime, networks: &[String]) -> Result<()> {
         for network in networks {
-            if !Self::network_exists(executable, network)? {
+            if !Self::network_exists(runtime, network)? {
                 vm_dbg!("Network '{}' does not exist, creating it...", network);
-                Self::create_network(executable, network)?;
+                Self::create_network(runtime, network)?;
             } else {
                 vm_dbg!("Network '{}' already exists", network);
             }
@@ -296,13 +293,13 @@ impl ContainerOps {
     /// Build a custom Docker image from a Dockerfile.
     ///
     /// # Arguments
-    /// * `executable` - The docker executable to use (e.g. "docker" or "podman")
+    /// * `runtime` - The validated container runtime
     /// * `dockerfile_path` - Path to the Dockerfile
     /// * `image_name` - Tag for the built image (e.g., "supercool:latest")
     /// * `context_dir` - Build context directory (usually parent of Dockerfile)
     /// * `build_args` - Optional build arguments to pass to docker build (--build-arg KEY=VALUE)
     pub fn build_custom_image(
-        executable: Option<&str>,
+        runtime: &ContainerRuntime,
         dockerfile_path: &std::path::Path,
         image_name: &str,
         context_dir: &std::path::Path,
@@ -311,11 +308,11 @@ impl ContainerOps {
         use tracing::info;
         use vm_core::command_stream::stream_command;
 
-        let exec_name = executable.unwrap_or("docker");
+        let executable = runtime.executable();
 
         info!(
             "Building custom base image '{}' from {:?} using {}...",
-            image_name, dockerfile_path, exec_name
+            image_name, dockerfile_path, executable
         );
         info!("This may take 5-15 minutes on first build...");
 
@@ -336,8 +333,7 @@ impl ContainerOps {
         }
 
         args.push(context_dir.to_string_lossy().to_string());
-
-        stream_command(exec_name, &args)?;
+        stream_command(executable, &args)?;
 
         info!("Successfully built custom base image '{}'", image_name);
         Ok(())
@@ -347,10 +343,12 @@ impl ContainerOps {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::container::ContainerEngine;
 
     #[test]
     fn test_docker_command_builder() {
-        let cmd = ContainerCommand::new(None)
+        let runtime = ContainerRuntime::new(ContainerEngine::Docker);
+        let cmd = ContainerCommand::new(&runtime)
             .subcommand("ps")
             .arg("-a")
             .arg("--format")
@@ -367,25 +365,26 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let temp = tempfile::TempDir::new().unwrap();
-        let runtime = temp.path().join("docker");
+        let runtime_path = temp.path().join("docker");
         let log = temp.path().join("args");
         fs::write(
-            &runtime,
+            &runtime_path,
             format!(
                 "#!/bin/sh\nprintf '%s\\n' \"$*\" > '{}'\nprintf 'demo-dev\\ndemo-postgres\\ndemo-package-edge\\n'\n",
                 log.display()
             ),
         )
         .unwrap();
-        let mut permissions = fs::metadata(&runtime).unwrap().permissions();
+        let mut permissions = fs::metadata(&runtime_path).unwrap().permissions();
         permissions.set_mode(0o755);
-        fs::set_permissions(&runtime, permissions).unwrap();
+        fs::set_permissions(&runtime_path, permissions).unwrap();
 
-        let services = ContainerOps::list_managed_service_containers(
-            Some(runtime.to_str().unwrap()),
-            "demo-dev",
-        )
-        .unwrap();
+        let runtime = ContainerRuntime::with_executable(
+            ContainerEngine::Docker,
+            runtime_path.to_string_lossy(),
+        );
+
+        let services = ContainerOps::list_managed_service_containers(&runtime, "demo-dev").unwrap();
 
         assert_eq!(services, ["demo-postgres", "demo-package-edge"]);
         let args = fs::read_to_string(log).unwrap();

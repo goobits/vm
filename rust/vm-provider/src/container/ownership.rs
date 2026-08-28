@@ -3,15 +3,12 @@ use std::process::Command;
 
 use vm_core::error::{Result, VmError};
 
-use super::{ContainerEngine, ContainerOps};
+use super::{engine::ContainerRuntime, ContainerOps};
 use crate::instance::create_container_instance_info;
 use crate::InstanceInfo;
 
-pub(super) fn list_instances(
-    executable: &str,
-    engine: ContainerEngine,
-) -> Result<Vec<InstanceInfo>> {
-    let output = Command::new(executable)
+pub(super) fn list_instances(runtime: &ContainerRuntime) -> Result<Vec<InstanceInfo>> {
+    let output = Command::new(runtime.executable())
         .args([
             "ps",
             "-a",
@@ -23,14 +20,15 @@ pub(super) fn list_instances(
         .output()
         .map_err(|error| {
             VmError::Internal(format!(
-                "Failed to list containers with vm label using '{executable}': {error}"
+                "Failed to list containers with vm label using '{}': {error}",
+                runtime.executable()
             ))
         })?;
 
     if !output.status.success() {
         return Err(VmError::Internal(format!(
             "Container listing failed using '{}': {}",
-            executable,
+            runtime.executable(),
             String::from_utf8_lossy(&output.stderr)
         )));
     }
@@ -46,7 +44,7 @@ pub(super) fn list_instances(
             let role = parts.get(6).copied().unwrap_or_default();
             is_environment_container(role, parts[0], project).then(|| {
                 create_container_instance_info(
-                    engine.name(),
+                    runtime.engine().name(),
                     parts[0],
                     parts[1],
                     parts[2],
@@ -59,8 +57,11 @@ pub(super) fn list_instances(
         .collect())
 }
 
-pub(super) fn instance_config_path(executable: &str, instance: &str) -> Result<Option<PathBuf>> {
-    let output = Command::new(executable)
+pub(super) fn instance_config_path(
+    runtime: &ContainerRuntime,
+    instance: &str,
+) -> Result<Option<PathBuf>> {
+    let output = Command::new(runtime.executable())
         .args(["inspect", "--type", "container", instance])
         .output()?;
     if !output.status.success() {
@@ -70,10 +71,13 @@ pub(super) fn instance_config_path(executable: &str, instance: &str) -> Result<O
     Ok(containers.first().and_then(config_path_from_inspect))
 }
 
-pub(super) fn reusable_host_ports(executable: &str, environment: &str) -> Result<Vec<u16>> {
+pub(super) fn reusable_host_ports(
+    runtime: &ContainerRuntime,
+    environment: &str,
+) -> Result<Vec<u16>> {
     let mut ports = Vec::new();
-    for service in ContainerOps::list_managed_service_containers(Some(executable), environment)? {
-        let output = Command::new(executable)
+    for service in ContainerOps::list_managed_service_containers(runtime, environment)? {
+        let output = Command::new(runtime.executable())
             .args([
                 "inspect",
                 "--type",

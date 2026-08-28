@@ -16,7 +16,7 @@ impl<'a> LifecycleOperations<'a> {
             ["chown", username.as_str(), super::TEMP_CONFIG_PATH],
             ["chmod", "600", super::TEMP_CONFIG_PATH],
         ] {
-            let output = Command::new(self.executable)
+            let output = Command::new(self.runtime.executable())
                 .args(["exec", "-u", "root", container_name])
                 .args(command)
                 .output()
@@ -39,7 +39,7 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     fn config_matches_container(&self, container_name: &str, config_json: &str) -> bool {
-        let output = Command::new(self.executable)
+        let output = Command::new(self.runtime.executable())
             .args(["exec", container_name, "cat", super::TEMP_CONFIG_PATH])
             .output();
 
@@ -172,7 +172,7 @@ impl<'a> LifecycleOperations<'a> {
 
         let source = BuildOperations::path_to_string(&generated_config_path)?;
         let destination = format!("{container_name}:{}", super::TEMP_CONFIG_PATH);
-        ContainerOps::copy(Some(self.executable), source, &destination).map_err(|error| {
+        ContainerOps::copy(&self.runtime, source, &destination).map_err(|error| {
             VmError::Internal(format!(
                 "Failed to copy VM configuration to container '{container_name}': {error}"
             ))

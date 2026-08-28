@@ -107,6 +107,23 @@ CMD ["sh", "-c", "echo 'VM Test Container Running' && sleep 3600"]
             .unwrap_or(false)
     }
 
+    /// Check whether Podman and one supported Compose frontend are available.
+    pub fn is_podman_available(&self) -> bool {
+        let engine_ready = Command::new("podman")
+            .arg("info")
+            .output()
+            .is_ok_and(|output| output.status.success());
+        let compose_ready = Command::new("podman")
+            .args(["compose", "version"])
+            .output()
+            .is_ok_and(|output| output.status.success())
+            || Command::new("podman-compose")
+                .arg("version")
+                .output()
+                .is_ok_and(|output| output.status.success());
+        engine_ready && compose_ready
+    }
+
     /// Check if Tart is available and working
     pub fn is_tart_available(&self) -> bool {
         if !cfg!(target_os = "macos") {
@@ -121,21 +138,21 @@ CMD ["sh", "-c", "echo 'VM Test Container Running' && sleep 3600"]
 
     /// Clean up any existing test containers
     pub fn cleanup_test_containers(&self) -> Result<()> {
-        // Force remove any existing test containers
-        let _ = Command::new("docker")
-            .args(["rm", "-f", &self.project_name])
-            .output();
+        for engine in ["docker", "podman"] {
+            let _ = Command::new(engine)
+                .args(["rm", "-f", &self.project_name])
+                .output();
 
-        // Also clean up any dangling containers with our test prefix
-        let _ = Command::new("docker")
-            .args([
-                "container",
-                "prune",
-                "-f",
-                "--filter",
-                &format!("label=project={}", self.project_name),
-            ])
-            .output();
+            let _ = Command::new(engine)
+                .args([
+                    "container",
+                    "prune",
+                    "-f",
+                    "--filter",
+                    &format!("label=project={}", self.project_name),
+                ])
+                .output();
+        }
 
         Ok(())
     }

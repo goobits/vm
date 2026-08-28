@@ -206,7 +206,7 @@ impl<'a> LifecycleOperations<'a> {
 
         loop {
             if crate::container::ContainerOps::test_container_readiness(
-                Some(self.executable),
+                &self.runtime,
                 container_name,
             ) {
                 return Ok(());
@@ -239,7 +239,7 @@ impl<'a> LifecycleOperations<'a> {
     pub fn provision_existing(&self, container: Option<&str>) -> Result<()> {
         let context = ProviderContext::default();
         let target_container = self.resolve_target_container(container)?;
-        let status_output = std::process::Command::new(self.executable)
+        let status_output = std::process::Command::new(self.runtime.executable())
             .args([
                 "inspect",
                 "--type",
@@ -288,11 +288,11 @@ impl<'a> LifecycleOperations<'a> {
         self.wait_for_container_ready(&container_name)?;
 
         let user_config = UserConfig::from_vm_config(self.config);
-        Self::repair_home_state(self.executable, &container_name, &user_config)?;
+        Self::repair_home_state(self.runtime.executable(), &container_name, &user_config)?;
 
         self.prepare_and_copy_config(&container_name)?;
 
-        Self::run_ansible_provisioning(self.executable, &container_name, context)
+        Self::run_ansible_provisioning(self.runtime.executable(), &container_name, context)
     }
 }
 

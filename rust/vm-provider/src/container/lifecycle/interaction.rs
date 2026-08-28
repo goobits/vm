@@ -46,7 +46,7 @@ impl<'a> LifecycleOperations<'a> {
             .as_ref()
             .and_then(|terminal| terminal.shell.as_deref())
             .unwrap_or(DEFAULT_SHELL);
-        Self::repair_home_state(self.executable, &target_container, &user_config)?;
+        Self::repair_home_state(self.runtime.executable(), &target_container, &user_config)?;
 
         let tty_flag = if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
             "-it"
@@ -74,7 +74,7 @@ impl<'a> LifecycleOperations<'a> {
         ];
         arguments.extend(command.iter().cloned());
         let argument_refs = arguments.iter().map(String::as_str).collect::<Vec<_>>();
-        duct::cmd(self.executable, &argument_refs)
+        duct::cmd(self.runtime.executable(), &argument_refs)
             .run()
             .map(|_| ())
             .map_err(|_| VmError::Internal("Interactive guest command failed".into()))
@@ -117,7 +117,7 @@ impl<'a> LifecycleOperations<'a> {
         // this final check preserves direct provider-call diagnostics without
         // repeating separate existence and running inspections.
         let status = duct::cmd(
-            self.executable,
+            self.runtime.executable(),
             &[
                 "inspect",
                 "--type",
@@ -160,7 +160,7 @@ impl<'a> LifecycleOperations<'a> {
 
         let receipt_root = vm_core::user_paths::vm_state_dir()?.join("home-repair");
         Self::repair_home_state_for_identity(
-            self.executable,
+            self.runtime.executable(),
             &container_name,
             &user_config,
             identity,
@@ -173,7 +173,7 @@ impl<'a> LifecycleOperations<'a> {
 
         // Container is running, proceed with exec
         let result = duct::cmd(
-            self.executable,
+            self.runtime.executable(),
             &[
                 "exec",
                 tty_flag,
@@ -232,7 +232,7 @@ impl<'a> LifecycleOperations<'a> {
     pub fn exec_in_container(&self, container: Option<&str>, cmd: &[String]) -> Result<()> {
         let args = self.container_exec_args(container, cmd, false)?;
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        stream_command_visible(self.executable, &arg_refs)
+        stream_command_visible(self.runtime.executable(), &arg_refs)
     }
 
     #[must_use = "command execution results should be handled"]
@@ -244,7 +244,7 @@ impl<'a> LifecycleOperations<'a> {
     ) -> Result<()> {
         let args = self.container_exec_args(container, cmd, true)?;
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        duct::cmd(self.executable, &arg_refs)
+        duct::cmd(self.runtime.executable(), &arg_refs)
             .stdin_bytes(input.to_vec())
             .run()
             .map(|_| ())
@@ -258,7 +258,7 @@ impl<'a> LifecycleOperations<'a> {
     ) -> Result<String> {
         let args = self.container_exec_args(container, cmd, false)?;
         let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
-        duct::cmd(self.executable, &arg_refs)
+        duct::cmd(self.runtime.executable(), &arg_refs)
             .stderr_capture()
             .read()
             .map_err(Into::into)
@@ -289,7 +289,7 @@ impl<'a> LifecycleOperations<'a> {
         let workspace_quoted = shell_session::quote_posix_argument(workspace_path);
         let worktree_repair = shell_session::worktree_repair_script(workspace_path);
 
-        Self::repair_home_state(self.executable, &target_container, &user_config)?;
+        Self::repair_home_state(self.runtime.executable(), &target_container, &user_config)?;
 
         let mut args: Vec<String> = vec!["exec".to_string()];
         if attach_stdin {
@@ -321,7 +321,7 @@ impl<'a> LifecycleOperations<'a> {
         // Use --tail to show last 50 lines and add timestamps
         let target_container = self.resolve_target_container(container)?;
         stream_command_visible(
-            self.executable,
+            self.runtime.executable(),
             &["logs", "--tail", "50", "-t", &target_container],
         )
         .map_err(|e| VmError::Internal(format!("Failed to show logs: {e}")))
@@ -364,7 +364,7 @@ impl<'a> LifecycleOperations<'a> {
             info!("Showing the last {tail} log lines for '{target_container}'");
         }
 
-        stream_command_visible(self.executable, &args)
+        stream_command_visible(self.runtime.executable(), &args)
             .map_err(|e| VmError::Internal(format!("Failed to show logs: {e}")))
     }
 
@@ -384,7 +384,7 @@ impl<'a> LifecycleOperations<'a> {
         };
 
         // Check if container exists
-        let check = std::process::Command::new(self.executable)
+        let check = std::process::Command::new(self.runtime.executable())
             .args(["inspect", "--type", "container", container])
             .output();
 

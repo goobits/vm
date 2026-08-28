@@ -11,7 +11,7 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     pub(super) fn instance_state_for_name(&self, container_name: &str) -> Result<InstanceState> {
-        let output = std::process::Command::new(self.executable)
+        let output = std::process::Command::new(self.runtime.executable())
             .args([
                 "inspect",
                 "--type",
@@ -42,7 +42,7 @@ impl<'a> LifecycleOperations<'a> {
 
     pub fn status_report(&self, container: Option<&str>) -> Result<VmStatusReport> {
         let container_name = self.resolve_probe_target(container)?;
-        let inspect_output = std::process::Command::new(self.executable)
+        let inspect_output = std::process::Command::new(self.runtime.executable())
             .args(["inspect", "--type", "container", &container_name])
             .output()
             .map_err(|error| VmError::Internal(format!("Failed to inspect container: {error}")))?;
@@ -90,7 +90,7 @@ impl<'a> LifecycleOperations<'a> {
 
         Ok(VmStatusReport {
             name: container_name,
-            provider: self.executable.to_string(),
+            provider: self.runtime.executable().to_string(),
             container_id: container_info["Id"].as_str().map(ToString::to_string),
             state: runtime_state,
             is_running,
@@ -130,7 +130,7 @@ impl<'a> LifecycleOperations<'a> {
         container_name: &str,
         host_config: &serde_json::Value,
     ) -> Result<ResourceUsage> {
-        let stats_output = std::process::Command::new(self.executable)
+        let stats_output = std::process::Command::new(self.runtime.executable())
             .args([
                 "stats",
                 "--no-stream",
@@ -184,7 +184,7 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     fn get_disk_usage(&self, container_name: &str) -> (Option<f64>, Option<f64>) {
-        let Ok(output) = std::process::Command::new(self.executable)
+        let Ok(output) = std::process::Command::new(self.runtime.executable())
             .args(["exec", container_name, "df", "-h", "/"])
             .output()
         else {
@@ -240,19 +240,19 @@ impl<'a> LifecycleOperations<'a> {
                 let host_port = self.get_host_port(container_name, port);
                 match name.as_str() {
                     "postgresql" => super::health::check_postgres_status(
-                        self.executable,
+                        self.runtime.executable(),
                         container_name,
                         port,
                         host_port,
                     ),
                     "redis" => super::health::check_redis_status(
-                        self.executable,
+                        self.runtime.executable(),
                         container_name,
                         port,
                         host_port,
                     ),
                     "mongodb" => super::health::check_mongodb_status(
-                        self.executable,
+                        self.runtime.executable(),
                         container_name,
                         port,
                         host_port,
@@ -284,7 +284,7 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     fn get_host_port(&self, container_name: &str, container_port: u16) -> Option<u16> {
-        let output = std::process::Command::new(self.executable)
+        let output = std::process::Command::new(self.runtime.executable())
             .args(["port", container_name, &container_port.to_string()])
             .output()
             .ok()?;

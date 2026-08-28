@@ -206,13 +206,14 @@ impl<'a> LifecycleOperations<'a> {
     #[must_use = "container resolution results should be checked"]
     pub(super) fn resolve_container_name(&self, partial_name: &str) -> Result<String> {
         // Get list of all containers
-        let output = std::process::Command::new(self.executable)
+        let output = std::process::Command::new(self.runtime.executable())
             .args(["ps", "-a", "--format", "{{.Names}}\t{{.ID}}"])
             .output()
             .map_err(|e| {
                 VmError::Internal(format!(
                     "Failed to list containers for name resolution using '{}': {}",
-                    self.executable, e
+                    self.runtime.executable(),
+                    e
                 ))
             })?;
 
@@ -228,7 +229,8 @@ impl<'a> LifecycleOperations<'a> {
             };
             return Err(VmError::Internal(format!(
                 "Container listing failed during name resolution with '{} ps -a --format ...': {}",
-                self.executable, details
+                self.runtime.executable(),
+                details
             )));
         }
 
@@ -240,7 +242,7 @@ impl<'a> LifecycleOperations<'a> {
                     name: name.to_string(),
                     id: id.to_string(),
                     status: String::new(),
-                    provider: self.executable.to_string(),
+                    provider: self.runtime.executable().to_string(),
                     project: None,
                     uptime: None,
                     created_at: None,
@@ -257,17 +259,17 @@ impl<'a> LifecycleOperations<'a> {
         container: Option<&str>,
         context: &ProviderContext,
     ) -> Result<()> {
-        let build_ops = BuildOperations::new(self.config, self.generated_dir, self.executable);
+        let build_ops =
+            BuildOperations::with_runtime(self.config, self.generated_dir, self.runtime.clone());
         let build_context = build_ops.prepare_compose_build_context()?;
         let target_container = self.resolve_probe_target(container)?;
-        let image_tag =
-            ContainerOps::container_image_reference(Some(self.executable), &target_container)?;
+        let image_tag = ContainerOps::container_image_reference(&self.runtime, &target_container)?;
 
-        let compose_ops = ComposeOperations::new(
+        let compose_ops = ComposeOperations::with_runtime(
             self.config,
             self.generated_dir,
             self.project_dir,
-            self.executable,
+            self.runtime.clone(),
         );
         if let Some(instance_name) = self.resolve_instance_name_for_target(container)? {
             compose_ops.write_docker_compose_with_instance_and_image_tag(

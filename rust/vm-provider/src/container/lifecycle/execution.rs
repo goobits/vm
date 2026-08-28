@@ -45,7 +45,7 @@ impl<'a> LifecycleOperations<'a> {
         match self.instance_state_for_name(&target_container)? {
             InstanceState::Running | InstanceState::Starting => return Ok(()),
             InstanceState::Paused => {
-                return ContainerOps::unpause_container(Some(self.executable), &target_container);
+                return ContainerOps::unpause_container(&self.runtime, &target_container);
             }
             InstanceState::Stopped | InstanceState::Suspended => {}
             InstanceState::Unknown(state) => {
@@ -58,7 +58,7 @@ impl<'a> LifecycleOperations<'a> {
         mountpoints::prepare(self.config, self.project_dir, None)?;
 
         if context.global_config.is_none() {
-            return ContainerOps::start_container(Some(self.executable), &target_container);
+            return ContainerOps::start_container(&self.runtime, &target_container);
         }
 
         self.regenerate_compose_with_context(container, context)?;
@@ -69,7 +69,7 @@ impl<'a> LifecycleOperations<'a> {
     pub fn stop_container(&self, container: Option<&str>) -> Result<()> {
         let target_container = self.resolve_target_container(container)?;
         // Let Docker honor the container's configured stop timeout.
-        duct::cmd(self.executable, &["stop", &target_container])
+        duct::cmd(self.runtime.executable(), &["stop", &target_container])
             .run()
             .map_err(|e| {
                 VmError::Internal(format!(
@@ -88,9 +88,7 @@ impl<'a> LifecycleOperations<'a> {
         let target_container = self.resolve_target_container(container)?;
 
         // Check if container exists before attempting destruction
-        if !ContainerOps::container_exists(Some(self.executable), &target_container)
-            .unwrap_or(false)
-        {
+        if !ContainerOps::container_exists(&self.runtime, &target_container).unwrap_or(false) {
             return Err(VmError::Internal(format!(
                 "Container '{target_container}' does not exist"
             )));
@@ -99,20 +97,18 @@ impl<'a> LifecycleOperations<'a> {
         let service_containers = if context.preserve_services {
             Vec::new()
         } else {
-            ContainerOps::list_managed_service_containers(Some(self.executable), &target_container)?
+            ContainerOps::list_managed_service_containers(&self.runtime, &target_container)?
         };
 
         // Remove the main dev container
-        let result = stream_command(self.executable, &["rm", "-f", &target_container]);
+        let result = stream_command(self.runtime.executable(), &["rm", "-f", &target_container]);
 
         // Optionally remove service containers based on context
         if !context.preserve_services {
             info!("Removing service containers");
             for service_name in service_containers {
                 info!("Removing service container: {}", service_name);
-                if let Err(e) =
-                    ContainerOps::remove_container(Some(self.executable), &service_name, true)
-                {
+                if let Err(e) = ContainerOps::remove_container(&self.runtime, &service_name, true) {
                     warn!("Failed to remove service container {}: {}", service_name, e);
                 }
             }
@@ -146,7 +142,7 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     fn start_named_with_compose(&self, container_name: &str) -> Result<()> {
-        if !ContainerOps::container_exists(Some(self.executable), container_name).unwrap_or(false) {
+        if !ContainerOps::container_exists(&self.runtime, container_name).unwrap_or(false) {
             return Err(VmError::NotFound(format!(
                 "Container '{container_name}' does not exist"
             )));
@@ -154,14 +150,13 @@ impl<'a> LifecycleOperations<'a> {
 
         self.reconcile_package_edge(container_name)?;
         let expected_services =
-            ContainerOps::list_managed_service_containers(Some(self.executable), container_name)?;
-        let running =
-            ContainerOps::running_container_names(Some(self.executable)).unwrap_or_default();
+            ContainerOps::list_managed_service_containers(&self.runtime, container_name)?;
+        let running = ContainerOps::running_container_names(&self.runtime).unwrap_or_default();
         for service in expected_services {
             if running.contains(&service) {
                 continue;
             }
-            ContainerOps::start_container(Some(self.executable), &service)?;
+            ContainerOps::start_container(&self.runtime, &service)?;
         }
 
         let project_name = self
@@ -181,7 +176,7 @@ impl<'a> LifecycleOperations<'a> {
                 container_name
             );
         }
-        ContainerOps::start_container(Some(self.executable), container_name)
+        ContainerOps::start_container(&self.runtime, container_name)
     }
 }
 
@@ -290,7 +285,7 @@ fi
 
         let error = ops.start_container(None, &context).unwrap_err();
 
-        assert!(matches!(error, VmError::NotFound(_)));
+        assert!(matches!(error, VmError::NotFound(_)), "{error:?}");
         let commands = fs::read_to_string(log).unwrap();
         assert_eq!(commands.lines().count(), 1);
         assert!(commands.starts_with("inspect "));

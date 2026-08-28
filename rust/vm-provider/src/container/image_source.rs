@@ -132,7 +132,7 @@ impl<'a> BuildOperations<'a> {
 
     fn ensure_image_available(&self, image: &str) -> Result<Option<Vec<u8>>> {
         // Check if image already exists locally to avoid unnecessary pulls (10-30s savings)
-        let inspect = Command::new(self.executable)
+        let inspect = Command::new(self.runtime.executable())
             .args(["image", "inspect", "--format", "{{.Id}}", image])
             .output()?;
 
@@ -157,7 +157,7 @@ impl<'a> BuildOperations<'a> {
                 );
             }
 
-            let output = Command::new(self.executable)
+            let output = Command::new(self.runtime.executable())
                 .args(["pull", image])
                 .output()?;
 
@@ -289,7 +289,7 @@ impl<'a> BuildOperations<'a> {
 
                 // Pass build args from ImageSpec::Build variant
                 ContainerOps::build_custom_image(
-                    Some(self.executable),
+                    &self.runtime,
                     path,
                     &image_name,
                     context,
@@ -345,7 +345,7 @@ impl<'a> BuildOperations<'a> {
                     })?;
 
                 // Check if image is already loaded
-                let image_identity = match Command::new(self.executable)
+                let image_identity = match Command::new(self.runtime.executable())
                     .args(["image", "inspect", "--format", "{{.Id}}", image_tag])
                     .output()
                 {
@@ -356,13 +356,14 @@ impl<'a> BuildOperations<'a> {
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                         return Err(VmError::Dependency(format!(
                             "Container engine '{}' is not installed or not in PATH",
-                            self.executable
+                            self.runtime.executable()
                         )));
                     }
                     Err(e) => {
                         return Err(VmError::Internal(format!(
                             "Failed to inspect the container image with '{}': {}",
-                            self.executable, e
+                            self.runtime.executable(),
+                            e
                         )));
                     }
                 };
@@ -381,7 +382,7 @@ impl<'a> BuildOperations<'a> {
                     }
 
                     stream_command(
-                        self.executable,
+                        self.runtime.executable(),
                         &["load", "-i", Self::path_to_string(&image_file_path)?],
                     )
                     .map_err(|e| {

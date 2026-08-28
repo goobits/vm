@@ -10,6 +10,7 @@ use tera::Context as TeraContext;
 use vm_core::error::{Result, VmError};
 
 // Internal imports
+use super::engine::ContainerRuntime;
 use super::image_source::ContainerImageSource;
 use super::{compose_context::managed_worktree_root, UserConfig};
 use crate::{project_plan::NodeToolchainPlan, resources};
@@ -18,15 +19,28 @@ use vm_config::config::VmConfig;
 pub struct BuildOperations<'a> {
     pub config: &'a VmConfig,
     pub generated_dir: &'a Path,
-    pub executable: &'a str,
+    pub(crate) runtime: ContainerRuntime,
 }
 
 impl<'a> BuildOperations<'a> {
+    #[cfg(test)]
     pub fn new(config: &'a VmConfig, generated_dir: &'a Path, executable: &'a str) -> Self {
+        Self::with_runtime(
+            config,
+            generated_dir,
+            ContainerRuntime::with_executable(super::ContainerEngine::Docker, executable),
+        )
+    }
+
+    pub(crate) fn with_runtime(
+        config: &'a VmConfig,
+        generated_dir: &'a Path,
+        runtime: ContainerRuntime,
+    ) -> Self {
         Self {
             config,
             generated_dir,
-            executable,
+            runtime,
         }
     }
 
@@ -291,14 +305,14 @@ CMD ["tail", "-f", "/dev/null"]
     }
 
     pub fn image_exists(&self, image: &str) -> Result<bool> {
-        let inspect = Command::new(self.executable)
+        let inspect = Command::new(self.runtime.executable())
             .args(["image", "inspect", image])
             .output()?;
         Ok(inspect.status.success())
     }
 
     pub fn image_identity(&self, image: &str) -> Result<String> {
-        let inspect = Command::new(self.executable)
+        let inspect = Command::new(self.runtime.executable())
             .args(["image", "inspect", "--format", "{{.Id}}", image])
             .output()?;
         if !inspect.status.success() {
