@@ -134,10 +134,7 @@ if [ -f "$marker" ]; then
 fi
 expected="$(state_fingerprint)"
 generation="v$REPAIR_VERSION:$user_uid:$user_gid"
-full_repair=0
-if [ "${current%%|*}" != "$generation" ] || [ "${VM_HOME_REPAIR_FORCE:-0}" = 1 ]; then
-  full_repair=1
-fi
+full_repair="${VM_HOME_REPAIR_FORCE:-0}"
 if [ "${VM_HOME_REPAIR_FORCE:-0}" != 1 ] && [ "$current" = "$expected" ] && home_is_writable; then
   exit 0
 fi
@@ -178,6 +175,9 @@ for path in "${managed_paths[@]}"; do
   is_mountpoint "$path" && continue
   path_uid="$(stat_uid "$path")"
   path_gid="$(stat_gid "$path")"
+  # A receipt-version change updates exact managed roots but must not turn into
+  # a recursive walk of large, already-owned dependency caches. Recursion is
+  # reserved for an incorrectly owned root or an explicit forced repair.
   if [ "$full_repair" = 1 ] || [ "$path_uid" != "$user_uid" ] || [ "$path_gid" != "$user_gid" ]; then
     if command -v mountpoint >/dev/null 2>&1; then
       # Prune nested mounts even when a bind mount shares the parent device;

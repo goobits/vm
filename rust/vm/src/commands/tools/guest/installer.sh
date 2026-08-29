@@ -292,9 +292,29 @@ install_tool() (
           echo "Tool migration receipt does not match its destination: $receipt" >&2
           exit 1
         }
-      if test "$receipt_state" = complete && managed_link "$releases/$name" "$link_destination"; then
-        printf '%s\n' "$receipt"
-        return 0
+      if test "$receipt_state" = complete; then
+        if managed_link "$releases/$name" "$link_destination"; then
+          printf '%s\n' "$receipt"
+          return 0
+        fi
+        # A tool may replace its managed symlink while self-updating. Preserve
+        # that new executable and reopen adoption instead of dead-ending on an
+        # otherwise valid completed receipt.
+        test -f "$link_destination" && test -x "$link_destination" || {
+          echo "Completed tool migration destination is no longer adoptable: $link_destination" >&2
+          exit 1
+        }
+        if cmp -s "$link_destination" "$link_source"; then
+          receipt_mode=matched
+          backup=-
+        else
+          receipt_mode=backed_up
+          backup_dir="$backups/$name/$destination_id-$(date +%s)-$$"
+          backup="$backup_dir/$(basename "$link_destination")"
+        fi
+        write_migration_receipt \
+          "$receipt" pending "$receipt_mode" "$link_destination" "$backup" "$link_source"
+        receipt_state=pending
       fi
       test "$receipt_state" = pending || {
         echo "Tool migration receipt is incomplete or stale: $receipt" >&2

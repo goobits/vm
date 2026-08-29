@@ -206,7 +206,7 @@ fn test_rendered_zshrc_prompt_survives_bashrc_prompt() {
 }
 
 #[test]
-fn test_yocodex_explains_missing_vibe_base_tool() {
+fn test_yocodex_explains_managed_in_place_repair() {
     if std::process::Command::new("zsh")
         .arg("--version")
         .output()
@@ -234,7 +234,8 @@ fn test_yocodex_explains_missing_vibe_base_tool() {
     assert_eq!(output.status.code(), Some(127));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("Codex is not active"), "got: {stderr}");
-    assert!(stderr.contains("Update the Vibe base"), "got: {stderr}");
+    assert!(stderr.contains("vm tools update codex"), "got: {stderr}");
+    assert!(!stderr.contains("recreate"), "got: {stderr}");
 }
 
 #[test]

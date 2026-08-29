@@ -191,7 +191,7 @@ vm_repair_codex_state() {
 yoclaude() {
   if ! command -v claude >/dev/null 2>&1; then
     echo "ERROR: Claude is not active in this environment." >&2
-    echo "Hint: Update the Vibe base and recreate this environment, then retry." >&2
+    echo "Hint: Run on the host: vm tools update claude" >&2
     return 127
   fi
   vm_repair_claude_state
@@ -201,7 +201,7 @@ yoclaude() {
 yocodex() {
   if ! command -v codex >/dev/null 2>&1; then
     echo "ERROR: Codex is not active in this environment." >&2
-    echo "Hint: Update the Vibe base and recreate this environment, then retry." >&2
+    echo "Hint: Run on the host: vm tools update codex" >&2
     return 127
   fi
   vm_repair_codex_state

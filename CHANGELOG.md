@@ -69,6 +69,7 @@
 
 ### 🐛 Fixed
 
+- ☁️ Managed-tool reconciliation no longer recursively walks correctly owned dependency caches after a home-repair version change, safely readopts tools that replace managed links while self-updating, and recommends in-place AI-tool updates instead of environment recreation.
 - 🪟 New projects can initialize installed image presets through `vm config preset`, and newer package-definition errors point to the real `vm system update` command.
 - ☁️ Fresh Docker environments tolerate both older distro `pip` clients and NVM's normal missing-version status, failed image builds retain enough output to name the actual failing layer, and project dependency drift defers retryable bootstrap work without blocking shell access.
 - 📦 Isolated binary builders keep their private work shelf non-listable but traversable by the configured build UID, classify launcher and worker I/O failures as retryable infrastructure, and report the failing stage, program, and directory.

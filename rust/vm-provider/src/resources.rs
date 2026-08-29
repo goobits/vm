@@ -135,7 +135,9 @@ mod tests {
         assert!(path < ZSHRC_TEMPLATE.find("yocodex()").unwrap());
         assert_eq!(ZSHRC_TEMPLATE.matches("yoclaude()").count(), 1);
         assert_eq!(ZSHRC_TEMPLATE.matches("yocodex()").count(), 1);
-        assert!(ZSHRC_TEMPLATE.contains("Update the Vibe base and recreate"));
+        assert!(ZSHRC_TEMPLATE.contains("vm tools update claude"));
+        assert!(ZSHRC_TEMPLATE.contains("vm tools update codex"));
+        assert!(!ZSHRC_TEMPLATE.contains("Update the Vibe base and recreate"));
         assert_eq!(
             ZSHRC_TEMPLATE
                 .matches("export PATH=\"$HOME/.local/bin:$PATH\"")
@@ -158,6 +160,49 @@ mod tests {
         assert!(!HOME_STATE_REPAIR.contains("-name '*.json' -size 0 -delete"));
         assert!(!HOME_STATE_REPAIR.contains("marker.tmp.$$"));
         assert_eq!(ANSIBLE_PLAYBOOK.matches("repair-home-state.sh").count(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn home_repair_version_bump_does_not_walk_owned_caches() {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("home");
+        let bin = root.path().join("bin");
+        let find_log = root.path().join("find.log");
+        fs::create_dir_all(home.join(".vm/state")).unwrap();
+        fs::create_dir_all(home.join(".cache/large/already-owned")).unwrap();
+        fs::create_dir(&bin).unwrap();
+        fs::write(home.join(".vm/state/home-repair"), "v2:stale\n").unwrap();
+        write_test_command(
+            &bin.join("find"),
+            "printf '%s\\n' \"$*\" >> \"$VM_FIND_LOG\"",
+        );
+        let path = format!(
+            "{}:{}",
+            bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+        let user = Command::new("id")
+            .arg("-un")
+            .output()
+            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+            .unwrap();
+
+        let output = Command::new("/bin/bash")
+            .args(["-c", HOME_STATE_REPAIR, "vm-home-repair"])
+            .arg(&home)
+            .arg(&user)
+            .env("PATH", path)
+            .env("VM_FIND_LOG", &find_log)
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!find_log.exists() || fs::read_to_string(find_log).unwrap().is_empty());
     }
 
     #[test]

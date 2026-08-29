@@ -604,4 +604,26 @@ fn binary_installer_links_an_executable_from_one_immutable_release() {
     assert!(receipts.iter().all(|receipt| fs::read_to_string(receipt)
         .unwrap()
         .starts_with("complete\t")));
+
+    fs::remove_file(&installed).unwrap();
+    fs::write(&installed, "#!/bin/sh\nprintf '%s\\n' 'self-updated'\n").unwrap();
+    let mut permissions = fs::metadata(&installed).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&installed, permissions).unwrap();
+    let readopted = run();
+    assert!(
+        readopted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&readopted.stderr)
+    );
+    assert!(installed.is_symlink());
+    let backup_dirs = fs::read_dir(&backup_root)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect::<Vec<_>>();
+    assert_eq!(backup_dirs.len(), 2);
+    assert!(backup_dirs.iter().any(|directory| {
+        fs::read_to_string(directory.join("release-tool"))
+            .is_ok_and(|contents| contents.contains("self-updated"))
+    }));
 }
