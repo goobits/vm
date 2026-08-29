@@ -70,9 +70,22 @@ fn apply_preset_to_config(
     preset_names: &str,
     global: bool,
 ) -> Result<()> {
+    let local_config_path = if global {
+        None
+    } else {
+        Some(std::env::current_dir()?.join("vm.yaml"))
+    };
+    let initializing_local = local_config_path
+        .as_ref()
+        .is_some_and(|path| !path.exists());
+
     // Validate all presets exist BEFORE attempting to initialize/modify config
     let preset_list: Vec<&str> = preset_names.split(',').map(|s| s.trim()).collect();
-    let available_presets = detector.list_presets()?;
+    let available_presets = if initializing_local {
+        detector.list_all_presets()?
+    } else {
+        detector.list_presets()?
+    };
     let mut missing_presets = Vec::new();
 
     for preset_name in &preset_list {
@@ -100,12 +113,38 @@ fn apply_preset_to_config(
         )));
     }
 
+    // A new project should use the canonical initialization path. In particular,
+    // image presets replace base provisioning fields instead of being merged over
+    // them as though they were ordinary provision presets.
+    if initializing_local && preset_list.len() == 1 {
+        let config_path = local_config_path.expect("new local config path should exist");
+        vm_println!("⚠️  No vm.yaml found. Initializing project first...");
+        vm_println!("");
+        super::init_config_file(
+            Some(config_path),
+            None,
+            None,
+            Some(preset_list[0].to_string()),
+        )?;
+        vm_println!("");
+        vm_success!(
+            "{}",
+            msg!(
+                MESSAGES.config.preset_applied,
+                preset = preset_names,
+                path = "local"
+            )
+        );
+        vm_println!("{}", MESSAGES.config.restart_hint);
+        return Ok(());
+    }
+
     let config_path = if global {
         get_or_create_global_config_path()?
     } else {
         // For preset command, only look in current directory, not parent directories
         // This ensures we create vm.yaml in the current project, not modify a parent config
-        std::env::current_dir()?.join("vm.yaml")
+        local_config_path.expect("local config path should exist")
     };
 
     // Track if config already existed (for Bug #2 - preserve user customizations)

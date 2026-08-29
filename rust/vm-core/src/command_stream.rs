@@ -14,6 +14,8 @@ use which::which;
 
 use crate::command_capture::{configure_process_group, terminate_sync};
 
+const RECENT_OUTPUT_LINE_LIMIT: usize = 100;
+
 /// Trait for progress parsers (defined here to avoid circular dependencies)
 pub trait ProgressParser: Send + Sync {
     /// Parses a single line of output.
@@ -201,7 +203,7 @@ fn run_with_timeout<A: AsRef<OsStr>>(
     let stdout_reader = spawn_reader(stdout, sender.clone());
     let stderr_reader = spawn_reader(stderr, sender);
     let deadline = Instant::now() + timeout;
-    let mut recent = std::collections::VecDeque::with_capacity(50);
+    let mut recent = std::collections::VecDeque::with_capacity(RECENT_OUTPUT_LINE_LIMIT);
     let mut stream_error = None;
 
     loop {
@@ -233,7 +235,7 @@ fn run_with_timeout<A: AsRef<OsStr>>(
                 return Ok(());
             }
             return Err(VmError::Command(format!(
-                "Command '{executable_label}' failed with {status}\n\nOutput (last 50 lines):\n{}",
+                "Command '{executable_label}' failed with {status}\n\nOutput (last {RECENT_OUTPUT_LINE_LIMIT} lines):\n{}",
                 recent.iter().cloned().collect::<Vec<_>>().join("\n")
             )));
         }
@@ -243,7 +245,7 @@ fn run_with_timeout<A: AsRef<OsStr>>(
             join_readers(stdout_reader, stderr_reader, executable_label)?;
             drain_remaining(&receiver, parser, &mut recent, &mut stream_error);
             return Err(VmError::Timeout(format!(
-                "Command '{executable_label}' timed out after {}s\n\nOutput (last 50 lines):\n{}",
+                "Command '{executable_label}' timed out after {}s\n\nOutput (last {RECENT_OUTPUT_LINE_LIMIT} lines):\n{}",
                 timeout.as_secs(),
                 recent.iter().cloned().collect::<Vec<_>>().join("\n")
             )));
@@ -309,7 +311,7 @@ fn record_message(
 ) {
     match message {
         StreamMessage::Line(line) => {
-            if recent.len() == 50 {
+            if recent.len() == RECENT_OUTPUT_LINE_LIMIT {
                 recent.pop_front();
             }
             recent.push_back(line.clone());

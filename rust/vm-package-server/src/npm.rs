@@ -264,46 +264,52 @@ async fn download_tarball_inner(
     crate::validation::validate_filename(&filename)?;
 
     let local_path = state.data_dir.join("npm/tarballs").join(&filename);
-    let source = state
-        .resolver
-        .resolve_missing(
-            vm_packages::PackageEcosystem::Npm,
-            &package,
-            state.internal_client.is_some(),
-        )
-        .await?;
-    let cache_scope = match source {
-        vm_packages::ResolutionSource::InternalRegistry => "internal",
-        vm_packages::ResolutionSource::PublicUpstream => "public",
-        _ => unreachable!("cache and local releases are checked before source resolution"),
-    };
-    let cache_path = state
-        .data_dir
-        .join("cache")
-        .join(cache_scope)
-        .join("npm")
-        .join(sha256_hex(package.as_bytes()))
-        .join(&filename);
-    let tarball_url = format!("/{package}/-/{filename}");
-    let upstream = Arc::clone(&state.upstream_client);
-    let internal = state.internal_client.clone();
-    let resolved_package = package.clone();
-    let resolved_filename = filename.clone();
-
-    let data = storage::read_local_or_cache(local_path, cache_path, move || async move {
-        let bytes = match source {
-            vm_packages::ResolutionSource::InternalRegistry => {
-                internal
-                    .expect("resolver only selects a configured internal registry")
-                    .npm_tarball(&resolved_package, &resolved_filename)
-                    .await?
-            }
-            vm_packages::ResolutionSource::PublicUpstream => {
-                upstream.stream_npm_tarball(&tarball_url).await?
-            }
-            _ => unreachable!("cache and local releases are checked before source resolution"),
+    let fallback_state = Arc::clone(&state);
+    let fallback_package = package.clone();
+    let fallback_filename = filename.clone();
+    let data = storage::read_local_or_else(local_path, move || async move {
+        let source = fallback_state
+            .resolver
+            .resolve_missing(
+                vm_packages::PackageEcosystem::Npm,
+                &fallback_package,
+                fallback_state.internal_client.is_some(),
+            )
+            .await?;
+        let cache_scope = match source {
+            vm_packages::ResolutionSource::InternalRegistry => "internal",
+            vm_packages::ResolutionSource::PublicUpstream => "public",
+            _ => unreachable!("local releases are checked before source resolution"),
         };
-        Ok(bytes.to_vec())
+        let cache_path = fallback_state
+            .data_dir
+            .join("cache")
+            .join(cache_scope)
+            .join("npm")
+            .join(sha256_hex(fallback_package.as_bytes()))
+            .join(&fallback_filename);
+        let tarball_url = format!("/{fallback_package}/-/{fallback_filename}");
+        storage::read_through_cache(cache_path, move || async move {
+            let bytes = match source {
+                vm_packages::ResolutionSource::InternalRegistry => {
+                    fallback_state
+                        .internal_client
+                        .as_ref()
+                        .expect("resolver only selects a configured internal registry")
+                        .npm_tarball(&fallback_package, &fallback_filename)
+                        .await?
+                }
+                vm_packages::ResolutionSource::PublicUpstream => {
+                    fallback_state
+                        .upstream_client
+                        .stream_npm_tarball(&tarball_url)
+                        .await?
+                }
+                _ => unreachable!("local releases are checked before source resolution"),
+            };
+            Ok(bytes.to_vec())
+        })
+        .await
     })
     .await?;
     debug!(
@@ -820,6 +826,37 @@ mod tests {
 
         assert_eq!(response.status_code(), StatusCode::OK);
         assert_eq!(response.as_bytes().to_vec(), content.to_vec());
+    }
+
+    #[tokio::test]
+    async fn local_tarball_precedes_registered_package_resolution() {
+        let (state, _temp_dir) = create_npm_test_state();
+        let content = b"private tarball";
+        let filename = "private-package-1.0.0.tgz";
+        std::fs::write(state.data_dir.join("npm/tarballs").join(filename), content).unwrap();
+        let catalog_path = state.data_dir.join("packages.json");
+        let catalog =
+            vm_packages::InternalPackageCatalog::new([vm_packages::PackageIdentity::new(
+                vm_packages::PackageEcosystem::Npm,
+                "private-package",
+            )
+            .unwrap()]);
+        std::fs::write(&catalog_path, serde_json::to_vec(&catalog).unwrap()).unwrap();
+        let mut state = (*state).clone();
+        state.resolver = Arc::new(crate::resolver::ResolverService::new(Some(catalog_path)));
+
+        let app = axum::Router::new()
+            .route(
+                "/npm/{package}/-/{filename}",
+                axum::routing::get(download_tarball),
+            )
+            .with_state(Arc::new(state));
+        let response = TestServer::new(app)
+            .get("/npm/private-package/-/private-package-1.0.0.tgz")
+            .await;
+
+        assert_eq!(response.status_code(), StatusCode::OK);
+        assert_eq!(response.as_bytes().as_ref(), content);
     }
 
     #[tokio::test]

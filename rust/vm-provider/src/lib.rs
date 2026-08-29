@@ -203,6 +203,10 @@ mod tests {
     fn test_get_provider_explicit_tart() {
         let config = VmConfig {
             provider: Some("tart".into()),
+            tart: Some(vm_config::config::TartConfig {
+                storage_path: Some("/tmp/vm-provider-tests-tart".to_string()),
+                ..Default::default()
+            }),
             ..Default::default()
         };
         match get_provider(config) {

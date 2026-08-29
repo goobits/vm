@@ -341,10 +341,14 @@ RUN --mount=type=cache,target=/home/${PROJECT_USER}/.npm,uid=${PROJECT_UID},gid=
 RUN --mount=type=cache,target=/home/${PROJECT_USER}/.cache/pip,uid=${PROJECT_UID},gid=${PROJECT_GID} \
     if [ -n "${PIP_PACKAGES}" ]; then \
         echo "Checking Python packages: ${PIP_PACKAGES}"; \
+        PIP_BREAK_SYSTEM_PACKAGES=""; \
+        if pip3 install --help 2>/dev/null | grep -q -- '--break-system-packages'; then \
+            PIP_BREAK_SYSTEM_PACKAGES="--break-system-packages"; \
+        fi; \
         for pkg in ${PIP_PACKAGES}; do \
             if ! pip3 show "$pkg" >/dev/null 2>&1; then \
                 echo "Installing $pkg..."; \
-                pip3 install --user --break-system-packages "$pkg"; \
+                pip3 install --user $PIP_BREAK_SYSTEM_PACKAGES "$pkg"; \
             else \
                 echo "Skipping $pkg (already installed)"; \
             fi; \

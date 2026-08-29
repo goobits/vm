@@ -112,46 +112,50 @@ pub async fn download_crate(
     })?;
 
     let local_path = state.data_dir.join("cargo/crates").join(&filename);
-    let source = state
-        .resolver
-        .resolve_missing(
-            vm_packages::PackageEcosystem::Cargo,
-            &crate_name,
-            state.internal_client.is_some(),
-        )
-        .await?;
-    let cache_scope = match source {
-        vm_packages::ResolutionSource::InternalRegistry => "internal",
-        vm_packages::ResolutionSource::PublicUpstream => "public",
-        _ => unreachable!("cache and local releases are checked before source resolution"),
-    };
-    let cache_path = state
-        .data_dir
-        .join("cache")
-        .join(cache_scope)
-        .join("cargo/crates")
-        .join(&filename);
-    let upstream = Arc::clone(&state.upstream_client);
-    let internal = state.internal_client.clone();
-    let upstream_crate = crate_name.clone();
-    let upstream_version = version.clone();
-
-    let data = storage::read_local_or_cache(local_path, cache_path, move || async move {
-        let bytes = match source {
-            vm_packages::ResolutionSource::InternalRegistry => {
-                internal
-                    .expect("resolver only selects a configured internal registry")
-                    .cargo_crate(&upstream_crate, &upstream_version)
-                    .await?
-            }
-            vm_packages::ResolutionSource::PublicUpstream => {
-                upstream
-                    .stream_cargo_crate(&upstream_crate, &upstream_version)
-                    .await?
-            }
-            _ => unreachable!("cache and local releases are checked before source resolution"),
+    let fallback_state = Arc::clone(&state);
+    let fallback_crate = crate_name.clone();
+    let fallback_version = version.clone();
+    let data = storage::read_local_or_else(local_path, move || async move {
+        let source = fallback_state
+            .resolver
+            .resolve_missing(
+                vm_packages::PackageEcosystem::Cargo,
+                &fallback_crate,
+                fallback_state.internal_client.is_some(),
+            )
+            .await?;
+        let cache_scope = match source {
+            vm_packages::ResolutionSource::InternalRegistry => "internal",
+            vm_packages::ResolutionSource::PublicUpstream => "public",
+            _ => unreachable!("local releases are checked before source resolution"),
         };
-        Ok(bytes.to_vec())
+        let cache_path = fallback_state
+            .data_dir
+            .join("cache")
+            .join(cache_scope)
+            .join("cargo/crates")
+            .join(format!("{fallback_crate}-{fallback_version}.crate"));
+        storage::read_through_cache(cache_path, move || async move {
+            let bytes = match source {
+                vm_packages::ResolutionSource::InternalRegistry => {
+                    fallback_state
+                        .internal_client
+                        .as_ref()
+                        .expect("resolver only selects a configured internal registry")
+                        .cargo_crate(&fallback_crate, &fallback_version)
+                        .await?
+                }
+                vm_packages::ResolutionSource::PublicUpstream => {
+                    fallback_state
+                        .upstream_client
+                        .stream_cargo_crate(&fallback_crate, &fallback_version)
+                        .await?
+                }
+                _ => unreachable!("local releases are checked before source resolution"),
+            };
+            Ok(bytes.to_vec())
+        })
+        .await
     })
     .await?;
     debug!(

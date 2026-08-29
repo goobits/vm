@@ -1,7 +1,7 @@
 {
-  "name": "agent-skills",
+  "name": "vm-acceptance-skills",
   "version": "1.0.0",
   "scripts": {
-    "test": "test -f skills/initial/SKILL.md"
+    "test": "test -f initial/SKILL.md"
   }
 }

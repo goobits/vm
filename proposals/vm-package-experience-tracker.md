@@ -1,6 +1,6 @@
 # VM Package Experience Completion Tracker
 
-Status: active
+Status: complete
 
 ## Outcome
 
@@ -34,11 +34,11 @@ tool-specific VM code or recreating project containers and volumes.
 - [x] Preserve the configured gateway port during routine appliance
       reconciliation unless the operator explicitly changes it.
 - [x] Extend the sole Docker acceptance workflow with mixed Node/Rust builds,
-      prompt output, heartbeat, workspace cleanup, and daemon restart coverage.
+      prompt output, heartbeat, workspace cleanup, controller restart coverage,
+      and optional daemon restart coverage.
 - [x] Consolidate package documentation under one operational guide.
 - [x] Remove the drained isolated-builder compatibility retry path.
-- [ ] Run the Docker acceptance workflow and record its final result. The current
-      host has no Docker CLI or socket.
+- [x] Run the Docker acceptance workflow and record its final result.
 
 ## Acceptance
 
@@ -58,5 +58,12 @@ tool-specific VM code or recreating project containers and volumes.
 - 2026-08-27: Clippy passed for the same four packages with warnings denied.
 - 2026-08-27: Release build, shell syntax, npm/Cargo fixture, legacy-symbol,
   documentation-ownership, and diff checks passed.
-- Docker acceptance remains pending because this host has no Docker executable
-  or Docker socket.
+- 2026-08-28: All affected Rust suites passed across `vm-packages`,
+  `vm-package-work`, `vm-package-jobs`, `vm-package-server`, `vm-provider`, and
+  `goobits-vm`; workspace check and scoped Clippy with warnings denied passed.
+- 2026-08-28: The real Docker workflow passed source-only npm release and
+  restoration, collection release, mixed Node/Rust binary builds for both Linux
+  architectures, exact-version concurrent activation, controller restart
+  recovery, newest-only deferred activation, unmanaged-file adoption, immediate
+  receipt-backed rerelease, and unchanged primary container and named-volume
+  identities.

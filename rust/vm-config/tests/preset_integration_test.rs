@@ -16,7 +16,7 @@ use vm_config::config::{
 };
 use vm_core::error::Result;
 
-use vm_config::PresetDetector;
+use vm_config::{ConfigOps, PresetDetector};
 
 // Global mutex to ensure tests run sequentially to avoid environment variable conflicts
 static TEST_MUTEX: Mutex<()> = Mutex::new(());
@@ -27,6 +27,7 @@ struct PresetTestFixture {
     project_dir: PathBuf,
     plugins_dir: PathBuf,
     original_home: Option<String>,
+    original_current_dir: PathBuf,
 }
 
 impl PresetTestFixture {
@@ -44,14 +45,17 @@ impl PresetTestFixture {
 
         // Save and override environment variables
         let original_home = std::env::var("HOME").ok();
+        let original_current_dir = std::env::current_dir()?;
 
         std::env::set_var("HOME", &test_root);
+        std::env::set_current_dir(&project_dir)?;
 
         Ok(Self {
             _temp_dir: temp_dir,
             project_dir,
             plugins_dir,
             original_home,
+            original_current_dir,
         })
     }
 
@@ -160,12 +164,38 @@ services:
 
 impl Drop for PresetTestFixture {
     fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.original_current_dir);
         // Restore original environment variables
         match &self.original_home {
             Some(home) => std::env::set_var("HOME", home),
             None => std::env::remove_var("HOME"),
         }
     }
+}
+
+#[test]
+fn test_config_preset_initializes_new_project_with_image_preset() -> Result<()> {
+    let _guard = TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let fixture = PresetTestFixture::new()?;
+    fixture.create_vibe_preset_plugin()?;
+
+    ConfigOps::preset("vibe", false, false, None)?;
+
+    let saved_config = fixture.read_vm_yaml()?;
+    assert_eq!(saved_config.preset.as_deref(), Some("vibe"));
+    assert!(matches!(
+        saved_config.vm.and_then(|settings| settings.image),
+        Some(ImageSpec::String(image)) if image == "@vibe-image"
+    ));
+    assert!(saved_config.versions.is_none());
+    assert!(saved_config.apt_packages.is_empty());
+    assert!(saved_config.npm_packages.is_empty());
+    assert!(saved_config.pip_packages.is_empty());
+    assert!(saved_config.cargo_packages.is_empty());
+
+    Ok(())
 }
 
 // ============================================================================

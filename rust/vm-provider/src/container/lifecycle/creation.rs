@@ -144,14 +144,9 @@ impl<'a> LifecycleOperations<'a> {
         if build_ops.image_exists(&image_tag)? {
             vm_dbg!("Reusing cached derived image '{}'", image_tag);
         } else {
-            let flags = if context.is_verbose() {
-                Vec::new()
-            } else {
-                vec!["--quiet"]
-            };
             let mut command = self
                 .runtime
-                .compose_invocation(&compose_path, "build", &flags)?;
+                .compose_invocation(&compose_path, "build", &[])?;
             command.extend(build_args.iter().map(String::as_str));
 
             vm_dbg!(

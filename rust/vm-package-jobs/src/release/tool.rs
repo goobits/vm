@@ -247,7 +247,9 @@ pub(super) async fn release_submission(
 
 #[cfg(test)]
 mod tests {
-    use super::archive::{build_collection, collection_links, verify_binary_archive};
+    use super::archive::{
+        build_collection, collection_links, is_portable_script, verify_binary_archive,
+    };
     use super::artifact::{
         binary_identity, build_binary_artifacts, ToolArtifactContext, ToolReleaseManifest,
     };
@@ -500,5 +502,17 @@ mod tests {
         };
 
         assert!(verify_binary_archive(&path, &build).is_err());
+    }
+
+    #[test]
+    fn cross_target_verification_only_treats_shebang_programs_as_portable() {
+        let directory = tempfile::tempdir().unwrap();
+        let script = directory.path().join("tool-script");
+        let binary = directory.path().join("tool-binary");
+        std::fs::write(&script, "#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::write(&binary, b"\x7fELFnot-a-script").unwrap();
+
+        assert!(is_portable_script(&script).unwrap());
+        assert!(!is_portable_script(&binary).unwrap());
     }
 }

@@ -146,6 +146,12 @@ fn validate_executable(prefix: &[u8], target: &str, path: &Path) -> Result<()> {
     Ok(())
 }
 
+pub(super) fn is_portable_script(path: &Path) -> Result<bool> {
+    let mut prefix = [0_u8; 2];
+    let prefix_length = File::open(path)?.read(&mut prefix)?;
+    Ok(prefix_length == prefix.len() && prefix == *b"#!")
+}
+
 pub(super) fn verify_binary_command(
     archive: &Path,
     release_root: &Path,
@@ -154,12 +160,6 @@ pub(super) fn verify_binary_command(
     let Some(command) = &build.verify else {
         return Ok(());
     };
-    if native_target() != Some(build.target.as_str()) {
-        bail!(
-            "verification command for {} cannot run on this release worker",
-            build.target
-        );
-    }
     let root = release_root.join(format!("verify-{}", build.target));
     std::fs::create_dir(&root)?;
     tar::Archive::new(flate2::read::GzDecoder::new(File::open(archive)?)).unpack(&root)?;
@@ -167,6 +167,12 @@ pub(super) fn verify_binary_command(
     let program = std::fs::canonicalize(root.join(&command[0]))?;
     if !program.starts_with(&root) || !std::fs::symlink_metadata(&program)?.is_file() {
         bail!("binary verification executable escaped the extracted archive");
+    }
+    if !is_portable_script(&program)? && native_target() != Some(build.target.as_str()) {
+        bail!(
+            "verification command for {} cannot run on this release worker",
+            build.target
+        );
     }
     command[0] = program.to_string_lossy().into_owned();
     run_isolated(

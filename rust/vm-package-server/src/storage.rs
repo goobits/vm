@@ -91,21 +91,16 @@ pub async fn read_file<P: AsRef<Path>>(path: P) -> AppResult<Vec<u8>> {
     Ok(fs::read(path).await?)
 }
 
-/// Read an immutable artifact locally, then from a persistent read-through cache.
-pub async fn read_local_or_cache<L, C, F, Fut>(
-    local_path: L,
-    cache_path: C,
-    fetch: F,
-) -> AppResult<Vec<u8>>
+/// Read an immutable local artifact before doing any fallback resolution or I/O.
+pub async fn read_local_or_else<L, F, Fut>(local_path: L, fallback: F) -> AppResult<Vec<u8>>
 where
     L: AsRef<Path>,
-    C: AsRef<Path>,
     F: FnOnce() -> Fut,
     Fut: Future<Output = AppResult<Vec<u8>>>,
 {
     match read_file(local_path).await {
         Ok(content) => Ok(content),
-        Err(AppError::NotFound(_)) => read_through_cache(cache_path, fetch).await,
+        Err(AppError::NotFound(_)) => fallback().await,
         Err(error) => Err(error),
     }
 }
@@ -337,8 +332,8 @@ pub async fn append_to_file<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C)
 #[cfg(test)]
 mod tests {
     use super::{
-        append_to_file, prune_cache, read_file, read_local_or_cache, read_refreshing_cache,
-        save_file, save_immutable,
+        append_to_file, prune_cache, read_file, read_local_or_else, read_refreshing_cache,
+        read_through_cache, save_file, save_immutable,
     };
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
@@ -370,9 +365,11 @@ mod tests {
 
         for _ in 0..2 {
             let fetches = Arc::clone(&fetches);
-            let content = read_local_or_cache(&local, &cached, move || async move {
-                fetches.fetch_add(1, Ordering::SeqCst);
-                Ok(b"upstream".to_vec())
+            let content = read_local_or_else(&local, || {
+                read_through_cache(&cached, move || async move {
+                    fetches.fetch_add(1, Ordering::SeqCst);
+                    Ok(b"upstream".to_vec())
+                })
             })
             .await
             .unwrap();

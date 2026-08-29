@@ -107,9 +107,17 @@ if [ -n "$manager" ]; then
     || [ "$(cat "$stamp")" != "$fingerprint" ]; then
     export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
     if [ "$manager" = pnpm ]; then
-      pnpm install --frozen-lockfile
+      if ! pnpm install --frozen-lockfile; then
+        echo 'Dependency bootstrap was deferred; resolve the package or lockfile error inside the environment.' >&2
+        echo 'VM_BOOTSTRAP_DEPENDENCIES_DEFERRED=1'
+        exit 0
+      fi
     else
-      npm ci
+      if ! npm ci; then
+        echo 'Dependency bootstrap was deferred; resolve the package or lockfile error inside the environment.' >&2
+        echo 'VM_BOOTSTRAP_DEPENDENCIES_DEFERRED=1'
+        exit 0
+      fi
     fi
     mkdir -p node_modules
     stamp_tmp="${stamp}.tmp.$$"

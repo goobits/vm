@@ -71,6 +71,42 @@ mod cargo_tests {
     }
 
     #[tokio::test]
+    async fn local_crate_precedes_registered_package_resolution() {
+        let (state, _temp_dir) = create_cargo_test_state();
+        let content = b"private crate";
+        std::fs::write(
+            state
+                .data_dir
+                .join("cargo/crates/private-crate-1.0.0.crate"),
+            content,
+        )
+        .unwrap();
+        let catalog_path = state.data_dir.join("packages.json");
+        let catalog =
+            vm_packages::InternalPackageCatalog::new([vm_packages::PackageIdentity::new(
+                vm_packages::PackageEcosystem::Cargo,
+                "private-crate",
+            )
+            .unwrap()]);
+        std::fs::write(&catalog_path, serde_json::to_vec(&catalog).unwrap()).unwrap();
+        let mut state = (*state).clone();
+        state.resolver = Arc::new(crate::resolver::ResolverService::new(Some(catalog_path)));
+        let app = axum::Router::new()
+            .route(
+                "/cargo/api/v1/crates/{crate_name}/{version}/download",
+                axum::routing::get(download_crate),
+            )
+            .with_state(Arc::new(state));
+
+        let response = TestServer::new(app)
+            .get("/cargo/api/v1/crates/private-crate/1.0.0/download")
+            .await;
+
+        assert_eq!(response.status_code(), StatusCode::OK);
+        assert_eq!(response.as_bytes().as_ref(), content);
+    }
+
+    #[tokio::test]
     async fn test_publish_crate_with_binary_payload() {
         let (state, _temp_dir) = create_cargo_test_state();
         let app = axum::Router::new()

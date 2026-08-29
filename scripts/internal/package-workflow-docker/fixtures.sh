@@ -78,7 +78,7 @@ prepare_acceptance_fixtures() {
     cp "$fixture_assets/environment.Dockerfile" "$root/Dockerfile.acceptance"
   done
   write_environment_config "$project_root" "$project_name" '  release-tool: {}'
-  write_environment_config "$consumer_root" "$consumer_name" $'  release-tool: {}\n  agent-skills: {}'
+  write_environment_config "$consumer_root" "$consumer_name" $'  release-tool: {}\n  vm-acceptance-skills: {}'
   write_environment_config "$stopped_root" "$stopped_name" '  release-tool: {}'
 
   cp -R "$fixture_assets/release-tool/." "$project_root/"
@@ -130,11 +130,11 @@ YAML
     --volume "$fixture_root:/tool-fixture:ro" \
     --volume "$language_root:/language-fixture:ro" \
     --entrypoint /bin/sh "$server_image" -ec \
-    'git clone --bare /tool-fixture /data/sources/acceptance-agent-skills.git &&
+    'git clone --bare /tool-fixture /data/sources/acceptance-skills.git &&
      git clone --bare /language-fixture /data/sources/acceptance-language.git &&
-     chown -R 10001:10001 /data/sources/acceptance-agent-skills.git /data/sources/acceptance-language.git'
-  run_vm tools register agent-skills --kind collection \
-    --repository file:///data/sources/acceptance-agent-skills.git
+     chown -R 10001:10001 /data/sources/acceptance-skills.git /data/sources/acceptance-language.git'
+  run_vm tools register vm-acceptance-skills --kind collection \
+    --repository file:///data/sources/acceptance-skills.git
   run_vm packages register vm-acceptance-language --ecosystem npm \
     --repository file:///data/sources/acceptance-language.git
 
@@ -165,4 +165,5 @@ YAML
   )
   capture_runtime_state "$before_ids" "$before_volumes"
   project_manifest_digest=$(git -C "$project_root" hash-object package.json)
+  project_lock_digest=$(git -C "$project_root" hash-object package-lock.json)
 }

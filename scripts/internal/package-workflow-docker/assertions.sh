@@ -26,21 +26,6 @@ wait_for_nonempty_log() {
   return 1
 }
 
-wait_for_log_count() {
-  local log=$1
-  local text=$2
-  local expected=$3
-  local timeout_seconds=$4
-  local deadline=$((SECONDS + timeout_seconds))
-  while ((SECONDS <= deadline)); do
-    if test -f "$log" && test "$(grep -cF "$text" "$log" || true)" -ge "$expected"; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  return 1
-}
-
 wait_for_guest_vm() {
   local environment=$1
   local deadline=$((SECONDS + 60))
@@ -62,6 +47,16 @@ assert_builder_workspaces_clean() {
     test -z "$(find "$root" -mindepth 1 -maxdepth 1 -print -quit)"
   '
 }
+
+assert_project_dependency_files_unchanged() {
+  test "$(docker exec --user acceptance "$environment_name" \
+    git -C /workspace hash-object package.json)" = "$project_manifest_digest"
+  test "$(docker exec --user acceptance "$environment_name" \
+    git -C /workspace hash-object package-lock.json)" = "$project_lock_digest"
+  test -z "$(docker exec --user acceptance "$environment_name" \
+    git -C /workspace status --porcelain --untracked-files=all)"
+}
+
 checkout_source_from_log() {
   local log=$1
   local source
@@ -137,7 +132,7 @@ import json, sys
 state = json.load(sys.stdin)
 queued = [item for item in state["tool_activations"].values()
           if item["tool"] == "release-tool"
-          and item["version"] == "1.0.1"
+          and item["version"] == "1.1.0"
           and not item["targets"]]
 raise SystemExit(0 if queued else 1)
 '; then
@@ -146,27 +141,6 @@ raise SystemExit(0 if queued else 1)
     sleep 0.1
   done
   echo 'Tool activation was not persisted before rollout' >&2
-  return 1
-}
-
-wait_for_pending_activation_plan() {
-  local attempt
-  for attempt in $(seq 1 200); do
-    if workflow_state 2>/dev/null | python3 -c '
-import json, sys
-
-state = json.load(sys.stdin)
-planned = [item for item in state["tool_activations"].values()
-           if item["tool"] == "release-tool"
-           and item["version"] == "1.0.1"
-           and any(target["state"] == "pending" for target in item["targets"])]
-raise SystemExit(0 if planned else 1)
-'; then
-      return 0
-    fi
-    sleep 0.05
-  done
-  echo 'Tool activation plan was not persisted before execution' >&2
   return 1
 }
 

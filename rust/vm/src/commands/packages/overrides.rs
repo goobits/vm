@@ -294,17 +294,23 @@ fn dependency_command(
     source: DependencySource<'_>,
 ) -> Vec<String> {
     match (ecosystem, source) {
-        (PackageEcosystem::Npm, DependencySource::Worktree(path)) => {
-            ["npm", "install", "--no-save", "--package-lock=false", path]
-                .into_iter()
-                .map(str::to_string)
-                .collect()
-        }
+        (PackageEcosystem::Npm, DependencySource::Worktree(path)) => [
+            "npm",
+            "install",
+            "--no-save",
+            "--package-lock=false",
+            "--install-links=false",
+            path,
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect(),
         (PackageEcosystem::Npm, DependencySource::Published(version)) => vec![
             "npm".into(),
             "install".into(),
             "--no-save".into(),
             "--package-lock=false".into(),
+            "--force".into(),
             format!("{package}@{version}"),
         ],
         (PackageEcosystem::Python, DependencySource::Worktree(path)) => {
@@ -340,6 +346,21 @@ mod tests {
             dependency_command(
                 PackageEcosystem::Npm,
                 "@internal/auth",
+                DependencySource::Worktree("/tmp/auth")
+            ),
+            [
+                "npm",
+                "install",
+                "--no-save",
+                "--package-lock=false",
+                "--install-links=false",
+                "/tmp/auth"
+            ]
+        );
+        assert_eq!(
+            dependency_command(
+                PackageEcosystem::Npm,
+                "@internal/auth",
                 DependencySource::Published("1.4.2")
             ),
             [
@@ -347,6 +368,7 @@ mod tests {
                 "install",
                 "--no-save",
                 "--package-lock=false",
+                "--force",
                 "@internal/auth@1.4.2"
             ]
         );

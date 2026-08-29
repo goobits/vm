@@ -201,7 +201,7 @@ fn ensure_supported_definition(state: &ApplianceState) -> VmResult<()> {
                 "Package infrastructure uses newer definition revision {}; this VM CLI supports {}",
                 state.definition_revision, APPLIANCE_DEFINITION_REVISION
             ),
-            Some("Run `vm update`, then retry"),
+            Some("Run `vm system update`, then retry"),
         ));
     }
     Ok(())
@@ -485,6 +485,6 @@ mod tests {
             ensure_supported_definition(&state_with_revision(APPLIANCE_DEFINITION_REVISION + 1))
                 .unwrap_err();
         assert!(error.to_string().contains("newer definition revision"));
-        assert_eq!(error.hint(), Some("Run `vm update`, then retry"));
+        assert_eq!(error.hint(), Some("Run `vm system update`, then retry"));
     }
 }

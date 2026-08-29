@@ -117,6 +117,23 @@ impl ResolverService {
         if matches!(self.source, CatalogSource::Standalone) {
             return Ok(InternalPackageCatalog::default());
         }
+        if matches!(self.source, CatalogSource::Remote { .. }) {
+            match self.refresh_catalog().await {
+                Ok(catalog) => {
+                    let mut cache = self.cache.lock().await;
+                    cache.value = catalog;
+                    cache.loaded = true;
+                    return Ok(cache.value.clone());
+                }
+                Err(error) => {
+                    let cache = self.cache.lock().await;
+                    if cache.loaded {
+                        return Ok(cache.value.clone());
+                    }
+                    return Err(AppError::Unavailable(error));
+                }
+            }
+        }
         let mut cache = self.cache.lock().await;
         if cache.loaded {
             return Ok(cache.value.clone());
@@ -304,5 +321,48 @@ mod tests {
                 .unwrap(),
             ResolutionSource::PublicUpstream
         );
+    }
+
+    #[tokio::test]
+    async fn remote_resolution_observes_new_registration_without_polling_delay() {
+        let directory = tempfile::tempdir().unwrap();
+        let package = PackageIdentity::new(PackageEcosystem::Npm, "private-package").unwrap();
+        let catalog = Arc::new(Mutex::new(InternalPackageCatalog::default()));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let route_catalog = Arc::clone(&catalog);
+        let app = Router::new().route(
+            "/work/v1/catalog",
+            get(move || {
+                let catalog = Arc::clone(&route_catalog);
+                async move { Json(catalog.lock().await.clone()) }
+            }),
+        );
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let client =
+            Arc::new(InternalRegistryClient::new(format!("http://{address}"), "read").unwrap());
+        let resolver = ResolverService::with_source(CatalogSource::Remote {
+            client,
+            cache_path: directory.path().join("catalog/packages.json"),
+        });
+
+        assert_eq!(
+            resolver
+                .resolve_missing(PackageEcosystem::Npm, &package.name, true)
+                .await
+                .unwrap(),
+            ResolutionSource::PublicUpstream
+        );
+        *catalog.lock().await = InternalPackageCatalog::new([package.clone()]);
+        assert_eq!(
+            resolver
+                .resolve_missing(PackageEcosystem::Npm, &package.name, true)
+                .await
+                .unwrap(),
+            ResolutionSource::InternalRegistry
+        );
+        server.abort();
     }
 }

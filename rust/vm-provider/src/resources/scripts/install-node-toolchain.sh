@@ -45,8 +45,17 @@ fi
 
 node_version="$(nvm version "$node_target" 2>/dev/null || true)"
 if [ "$node_version" = "N/A" ]; then
-  nvm install "$node_target"
-  node_version="$(nvm version "$node_target")"
+  install_status=0
+  nvm install "$node_target" || install_status=$?
+  if [ "$install_status" -ne 0 ]; then
+    echo "nvm failed to install Node.js $node_target (status $install_status)" >&2
+    exit "$install_status"
+  fi
+  node_version="$(nvm version "$node_target" 2>/dev/null || true)"
+  if [ -z "$node_version" ] || [ "$node_version" = "N/A" ]; then
+    echo "nvm completed without installing Node.js $node_target" >&2
+    exit 1
+  fi
   changed=1
 fi
 

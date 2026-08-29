@@ -69,6 +69,8 @@
 
 ### 🐛 Fixed
 
+- 🪟 New projects can initialize installed image presets through `vm config preset`, and newer package-definition errors point to the real `vm system update` command.
+- ☁️ Fresh Docker environments tolerate both older distro `pip` clients and NVM's normal missing-version status, failed image builds retain enough output to name the actual failing layer, and project dependency drift defers retryable bootstrap work without blocking shell access.
 - 📦 Isolated binary builders keep their private work shelf non-listable but traversable by the configured build UID, classify launcher and worker I/O failures as retryable infrastructure, and report the failing stage, program, and directory.
 - 📦 Retrying a failed isolated binary build requeues its approved immutable integration without reading or changing newer checkout edits; version failures still require a new commit.
 - 📦 Source installs retain their workspace marker beside the stable `vm` executable, so package-appliance upgrades can use the documented local-build fallback.

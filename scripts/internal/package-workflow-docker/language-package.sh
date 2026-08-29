@@ -43,9 +43,17 @@ assert_language_dependency_restoration() {
     vm packages checkout vm-acceptance-language >"$language_log.cancel" 2>&1
   source=$(checkout_source_from_log "$language_log.cancel")
   checkout_id=$(basename "$(dirname "$source")")
-  run_vm packages show "$checkout_id" | grep -F '"source_only": false' >/dev/null
-  docker exec --user acceptance "$environment_name" \
-    test -f "$(dirname "$source")/override.json"
+  run_vm packages show "$checkout_id" | grep -F '"source_only": false' >/dev/null || {
+    echo "Managed dependency checkout was incorrectly marked source-only" >&2
+    return 1
+  }
+  docker exec --user acceptance "$environment_name" sh -ec '
+    test -f "$1" || {
+      echo "Managed dependency checkout has no override record: $1" >&2
+      ls -la "$(dirname "$1")" >&2
+      exit 1
+    }
+  ' sh "$(dirname "$source")/override.json"
   docker exec --user acceptance "$environment_name" sh -ec '
     printf "%s\n" checkout-only > "$1/source-marker.txt"
     test "$(cat /workspace/node_modules/vm-acceptance-language/source-marker.txt)" = checkout-only
@@ -75,15 +83,21 @@ assert_language_dependency_restoration() {
   run_vm packages show "$checkout_id" | grep -F '"state": "closed"' >/dev/null
   docker exec --user acceptance "$environment_name" sh -ec '
     cd /workspace
-    test "$(node -p "require('\''./node_modules/vm-acceptance-language/package.json'\'').version")" = 1.0.1
-    test "$(cat node_modules/vm-acceptance-language/source-marker.txt)" = published
-    test ! -e package-lock.json
+    restored=node_modules/vm-acceptance-language
+    if ! test "$(node -p "require('\''./node_modules/vm-acceptance-language/package.json'\'').version" 2>/dev/null)" = 1.0.1 ||
+      ! test "$(cat "$restored/source-marker.txt" 2>/dev/null)" = published
+    then
+      echo "Published dependency was not restored after checkout cancellation" >&2
+      ls -ld node_modules "$restored" 2>&1 || true
+      readlink "$restored" 2>&1 || true
+      find node_modules -maxdepth 2 -type f -o -type l 2>/dev/null | sort >&2 || true
+      exit 1
+    fi
   '
 }
 
 accept_language_package_lifecycle() {
   release_source_only_language_package
   assert_language_dependency_restoration
-  test "$(git -C "$project_root" hash-object package.json)" = "$project_manifest_digest"
-  test -z "$(git -C "$project_root" status --porcelain --untracked-files=all)"
+  assert_project_dependency_files_unchanged
 }

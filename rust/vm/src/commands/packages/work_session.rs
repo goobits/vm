@@ -194,7 +194,7 @@ mod tests {
 
         assert_eq!(owner.source, "auth");
         assert_eq!(owner.root, source.canonicalize().unwrap());
-        assert_eq!(owner.config, source.join("vm.yaml"));
+        assert_eq!(owner.config, source.join("vm.yaml").canonicalize().unwrap());
         assert_eq!(
             discovery::resolve_registered_source_at(
                 &owner.root,

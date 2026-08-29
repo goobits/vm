@@ -110,7 +110,8 @@ fn canonical_project_root(
         })?;
     Ok(canonical_sources
         .iter()
-        .any(|source| Path::new(source) == project)
+        .filter_map(|source| Path::new(source).canonicalize().ok())
+        .any(|source| source == project)
         .then_some(project))
 }
 
@@ -342,6 +343,28 @@ mod tests {
         assert!(canonical_project_root(&clone, &canonical)
             .unwrap()
             .is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_authority_resolves_registered_filesystem_aliases() {
+        let directory = tempfile::tempdir().unwrap();
+        let registered = directory.path().join("registered");
+        let alias = directory.path().join("alias");
+        std::fs::create_dir_all(&registered).unwrap();
+        std::os::unix::fs::symlink(&registered, &alias).unwrap();
+        let config_path = registered.join("vm.yaml");
+        std::fs::write(&config_path, "version: '2.0'\n").unwrap();
+        let config = VmConfig {
+            source_path: Some(config_path),
+            ..Default::default()
+        };
+
+        assert!(
+            canonical_project_root(&config, &[alias.to_string_lossy().into_owned()])
+                .unwrap()
+                .is_some()
+        );
     }
 
     #[test]

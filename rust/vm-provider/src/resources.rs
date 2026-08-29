@@ -147,12 +147,13 @@ mod tests {
 
     #[test]
     fn home_repair_is_versioned_and_mount_aware() {
-        assert!(HOME_STATE_REPAIR.contains("REPAIR_VERSION=2"));
+        assert!(HOME_STATE_REPAIR.contains("REPAIR_VERSION=3"));
         assert!(HOME_STATE_REPAIR.contains("home-repair"));
         assert!(HOME_STATE_REPAIR.contains("VM_HOME_REPAIR_FORCE"));
         assert!(HOME_STATE_REPAIR.contains("full_repair"));
         assert!(HOME_STATE_REPAIR.contains("state_fingerprint"));
         assert!(HOME_STATE_REPAIR.contains("find \"$path\" -xdev"));
+        assert!(HOME_STATE_REPAIR.contains("find \"$package_checkout_root\" -xdev"));
         assert!(HOME_STATE_REPAIR.contains("quarantine_file"));
         assert!(!HOME_STATE_REPAIR.contains("-name '*.json' -size 0 -delete"));
         assert!(!HOME_STATE_REPAIR.contains("marker.tmp.$$"));
@@ -188,6 +189,7 @@ mod tests {
         assert!(NODE_TOOLCHAIN_INSTALLER.contains("VM_NODE_TOOLCHAIN_CURRENT=1"));
         assert!(NODE_TOOLCHAIN_INSTALLER.contains("PROFILE=\"$installer_profile\""));
         assert!(NODE_TOOLCHAIN_INSTALLER.contains("installer_status=$?"));
+        assert!(NODE_TOOLCHAIN_INSTALLER.contains("nvm failed to install Node.js"));
         assert!(NODE_BOOTSTRAP.contains("VM_BOOTSTRAP_DEPENDENCIES_CURRENT=1"));
         assert!(NODE_BOOTSTRAP.contains("shasum -a 256"));
         assert!(!NODE_BOOTSTRAP.contains("mapfile"));
@@ -329,5 +331,48 @@ INSTALLER"#,
         assert!(
             String::from_utf8_lossy(&second.stdout).contains("VM_BOOTSTRAP_DEPENDENCIES_CURRENT=1")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn node_dependency_bootstrap_defers_project_dependency_failures() {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("home");
+        let project = root.path().join("project");
+        let bin = root.path().join("bin");
+        fs::create_dir_all(home.join(".nvm")).unwrap();
+        fs::create_dir(&project).unwrap();
+        fs::create_dir(&bin).unwrap();
+        fs::write(home.join(".nvm/nvm.sh"), "").unwrap();
+        fs::write(project.join("package.json"), "{}\n").unwrap();
+        fs::write(project.join("pnpm-lock.yaml"), "lockfileVersion: '9.0'\n").unwrap();
+        write_test_command(&bin.join("node"), "echo v22.0.0");
+        write_test_command(
+            &bin.join("pnpm"),
+            "if [ \"$1\" = --version ]; then echo 10.12.3; else echo stale-lockfile >&2; exit 1; fi",
+        );
+        let path = format!(
+            "{}:{}",
+            bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+
+        let output = Command::new("/bin/bash")
+            .args(["-c", NODE_BOOTSTRAP])
+            .env("HOME", &home)
+            .env("NVM_DIR", home.join(".nvm"))
+            .env("PATH", path)
+            .env("VM_PROJECT_PATH", &project)
+            .env("VM_NODE_DEPENDENCY_MANAGER", "pnpm")
+            .output()
+            .unwrap();
+
+        assert!(output.status.success());
+        assert!(String::from_utf8_lossy(&output.stdout)
+            .contains("VM_BOOTSTRAP_DEPENDENCIES_DEFERRED=1"));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("stale-lockfile"));
+        assert!(!project
+            .join("node_modules/.vm-dependencies.sha256")
+            .exists());
     }
 }

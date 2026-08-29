@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-REPAIR_VERSION=2
+REPAIR_VERSION=3
 home_dir="${1:?home directory is required}"
 user_name="${2:?user name is required}"
 
@@ -32,6 +32,7 @@ user_uid="$(id -u "$user_name")"
 user_gid="$(id -g "$user_name")"
 marker_dir="$home_dir/.vm/state"
 marker="$marker_dir/home-repair"
+package_checkout_root="$home_dir/.local/share/vm/package-checkouts"
 
 as_root() {
   if [ "$(id -u)" -eq 0 ]; then
@@ -97,7 +98,7 @@ is_mountpoint() {
 state_fingerprint() {
   local path identity
   printf 'v%s:%s:%s' "$REPAIR_VERSION" "$user_uid" "$user_gid"
-  for path in "${managed_paths[@]}"; do
+  for path in "${managed_paths[@]}" "$package_checkout_root"; do
     if [ -e "$path" ] && identity="$(stat_identity "$path")"; then
       printf '|%s=%s' "${path#$home_dir/}" "$identity"
     else
@@ -192,6 +193,28 @@ for path in "${managed_paths[@]}"; do
   as_root chown -h "$user_uid:$user_gid" "$path"
   as_root chmod u+rwx "$path"
 done
+
+# The checkout root may be a dedicated Docker volume nested below .local.
+# Home repair deliberately prunes nested mounts above, so repair this exact
+# VM-owned path separately without traversing any host workspace mount.
+if [ -L "$package_checkout_root" ] \
+  || { [ -e "$package_checkout_root" ] && [ ! -d "$package_checkout_root" ]; }; then
+  echo "Unsafe package checkout root: $package_checkout_root" >&2
+  exit 1
+fi
+if [ -d "$package_checkout_root" ]; then
+  checkout_uid="$(stat_uid "$package_checkout_root")"
+  checkout_gid="$(stat_gid "$package_checkout_root")"
+  if [ "$full_repair" = 1 ] \
+    || [ "$checkout_uid" != "$user_uid" ] \
+    || [ "$checkout_gid" != "$user_gid" ]; then
+    as_root find "$package_checkout_root" -xdev \
+      \( ! -uid "$user_uid" -o ! -gid "$user_gid" \) \
+      -exec chown -h "$user_uid:$user_gid" {} +
+  fi
+  as_root chown -h "$user_uid:$user_gid" "$package_checkout_root"
+  as_root chmod 700 "$package_checkout_root"
+fi
 
 for path in \
   "$home_dir/.zshrc" \

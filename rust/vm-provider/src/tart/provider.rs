@@ -452,7 +452,12 @@ mod tests {
     use crate::{tart_base, ProvisioningProvider};
     use vm_config::config::{ImageSpec, ProjectConfig, TartConfig, VmConfig, VmSettings};
 
-    fn provider(config: VmConfig) -> TartProvider {
+    fn provider(mut config: VmConfig) -> TartProvider {
+        config
+            .tart
+            .get_or_insert_with(TartConfig::default)
+            .storage_path
+            .get_or_insert_with(|| "/tmp/vm-provider-tests-tart".to_string());
         TartProvider::from_config(config).unwrap()
     }
 

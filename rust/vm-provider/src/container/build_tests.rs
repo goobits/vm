@@ -151,6 +151,10 @@ fn test_gather_build_args_host_integration() {
     assert!(include_str!("Dockerfile.j2").contains(
         "source=shared/scripts/install-node-toolchain.sh,target=/tmp/install-node-toolchain.sh"
     ));
+    assert!(include_str!("Dockerfile.j2")
+        .contains("pip3 install --help 2>/dev/null | grep -q -- '--break-system-packages'"));
+    assert!(!include_str!("Dockerfile.j2")
+        .contains("pip3 install --user --break-system-packages \"$pkg\""));
 }
 
 #[test]

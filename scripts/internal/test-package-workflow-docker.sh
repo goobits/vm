@@ -31,7 +31,7 @@ source_shelf=$acceptance_root/sources
 project_root=$acceptance_root/projects/release-tool
 consumer_root=$acceptance_root/consumer
 stopped_root=$acceptance_root/stopped
-fixture_root=$acceptance_root/agent-skills
+fixture_root=$acceptance_root/vm-acceptance-skills
 language_root=$acceptance_root/language-package
 fake_bin=$acceptance_root/bin
 checkout_log=$acceptance_root/checkout.log
@@ -105,6 +105,20 @@ cleanup_environment_resources() {
   done
 }
 
+stop_acceptance_activation_worker() {
+  local command pid pid_file
+  pid_file=$acceptance_home/.vm/infrastructure/packages/activation-worker.pid
+  test -s "$pid_file" || return 0
+  pid=$(tr -d '[:space:]' < "$pid_file")
+  case "$pid" in
+    ''|*[!0-9]*) return 0 ;;
+  esac
+  command=$(ps -p "$pid" -o command= 2>/dev/null || true)
+  case "$command" in
+    *"$vm_binary tools activation-worker"*) kill "$pid" 2>/dev/null || true ;;
+  esac
+}
+
 cleanup() {
   local status=$?
   trap - EXIT
@@ -112,6 +126,7 @@ cleanup() {
   if test "$status" -ne 0; then
     capture_failure_evidence "$status"
   fi
+  stop_acceptance_activation_worker
   cleanup_environment_resources
   package_compose=$acceptance_home/.vm/infrastructure/packages/compose.yaml
   package_environment=$acceptance_home/.vm/infrastructure/packages/environment.env

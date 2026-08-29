@@ -2,17 +2,15 @@ use std::fs::{File, OpenOptions};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-use fs2::FileExt;
-use vm_config::GlobalConfig;
-
 use crate::error::{VmError, VmResult};
+use fs2::FileExt;
 
 use super::{rollout, user_service};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 pub(in crate::commands) fn ensure_worker() -> VmResult<()> {
-    if GlobalConfig::load()?.tools.is_empty() || std::env::var("VM_TEST_MODE").is_ok() {
+    if std::env::var("VM_TEST_MODE").is_ok() {
         return Ok(());
     }
     let paths = WorkerPaths::discover()?;

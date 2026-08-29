@@ -142,9 +142,6 @@ pub(in crate::commands) async fn handle(
         }
         ToolsSubcommand::Disable { tools } => {
             set_global_selection(&tools, false)?;
-            if GlobalConfig::load()?.tools.is_empty() {
-                activation::remove_worker()?;
-            }
             vm_success!("Disabled globally: {}", tools.join(", "));
             vm_hint!(
                 "Existing managed installations are retained but no longer receive global updates"

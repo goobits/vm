@@ -27,8 +27,8 @@ impl GuestRuntime {
             .ok()
             .filter(|workspace| !workspace.trim().is_empty())
             .map(PathBuf::from);
-        let workspace = std::env::current_dir()
-            .map_err(VmError::from)?
+        let current_dir = std::env::current_dir().map_err(VmError::from)?;
+        let workspace = effective_workspace(&current_dir, canonical_workspace.as_deref())
             .to_string_lossy()
             .into_owned();
         let home = dirs::home_dir().ok_or_else(|| {
@@ -127,6 +127,13 @@ impl GuestRuntime {
     }
 }
 
+fn effective_workspace<'a>(
+    current_dir: &'a Path,
+    canonical_workspace: Option<&'a Path>,
+) -> &'a Path {
+    canonical_workspace.unwrap_or(current_dir)
+}
+
 fn required_guest_variable(name: &str) -> VmResult<String> {
     std::env::var(name)
         .ok()
@@ -171,4 +178,19 @@ where
     ];
     wrapped.extend(command.into_iter().map(Into::into));
     subject.run(&wrapped)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::effective_workspace;
+    use std::path::Path;
+
+    #[test]
+    fn consumer_commands_stay_in_the_canonical_workspace() {
+        let checkout = Path::new("/home/developer/.local/share/vm/package-checkouts/pkg-1/source");
+        let workspace = Path::new("/workspace");
+
+        assert_eq!(effective_workspace(checkout, Some(workspace)), workspace);
+        assert_eq!(effective_workspace(checkout, None), checkout);
+    }
 }

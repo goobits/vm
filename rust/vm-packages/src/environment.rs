@@ -81,6 +81,9 @@ impl ClientEnvironment {
         if read_token.trim().is_empty() {
             bail!("package read token cannot be empty");
         }
+        if read_token.contains(['\0', '\n', '\r']) {
+            bail!("package read token cannot contain control characters");
+        }
         Ok(Self {
             oci_mirror: endpoints.gateway().to_string(),
             endpoints,
@@ -127,7 +130,7 @@ impl ClientEnvironment {
 
     pub fn variables(&self) -> Vec<(String, String)> {
         let mut variables = vec![
-            ("NPM_CONFIG_REGISTRY".into(), self.authenticated_url("npm/")),
+            ("NPM_CONFIG_REGISTRY".into(), self.endpoints.npm()),
             (
                 "PIP_INDEX_URL".into(),
                 self.authenticated_url("pypi/simple/"),
@@ -147,6 +150,8 @@ impl ClientEnvironment {
                 "cargo:token".into(),
             ),
             ("VM_OCI_MIRROR".into(), self.oci_mirror.clone()),
+            ("NPM_CONFIG_USERCONFIG".into(), "/etc/vm/npmrc".into()),
+            ("PIP_CONFIG_FILE".into(), "/etc/vm/pip.conf".into()),
         ];
         if let Some(access) = &self.agent_access {
             variables.extend([
@@ -173,14 +178,14 @@ impl ClientEnvironment {
     }
 
     pub fn managed_settings(&self) -> ManagedClientSettings {
-        let npm_registry = self.authenticated_url("npm/");
+        let npm_registry = self.endpoints.npm();
+        let npm_auth_scope = npm_registry
+            .strip_prefix("https://")
+            .or_else(|| npm_registry.strip_prefix("http://"))
+            .expect("registry endpoints are HTTP(S)");
         let pip_index = self.authenticated_url("pypi/simple/");
         let cargo_index = self.endpoints.cargo_index();
         let mut variables = self.variables();
-        variables.extend([
-            ("NPM_CONFIG_USERCONFIG".into(), "/etc/vm/npmrc".into()),
-            ("PIP_CONFIG_FILE".into(), "/etc/vm/pip.conf".into()),
-        ]);
         variables.sort_by(|left, right| left.0.cmp(&right.0));
         let mut profile = std::iter::once(
             "# Managed by VM; changes are replaced during VM reconciliation.\n".to_string(),
@@ -206,7 +211,10 @@ export PATH
 unset vm_node_executable
 "#,
         );
-        let npmrc = format!("registry={npm_registry}\nalways-auth=true\n");
+        let npmrc = format!(
+            "registry={npm_registry}\nalways-auth=true\n//{npm_auth_scope}:_authToken={}\n",
+            self.read_token
+        );
         let pip_conf = format!("[global]\nindex-url = {pip_index}\n");
         let cargo_config = format!(
             "[registries.vm]\nindex = {index:?}\ncredential-provider = \"cargo:token\"\n\n[source.crates-io]\nreplace-with = \"vm\"\n\n[source.vm]\nregistry = {index:?}\n\n[registry]\nglobal-credential-providers = [\"cargo:token\"]\n",
@@ -253,8 +261,9 @@ mod tests {
         );
         let environment = ClientEnvironment::new(endpoints, "read secret").unwrap();
         let variables = environment.variables();
-        assert_eq!(variables.len(), 8);
-        assert!(variables[0].1.contains("reader:read%20secret@"));
+        assert_eq!(variables.len(), 10);
+        assert_eq!(variables[0].1, "https://packages.internal/npm/");
+        assert!(!variables[0].1.contains("read secret"));
 
         let agent = environment
             .with_agent_access(
@@ -266,7 +275,7 @@ mod tests {
             .with_canonical_workspace("/workspace")
             .unwrap()
             .variables();
-        assert_eq!(agent.len(), 13);
+        assert_eq!(agent.len(), 15);
         assert!(agent.contains(&("VM_PACKAGES_CONSUMER".into(), "project-a".into())));
         assert!(agent.contains(&(
             "VM_PACKAGES_CLIENT_URL".into(),
@@ -284,6 +293,11 @@ mod tests {
     fn rejects_non_http_gateways() {
         assert!(RegistryEndpoints::new("file:///tmp/packages").is_err());
         assert!(RegistryEndpoints::new("relative/path").is_err());
+        assert!(ClientEnvironment::new(
+            RegistryEndpoints::new("https://packages.internal").unwrap(),
+            "read-token\nextra=true"
+        )
+        .is_err());
     }
 
     #[test]
@@ -319,7 +333,9 @@ mod tests {
 
         assert!(settings.profile.contains("NPM_CONFIG_USERCONFIG"));
         assert!(settings.profile.contains("VM_PACKAGES_AGENT_TOKEN"));
-        assert!(settings.npmrc.contains("reader:read-token@"));
+        assert!(settings
+            .npmrc
+            .contains("//packages.internal/npm/:_authToken=read-token"));
         assert!(settings.pip_conf.contains("/pypi/simple/"));
         assert!(settings.cargo_config.contains("replace-with = \"vm\""));
         assert_eq!(settings.revision.len(), 64);

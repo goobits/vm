@@ -11,5 +11,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sudo -Hu acceptance git config --global user.name 'VM Acceptance' && \
     sudo -Hu acceptance git config --global user.email 'vm-acceptance@example.invalid'
 USER acceptance
+ENV PATH="/home/acceptance/.local/bin:${PATH}"
 WORKDIR /workspace
 CMD ["tail", "-f", "/dev/null"]
