@@ -1,160 +1,85 @@
-# VM - Humane Virtual Environments
+<h1 align="center">vm</h1>
 
-Ask for the environment you want, give it a name in plain language, and let `vm` route to the right engine.
+<p align="center"><strong>Create named development environments with one CLI across supported providers.</strong></p>
+<p align="center">Use Docker by default, Tart for macOS guests on Apple Silicon, or an explicitly selected compatible provider.</p>
 
-```bash
-vm run linux as backend
-vm shell backend
-vm exec backend -- npm test
-vm restart backend
-vm remove backend
-```
+<p align="center">
+  <a href="#why-vm">Why vm</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#daily-workflow">Daily workflow</a> ·
+  <a href="#state-and-provider-boundary">State and providers</a> ·
+  <a href="#documentation">Documentation</a>
+</p>
 
-## Install
+---
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/goobits/vm/main/install.sh | bash
-```
+## Why vm
 
-Docker is the default engine for Linux and container environments. Tart powers macOS environments on Apple Silicon macOS. Podman is available as an advanced provider override.
+Development environments often require different provider commands, state
+locations, network setup, and packaging steps. `vm` gives projects one named
+environment model and keeps provider-specific behavior behind explicit
+configuration.
 
-## Mental Model
+## Quick start
 
-You choose the kind of environment:
-
-| Kind | Command | Default engine |
-| --- | --- | --- |
-| macOS VM | `vm run mac as xcode` | Tart |
-| Linux dev env | `vm run linux as backend` | Docker |
-| Container | `vm run container as redis` | Docker |
-
-Provider names are escape hatches. Day to day, think in `mac`, `linux`, and `container`.
-
-## Everyday Workflow
+Build and install from source, then verify local capabilities:
 
 ```bash
-vm run linux as api
-vm ssh
-vm exec -- cargo test
-vm logs --follow
-vm restart
-vm stop
+git clone https://github.com/goobits/vm.git
+cd vm
+./install.sh
+vm --help
+vm doctor
 ```
 
-`vm run` creates the environment if it does not exist and starts it if it is stopped.
-`vm shell` (or `vm ssh`) creates the configured environment when missing and
-starts it when stopped. `vm exec` only starts an existing environment. Omitting
-a name uses the project default.
-`vm list` lists environments for the current project. Use `vm list --all` for the global inventory.
-See [target selection](docs/user-guide/cli-reference.md#target-selection) when a
-project has multiple environments.
-
-## Naming
+Start a Linux environment with the default provider:
 
 ```bash
-vm run linux as backend
-vm run mac as xcode
-vm run container as redis
+vm run linux as dev
+vm shell dev
 ```
 
-Naming is intentionally natural language: use `as <name>`.
+## Daily workflow
 
-If you skip `as <name>`, the kind becomes the name:
+| Command | Purpose |
+| --- | --- |
+| `vm run <kind> as <name>` | Create or start a named macOS, Linux, or container environment |
+| `vm shell <name>` | Open an interactive shell |
+| `vm exec <name> -- <command>` | Run a command in an environment |
+| `vm restart <name>` | Restart an environment |
+| `vm list` | List managed environments |
+| `vm remove <name>` | Remove an environment |
+| `vm doctor` | Check host and provider capabilities |
 
-```bash
-vm run mac
-vm shell mac
-```
+State workflows include save, revert, and package operations. Configuration,
+tunnels, plugins, databases, secrets, and self-management have dedicated
+command groups. Use `vm <command> --help` for exact syntax.
 
-## State
+## State and provider boundary
 
-```bash
-vm save backend as stable
-vm revert backend stable
-vm package backend --output backend.tar.gz
-```
+Docker is the default Linux/container provider. Tart-based macOS environments
+require Apple Silicon macOS and Tart. Podman support is optional and must be
+selected where supported.
 
-`vm remove` removes active environment resources but keeps explicitly saved snapshots.
+Save, revert, remove, package, database, secret, and system commands can change
+durable environment state. Inspect the selected environment and provider before
+running them. A configuration file does not install or license a missing guest
+image, platform SDK, or provider.
 
-## When You Need More
+## Documentation
 
-The daily surface stays small. Specialized workflows are still close by when you need them.
+- [Documentation index](docs/README.md)
+- [Quick start](docs/getting-started/quick-start.md)
+- [Examples](docs/getting-started/examples.md)
+- [CLI reference](docs/user-guide/cli-reference.md)
+- [Configuration](docs/user-guide/configuration.md)
+- [Plugins](docs/user-guide/plugins.md)
+- [Troubleshooting](docs/user-guide/troubleshooting.md)
 
-```bash
-vm config show                         # inspect project defaults
-vm config set vm.memory 8192           # tune resources
-vm tunnel add 8080:3000 backend        # expose a port
-vm doctor                              # diagnose engine issues
-vm system update                       # update vm itself
-```
+The maintained installation guide still repeats the unsupported curl-pipe
+pattern. Use the source checkout installation above until that guide and
+installer are reconciled.
 
-For the complete command surface, see [docs/user-guide/cli-reference.md](docs/user-guide/cli-reference.md).
+## License
 
-## Plugins and built-in workflows
-
-```bash
-vm plugin install ./plugins/vibe-dev
-vm db backup app_db
-vm secret interactive
-```
-
-Plugins provide reusable preset definitions and inspectable service manifests.
-Database and secret workflows remain focused built-in command groups.
-
-## Configuration
-
-You can ignore configuration until the defaults are not enough. A project can use `vm.yaml` for durable choices like memory, CPU, workspace path, and default image. `vm run` creates a starter config when one is missing.
-
-```yaml
-version: '2.0'
-provider: docker
-project:
-  name: backend
-  workspace_path: /workspace
-vm:
-  image: ubuntu:24.04
-  memory: 8192
-  cpus: 4
-```
-
-Container dependency volumes, bounded `/tmp`, resource limits, and log rotation
-are opt-in project settings. See the
-[configuration guide](docs/user-guide/configuration.md#container-storage-and-bootstrap).
-
-## Docker Inside Tart
-
-For a full VM that can run Docker, prefer the Linux Tart profile:
-
-```bash
-vm config preset vibe-tart
-vm ssh
-```
-
-```text
-+----------------------+
-| Apple Silicon Mac    |  M3/M4 + macOS 15+
-+----------+-----------+
-           | Tart Linux guest
-+----------v-----------+
-| Linux Dev VM         |  tools, services, /workspace
-+----------+-----------+
-           | Docker Engine
-+----------v-----------+
-| Docker Workloads     |  build, compose, test
-+----------------------+
-```
-
-Docker runs directly against the Linux guest kernel, so this path does not need
-Colima. `vm ssh` creates the Tart environment from `vm.yaml` when needed and
-starts it before connecting.
-
-The explicit macOS profile remains available for Xcode or other macOS-only
-work. Docker inside that macOS guest needs Colima and QEMU TCG software
-emulation because Tart cannot provide nested virtualization there, so it is the
-slower fallback.
-
-## Development
-
-The repository Makefile owns supported checks. See the
-[Testing Guide](docs/development/testing.md) for commands, test isolation, and
-the full local gate.
+[MIT](LICENSE).
