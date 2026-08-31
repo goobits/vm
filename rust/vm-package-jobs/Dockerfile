@@ -19,7 +19,7 @@ RUN --mount=type=cache,id=vm-packages-cargo-registry,target=/usr/local/cargo/reg
     install -m 0755 "$CARGO_TARGET_DIR/$VM_PACKAGE_BUILD_PROFILE/pkg-rollout" /usr/local/bin/pkg-rollout && \
     install -m 0755 "$CARGO_TARGET_DIR/$VM_PACKAGE_BUILD_PROFILE/pkg-git-askpass" /usr/local/bin/pkg-git-askpass
 
-FROM node:22-bookworm@sha256:8a34c4ab3ea2c5cd194f07e317b2a8f09461d3c8b05c4e34c8ccd56d56024c4d
+FROM node:26-bookworm@sha256:9f94d34c787165dca03b74e5bf9c3bf90e8de79b19aa3d87fe1fa1694bf75c89
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential ca-certificates curl git libssl-dev pkg-config \
