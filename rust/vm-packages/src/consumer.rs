@@ -100,3 +100,23 @@ pub struct RolloutValidationRequest {
 fn default_branch() -> String {
     "main".into()
 }
+
+/// Files a dependency rollout may change in a consumer repository.
+pub fn rollout_paths(ecosystem: PackageEcosystem) -> &'static [&'static str] {
+    match ecosystem {
+        PackageEcosystem::Npm => &[
+            "package.json",
+            "package-lock.json",
+            "npm-shrinkwrap.json",
+            "pnpm-lock.yaml",
+            "yarn.lock",
+        ],
+        PackageEcosystem::Cargo => &["Cargo.toml", "Cargo.lock"],
+        PackageEcosystem::Python => &[
+            "pyproject.toml",
+            "uv.lock",
+            "poetry.lock",
+            "requirements.txt",
+        ],
+    }
+}

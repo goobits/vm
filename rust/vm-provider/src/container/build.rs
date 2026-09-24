@@ -126,6 +126,7 @@ Thumbs.db
         context.insert("project_uid", &user_config.uid.to_string());
         context.insert("project_gid", &user_config.gid.to_string());
         context.insert("project_user", &user_config.username);
+        context.insert("container_provider", self.runtime.engine().name());
 
         // Keep the image's shell helper aligned with the runtime worktree mount.
         context.insert(

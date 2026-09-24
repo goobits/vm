@@ -220,6 +220,7 @@ services:
       PKG_RELEASE_PUBLISH_TOKEN_FILE: /run/secrets/publish_token
       PKG_RELEASE_GIT_TOKEN_FILE: /run/secrets/git_token
       PKG_RELEASE_BUILD_ROOT: /builds
+      PKG_RELEASE_ARTIFACT_ROOT: /data/sources/package-artifacts
       PKG_CLIENT_GATEWAY: http://gateway:8080
       PKG_CLIENT_READ_TOKEN_FILE: /run/secrets/releaser_read_token
       CARGO_HOME: /tmp/cargo-home

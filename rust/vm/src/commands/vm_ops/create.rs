@@ -108,7 +108,7 @@ pub async fn handle_create(
             ));
         }
     }
-    if let Some(existing) = existing_instance {
+    if let Some(existing) = existing_instance.as_ref() {
         if !force {
             vm_warning!(
                 "Environment '{}' already exists{}",
@@ -124,12 +124,6 @@ pub async fn handle_create(
             vm_hint!("Use `vm shell`, `vm start`, or remove it before `vm run`");
             return Ok(());
         }
-
-        vm_progress!("Recreating '{target_name}'...");
-        provider.destroy(
-            instance.as_deref(),
-            &ProviderContext::default().preserve_services(true),
-        )?;
     }
 
     // Check if this is a multi-instance provider and handle accordingly
@@ -147,6 +141,18 @@ pub async fn handle_create(
     }
 
     base::ensure_configured_tart_base(&config)?;
+    if matches!(provider.name(), "docker" | "podman") {
+        base::ensure_configured_container_base(&config, provider.name()).await?;
+        base::preflight_configured_container_snapshot(&config)?;
+    }
+
+    if existing_instance.is_some() {
+        vm_progress!("Recreating '{target_name}'...");
+        provider.destroy(
+            instance.as_deref(),
+            &ProviderContext::default().preserve_services(true),
+        )?;
+    }
 
     vm_progress!("Creating '{target_name}'...");
 

@@ -17,7 +17,7 @@ install_tool() {
     antigravity)
       executable=agy
       installer=https://antigravity.google/cli/install.sh
-      checksum=ee1ea43ce4e9e56356c4ab6dad907ef357ae4bdfcaadb682735909fb57c9c640
+      checksum=3630989911e4078759942c1a07b402b0ba1c34575c33c2ccadd2f78819781880
       shell=bash
       ;;
     claude)
@@ -30,7 +30,7 @@ install_tool() {
     codex)
       executable=codex
       installer=https://chatgpt.com/codex/install.sh
-      checksum=ba92dd27e5c06f0d3bbc58bfa4b9cfb6599cd2742fbb1f92a2765e6c07dedb5a
+      checksum=150e3cf675682efeaac115aa3747add3f27887896d04ce6d0b56478d8b428bf6
       shell=sh
       ;;
     *)

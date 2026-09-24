@@ -43,7 +43,7 @@ RUN if [ "$VIBE_RUNTIME_REQUIRED" = "true" ]; then \
         test -x /usr/local/bin/codex-code-mode-host || { \
             printf '%s\n' \
               'Vibe base is incomplete: Codex code-mode host is unavailable.' \
-              'Run on the host: vm system base build vibe --provider docker' >&2; \
+              'Run on the host: vm system base build vibe --provider {{ container_provider }}' >&2; \
             exit 1; \
         }; \
     fi
@@ -71,7 +71,7 @@ RUN if [ "$BASE_PREPROVISIONED" != "true" ]; then \
         sudo \
         nano vim \
         unzip zip tree jq \
-        htop lsof \
+        htop lsof util-linux \
         netcat-openbsd telnet dnsutils iputils-ping \
         zsh zsh-syntax-highlighting \
         tzdata \
@@ -193,6 +193,8 @@ RUN if [ -n "${PIPX_PACKAGES}" ]; then \
 # Set up environment for package managers (must come before config/shell setup)
 ENV NVM_DIR=/home/${PROJECT_USER}/.nvm
 ENV PATH="/home/${PROJECT_USER}/.cargo/bin:/home/${PROJECT_USER}/.local/bin:${NVM_DIR}/versions/node/v${NODE_VERSION}/bin:${PATH}"
+ENV VM_PROJECT_PYTHON="/home/${PROJECT_USER}/.local/share/vm/python"
+ENV PATH="${VM_PROJECT_PYTHON}/bin:${PATH}"
 
 
 # --- Resource & Configuration Embedding ---
@@ -218,6 +220,23 @@ if [ -z "${VM_SHELL_RUNTIME_READY:-}" ]; then
     export VM_WORKTREES='{{ worktrees_base_dir }}'
     export VM_SHELL_RUNTIME_READY=1
 fi
+# sudo starts login shells with a restricted PATH, so restore the Python
+# selected by this image rather than falling back to Ubuntu's system Python.
+if [ -x "$HOME/.local/share/vm/python/bin/python" ]; then
+    vm_python_bin="$HOME/.local/share/vm/python/bin"
+elif [ -x /opt/vm-python/bin/python ]; then
+    vm_python_bin=/opt/vm-python/bin
+else
+    vm_python_bin=
+fi
+if [ -n "$vm_python_bin" ]; then
+    case ":$PATH:" in
+        *":$vm_python_bin:"*) ;;
+        *) PATH="$vm_python_bin:$PATH" ;;
+    esac
+    export PATH
+fi
+unset vm_python_bin
 EOF
 
 RUN chmod +x /etc/profile.d/vm-shell-runtime.sh && \
@@ -339,16 +358,20 @@ RUN --mount=type=cache,target=/home/${PROJECT_USER}/.npm,uid=${PROJECT_UID},gid=
 
 # Python Package Installation
 RUN --mount=type=cache,target=/home/${PROJECT_USER}/.cache/pip,uid=${PROJECT_UID},gid=${PROJECT_GID} \
+    set -e; \
     if [ -n "${PIP_PACKAGES}" ]; then \
         echo "Checking Python packages: ${PIP_PACKAGES}"; \
-        PIP_BREAK_SYSTEM_PACKAGES=""; \
-        if pip3 install --help 2>/dev/null | grep -q -- '--break-system-packages'; then \
-            PIP_BREAK_SYSTEM_PACKAGES="--break-system-packages"; \
-        fi; \
+        base_python="$(command -v python3)"; \
+        base_site="$("$base_python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')"; \
+        "$base_python" -m venv --system-site-packages "$VM_PROJECT_PYTHON" && \
+        project_site="$("$VM_PROJECT_PYTHON/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" && \
+        if [ "$base_site" != "$project_site" ]; then \
+            printf '%s\n' "$base_site" > "$project_site/vm-base.pth"; \
+        fi && \
         for pkg in ${PIP_PACKAGES}; do \
-            if ! pip3 show "$pkg" >/dev/null 2>&1; then \
+            if ! "$VM_PROJECT_PYTHON/bin/python" -m pip show "$pkg" >/dev/null 2>&1; then \
                 echo "Installing $pkg..."; \
-                pip3 install --user $PIP_BREAK_SYSTEM_PACKAGES "$pkg"; \
+                "$VM_PROJECT_PYTHON/bin/python" -m pip install "$pkg"; \
             else \
                 echo "Skipping $pkg (already installed)"; \
             fi; \

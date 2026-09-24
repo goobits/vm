@@ -46,16 +46,31 @@ pub(super) async fn update_tool_build_progress(
 
 pub(super) async fn reconcile_rollout_queue(
     State(state): State<AppState>,
-) -> Json<Option<RolloutRecord>> {
+) -> WorkResult<Json<Option<RolloutRecord>>> {
     prepare_rollout_queue(&state).await;
-    Json(state.store.next_rollout().await)
+    Ok(Json(state.store.next_rollout().await?))
 }
 
 async fn prepare_rollout_queue(state: &AppState) {
-    let mut rollouts = state
-        .store
-        .rollouts()
-        .await
+    let all_rollouts = state.store.rollouts().await;
+    // A process can stop after persisting completion but before deleting its
+    // transient source. Reconcile that cleanup on subsequent queue polls.
+    for rollout in &all_rollouts {
+        if rollout.worktree.is_some()
+            && matches!(
+                rollout.state,
+                RolloutState::ReadyForReview
+                    | RolloutState::Failed
+                    | RolloutState::Cancelled
+                    | RolloutState::Closed
+            )
+        {
+            if let Err(error) = state.source.cleanup_rollout(rollout).await {
+                tracing::warn!(operation = "cleanup_rollout", rollout_id = %rollout.rollout_id, error = ?error, "package rollout cleanup will be retried");
+            }
+        }
+    }
+    let mut rollouts = all_rollouts
         .into_iter()
         .filter(|rollout| rollout.state == RolloutState::Created)
         .collect::<Vec<_>>();
@@ -162,12 +177,11 @@ pub(super) async fn complete_rollout(
     Json(request): Json<RolloutValidationRequest>,
 ) -> WorkResult<Json<RolloutRecord>> {
     let rollout = state.store.rollout(&id).await?;
-    if request.passed {
+    if request.passed && rollout.state == RolloutState::Validating {
         state.source.push_rollout(&state.store, &rollout).await?;
-        state.source.cleanup_rollout(&rollout).await?;
     }
     let completed = state.store.complete_rollout(&id, request).await?;
-    if completed.state != RolloutState::ReadyForReview {
+    if completed.worktree.is_some() {
         state.source.cleanup_rollout(&completed).await?;
     }
     Ok(Json(completed))

@@ -6,6 +6,74 @@ use axum_test::TestServer;
 use super::{router, WorkCredentials};
 use crate::Store;
 
+#[tokio::test]
+async fn rollout_completion_retry_cleans_persisted_source_without_pushing_again() {
+    use vm_packages::{PackageEcosystem, RolloutRecord, RolloutState, RolloutValidationRequest};
+    let directory = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::open(directory.path()).await.unwrap());
+    let source = directory.path().join("rollouts/rollout-test/source");
+    std::fs::create_dir_all(&source).unwrap();
+    std::fs::write(source.join("marker"), "temporary checkout").unwrap();
+    let now = chrono::Utc::now();
+    let record = RolloutRecord {
+        rollout_id: "rollout-test".into(),
+        package: "auth".into(),
+        version: "1.5.0".into(),
+        consumer: "project-a".into(),
+        ecosystem: PackageEcosystem::Cargo,
+        state: RolloutState::Validating,
+        base_commit: Some("a".repeat(40)),
+        branch: Some("rollouts/auth/test".into()),
+        worktree: Some(source.to_string_lossy().into_owned()),
+        submitted_commit: Some("b".repeat(40)),
+        created_at: now,
+        updated_at: now,
+        transitions: Vec::new(),
+    };
+    store
+        .database
+        .lock()
+        .await
+        .rollouts
+        .insert(record.rollout_id.clone(), record);
+    let request = RolloutValidationRequest {
+        passed: true,
+        actor: "package-rollout-service".into(),
+        idempotency_key: "complete-test".into(),
+    };
+    // Simulate an interruption after durable completion and before cleanup or
+    // delivery of the HTTP response. There is deliberately no Git remote.
+    store
+        .complete_rollout("rollout-test", request.clone())
+        .await
+        .unwrap();
+    let server = TestServer::new(router(
+        store,
+        WorkCredentials::new(
+            "read",
+            "controller",
+            "reviewer",
+            "build",
+            "release",
+            "rollout",
+            "agent-signing-key-012345678901234567890123456789",
+        ),
+    ));
+    for _ in 0..2 {
+        let response = server
+            .post("/v1/rollouts/rollout-test/complete")
+            .add_header(header::AUTHORIZATION, "Bearer rollout")
+            .json(&request)
+            .await;
+        assert_eq!(response.status_code(), StatusCode::OK);
+        assert_eq!(
+            response.json::<RolloutRecord>().state,
+            RolloutState::ReadyForReview
+        );
+        assert!(!source.exists());
+    }
+}
+
 fn checkout() -> serde_json::Value {
     serde_json::json!({
         "package": "auth", "agent": "agent-1", "consumers": ["project-a"],

@@ -12,19 +12,35 @@ pub(super) fn run_required_checks(
     ecosystem: Option<PackageEcosystem>,
     source: &Path,
 ) -> Result<bool> {
+    // Each review owns its interpreter environment; reusing one /tmp venv
+    // carries unrelated packages and editable paths into later reviews.
+    let python_root = if ecosystem == Some(PackageEcosystem::Python) {
+        Some(tempfile::tempdir()?)
+    } else {
+        None
+    };
+    let python_venv = python_root
+        .as_ref()
+        .map(|root| root.path().join("venv").to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let python_pip = format!("{python_venv}/bin/pip");
+    let python_executable = format!("{python_venv}/bin/python");
+    let npm_install = if source.join("package-lock.json").is_file()
+        || source.join("npm-shrinkwrap.json").is_file()
+    {
+        ["ci", "--ignore-scripts"].as_slice()
+    } else {
+        ["install", "--ignore-scripts", "--package-lock=false"].as_slice()
+    };
     let commands: &[(&str, &[&str])] = match (source_kind, ecosystem) {
         (SourceKind::Package, Some(PackageEcosystem::Cargo)) => &[("cargo", &["test"])],
-        (SourceKind::Package, Some(PackageEcosystem::Npm)) => &[
-            ("npm", &["install", "--ignore-scripts"]),
-            ("npm", &["test", "--if-present"]),
-        ],
+        (SourceKind::Package, Some(PackageEcosystem::Npm)) => {
+            &[("npm", npm_install), ("npm", &["test", "--if-present"])]
+        }
         (SourceKind::Package, Some(PackageEcosystem::Python)) => &[
-            ("python", &["-m", "venv", "/tmp/package-review-venv"]),
-            (
-                "/tmp/package-review-venv/bin/pip",
-                &["install", "--editable", ".[dev]"],
-            ),
-            ("/tmp/package-review-venv/bin/python", &["-m", "pytest"]),
+            ("python", &["-m", "venv", &python_venv]),
+            (&python_pip, &["install", "--editable", ".[dev]"]),
+            (&python_executable, &["-m", "pytest"]),
         ],
         (SourceKind::ToolBinary, None) => {
             let manifest: ToolSourceManifest =

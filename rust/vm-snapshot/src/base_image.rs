@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use chrono::Utc;
-use vm_core::command_stream::stream_command;
+use vm_core::command_stream::stream_command_visible;
 use vm_core::error::{Result, VmError};
 
 use crate::archive::directory_size;
@@ -67,7 +67,7 @@ pub(crate) async fn create_from_dockerfile(
         args.push(format!("{key}={value}"));
     }
     args.push(build_context.to_string_lossy().to_string());
-    stream_command(executable, &args).map_err(|error| {
+    stream_command_visible(executable, &args).map_err(|error| {
         VmError::general(
             error,
             format!(

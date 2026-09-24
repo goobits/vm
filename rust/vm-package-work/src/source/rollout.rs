@@ -27,21 +27,7 @@ impl SourceManager {
 }
 
 fn allowed_rollout_path(ecosystem: vm_packages::PackageEcosystem, path: &str) -> bool {
-    match ecosystem {
-        vm_packages::PackageEcosystem::Npm => matches!(
-            path,
-            "package.json"
-                | "package-lock.json"
-                | "npm-shrinkwrap.json"
-                | "pnpm-lock.yaml"
-                | "yarn.lock"
-        ),
-        vm_packages::PackageEcosystem::Cargo => matches!(path, "Cargo.toml" | "Cargo.lock"),
-        vm_packages::PackageEcosystem::Python => matches!(
-            path,
-            "pyproject.toml" | "uv.lock" | "poetry.lock" | "requirements.txt"
-        ),
-    }
+    vm_packages::rollout_paths(ecosystem).contains(&path)
 }
 
 impl SourceManager {

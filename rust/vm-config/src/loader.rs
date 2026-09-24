@@ -234,7 +234,8 @@ pub fn load_and_merge_config(file: Option<PathBuf>) -> vm_core::error::Result<Vm
     } else {
         loader.load()
     };
-    let config = loaded.map_err(|error| vm_core::error::VmError::Config(error.to_string()))?;
+    // Preserve the underlying parse diagnostic when discovery adds a path context.
+    let config = loaded.map_err(|error| vm_core::error::VmError::Config(format!("{error:#}")))?;
     let source_path = config.source_path.clone();
     let project_dir = std::env::current_dir().map_err(|error| {
         vm_core::error::VmError::Config(format!("Failed to resolve current directory: {error}"))
@@ -404,6 +405,27 @@ vm:
         std::env::set_current_dir(original_dir).unwrap();
 
         assert_eq!(result.unwrap().source_path, Some(expected_source));
+    }
+
+    #[test]
+    #[serial]
+    fn discovered_config_preserves_the_retired_box_migration_hint() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            temp_dir.path().join("vm.yaml"),
+            "version: '2.0'\nprovider: docker\nvm:\n  box: '@vibe-box'\n",
+        )
+        .unwrap();
+
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+        let result = load_and_merge_config(None);
+        std::env::set_current_dir(original_dir).unwrap();
+
+        let message = result.unwrap_err().to_string();
+        assert!(message.contains("Failed to load vm.yaml"));
+        assert!(message.contains("Rename it to `vm.image`"));
+        assert!(message.contains("`@vibe-image`"));
     }
 
     #[test]

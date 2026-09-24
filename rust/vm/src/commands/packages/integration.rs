@@ -11,6 +11,7 @@ use crate::error::{VmError, VmResult};
 use super::{
     guest_checkout::{checkout_root, create_directory, remove_directory, remove_file},
     guest_runtime::{exec, GuestRuntime},
+    overrides::OverrideRecord,
     submission::{run_binary_check, run_collection_check, run_consumer_check, run_package_check},
 };
 
@@ -71,6 +72,24 @@ pub(super) async fn handle_guest(
     let root = format!("{checkout_root}/integration-{}", integrating.submission_id);
     let source = format!("{root}/source");
     let bundle = format!("{root}/integration.bundle");
+    let consumer_override = if checkout.source_kind == SourceKind::Package
+        && !checkout.source_only
+        && !checkout.workspace_release
+    {
+        Some(OverrideRecord::load(
+            &checkout_root,
+            checkout,
+            subject.consumer(),
+        )?)
+    } else {
+        None
+    };
+    // An interrupted check may still point at the previous integration copy.
+    // Restore the editable checkout before replacing that disposable copy.
+    if let Some(record) = &consumer_override {
+        record.activate(subject)?;
+    }
+    remove_directory(&root)?;
     create_directory(&root)?;
     let url = client.integration_bundle_url(&integrating.submission_id, &consumer);
     exec(
@@ -114,7 +133,12 @@ pub(super) async fn handle_guest(
             if checkout.workspace_release || checkout.source_only {
                 BTreeMap::new()
             } else {
-                run_consumer_check(subject, ecosystem, &submission.package, &source)?;
+                consumer_override
+                    .as_ref()
+                    .expect("consumer override loaded")
+                    .with_temporary_source(subject, &source, || {
+                        run_consumer_check(subject, ecosystem, &submission.package, &source)
+                    })?;
                 BTreeMap::from([(consumer, CheckOutcome::Passed)])
             }
         }

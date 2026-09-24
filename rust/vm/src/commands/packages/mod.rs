@@ -56,9 +56,7 @@ async fn status(files: &ApplianceFiles) -> VmResult<()> {
         .unwrap_or(appliance::PackageHealth::ActionRequired);
     if let Ok(global) = vm_config::GlobalConfig::load() {
         if let Ok(plans) = sources::prepare_sources(files, &global.packages).await {
-            if !global.packages.is_default() && !files.has_git_token().unwrap_or(false) {
-                health = appliance::PackageHealth::ActionRequired;
-            } else if health == appliance::PackageHealth::Healthy
+            if health == appliance::PackageHealth::Healthy
                 && (sources::has_quarantined_sources(&global.packages.source_roots)
                     || plans.iter().any(|plan| plan.discovery.is_degraded()))
             {
@@ -104,9 +102,7 @@ async fn doctor(files: &ApplianceFiles, fix: bool) -> VmResult<()> {
     for failure in &unresolved {
         vm_core::vm_warning!("{failure}");
     }
-    let health = if files.read_state()?.is_none()
-        || (!global.packages.is_default() && !files.has_git_token()?)
-    {
+    let health = if files.read_state()?.is_none() {
         appliance::PackageHealth::ActionRequired
     } else if !unresolved.is_empty()
         || sources::has_quarantined_sources(&global.packages.source_roots)

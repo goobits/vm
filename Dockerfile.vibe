@@ -25,7 +25,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     # Core tools
     tree ripgrep unzip htop curl wget git git-lfs ca-certificates gnupg \
     # Process/system
-    supervisor sudo ufw fail2ban unattended-upgrades \
+    supervisor sudo ufw fail2ban unattended-upgrades util-linux \
     # Shell
     zsh zsh-syntax-highlighting \
     # Python base (psycopg2 binary deps only - Python 3.11 installed in final stage)
@@ -56,7 +56,8 @@ FROM base AS node-builder
 ARG USER_NAME=developer
 ARG USER_UID=1000
 ARG USER_GID=1000
-ARG NVM_COMMIT=d025499c7f5466d0dc0a324dc98eab72cce8377d
+ARG NVM_COMMIT=a885b885fef16fac4bc544188fb25e9e37ae83e8
+ARG NVM_INSTALLER_SHA256=48a0eee9a60e07422dce0eb5774754c83889570ca1ee2566c516acbe8af03a9e
 ARG NODE_VERSION=22.23.2
 
 USER ${USER_NAME}
@@ -65,9 +66,10 @@ ENV NVM_DIR="/home/${USER_NAME}/.nvm"
 RUN mkdir -p $NVM_DIR
 
 RUN --mount=type=cache,target=/home/${USER_NAME}/.nvm/.cache,uid=${USER_UID},gid=${USER_GID} \
-    curl --fail --show-error --location \
+    curl --proto '=https' --tlsv1.2 --fail --show-error --location \
       "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_COMMIT}/install.sh" \
       --output /tmp/install-nvm.sh && \
+    echo "${NVM_INSTALLER_SHA256}  /tmp/install-nvm.sh" | sha256sum --check - && \
     bash /tmp/install-nvm.sh && rm -f /tmp/install-nvm.sh && \
     . $NVM_DIR/nvm.sh && \
     nvm install ${NODE_VERSION} && \
@@ -83,7 +85,9 @@ RUN --mount=type=cache,target=/home/${USER_NAME}/.npm,uid=${USER_UID},gid=${USER
 RUN --mount=type=cache,target=/home/${USER_NAME}/.cache/ms-playwright,uid=${USER_UID},gid=${USER_GID} \
     . $NVM_DIR/nvm.sh && \
     npx playwright install chromium firefox && \
-    ([ "$(uname -m)" = "x86_64" ] && npx playwright install chrome || true)
+    ([ "$(uname -m)" = "x86_64" ] && npx playwright install chrome || true) && \
+    mkdir -p /home/${USER_NAME}/playwright-browsers && \
+    cp -a /home/${USER_NAME}/.cache/ms-playwright/. /home/${USER_NAME}/playwright-browsers/
 
 # =============================================================================
 # STAGE: rust-builder
@@ -128,21 +132,34 @@ ARG USER_NAME=developer
 ARG NODE_VERSION=22.23.2
 
 COPY --from=node-builder --chown=${USER_NAME}:${USER_NAME} /home/${USER_NAME}/.nvm /home/${USER_NAME}/.nvm
+COPY --from=node-builder --chown=${USER_NAME}:${USER_NAME} /home/${USER_NAME}/playwright-browsers /home/${USER_NAME}/.cache/ms-playwright
 
-# Python 3.11 via deadsnakes (don't copy between stages - breaks stdlib)
+# Python 3.11 via a fingerprint-verified APT source. Avoid the Launchpad API
+# lookup in add-apt-repository, which is unreliable in container builds.
+ARG DEADSNAKES_FINGERPRINT=F23C5A6CF475977595C89F51BA6932366A755776
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    curl --proto '=https' --tlsv1.2 -fsSL \
+      'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xF23C5A6CF475977595C89F51BA6932366A755776' \
+      -o /tmp/deadsnakes.asc && \
+    actual="$(gpg --show-keys --with-colons /tmp/deadsnakes.asc | awk -F: '$1 == "fpr" { print $10; exit }')" && \
+    test "$actual" = "$DEADSNAKES_FINGERPRINT" && \
+    gpg --batch --dearmor -o /usr/share/keyrings/deadsnakes.gpg /tmp/deadsnakes.asc && \
+    printf '%s\n' 'deb [signed-by=/usr/share/keyrings/deadsnakes.gpg] https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu jammy main' \
+      > /etc/apt/sources.list.d/deadsnakes.list && \
+    rm -f /tmp/deadsnakes.asc && \
     apt-get update && \
-    apt-get install -y software-properties-common && \
-    add-apt-repository -y ppa:deadsnakes/ppa && \
-    apt-get update && \
-    apt-get install -y python3.11 python3.11-venv python3.11-dev && \
-    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
-    python3.11 -m ensurepip --upgrade && \
-    python3.11 -m pip install --no-cache-dir --root-user-action=ignore --upgrade \
+    apt-get install -y \
+      python3.11=3.11.16-1+jammy1 \
+      python3.11-venv=3.11.16-1+jammy1 \
+      python3.11-dev=3.11.16-1+jammy1 && \
+    python3.11 -m venv /opt/vm-python && \
+    /opt/vm-python/bin/python -m pip install --no-cache-dir --upgrade \
     pip==26.0.1 setuptools==82.0.1 wheel==0.47.0 && \
-    python3.11 -m pip install --no-cache-dir --root-user-action=ignore \
-    ansible-core==2.19.9 playwright==1.58.0 pytest==9.0.3 pytest-playwright==0.7.2 psycopg2-binary==2.9.12
+    /opt/vm-python/bin/python -m pip install --no-cache-dir \
+    ansible-core==2.19.9 playwright==1.62.0 pytest==9.0.3 pytest-playwright==0.7.2 psycopg2-binary==2.9.12
+
+ENV PATH="/opt/vm-python/bin:${PATH}"
 
 COPY --from=rust-builder --chown=${USER_NAME}:${USER_NAME} /home/${USER_NAME}/.cargo /home/${USER_NAME}/.cargo
 COPY --from=rust-builder --chown=${USER_NAME}:${USER_NAME} /home/${USER_NAME}/.rustup /home/${USER_NAME}/.rustup
@@ -159,23 +176,32 @@ ENV CARGO_TARGET_DIR="/tmp/vm-rust-target"
 # agent-skills.
 USER ${USER_NAME}
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-ARG ANTIGRAVITY_INSTALLER_SHA256=ee1ea43ce4e9e56356c4ab6dad907ef357ae4bdfcaadb682735909fb57c9c640
+ARG ANTIGRAVITY_INSTALLER_SHA256=3630989911e4078759942c1a07b402b0ba1c34575c33c2ccadd2f78819781880
 ARG CLAUDE_INSTALLER_SHA256=3a68d3406cf674e17bed1733a4dcf37805e2e47d87417700007d7e1aa766a944
-ARG CODEX_INSTALLER_SHA256=ba92dd27e5c06f0d3bbc58bfa4b9cfb6599cd2742fbb1f92a2765e6c07dedb5a
+ARG CODEX_INSTALLER_SHA256=150e3cf675682efeaac115aa3747add3f27887896d04ce6d0b56478d8b428bf6
+ENV PATH="/home/${USER_NAME}/.local/bin:${PATH}"
 RUN export HOME="/home/${USER_NAME}" && \
-    export PATH="$HOME/.local/bin:$PATH" && \
-    curl -fsSL https://antigravity.google/cli/install.sh -o /tmp/install-antigravity.sh && \
+    curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL \
+      https://antigravity.google/cli/install.sh -o /tmp/install-antigravity.sh && \
     echo "$ANTIGRAVITY_INSTALLER_SHA256  /tmp/install-antigravity.sh" | sha256sum --check - && \
     bash /tmp/install-antigravity.sh && \
-    curl -fsSL https://claude.ai/install.sh -o /tmp/install-claude.sh && \
+    rm -f /tmp/install-antigravity.sh && \
+    command -v agy >/dev/null
+
+RUN export HOME="/home/${USER_NAME}" && \
+    curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL \
+      https://claude.ai/install.sh -o /tmp/install-claude.sh && \
     echo "$CLAUDE_INSTALLER_SHA256  /tmp/install-claude.sh" | sha256sum --check - && \
     bash /tmp/install-claude.sh stable && \
-    curl -fsSL https://chatgpt.com/codex/install.sh -o /tmp/install-codex.sh && \
+    rm -f /tmp/install-claude.sh && \
+    command -v claude >/dev/null
+
+RUN export HOME="/home/${USER_NAME}" && \
+    curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL \
+      https://chatgpt.com/codex/install.sh -o /tmp/install-codex.sh && \
     echo "$CODEX_INSTALLER_SHA256  /tmp/install-codex.sh" | sha256sum --check - && \
     sh /tmp/install-codex.sh && \
-    rm -f /tmp/install-antigravity.sh /tmp/install-claude.sh /tmp/install-codex.sh && \
-    command -v agy >/dev/null && \
-    command -v claude >/dev/null && \
+    rm -f /tmp/install-codex.sh && \
     command -v codex >/dev/null
 
 USER root

@@ -1,9 +1,10 @@
 use crate::cli::BaseSubcommand;
 use crate::error::{VmError, VmResult};
 use vm_config::{config::VmConfig, AppConfig};
-use vm_core::vm_println;
+use vm_core::{vm_println, vm_progress};
 #[cfg(any(target_os = "macos", feature = "tart"))]
 use vm_provider::{build_tart_vibe_base, ensure_configured_tart_vibe_base, TartBaseSource};
+use vm_snapshot::{SnapshotManager, SnapshotMetadata, SnapshotScope};
 
 mod runtime;
 
@@ -40,33 +41,111 @@ async fn handle_build(preset: &str, provider: &str, guest_os: &str) -> VmResult<
     ensure_supported_preset(preset)?;
 
     match provider {
-        "docker" => {
-            let build_context = stage_docker_base()?;
-            let dockerfile = build_context.path().join("Dockerfile.vibe");
-            let config = AppConfig {
-                global: Default::default(),
-                vm: VmConfig::default(),
-            };
-            vm_snapshot::handle_create(
-                &config,
-                "docker",
-                DOCKER_BASE_NAME,
-                Some("Vibe Docker base"),
-                false,
-                None,
-                Some(&dockerfile),
-                Some(build_context.path()),
-                &[],
-                true,
-            )
-            .await?;
-            vm_println!("Built Docker vibe base: {}", DOCKER_BASE_NAME);
+        "docker" | "podman" => {
+            build_container_base(provider).await?;
+            vm_println!("Built {provider} vibe base: {}", DOCKER_BASE_NAME);
         }
         "tart" => build_tart_base(guest_os)?,
         _ => unreachable!(),
     }
 
     Ok(())
+}
+
+async fn build_container_base(executable: &str) -> VmResult<()> {
+    let build_context = stage_docker_base()?;
+    let dockerfile = build_context.path().join("Dockerfile.vibe");
+    let config = AppConfig {
+        global: Default::default(),
+        vm: VmConfig::default(),
+    };
+    vm_snapshot::handle_create(
+        &config,
+        executable,
+        DOCKER_BASE_NAME,
+        Some("Vibe Docker base"),
+        false,
+        None,
+        Some(&dockerfile),
+        Some(build_context.path()),
+        &[],
+        true,
+    )
+    .await
+    .map_err(VmError::from)
+}
+
+pub(super) async fn ensure_configured_container_base(
+    config: &VmConfig,
+    executable: &str,
+) -> VmResult<()> {
+    if !uses_docker_vibe_base(config) {
+        return Ok(());
+    }
+
+    let manager = SnapshotManager::new()?;
+    if manager.snapshot_exists(SnapshotScope::Global, "vibe-image")? {
+        return Ok(());
+    }
+
+    vm_progress!("Preparing the Vibe base image for first use (this may take several minutes)...");
+    build_container_base(executable).await?;
+    vm_println!("Built {executable} vibe base: {}", DOCKER_BASE_NAME);
+    Ok(())
+}
+
+/// Catch missing or damaged snapshot files before a forced recreation removes
+/// an existing environment. The provider still owns loading the image itself.
+pub(super) fn preflight_configured_container_snapshot(config: &VmConfig) -> VmResult<()> {
+    use vm_config::config::ImageSpec;
+
+    let Some(ImageSpec::String(image)) = config.vm.as_ref().and_then(|vm| vm.image.as_ref()) else {
+        return Ok(());
+    };
+    let Some(name) = image.strip_prefix('@') else {
+        return Ok(());
+    };
+    let manager = SnapshotManager::new()?;
+    let snapshot_dir = manager.get_snapshot_dir(SnapshotScope::Global, name)?;
+    preflight_snapshot_files(name, &snapshot_dir)
+}
+
+fn preflight_snapshot_files(name: &str, snapshot_dir: &std::path::Path) -> VmResult<()> {
+    let metadata_path = snapshot_dir.join("metadata.json");
+    if !metadata_path.is_file() {
+        return Err(VmError::validation(
+            format!("Snapshot '@{name}' is missing metadata.json"),
+            Some("Create or import the snapshot before recreating the environment"),
+        ));
+    }
+    let metadata = SnapshotMetadata::load(&metadata_path)?;
+    if !metadata
+        .services
+        .first()
+        .is_some_and(|service| !service.image_tag.trim().is_empty())
+    {
+        return Err(VmError::validation(
+            format!("Snapshot '@{name}' has no base image tag"),
+            Some("Rebuild or re-import the snapshot before recreating the environment"),
+        ));
+    }
+    let archive = snapshot_dir.join("images/base.tar");
+    if !archive.is_file() || std::fs::metadata(&archive)?.len() == 0 {
+        return Err(VmError::validation(
+            format!("Snapshot '@{name}' has no usable images/base.tar"),
+            Some("Rebuild or re-import the snapshot before recreating the environment"),
+        ));
+    }
+    Ok(())
+}
+
+fn uses_docker_vibe_base(config: &VmConfig) -> bool {
+    use vm_config::config::ImageSpec;
+
+    matches!(
+        config.vm.as_ref().and_then(|settings| settings.image.as_ref()),
+        Some(ImageSpec::String(image)) if image == DOCKER_BASE_NAME
+    )
 }
 
 #[cfg(any(target_os = "macos", feature = "tart"))]
@@ -161,7 +240,20 @@ fn ensure_supported_preset(preset: &str) -> VmResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_tart_guest_os, stage_docker_base, DOCKER_BASE_DOCKERFILE};
+    use super::{
+        preflight_snapshot_files, resolve_tart_guest_os, stage_docker_base, uses_docker_vibe_base,
+        DOCKER_BASE_DOCKERFILE,
+    };
+
+    #[test]
+    fn damaged_snapshot_is_rejected_before_recreation() {
+        let snapshot = tempfile::tempdir().unwrap();
+        let missing = preflight_snapshot_files("vibe-image", snapshot.path()).unwrap_err();
+        assert!(missing.to_string().contains("metadata.json"));
+
+        std::fs::write(snapshot.path().join("metadata.json"), "broken json").unwrap();
+        assert!(preflight_snapshot_files("vibe-image", snapshot.path()).is_err());
+    }
 
     #[test]
     fn explicit_tart_guest_os_is_validated() {
@@ -177,6 +269,17 @@ mod tests {
 
         assert_eq!(staged, DOCKER_BASE_DOCKERFILE);
         assert!(staged.contains("FROM "));
+    }
+
+    #[test]
+    fn only_the_standard_vibe_snapshot_is_bootstrapped() {
+        let vibe = serde_yaml_ng::from_str("vm:\n  image: '@vibe-image'\n").unwrap();
+        let custom = serde_yaml_ng::from_str("vm:\n  image: '@team-image'\n").unwrap();
+        let registry = serde_yaml_ng::from_str("vm:\n  image: 'ubuntu:24.04'\n").unwrap();
+
+        assert!(uses_docker_vibe_base(&vibe));
+        assert!(!uses_docker_vibe_base(&custom));
+        assert!(!uses_docker_vibe_base(&registry));
     }
 
     #[test]

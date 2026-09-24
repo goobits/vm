@@ -35,6 +35,14 @@ pub(super) fn cleanup_guest(
     subject: &GuestRuntime,
     checkout: &vm_packages::CheckoutRecord,
 ) -> VmResult<()> {
+    restore_guest_dependencies(subject, checkout)?;
+    remove_directory(&checkout_root(subject, &checkout.checkout_id)?)
+}
+
+fn restore_guest_dependencies(
+    subject: &GuestRuntime,
+    checkout: &vm_packages::CheckoutRecord,
+) -> VmResult<()> {
     let root = checkout_root(subject, &checkout.checkout_id)?;
     if !checkout
         .consumers
@@ -51,7 +59,7 @@ pub(super) fn cleanup_guest(
             record.restore(subject)?;
         }
     }
-    remove_directory(&root)
+    Ok(())
 }
 
 pub(super) fn cleanup_guest_after_release(
@@ -111,7 +119,8 @@ pub(super) async fn handle_guest(package: String) -> VmResult<()> {
     let root = checkout_root(&subject, &checkout.checkout.checkout_id)?;
     let source = format!("{root}/source");
 
-    if std::path::Path::new(&source).is_dir() {
+    let resumed = std::path::Path::new(&source).is_dir();
+    if resumed {
         refresh_checkout_access(&subject, &root, lease_token)?;
         ensure_override(
             &subject,
@@ -121,21 +130,20 @@ pub(super) async fn handle_guest(package: String) -> VmResult<()> {
             editable_source,
             pinned_version.as_deref(),
         )?;
-        print_source(&checkout.checkout, &source, true);
-        return Ok(());
+    } else {
+        if std::path::Path::new(&root).exists() {
+            cleanup_failed_attach(&subject, &root)?;
+        }
+        attach(
+            &subject,
+            &client,
+            &checkout.checkout,
+            lease_token,
+            &consumer,
+            editable_source,
+            pinned_version.as_deref(),
+        )?;
     }
-    if std::path::Path::new(&root).exists() {
-        cleanup_failed_attach(&subject, &root)?;
-    }
-    attach(
-        &subject,
-        &client,
-        &checkout.checkout,
-        lease_token,
-        &consumer,
-        editable_source,
-        pinned_version.as_deref(),
-    )?;
 
     let active = if matches!(
         checkout.checkout.state,
@@ -157,7 +165,7 @@ pub(super) async fn handle_guest(package: String) -> VmResult<()> {
     } else {
         checkout.checkout
     };
-    print_source(&active, &source, false);
+    print_source(&active, &source, resumed);
     Ok(())
 }
 
@@ -198,7 +206,9 @@ pub(super) async fn cancel_guest() -> VmResult<()> {
             )
             .await?
     };
-    cleanup_guest(&subject, &cancelled)?;
+    // Keep the source directory and override receipt until the controller has
+    // acknowledged closure, so a failed request can be retried from here.
+    restore_guest_dependencies(&subject, &cancelled)?;
     let closed = if cancelled.state == WorkflowState::Closed {
         cancelled
     } else {
@@ -212,6 +222,7 @@ pub(super) async fn cancel_guest() -> VmResult<()> {
             )
             .await?
     };
+    remove_directory(&checkout_root(&subject, &closed.checkout_id)?)?;
     vm_success!("Cancelled {}", closed.package);
     Ok(())
 }
@@ -306,20 +317,25 @@ fn ensure_override(
     else {
         return Ok(());
     };
-    if OverrideRecord::load_optional(root, checkout, subject.consumer())?.is_some() {
-        return Ok(());
-    }
-    let record = OverrideRecord::new(
-        &checkout.checkout_id,
-        subject.consumer(),
-        &checkout.package,
-        ecosystem,
-        source,
-        pinned_version,
-    );
+    let record =
+        OverrideRecord::load_optional(root, checkout, subject.consumer())?.unwrap_or_else(|| {
+            OverrideRecord::new(
+                &checkout.checkout_id,
+                subject.consumer(),
+                &checkout.package,
+                ecosystem,
+                source,
+                pinned_version,
+            )
+        });
     record.write(root)?;
     if let Err(error) = record.activate(subject) {
-        let _ = record.restore(subject);
+        if let Err(restore_error) = record.restore(subject) {
+            return Err(VmError::validation(
+                format!("Package override activation failed: {error}; restoring the published dependency also failed: {restore_error}"),
+                Some("The checkout was retained. Repair package access and rerun `vm packages checkout` for this source"),
+            ));
+        }
         return Err(error);
     }
     Ok(())
@@ -474,5 +490,51 @@ mod tests {
             &released
         ));
         assert!(!checkout_is_disposable("", &"b".repeat(40), &released));
+    }
+
+    #[test]
+    fn retry_reinstalls_an_override_whose_receipt_outlived_activation() {
+        let temporary = tempfile::tempdir().unwrap();
+        let subject = super::GuestRuntime::for_test(
+            temporary.path().to_path_buf(),
+            temporary.path().join("workspace"),
+        );
+        let checkout = checkout(SourceKind::Package, false, None).checkout;
+        let root = super::checkout_root(&subject, &checkout.checkout_id).unwrap();
+        let source = format!("{root}/source");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::create_dir_all(temporary.path().join(".local/bin")).unwrap();
+        std::fs::write(
+            temporary.path().join(".local/bin/cargo"),
+            "#!/bin/sh\n# vm-managed cargo override wrapper\n",
+        )
+        .unwrap();
+        let record = super::OverrideRecord::new(
+            &checkout.checkout_id,
+            "project-a",
+            "shared",
+            PackageEcosystem::Cargo,
+            &source,
+            "1.2.3",
+        );
+        record.write(&root).unwrap();
+
+        super::ensure_override(
+            &subject,
+            &checkout,
+            &root,
+            &source,
+            EditableSource::Package(PackageEcosystem::Cargo),
+            Some("1.2.3"),
+        )
+        .unwrap();
+        assert!(std::path::Path::new(&format!("{root}/cargo.config")).is_file());
+        super::restore_guest_dependencies(&subject, &checkout).unwrap();
+        assert!(!std::path::Path::new(&format!("{root}/cargo.config")).exists());
+        assert!(
+            std::path::Path::new(&source).is_dir(),
+            "controller closure may still need retry"
+        );
+        assert!(std::path::Path::new(&format!("{root}/override.json")).is_file());
     }
 }

@@ -1,13 +1,36 @@
 # VM Package Experience Tracker
 
-Status: in progress
+Status: implementation and local verification complete; Docker acceptance pending.
 
-## Outcome
+## Remaining work
 
-`vm packages release` is the complete producer workflow for every registered
-package or tool. It restores declared dependencies, builds once in isolation,
-publishes privately, activates enabled environments, and resumes safely without
-tool-specific VM code or recreating project containers and volumes.
+- [ ] Run [the Docker acceptance workflow](../scripts/internal/test-package-workflow-docker.sh)
+      against the updated code on a host with Docker available.
+- [ ] Record the result and resolve any failures before closing this tracker.
+
+Docker is unavailable in the audit environment. The previous Docker acceptance
+passed on 2026-08-28; that result predates the latest changes and does not validate
+them. Tart acceptance remains outside this tracker's scope.
+
+## Completed work
+
+The release implementation and 2026-09-24 package workflow audit are complete.
+Repairs cover registry routing and Cargo metadata, retained publication artifacts,
+checkout/integration recovery, consumer update retries, queue fairness, and cleanup.
+Operational behavior is documented in the
+[package infrastructure guide](../docs/user-guide/package-infrastructure.md).
+
+Verification on 2026-09-24:
+
+- 425 tests passed across `vm-packages`, `vm-package-work`, `vm-package-jobs`,
+  `vm-package-server`, and `goobits-vm` with
+  `--all-features --lib --bins --locked --offline`.
+- Four additional local npm/Cargo fixtures passed: fresh-source dependency setup,
+  integration failure restoration, prepack build dependencies, and installation
+  from a local Cargo registry with a renamed private dependency.
+- Clippy passed for those packages with
+  `--all-features --all-targets --locked --offline -- -D warnings`.
+  Workspace formatting and diff checks passed.
 
 ## Guardrails
 
@@ -17,28 +40,6 @@ tool-specific VM code or recreating project containers and volumes.
   configured sources. Never branch on a package or tool name.
 - Keep the package appliance without a Docker socket or project source mounts.
 - Keep public registry publication and Tart acceptance out of scope.
-
-## Work
-
-- [x] Repair unprivileged isolated-builder traversal and durable retry.
-- [x] Restore recognized locked Node dependencies generically.
-- [x] Prefer newer committed checkout work over stale immutable retries.
-- [x] Record and display durable build subphases and activation progress.
-- [x] Bound the existing immutable dependency cache with disk health and
-      oldest-entry pruning; keep writable build outputs job-local.
-- [x] Activate independent environments concurrently with per-target receipts.
-- [x] Reconcile only package services affected by a source change through the
-      existing server/job fingerprints and Compose identity checks.
-- [x] Resolve identical source aliases automatically and report one explicit
-      choice for genuinely different repositories.
-- [x] Preserve the configured gateway port during routine appliance
-      reconciliation unless the operator explicitly changes it.
-- [x] Extend the sole Docker acceptance workflow with mixed Node/Rust builds,
-      prompt output, heartbeat, workspace cleanup, controller restart coverage,
-      and optional daemon restart coverage.
-- [x] Consolidate package documentation under one operational guide.
-- [x] Remove the drained isolated-builder compatibility retry path.
-- [x] Run the Docker acceptance workflow and record its final result.
 
 ## Acceptance
 
@@ -51,19 +52,13 @@ tool-specific VM code or recreating project containers and volumes.
 - Repeated release and repair commands are receipt-backed no-ops.
 - Primary project container IDs and package named-volume IDs remain unchanged.
 
-## Verification
+## Current scope limits
 
-- 2026-08-27: 384 Rust tests passed across `vm-packages`, `vm-package-work`,
-  `vm-package-jobs`, and `goobits-vm` with all features.
-- 2026-08-27: Clippy passed for the same four packages with warnings denied.
-- 2026-08-27: Release build, shell syntax, npm/Cargo fixture, legacy-symbol,
-  documentation-ownership, and diff checks passed.
-- 2026-08-28: All affected Rust suites passed across `vm-packages`,
-  `vm-package-work`, `vm-package-jobs`, `vm-package-server`, `vm-provider`, and
-  `goobits-vm`; workspace check and scoped Clippy with warnings denied passed.
-- 2026-08-28: The real Docker workflow passed source-only npm release and
-  restoration, collection release, mixed Node/Rust binary builds for both Linux
-  architectures, exact-version concurrent activation, controller restart
-  recovery, newest-only deferred activation, unmanaged-file adoption, immediate
-  receipt-backed rerelease, and unchanged primary container and named-volume
-  identities.
+- Consumer versions require registration after reviewed updates; automatic Git
+  merge detection and monorepo-wide consumer discovery are not implemented.
+- Language validation follows npm and pip/pytest conventions. pnpm/Yarn-specific
+  editable installs, Yarn PnP, Poetry-specific consumer updates, and dependencies
+  outside root manifests need separate acceptance before claiming support.
+  Existing tool-builder lockfile support is unchanged.
+- Python releases require a static stable semantic version; dynamic metadata and
+  broader Python version schemes are outside the current release contract.

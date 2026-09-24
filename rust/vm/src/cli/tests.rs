@@ -6,6 +6,16 @@ use super::{
 use clap::Parser;
 
 #[test]
+fn failed_consumer_updates_can_be_retried_by_project_name() {
+    assert!(matches!(
+        Args::parse_from(["vm", "packages", "consumer", "retry", "project-a"]).command,
+        Command::Packages { command: PackagesSubcommand::Consumer {
+            command: super::PackageConsumerSubcommand::Retry { name }
+        }} if name == "project-a"
+    ));
+}
+
+#[test]
 fn run_parses_kind_and_humane_name() {
     assert!(matches!(
         Args::parse_from(["vm", "run", "linux", "as", "backend"]).command,
@@ -225,6 +235,19 @@ fn system_base_build_parses_macos_guest_os() {
                 }
             }
         } if preset == "vibe" && provider == "tart" && guest_os == "macos"
+    ));
+}
+
+#[test]
+fn system_base_build_accepts_podman() {
+    assert!(matches!(
+        Args::parse_from(["vm", "system", "base", "build", "vibe", "--provider", "podman"])
+            .command,
+        Command::System {
+            command: SystemSubcommand::Base {
+                command: BaseSubcommand::Build { provider, .. }
+            }
+        } if provider == "podman"
     ));
 }
 

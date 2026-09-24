@@ -10,7 +10,7 @@ use crate::error::{VmError, VmResult};
 
 use super::{
     guest_checkout::{checkout_root, remove_directory, remove_file},
-    guest_runtime::{exec, exec_in_workspace, exec_output, GuestRuntime},
+    guest_runtime::{exec, exec_in_directory, exec_in_workspace, exec_output, GuestRuntime},
     overrides::cargo_patch,
 };
 
@@ -104,6 +104,9 @@ pub(super) async fn resume_guest(
     let root = checkout_root(subject, &checkout.checkout_id)?;
     let source = format!("{root}/source");
     ensure_clean(subject, &source, "Managed checkout")?;
+    let submission = client.checkout_submission(&checkout.checkout_id).await?;
+    let head = exec_output(subject, ["git", "-C", &source, "rev-parse", "HEAD"])?;
+    ensure_submitted_head(head.trim(), &submission.submitted_commit)?;
     vm_progress!("Rerunning package and consumer checks for submitted changes...");
     let consumers = run_checks(
         subject,
@@ -112,8 +115,17 @@ pub(super) async fn resume_guest(
         subject.consumer(),
         package_ecosystem,
     )?;
-    let submission = client.checkout_submission(&checkout.checkout_id).await?;
     validate(client, submission, consumers, "package-agent").await
+}
+
+fn ensure_submitted_head(head: &str, submitted_commit: &str) -> VmResult<()> {
+    if head != submitted_commit {
+        return Err(VmError::validation(
+            "Managed checkout HEAD changed after submission",
+            Some(format!("Preserve newer work, then restore submitted commit {submitted_commit} before rerunning `vm packages release`; or cancel this checkout")),
+        ));
+    }
+    Ok(())
 }
 
 async fn submit(
@@ -393,17 +405,43 @@ pub(super) fn run_package_check(
     source: &str,
 ) -> VmResult<()> {
     match ecosystem {
-        PackageEcosystem::Npm => exec(subject, ["npm", "--prefix", source, "test", "--if-present"]),
-        PackageEcosystem::Cargo => exec(
-            subject,
-            [
-                "cargo",
-                "test",
-                "--manifest-path",
-                &format!("{source}/Cargo.toml"),
-            ],
-        ),
-        PackageEcosystem::Python => exec(subject, ["python", "-m", "pytest", source]),
+        PackageEcosystem::Npm => {
+            let locked = ["package-lock.json", "npm-shrinkwrap.json"]
+                .iter()
+                .any(|file| std::path::Path::new(source).join(file).is_file());
+            exec_in_directory(
+                subject,
+                source,
+                if locked {
+                    vec!["npm", "ci", "--ignore-scripts"]
+                } else {
+                    vec!["npm", "install", "--ignore-scripts", "--package-lock=false"]
+                },
+            )?;
+            exec_in_directory(subject, source, ["npm", "test", "--if-present"])
+        }
+        PackageEcosystem::Cargo => exec_in_directory(subject, source, ["cargo", "test"]),
+        PackageEcosystem::Python => {
+            let temporary = tempfile::tempdir().map_err(VmError::from)?;
+            let venv = temporary.path().join("venv");
+            let venv = venv.to_string_lossy();
+            exec_in_directory(subject, source, ["python", "-m", "venv", &venv])?;
+            exec_in_directory(
+                subject,
+                source,
+                [
+                    format!("{venv}/bin/pip"),
+                    "install".into(),
+                    "--editable".into(),
+                    ".[dev]".into(),
+                ],
+            )?;
+            exec_in_directory(
+                subject,
+                source,
+                [format!("{venv}/bin/python"), "-m".into(), "pytest".into()],
+            )
+        }
     }
 }
 
@@ -448,6 +486,50 @@ mod tests {
 
     use super::decode_submission;
     use vm_packages::{SubmissionRecord, WorkflowState};
+
+    #[test]
+    fn resumed_validation_rejects_a_different_source_commit() {
+        assert!(super::ensure_submitted_head(&"a".repeat(40), &"a".repeat(40)).is_ok());
+        assert!(super::ensure_submitted_head(&"b".repeat(40), &"a".repeat(40)).is_err());
+    }
+
+    #[test]
+    #[ignore = "requires npm on PATH; uses only isolated local package fixtures"]
+    fn package_checks_restore_dependencies_in_a_fresh_source_copy() {
+        let temporary = tempfile::tempdir().unwrap();
+        let source = temporary.path().join("source");
+        std::fs::create_dir_all(source.join("dependency")).unwrap();
+        std::fs::write(source.join("package.json"), r#"{"name":"fixture","version":"1.0.0","scripts":{"test":"node -e \"require('local-dependency')\""},"devDependencies":{"local-dependency":"file:./dependency"}}"#).unwrap();
+        std::fs::write(
+            source.join("dependency/package.json"),
+            r#"{"name":"local-dependency","version":"1.0.0","main":"index.js"}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            source.join("dependency/index.js"),
+            "module.exports = true;\n",
+        )
+        .unwrap();
+        std::fs::write(
+            source.join(".npmrc"),
+            "registry=http://127.0.0.1:9\nfetch-retries=0\naudit=false\nfund=false\n",
+        )
+        .unwrap();
+        let subject = super::GuestRuntime::for_test(
+            temporary.path().to_path_buf(),
+            temporary.path().join("unrelated"),
+        );
+        super::run_package_check(
+            &subject,
+            vm_packages::PackageEcosystem::Npm,
+            source.to_str().unwrap(),
+        )
+        .unwrap();
+        assert!(source
+            .join("node_modules/local-dependency/index.js")
+            .is_file());
+        assert!(!source.join("package-lock.json").exists());
+    }
 
     #[test]
     fn submission_upload_response_is_reused_directly() {

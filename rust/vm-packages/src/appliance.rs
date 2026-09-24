@@ -4,7 +4,7 @@ pub const COMPOSE_PROJECT: &str = "vm-packages";
 pub const COMPOSE_YAML: &str = include_str!("resources/compose.yaml");
 pub const GATEWAY_CONFIG: &str = include_str!("resources/Caddyfile");
 /// Bump when running appliance services must be rebuilt or recreated.
-pub const APPLIANCE_DEFINITION_REVISION: u32 = 5;
+pub const APPLIANCE_DEFINITION_REVISION: u32 = 6;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplianceConfig {

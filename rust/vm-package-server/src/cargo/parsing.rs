@@ -105,9 +105,54 @@ pub fn parse_crate_upload(body: axum::body::Bytes) -> AppResult<(CrateMetadata, 
         version: version.to_string(),
         // Safe: unwrap_or provides sensible defaults for optional metadata fields
         // deps defaults to empty array, features defaults to empty object
-        deps: metadata.get("deps").unwrap_or(&json!([])).clone(),
+        deps: index_dependencies(metadata.get("deps"))?,
         features: metadata.get("features").unwrap_or(&json!({})).clone(),
+        links: metadata
+            .get("links")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        rust_version: metadata
+            .get("rust_version")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
     };
 
     Ok((crate_metadata, crate_data.to_vec()))
+}
+
+// Cargo's upload schema uses version_req and the original package name;
+// its index schema uses req and the dependency's name in the manifest.
+pub(super) fn index_dependencies(dependencies: Option<&Value>) -> AppResult<Value> {
+    let Some(dependencies) = dependencies.filter(|value| !value.is_null()) else {
+        return Ok(json!([]));
+    };
+    let dependencies = dependencies
+        .as_array()
+        .ok_or_else(|| AppError::UploadError("'deps' must be an array".into()))?;
+    let mut entries = Vec::with_capacity(dependencies.len());
+    for dependency in dependencies {
+        let name = dependency
+            .get("name")
+            .and_then(Value::as_str)
+            .ok_or_else(|| AppError::UploadError("dependency name is missing".into()))?;
+        let requirement = dependency
+            .get("version_req")
+            .and_then(Value::as_str)
+            .ok_or_else(|| AppError::UploadError("dependency version_req is missing".into()))?;
+        let alias = dependency
+            .get("explicit_name_in_toml")
+            .and_then(Value::as_str);
+        entries.push(json!({
+            "name": alias.unwrap_or(name),
+            "req": requirement,
+            "features": dependency.get("features").cloned().unwrap_or_else(|| json!([])),
+            "optional": dependency.get("optional").and_then(Value::as_bool).unwrap_or(false),
+            "default_features": dependency.get("default_features").and_then(Value::as_bool).unwrap_or(true),
+            "target": dependency.get("target"),
+            "kind": dependency.get("kind").and_then(Value::as_str).unwrap_or("normal"),
+            "registry": dependency.get("registry"),
+            "package": alias.map(|_| name),
+        }));
+    }
+    Ok(Value::Array(entries))
 }

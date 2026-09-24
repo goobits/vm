@@ -7,7 +7,7 @@ use vm_config::config::ImageSpec;
 use vm_core::command_stream::stream_command;
 use vm_core::error::{Result, VmError};
 use vm_core::vm_dbg;
-use vm_snapshot::{SnapshotManager, SnapshotScope};
+use vm_snapshot::{SnapshotManager, SnapshotMetadata, SnapshotScope};
 
 use super::{BuildOperations, ContainerOps};
 
@@ -134,6 +134,70 @@ impl<'a> BuildOperations<'a> {
             Some(identity) => Self::parse_image_identity(image, &identity),
             None => self.image_identity(image),
         }
+    }
+
+    fn ensure_snapshot_image(
+        &self,
+        name: &str,
+        snapshot_dir: &Path,
+        image_tag: &str,
+        expected_identity: Option<&str>,
+    ) -> Result<String> {
+        let image_identity = match Command::new(self.runtime.executable())
+            .args(["image", "inspect", "--format", "{{.Id}}", image_tag])
+            .output()
+        {
+            Ok(output) if output.status.success() => {
+                Some(Self::parse_image_identity(image_tag, &output.stdout)?)
+            }
+            Ok(_) => None,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Err(VmError::Dependency(format!(
+                    "Container engine '{}' is not installed or not in PATH",
+                    self.runtime.executable()
+                )));
+            }
+            Err(error) => {
+                return Err(VmError::Internal(format!(
+                    "Failed to inspect the container image with '{}': {error}",
+                    self.runtime.executable()
+                )));
+            }
+        };
+
+        if let Some(identity) = image_identity {
+            if expected_identity.is_none() || expected_identity == Some(identity.as_str()) {
+                return Ok(identity);
+            }
+        }
+
+        info!("  Image missing or stale, loading from snapshot...");
+        let archive = snapshot_dir.join("images/base.tar");
+        if !archive.is_file() {
+            return Err(VmError::Config(format!(
+                "Snapshot '@{name}' is corrupted (base.tar not found)"
+            )));
+        }
+        stream_command(
+            self.runtime.executable(),
+            &["load", "-i", Self::path_to_string(&archive)?],
+        )
+        .map_err(|error| {
+            VmError::Internal(format!(
+                "Failed to load container image from snapshot: {error}"
+            ))
+        })?;
+
+        let loaded_identity = self.image_identity(image_tag)?;
+        if let Some(expected) = expected_identity {
+            if loaded_identity != expected {
+                return Err(VmError::Config(format!(
+                    "Snapshot '@{name}' loaded image '{image_tag}' with identity '{loaded_identity}', expected '{expected}'"
+                )));
+            }
+        }
+        info!("  ✓ Image loaded successfully");
+        Ok(loaded_identity)
     }
 
     fn ensure_image_available(&self, image: &str) -> Result<Option<Vec<u8>>> {
@@ -312,9 +376,16 @@ impl<'a> BuildOperations<'a> {
                 let snapshot_dir = manager.get_snapshot_dir(SnapshotScope::Global, name)?;
 
                 if !snapshot_dir.exists() {
+                    let hint = if name == "vibe-image" {
+                        format!(
+                            "Build it with: vm system base build vibe --provider {}",
+                            self.runtime.executable()
+                        )
+                    } else {
+                        format!("Create or import the '@{name}' snapshot before using it")
+                    };
                     return Err(VmError::Config(format!(
-                        "Snapshot '@{}' not found. Create or import it first:\n  vm package --build <dockerfile>\n  vm package <name>",
-                        name
+                        "Snapshot '@{name}' not found. {hint}"
                     )));
                 }
 
@@ -327,81 +398,26 @@ impl<'a> BuildOperations<'a> {
                     )));
                 }
 
-                let metadata_content = std::fs::read_to_string(&metadata_path).map_err(|e| {
-                    VmError::Internal(format!("Failed to read metadata file: {}", e))
-                })?;
-
-                let metadata: serde_json::Value =
-                    serde_json::from_str(&metadata_content).map_err(|e| {
-                        VmError::Internal(format!("Failed to parse metadata.json: {}", e))
-                    })?;
+                let metadata = SnapshotMetadata::load(&metadata_path)?;
 
                 // Get the image tag from first service (base image snapshot always has one service)
                 let image_tag = metadata
-                    .get("services")
-                    .and_then(|s| s.as_array())
-                    .and_then(|arr| arr.first())
-                    .and_then(|svc| svc.get("image_tag"))
-                    .and_then(|tag| tag.as_str())
+                    .services
+                    .first()
+                    .map(|service| service.image_tag.as_str())
+                    .filter(|tag| !tag.trim().is_empty())
                     .ok_or_else(|| {
                         VmError::Config(format!(
                             "Snapshot '@{}' is corrupted (image_tag not found in metadata)",
                             name
                         ))
                     })?;
+                let expected_identity = metadata.services[0].image_digest.as_deref();
 
-                // Check if image is already loaded
-                let image_identity = match Command::new(self.runtime.executable())
-                    .args(["image", "inspect", "--format", "{{.Id}}", image_tag])
-                    .output()
-                {
-                    Ok(output) if output.status.success() => {
-                        Some(Self::parse_image_identity(image_tag, &output.stdout)?)
-                    }
-                    Ok(_) => None,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                        return Err(VmError::Dependency(format!(
-                            "Container engine '{}' is not installed or not in PATH",
-                            self.runtime.executable()
-                        )));
-                    }
-                    Err(e) => {
-                        return Err(VmError::Internal(format!(
-                            "Failed to inspect the container image with '{}': {}",
-                            self.runtime.executable(),
-                            e
-                        )));
-                    }
-                };
+                let image_identity =
+                    self.ensure_snapshot_image(name, &snapshot_dir, image_tag, expected_identity)?;
 
-                if image_identity.is_none() {
-                    info!("  Image not loaded, loading from snapshot...");
-
-                    // Load image from tar file
-                    let image_file_path = snapshot_dir.join("images").join("base.tar");
-
-                    if !image_file_path.exists() {
-                        return Err(VmError::Config(format!(
-                            "Snapshot '@{}' is corrupted (base.tar not found)",
-                            name
-                        )));
-                    }
-
-                    stream_command(
-                        self.runtime.executable(),
-                        &["load", "-i", Self::path_to_string(&image_file_path)?],
-                    )
-                    .map_err(|e| {
-                        VmError::Internal(format!(
-                            "Failed to load container image from snapshot: {}",
-                            e
-                        ))
-                    })?;
-
-                    info!("  ✓ Image loaded successfully");
-                }
-
-                (image_tag.to_string(), image_identity)
+                (image_tag.to_string(), Some(image_identity))
             }
         };
 
@@ -413,9 +429,58 @@ impl<'a> BuildOperations<'a> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use super::BuildOperations;
     use super::ContainerImageSource;
+    #[cfg(unix)]
+    use crate::container::{ContainerEngine, ContainerRuntime};
     use indexmap::IndexMap;
     use std::path::{Path, PathBuf};
+    #[cfg(unix)]
+    use vm_config::config::VmConfig;
+
+    #[cfg(unix)]
+    #[test]
+    fn stale_snapshot_tag_is_reloaded_and_verified() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let snapshot_dir = temp.path().join("snapshot");
+        std::fs::create_dir_all(snapshot_dir.join("images")).unwrap();
+        std::fs::write(snapshot_dir.join("images/base.tar"), "archive").unwrap();
+        let marker = temp.path().join("loaded");
+        let runtime_path = temp.path().join("runtime");
+        std::fs::write(
+            &runtime_path,
+            format!(
+                "#!/bin/sh\nif [ \"$1\" = load ]; then touch '{}'; exit 0; fi\nif [ -f '{}' ]; then printf 'sha256:expected\\n'; else printf 'sha256:stale\\n'; fi\n",
+                marker.display(),
+                marker.display()
+            ),
+        )
+        .unwrap();
+        let mut permissions = std::fs::metadata(&runtime_path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&runtime_path, permissions).unwrap();
+
+        let config = VmConfig::default();
+        let runtime = ContainerRuntime::with_executable(
+            ContainerEngine::Docker,
+            runtime_path.to_string_lossy(),
+        );
+        let build_ops = BuildOperations::with_runtime(&config, temp.path(), runtime);
+        let identity = build_ops
+            .ensure_snapshot_image(
+                "vibe-image",
+                &snapshot_dir,
+                "vm-snapshot/global/vibe-image:latest",
+                Some("sha256:expected"),
+            )
+            .unwrap();
+
+        assert_eq!(identity, "sha256:expected");
+        assert!(marker.exists());
+    }
     use vm_config::config::ImageSpec;
 
     #[test]

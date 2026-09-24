@@ -73,6 +73,8 @@ pub async fn update_crate_index(
         "deps": metadata.deps,
         "cksum": checksum,
         "features": metadata.features,
+        "links": metadata.links,
+        "rust_version": metadata.rust_version,
         "yanked": false
     });
 
@@ -135,7 +137,7 @@ pub async fn index_file(
     match storage::read_file_string(&index_file_path).await {
         Ok(content) => {
             debug!(crate_name = %crate_name, "Serving index from local storage");
-            Ok(content)
+            normalize_legacy_index(&content)
         }
         Err(AppError::NotFound(_)) => {
             // Index not found locally, try upstream crates.io
@@ -188,6 +190,48 @@ pub async fn index_file(
             String::from_utf8(content).map_err(|error| AppError::Utf8(error.utf8_error()))
         }
         Err(error) => Err(error),
+    }
+}
+
+fn normalize_legacy_index(content: &str) -> AppResult<String> {
+    if !content.contains("\"version_req\"") {
+        return Ok(content.to_string());
+    }
+    let mut normalized = String::new();
+    for line in content.lines().filter(|line| !line.trim().is_empty()) {
+        let mut entry: serde_json::Value = serde_json::from_str(line)?;
+        if let Some(dependencies) = entry
+            .get_mut("deps")
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            for dependency in dependencies {
+                if dependency.get("req").is_none() && dependency.get("version_req").is_some() {
+                    let converted = super::parsing::index_dependencies(Some(&json!([dependency])))?;
+                    *dependency = converted[0].clone();
+                }
+            }
+        }
+        normalized.push_str(&serde_json::to_string(&entry)?);
+        normalized.push('\n');
+    }
+    Ok(normalized)
+}
+
+#[cfg(test)]
+mod legacy_tests {
+    use super::*;
+
+    #[test]
+    fn previously_published_dependencies_are_repaired_without_changing_artifact_identity() {
+        let entry = json!({"name":"shared", "vers":"1.0.0", "cksum":"unchanged", "deps":[{"name":"serde", "explicit_name_in_toml":"serialization", "version_req":"^1"}, {"name":"other", "req":"^2"}]});
+        let repaired = normalize_legacy_index(&entry.to_string()).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&repaired).unwrap();
+        assert_eq!(value["cksum"], entry["cksum"]);
+        assert_eq!(value["deps"][0]["req"], "^1");
+        assert_eq!(value["deps"][0]["name"], "serialization");
+        assert_eq!(value["deps"][0]["package"], "serde");
+        assert_eq!(value["deps"][1], entry["deps"][1]);
+        assert_eq!(normalize_legacy_index(&repaired).unwrap(), repaired);
     }
 }
 

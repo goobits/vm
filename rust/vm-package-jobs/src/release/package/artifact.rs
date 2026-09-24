@@ -5,10 +5,9 @@ use std::process::Command;
 
 use anyhow::{bail, Context, Result};
 use base64::{engine::general_purpose, Engine as _};
-use sha2::{Digest, Sha256};
 use vm_packages::{sha256_hex as digest_hex, PackageEcosystem, RegistryEndpoints};
 
-use crate::runtime::run_command as run;
+use crate::runtime::{authorization_header, run_command as run};
 
 use super::super::git_text;
 
@@ -29,6 +28,19 @@ pub(super) fn build_artifact(
 ) -> Result<BuiltArtifact> {
     let path = match ecosystem {
         PackageEcosystem::Npm => {
+            let locked = ["package-lock.json", "npm-shrinkwrap.json"]
+                .iter()
+                .any(|file| source.join(file).is_file());
+            run(
+                Command::new("npm")
+                    .args(if locked {
+                        vec!["ci", "--ignore-scripts"]
+                    } else {
+                        vec!["install", "--ignore-scripts", "--package-lock=false"]
+                    })
+                    .current_dir(source),
+                "restore npm release dependencies",
+            )?;
             let result = run(
                 Command::new("npm")
                     .args(["pack", "--json", "--pack-destination"])
@@ -131,57 +143,13 @@ pub(super) fn publish_artifact(
     artifact: &Path,
     destination: &Destination,
     release_root: &Path,
-    workspace_release: bool,
 ) -> Result<()> {
     match ecosystem {
-        PackageEcosystem::Npm if workspace_release => {
+        PackageEcosystem::Npm => {
             publish_npm_direct(source, artifact, destination, release_root)?;
         }
-        PackageEcosystem::Npm => {
-            let npmrc = release_root.join(format!(
-                "npmrc-{}",
-                Sha256::digest(destination.registry.as_bytes())
-                    .iter()
-                    .take(6)
-                    .map(|byte| format!("{byte:02x}"))
-                    .collect::<String>()
-            ));
-            let authority = destination
-                .registry
-                .split_once("://")
-                .map(|(_, rest)| rest)
-                .context("npm registry must be an HTTP(S) URL")?;
-            write_secret_file(
-                &npmrc,
-                format!(
-                    "registry={}\n//{}:_authToken={}\nalways-auth=true\n",
-                    destination.registry, authority, destination.token
-                )
-                .as_bytes(),
-            )?;
-            run(
-                Command::new("npm")
-                    .arg("publish")
-                    .arg(artifact)
-                    .args(["--registry", &destination.registry])
-                    .env("NPM_CONFIG_USERCONFIG", npmrc)
-                    .current_dir(source),
-                "publish npm release",
-            )?;
-        }
         PackageEcosystem::Cargo => {
-            run(
-                Command::new("cargo")
-                    .args(["publish", "--no-verify", "--registry", "vmrelease"])
-                    .arg("--config")
-                    .arg(format!(
-                        "registries.vmrelease.index=\"{}\"",
-                        destination.registry
-                    ))
-                    .env("CARGO_REGISTRIES_VMRELEASE_TOKEN", &destination.token)
-                    .current_dir(source),
-                "publish Cargo release",
-            )?;
+            super::cargo::publish(source, artifact, destination, release_root)?;
         }
         PackageEcosystem::Python => {
             run(
@@ -215,11 +183,12 @@ fn publish_npm_direct(
     let payload_path = release_root.join("npm-publish.json");
     write_secret_file(&payload_path, &serde_json::to_vec(&payload)?)?;
     let registry = format!("{}/", destination.registry.trim_end_matches('/'));
+    let header = authorization_header(&destination.token)?;
     run(
         Command::new("curl")
             .args(["--fail", "--silent", "--show-error", "--request", "PUT"])
             .arg("--header")
-            .arg(format!("Authorization: Bearer {}", destination.token))
+            .arg(format!("@{}", header.path().display()))
             .args([
                 "--header",
                 "Content-Type: application/json",
@@ -284,4 +253,40 @@ fn write_secret_file(path: &Path, content: &[u8]) -> Result<()> {
         file.set_permissions(fs::Permissions::from_mode(0o600))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod build_tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires npm on PATH; uses only isolated local package fixtures"]
+    fn npm_prepack_can_use_declared_build_dependencies() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        fs::create_dir_all(source.join("build-dependency")).unwrap();
+        fs::write(source.join("package.json"), r#"{"name":"artifact-fixture","version":"1.0.0","scripts":{"prepack":"node -e \"require('build-dependency')\""},"devDependencies":{"build-dependency":"file:./build-dependency"}}"#).unwrap();
+        fs::write(
+            source.join("build-dependency/package.json"),
+            r#"{"name":"build-dependency","version":"1.0.0","main":"index.js"}"#,
+        )
+        .unwrap();
+        fs::write(
+            source.join("build-dependency/index.js"),
+            "module.exports = true;\n",
+        )
+        .unwrap();
+        fs::write(
+            source.join(".npmrc"),
+            "registry=http://127.0.0.1:9\nfetch-retries=0\naudit=false\nfund=false\n",
+        )
+        .unwrap();
+        let artifact = build_artifact(PackageEcosystem::Npm, &source, root.path()).unwrap();
+        assert!(artifact.path.is_file());
+        assert_eq!(
+            artifact.digest,
+            digest_hex(fs::read(&artifact.path).unwrap())
+        );
+        assert!(!source.join("package-lock.json").exists());
+    }
 }

@@ -7,6 +7,8 @@ use vm_packages::{
 use crate::runtime::{download_bundle, operation_key, required_secret as secret};
 
 mod artifact;
+mod cache;
+mod cargo;
 mod manifest;
 
 use artifact::{
@@ -36,6 +38,9 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
     let client = PackageInfrastructureClient::new(RegistryEndpoints::new(&gateway)?)
         .with_release_token(release_token.clone());
     let submission = client.submission(&options.submission).await?;
+    let cache_root = std::env::var_os("PKG_RELEASE_ARTIFACT_ROOT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| "/data/sources/package-artifacts".into());
     if matches!(
         submission.state,
         WorkflowState::Published | WorkflowState::Closed
@@ -44,6 +49,9 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
             .release_id
             .as_deref()
             .context("published submission has no release record")?;
+        if cache_root.join(&submission.submission_id).try_exists()? {
+            cache::ArtifactCache::open(&cache_root, &submission.submission_id)?.cleanup()?;
+        }
         cleanup_release(&client, release_id, RELEASE_ACTOR).await?;
         tracing::info!(
             operation = "release",
@@ -121,8 +129,12 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
         .await?;
     }
     let tag = format!("v{}", identity.version);
-    let artifact = build_artifact(definition.ecosystem, &source, release_root.path())?;
-    ensure_clean_source(&source)?;
+    let artifact_cache = cache::ArtifactCache::open(&cache_root, &submission.submission_id)?;
+    let artifact = artifact_cache.artifact(&integration.integration_commit, || {
+        let artifact = build_artifact(definition.ecosystem, &source, release_root.path())?;
+        ensure_clean_source(&source)?;
+        Ok(artifact)
+    })?;
 
     if !checkout.workspace_release {
         push_source(
@@ -170,7 +182,6 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
             &artifact.path,
             &destination,
             release_root.path(),
-            checkout.workspace_release,
         )?;
         let publication_key = operation_key(
             "publish",
@@ -195,6 +206,7 @@ pub async fn release(options: PackageReleaseOptions) -> Result<()> {
         operation_key("complete", &release.release_id),
     )
     .await?;
+    artifact_cache.cleanup()?;
     cleanup_release(&client, &released.release_id, RELEASE_ACTOR).await?;
     tracing::info!(
         operation = "release",

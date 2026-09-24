@@ -909,7 +909,7 @@
 
       - name: Bootstrap locked Node dependencies and browsers
         command:
-            argv: [/bin/bash, /app/shared/scripts/bootstrap-node.sh]
+            argv: [/bin/bash, /app/shared/scripts/bootstrap-node-background.sh]
         environment: >-
             {{
               cache_environment | combine({
@@ -921,11 +921,7 @@
             }}
         become_user: '{{ project_user }}'
         async: 1800
-        poll: 30
-        register: node_bootstrap
-        changed_when: >-
-            'VM_BOOTSTRAP_DEPENDENCIES_CHANGED=1' in node_bootstrap.stdout or
-            'VM_BOOTSTRAP_BROWSERS_CHANGED=1' in node_bootstrap.stdout
+        poll: 0
         when: node_dependency_manager | length > 0 or playwright_browsers | length > 0
 
       # Git configuration

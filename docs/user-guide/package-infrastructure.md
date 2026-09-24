@@ -171,7 +171,7 @@ step repairs only their named-volume roots to the package-service UID/GID. This
 keeps both fresh volumes and volumes added during an upgrade writable without
 granting the long-running services root access.
 
-VM injects the gateway and a read-only token through npm, Cargo, and pip
+VM injects the gateway and a read-only token through npm, Cargo, pip, and uv
 environment settings whenever it creates or starts a project environment. It
 also exports `VM_OCI_MIRROR`; Linux Tart guests with managed Docker activate
 that mirror in Docker Engine automatically.
@@ -279,6 +279,24 @@ results. Successful publication removes temporary checkout data without
 touching the registered repository or its persistent canonical mirror.
 
 ## Advanced: Canonical Workspace Details
+
+Language releases retain their built artifact in the appliance's existing
+source volume until publication and cleanup finish. A retry verifies and reuses
+those exact bytes, including Cargo uploads; it does not rebuild an artifact
+whose digest has already been recorded. npm private publication also accepts
+`private: true` packages through the authenticated internal registry.
+
+Fresh npm validation and packaging copies restore dependencies before running
+checks or packaging hooks. npm lockfiles select `npm ci`; unlocked sources use
+an install that does not create a lockfile. Python package checks use a fresh
+temporary virtual environment per invocation. Integrated npm/Python consumer
+checks temporarily use the integrated source and restore the editable checkout
+afterward, including when a check fails.
+
+An interrupted integration can be retried with `vm packages release` from the
+same source directory. Cancellation retains that directory until dependency
+restoration and controller cleanup have both succeeded, so a failed cleanup
+request can be retried with `vm packages cancel`.
 
 Use `vm packages checkout <source>` when an agent needs an isolated shared-source
 checkout. Use `vm packages open <source>` on the controller to enter an
@@ -641,6 +659,22 @@ vm packages drift
 The registered consumer version changes only after its normal review process
 updates the inventory. Rerun `vm packages consumer register` with the reviewed
 version to refresh that inventory and close the matching rollout receipt.
+
+`consumers` and `drift` include the ready branch or failed-update recovery hint.
+After fixing a failed consumer check, retry its dependency updates on the host:
+
+```bash
+vm packages consumer retry project-a
+```
+
+This uses the latest published versions, retains the failed attempt's history,
+and resumes an existing retry if its response was interrupted. It does not
+republish the shared package or replace an update already awaiting review.
+Rollout commits contain only dependency manifests and lockfiles; generated
+untracked test output is excluded, and unrelated tracked edits fail validation.
+Unavailable consumers rotate through the worker queue so independent projects
+can continue. Completed rollout scratch directories are reclaimed on queue
+reconciliation after an interruption.
 
 ## Advanced: Backup and Recovery
 

@@ -99,6 +99,63 @@ fn generated_images_are_marked_as_vm_managed() {
 }
 
 #[test]
+fn project_python_packages_use_a_user_owned_venv() {
+    let dockerfile = include_str!("Dockerfile.j2");
+    assert!(dockerfile.contains("-m venv --system-site-packages \"$VM_PROJECT_PYTHON\""));
+    assert!(dockerfile.contains("\"$VM_PROJECT_PYTHON/bin/python\" -m pip install"));
+    assert!(dockerfile.contains("$HOME/.local/share/vm/python/bin/python"));
+    assert!(dockerfile.contains("/opt/vm-python/bin/python"));
+    assert!(!dockerfile.contains("pip3 install --user $PIP_BREAK_SYSTEM_PACKAGES"));
+}
+
+#[cfg(unix)]
+#[test]
+fn project_python_install_stops_at_the_first_failed_package() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+
+    let root = tempfile::tempdir().unwrap();
+    let python = root.path().join("python3");
+    fs::write(
+        &python,
+        r#"#!/bin/bash
+set -eu
+if [ "$1" = -c ]; then printf '%s\n' "$FIXTURE_SITE"; exit 0; fi
+if [ "$2" = venv ]; then
+    mkdir -p "$4/bin"
+    cp "$0" "$4/bin/python"
+    exit 0
+fi
+if [ "$3" = show ]; then exit 1; fi
+printf '%s\n' "$4" >> "$FIXTURE_INSTALLS"
+[ "$4" != missing-package ]
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&python, fs::Permissions::from_mode(0o755)).unwrap();
+    let dockerfile = include_str!("Dockerfile.j2");
+    let (_, section) = dockerfile
+        .split_once("# Python Package Installation\n")
+        .unwrap();
+    let (section, _) = section
+        .split_once("\n\n# Cargo Package Installation")
+        .unwrap();
+    let (_, shell) = section.split_once('\n').unwrap();
+    let installs = root.path().join("installed");
+    let output = Command::new("bash")
+        .args(["-c", shell])
+        .env("PATH", format!("{}:/usr/bin:/bin", root.path().display()))
+        .env("VM_PROJECT_PYTHON", root.path().join("venv"))
+        .env("PIP_PACKAGES", "missing-package available-package")
+        .env("FIXTURE_SITE", root.path().join("site"))
+        .env("FIXTURE_INSTALLS", &installs)
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert_eq!(fs::read_to_string(installs).unwrap(), "missing-package\n");
+}
+
+#[test]
 fn image_pull_error_explains_unprivileged_nested_engines() {
     let stderr = "failed to register layer: unshare: operation not permitted";
     let message = BuildOperations::image_pull_error_message("ubuntu:jammy", stderr);
@@ -153,7 +210,8 @@ fn test_gather_build_args_host_integration() {
     ));
     let dockerfile = include_str!("Dockerfile.j2");
     assert!(
-        dockerfile.contains("pip3 install --help 2>/dev/null | grep -q -- '--break-system-packages'")
+        dockerfile
+            .contains("pip3 install --help 2>/dev/null | grep -q -- '--break-system-packages'")
             || dockerfile.contains("-m venv --system-site-packages \"$VM_PROJECT_PYTHON\"")
     );
 }
@@ -218,11 +276,25 @@ fn test_gather_build_args_snapshot_omits_host_specific_inputs() {
 
 #[test]
 fn generated_vibe_build_rejects_an_incomplete_codex_runtime() {
-    let template = include_str!("Dockerfile.j2");
+    for (engine, provider) in [
+        (ContainerEngine::Docker, "docker"),
+        (
+            ContainerEngine::Podman(engine::PodmanCompose::BuiltIn),
+            "podman",
+        ),
+    ] {
+        let generated = tempfile::tempdir().unwrap();
+        let config = VmConfig::default();
+        let runtime = ContainerRuntime::with_executable(engine, provider);
+        let build_ops = BuildOperations::with_runtime(&config, generated.path(), runtime);
+        let dockerfile = generated.path().join("Dockerfile.generated");
+        build_ops.generate_dockerfile(&dockerfile).unwrap();
+        let content = fs::read_to_string(dockerfile).unwrap();
 
-    assert!(template.contains("ARG VIBE_RUNTIME_REQUIRED=false"));
-    assert!(template.contains("codex-package/bin/codex-code-mode-host"));
-    assert!(template.contains("vm system base build vibe --provider docker"));
+        assert!(content.contains("ARG VIBE_RUNTIME_REQUIRED=false"));
+        assert!(content.contains("codex-package/bin/codex-code-mode-host"));
+        assert!(content.contains(&format!("vm system base build vibe --provider {provider}")));
+    }
 }
 
 #[test]

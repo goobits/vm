@@ -6,7 +6,8 @@ GUEST_OS="${GUEST_OS:-macos}"
 BASE_NAME="${BASE_NAME:-}"
 BASE_IMAGE="${BASE_IMAGE:-}"
 NODE_VERSION="${NODE_VERSION:-22.23.2}"
-NVM_COMMIT="${NVM_COMMIT:-d025499c7f5466d0dc0a324dc98eab72cce8377d}"
+NVM_COMMIT="${NVM_COMMIT:-a885b885fef16fac4bc544188fb25e9e37ae83e8}"
+NVM_INSTALLER_SHA256="${NVM_INSTALLER_SHA256:-48a0eee9a60e07422dce0eb5774754c83889570ca1ee2566c516acbe8af03a9e}"
 RUST_TOOLCHAIN="${RUST_TOOLCHAIN:-1.98.0}"
 WAIT_SECONDS="${WAIT_SECONDS:-120}"
 
@@ -23,6 +24,7 @@ Environment overrides:
   BASE_IMAGE      Source Tart image (default depends on guest OS)
   NODE_VERSION    Default Node version to preinstall (default: 22.23.2)
   NVM_COMMIT      Pinned NVM installer commit
+  NVM_INSTALLER_SHA256  SHA-256 of the pinned NVM installer
   RUST_TOOLCHAIN  Pinned Rust toolchain (default: 1.98.0)
   WAIT_SECONDS    SSH readiness timeout in seconds (default: 120)
 EOF
@@ -79,7 +81,8 @@ if [[ ! "$BASE_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; then
 fi
 if [[ ! "$NODE_VERSION" =~ ^[0-9]+([.][0-9]+){2}$ ]] || \
    [[ ! "$RUST_TOOLCHAIN" =~ ^[0-9]+([.][0-9]+){2}$ ]] || \
-   [[ ! "$NVM_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+   [[ ! "$NVM_COMMIT" =~ ^[0-9a-f]{40}$ ]] || \
+   [[ ! "$NVM_INSTALLER_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
   echo "Invalid pinned toolchain version" >&2
   exit 1
 fi
@@ -169,7 +172,9 @@ if [[ "${GUEST_OS}" == "macos" ]]; then
     pipx ensurepath >/dev/null 2>&1 || true
 
     if [ ! -s \"\$HOME/.nvm/nvm.sh\" ]; then
-      curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_COMMIT}/install.sh -o /tmp/install-nvm.sh
+      curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_COMMIT}/install.sh -o /tmp/install-nvm.sh
+      actual=\$(shasum -a 256 /tmp/install-nvm.sh | awk '{print \$1}')
+      [ \"\$actual\" = \"${NVM_INSTALLER_SHA256}\" ]
       bash /tmp/install-nvm.sh
       rm -f /tmp/install-nvm.sh
     fi
@@ -257,7 +262,8 @@ else
     sudo update-locale LANG=en_US.UTF-8
 
     if [ ! -s \"\$HOME/.nvm/nvm.sh\" ]; then
-      curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_COMMIT}/install.sh -o /tmp/install-nvm.sh
+      curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_COMMIT}/install.sh -o /tmp/install-nvm.sh
+      echo \"${NVM_INSTALLER_SHA256}  /tmp/install-nvm.sh\" | sha256sum --check -
       bash /tmp/install-nvm.sh
       rm -f /tmp/install-nvm.sh
     fi

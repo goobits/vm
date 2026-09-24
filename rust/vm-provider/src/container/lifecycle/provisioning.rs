@@ -2,6 +2,7 @@
 use super::LifecycleOperations;
 use crate::container::UserConfig;
 use crate::context::ProviderContext;
+use crate::project_plan::ProjectPlan;
 use fs2::FileExt;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -292,7 +293,17 @@ impl<'a> LifecycleOperations<'a> {
 
         self.prepare_and_copy_config(&container_name)?;
 
-        Self::run_ansible_provisioning(self.runtime.executable(), &container_name, context)
+        vm_core::vm_progress!("Applying environment settings...");
+        Self::run_ansible_provisioning(self.runtime.executable(), &container_name, context)?;
+
+        let installs = ProjectPlan::detect(self.project_dir, self.config).installs;
+        if installs.node_dependencies.is_some() || !installs.playwright_browsers.is_empty() {
+            vm_core::vm_hint!(
+                "Node setup is running in the background; inside the environment, check ~/.local/state/vm/bootstrap-node.status and bootstrap-node.log"
+            );
+        }
+
+        Ok(())
     }
 }
 

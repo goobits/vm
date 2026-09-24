@@ -17,6 +17,18 @@ pub(super) struct GuestRuntime {
 }
 
 impl GuestRuntime {
+    #[cfg(test)]
+    pub(super) fn for_test(home: PathBuf, workspace: PathBuf) -> Self {
+        Self {
+            consumer: "project-a".into(),
+            gateway: "http://127.0.0.1:3080".into(),
+            agent_token: "test-agent".into(),
+            workspace: workspace.to_string_lossy().into_owned(),
+            canonical_workspace: Some(workspace),
+            home,
+        }
+    }
+
     pub(super) fn discover() -> VmResult<Self> {
         let consumer = required_guest_variable("VM_PACKAGES_CONSUMER")?;
         vm_packages::validate_label("consumer", &consumer).map_err(VmError::from)?;
@@ -169,12 +181,24 @@ where
     I: IntoIterator<Item = S>,
     S: Into<String>,
 {
+    exec_in_directory(subject, subject.workspace(), command)
+}
+
+pub(super) fn exec_in_directory<I, S>(
+    subject: &GuestRuntime,
+    directory: &str,
+    command: I,
+) -> VmResult<()>
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
     let mut wrapped = vec![
         "/bin/sh".to_string(),
         "-c".to_string(),
-        "cd \"$1\"; shift; exec \"$@\"".to_string(),
+        "cd \"$1\" || exit; shift; exec \"$@\"".to_string(),
         "vm-package-workspace".to_string(),
-        subject.workspace().to_string(),
+        directory.to_string(),
     ];
     wrapped.extend(command.into_iter().map(Into::into));
     subject.run(&wrapped)
@@ -182,7 +206,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::effective_workspace;
+    use super::{effective_workspace, exec_in_workspace, GuestRuntime};
     use std::path::Path;
 
     #[test]
@@ -192,5 +216,18 @@ mod tests {
 
         assert_eq!(effective_workspace(checkout, Some(workspace)), workspace);
         assert_eq!(effective_workspace(checkout, None), checkout);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn missing_workspace_does_not_run_dependency_commands_in_the_callers_directory() {
+        let temporary = tempfile::tempdir().unwrap();
+        let marker = temporary.path().join("executed");
+        let subject = GuestRuntime::for_test(
+            temporary.path().to_path_buf(),
+            temporary.path().join("missing"),
+        );
+        assert!(exec_in_workspace(&subject, ["touch", marker.to_str().unwrap()],).is_err());
+        assert!(!marker.exists());
     }
 }

@@ -116,6 +116,35 @@ impl OverrideRecord {
         )
     }
 
+    pub(super) fn with_temporary_source(
+        &self,
+        subject: &GuestRuntime,
+        source: &str,
+        check: impl FnOnce() -> VmResult<()>,
+    ) -> VmResult<()> {
+        // Cargo's consumer check supplies its explicit patch on the command.
+        if self.ecosystem == PackageEcosystem::Cargo {
+            return check();
+        }
+        let result = exec_in_workspace(
+            subject,
+            dependency_command(
+                self.ecosystem,
+                &self.package,
+                DependencySource::Worktree(source),
+            ),
+        )
+        .and_then(|()| check());
+        let restored = self.activate(subject);
+        if let Err(error) = restored {
+            return Err(VmError::validation(
+                format!("Could not restore the editable package after integration checks: {error}; check result: {result:?}"),
+                Some("The integration source was retained. Rerun `vm packages release` after repairing package access"),
+            ));
+        }
+        result
+    }
+
     fn validate(&self, checkout: &vm_packages::CheckoutRecord, consumer: &str) -> VmResult<()> {
         if self.checkout_id != checkout.checkout_id
             || self.package != checkout.package
@@ -339,6 +368,57 @@ fn quote_posix_argument(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires npm on PATH; uses only isolated local package fixtures"]
+    fn npm_integration_checks_use_candidate_and_restore_editable_source_on_failure() {
+        let temporary = tempfile::tempdir().unwrap();
+        let workspace = temporary.path().join("consumer");
+        let source = temporary
+            .path()
+            .join(".local/share/vm/package-checkouts/check-1/source");
+        let candidate = temporary.path().join("integration/source");
+        for (path, content) in [(&source, "editable"), (&candidate, "integrated")] {
+            std::fs::create_dir_all(path).unwrap();
+            std::fs::write(
+                path.join("package.json"),
+                r#"{"name":"shared","version":"1.0.0","main":"index.js"}"#,
+            )
+            .unwrap();
+            std::fs::write(path.join("index.js"), content).unwrap();
+        }
+        std::fs::create_dir_all(&workspace).unwrap();
+        let manifest = r#"{"private":true,"dependencies":{"shared":"1.0.0"}}"#;
+        std::fs::write(workspace.join("package.json"), manifest).unwrap();
+        std::fs::write(
+            workspace.join(".npmrc"),
+            "registry=http://127.0.0.1:9\nfetch-retries=0\naudit=false\nfund=false\n",
+        )
+        .unwrap();
+        let subject = GuestRuntime::for_test(temporary.path().to_path_buf(), workspace.clone());
+        let record = OverrideRecord::new(
+            "check-1",
+            "project-a",
+            "shared",
+            PackageEcosystem::Npm,
+            source.to_str().unwrap(),
+            "1.0.0",
+        );
+        record.activate(&subject).unwrap();
+        let installed = workspace.join("node_modules/shared/index.js");
+        assert_eq!(std::fs::read_to_string(&installed).unwrap(), "editable");
+        let result = record.with_temporary_source(&subject, candidate.to_str().unwrap(), || {
+            assert_eq!(std::fs::read_to_string(&installed).unwrap(), "integrated");
+            Err(VmError::validation("fixture test failure", None::<String>))
+        });
+        assert!(result.is_err());
+        assert_eq!(std::fs::read_to_string(&installed).unwrap(), "editable");
+        assert_eq!(
+            std::fs::read_to_string(workspace.join("package.json")).unwrap(),
+            manifest
+        );
+        assert!(!workspace.join("package-lock.json").exists());
+    }
 
     #[test]
     fn ecosystem_commands_do_not_modify_manifests_or_lockfiles() {

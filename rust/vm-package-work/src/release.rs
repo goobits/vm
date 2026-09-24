@@ -212,7 +212,9 @@ impl Store {
             .filter(|submission| {
                 matches!(
                     submission.state,
-                    WorkflowState::ReadyToRelease | WorkflowState::Publishing
+                    WorkflowState::ReadyToRelease
+                        | WorkflowState::Publishing
+                        | WorkflowState::Published
                 )
             })
             .filter(|submission| {
@@ -858,7 +860,20 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(complete.state, WorkflowState::Published);
-        assert!(store.next_release().await.is_none());
+        assert_eq!(
+            store.next_release().await.unwrap().state,
+            WorkflowState::Published
+        );
+        assert_eq!(
+            Store::open(directory.path())
+                .await
+                .unwrap()
+                .next_release()
+                .await
+                .unwrap()
+                .submission_id,
+            submission.submission_id
+        );
         let closed = store
             .close_checkout(
                 &checkout.checkout_id,
@@ -870,6 +885,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(closed.state, WorkflowState::Closed);
+        assert!(store.next_release().await.is_none());
         assert_eq!(
             store
                 .close_checkout(

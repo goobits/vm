@@ -30,8 +30,8 @@ pub use build::{
 pub use catalog::{PackageDefinition, RegisterPackage};
 pub use client::{InfrastructureStatus, PackageInfrastructureClient, PackageInventory};
 pub use consumer::{
-    ConsumerRecord, ConsumerUsage, CreateRollout, PackageDrift, RegisterConsumer, RolloutRecord,
-    RolloutState, RolloutTransition, RolloutValidationRequest,
+    rollout_paths, ConsumerRecord, ConsumerUsage, CreateRollout, PackageDrift, RegisterConsumer,
+    RolloutRecord, RolloutState, RolloutTransition, RolloutValidationRequest,
 };
 pub use credentials::{
     authorization_token, issue_agent_capability, issue_agent_capability_v2,

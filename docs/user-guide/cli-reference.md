@@ -107,6 +107,7 @@ Configuration fields and examples belong in the
 | `vm packages list` | List registered and published package state |
 | `vm packages consumer register <name> --repository <url> [--branch <branch>] --dependency <package@version>...` | Register a consumer and its internal dependencies |
 | `vm packages consumer list` | List registered consumers |
+| `vm packages consumer retry <name>` | Retry failed dependency updates without republishing the package |
 | `vm packages consumers <package>` | Show consumers and pending upgrades for one package |
 | `vm packages drift` | Show version drift across consumers |
 | `vm packages open <source>` | Open an attested package or tool in its existing writable Docker owner; create no checkout |
@@ -174,7 +175,7 @@ environment. Active agent sessions do not hot-reload updated skills.
 | `vm doctor [--fix] [--clean] [--prune-pnpm-store] [--container <environment>]` | Diagnose or repair engine, configuration, and pnpm-store issues |
 | `vm system update [--version <version>] [--force]` | Update the VM installation |
 | `vm system uninstall [--keep-config] [-y\|--yes]` | Remove VM from the host |
-| `vm system base build <preset> --provider <docker\|tart> [--guest-os <auto\|linux\|macos>]` | Build a provider-native base |
+| `vm system base build <preset> --provider <docker\|podman\|tart> [--guest-os <auto\|linux\|macos>]` | Build a provider-native base |
 
 `vm config validate` is read-only. `vm config render` redacts secrets and host
 paths. Ordinary cleanup and repair preserve managed data unless a command

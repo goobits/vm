@@ -220,6 +220,54 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn base_builder_preserves_guest_script_arguments() {
+        use std::{fs, os::unix::fs::PermissionsExt, process::Command};
+
+        let root = tempfile::tempdir().unwrap();
+        let tart = root.path().join("tart");
+        fs::write(
+            &tart,
+            r#"#!/bin/bash
+set -eu
+if [ "$1" = exec ] && [[ "$5" == *NVM_DIR* ]]; then
+    [ "$#" -eq 5 ]
+    printf '%s\n' "$5" > "$CAPTURE_SCRIPT"
+    bash -n "$CAPTURE_SCRIPT"
+fi
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&tart, fs::Permissions::from_mode(0o755)).unwrap();
+        let builder = root.path().join("builder.sh");
+        fs::write(&builder, BASE_BUILDER).unwrap();
+        for guest in ["linux", "macos"] {
+            let script = root.path().join(format!("{guest}.sh"));
+            let output = Command::new("bash")
+                .arg(&builder)
+                .args(["--guest-os", guest])
+                .env("PATH", format!("{}:/usr/bin:/bin", root.path().display()))
+                .env("XDG_STATE_HOME", root.path().join("state"))
+                .env("CAPTURE_SCRIPT", &script)
+                .env("VIBE_AI_TOOLS_INSTALLER", "true")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let content = fs::read_to_string(script).unwrap();
+            assert!(content.contains("/tmp/install-nvm.sh"));
+            if guest == "linux" {
+                assert!(content.contains("  /tmp/install-nvm.sh\" | sha256sum --check -"));
+            } else {
+                assert!(content.contains("[ \"$actual\" = \""));
+            }
+        }
+    }
+
     #[test]
     fn configured_bases_resolve_their_guest_os() {
         assert_eq!(

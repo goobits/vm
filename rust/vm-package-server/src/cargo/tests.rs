@@ -107,6 +107,160 @@ mod cargo_tests {
     }
 
     #[tokio::test]
+    async fn cargo_publish_dependencies_are_translated_to_installable_index_metadata() {
+        let (state, _temp_dir) = create_cargo_test_state();
+        let app = axum::Router::new()
+            .route(
+                "/cargo/api/v1/crates/new",
+                axum::routing::put(publish_crate),
+            )
+            .with_state(state.clone());
+        let metadata = json!({
+            "name": "shared-auth", "vers": "1.0.0",
+            "deps": [{
+                "name": "serde", "version_req": "^1.0", "explicit_name_in_toml": "serialization",
+                "features": ["derive"], "optional": true, "default_features": false,
+                "target": "cfg(unix)", "kind": "normal", "registry": "https://github.com/rust-lang/crates.io-index"
+            }, {"name": "internal-types", "version_req": "=2.0.0"}],
+            "features": {"serde": ["dep:serialization"]}, "links": "shared_native", "rust_version": "1.80"
+        });
+        let encoded = serde_json::to_vec(&metadata).unwrap();
+        let artifact = b"fixture crate";
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&(encoded.len() as u32).to_le_bytes());
+        payload.extend_from_slice(&encoded);
+        payload.extend_from_slice(&(artifact.len() as u32).to_le_bytes());
+        payload.extend_from_slice(artifact);
+        let server = TestServer::new(app);
+        for _ in 0..2 {
+            let response = server
+                .put("/cargo/api/v1/crates/new")
+                .bytes(payload.clone().into())
+                .await;
+            assert_eq!(response.status_code(), StatusCode::OK);
+        }
+        let index =
+            std::fs::read_to_string(state.data_dir.join("cargo/index/sh/ar/shared-auth")).unwrap();
+        assert_eq!(index.lines().count(), 1);
+        let entry: serde_json::Value = serde_json::from_str(index.trim()).unwrap();
+        assert_eq!(entry["deps"][0]["name"], "serialization");
+        assert_eq!(entry["deps"][0]["package"], "serde");
+        assert_eq!(entry["deps"][0]["req"], "^1.0");
+        assert!(entry["deps"][0].get("version_req").is_none());
+        assert_eq!(entry["deps"][0]["optional"], true);
+        assert_eq!(entry["deps"][0]["default_features"], false);
+        assert_eq!(entry["deps"][0]["target"], "cfg(unix)");
+        assert_eq!(
+            entry["deps"][0]["registry"],
+            metadata["deps"][0]["registry"]
+        );
+        assert_eq!(entry["deps"][1]["req"], "=2.0.0");
+        assert!(entry["deps"][1]["registry"].is_null());
+        assert_eq!(entry["features"], metadata["features"]);
+        assert_eq!(entry["links"], "shared_native");
+        assert_eq!(entry["rust_version"], "1.80");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[ignore = "requires Cargo on PATH; resolves only an isolated local HTTP registry"]
+    async fn cargo_installs_a_published_crate_with_a_renamed_private_dependency() {
+        use std::io::Write;
+        fn archive(name: &str, manifest: &str, code: &str) -> Vec<u8> {
+            let gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            let mut archive = tar::Builder::new(gzip);
+            for (path, contents) in [("Cargo.toml", manifest), ("src/lib.rs", code)] {
+                let mut header = tar::Header::new_gnu();
+                header.set_size(contents.len() as u64);
+                header.set_mode(0o644);
+                header.set_cksum();
+                archive
+                    .append_data(
+                        &mut header,
+                        format!("{name}-1.0.0/{path}"),
+                        contents.as_bytes(),
+                    )
+                    .unwrap();
+            }
+            archive.into_inner().unwrap().finish().unwrap()
+        }
+        let (state, _storage) = create_cargo_test_state();
+        let app = axum::Router::new()
+            .route(
+                "/cargo/api/v1/crates/new",
+                axum::routing::put(publish_crate),
+            )
+            .route(
+                "/cargo/api/v1/crates/{crate_name}/{version}/download",
+                axum::routing::get(download_crate),
+            )
+            .route("/cargo/index/config.json", axum::routing::get(config))
+            .route("/cargo/index/{*path}", axum::routing::get(index_file))
+            .with_state(state);
+        let server = TestServer::builder().http_transport().build(app);
+        let leaf_manifest = "[package]\nname = \"leaf\"\nversion = \"1.0.0\"\nedition = \"2021\"\n";
+        let shared_manifest = "[package]\nname = \"shared\"\nversion = \"1.0.0\"\nedition = \"2021\"\n[dependencies]\nrenamed = { package = \"leaf\", version = \"1\" }\n";
+        for (name, manifest, code, dependencies) in [
+            (
+                "leaf",
+                leaf_manifest,
+                "pub fn value() -> u8 { 42 }",
+                json!([]),
+            ),
+            (
+                "shared",
+                shared_manifest,
+                "pub fn value() -> u8 { renamed::value() }",
+                json!([{"name":"leaf", "version_req":"^1", "explicit_name_in_toml":"renamed", "features":[], "optional":false, "default_features":true}]),
+            ),
+        ] {
+            let metadata = serde_json::to_vec(
+                &json!({"name":name,"vers":"1.0.0","deps":dependencies,"features":{}}),
+            )
+            .unwrap();
+            let artifact = archive(name, manifest, code);
+            let mut payload = Vec::new();
+            payload
+                .write_all(&(metadata.len() as u32).to_le_bytes())
+                .unwrap();
+            payload.extend_from_slice(&metadata);
+            payload.extend_from_slice(&(artifact.len() as u32).to_le_bytes());
+            payload.extend_from_slice(&artifact);
+            assert_eq!(
+                server
+                    .put("/cargo/api/v1/crates/new")
+                    .bytes(payload.into())
+                    .await
+                    .status_code(),
+                StatusCode::OK
+            );
+        }
+        let consumer = TempDir::new().unwrap();
+        std::fs::create_dir(consumer.path().join("src")).unwrap();
+        std::fs::create_dir(consumer.path().join(".cargo")).unwrap();
+        std::fs::write(consumer.path().join("Cargo.toml"), "[package]\nname = \"consumer\"\nversion = \"1.0.0\"\nedition = \"2021\"\n[dependencies]\nshared = \"=1.0.0\"\n").unwrap();
+        std::fs::write(
+            consumer.path().join("src/lib.rs"),
+            "pub fn value() -> u8 { shared::value() }\n",
+        )
+        .unwrap();
+        std::fs::write(consumer.path().join(".cargo/config.toml"), format!("[source.crates-io]\nreplace-with = \"fixture\"\n[source.fixture]\nregistry = \"sparse+{}cargo/index/\"\n", server.server_address().unwrap())).unwrap();
+        let output = std::process::Command::new("cargo")
+            .arg("check")
+            .current_dir(consumer.path())
+            .env("CARGO_HOME", consumer.path().join("cargo-home"))
+            .env("CARGO_TARGET_DIR", consumer.path().join("target"))
+            .env_remove("CARGO_SOURCE_CRATES_IO_REPLACE_WITH")
+            .env_remove("CARGO_SOURCE_VM_REGISTRY")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[tokio::test]
     async fn test_publish_crate_with_binary_payload() {
         let (state, _temp_dir) = create_cargo_test_state();
         let app = axum::Router::new()

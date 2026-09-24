@@ -1,10 +1,24 @@
 # Installation
 
-Install `vm`:
+Install `vm` from a source checkout:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/goobits/vm/main/install.sh | bash
+git clone https://github.com/goobits/vm.git
+cd vm
+./install.sh
 ```
+
+Open a new terminal after installation so `vm` is on your `PATH`.
+
+The bundled `vm.yaml` uses Docker. On macOS, install and start
+[Docker Desktop](https://docs.docker.com/desktop/setup/install/mac-install/),
+open a new terminal, then run `vm doctor`. On Linux, install Docker Engine.
+Podman can be selected explicitly as an alternative provider. Provider
+installation includes host services and operating-system setup.
+
+The first environment using the bundled Vibe preset automatically builds its
+reusable `@vibe-image` base. This initial build can take several minutes;
+subsequent environments reuse it.
 
 Verify:
 

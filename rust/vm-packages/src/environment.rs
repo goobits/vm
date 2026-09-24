@@ -136,6 +136,10 @@ impl ClientEnvironment {
                 self.authenticated_url("pypi/simple/"),
             ),
             (
+                "UV_DEFAULT_INDEX".into(),
+                self.authenticated_url("pypi/simple/"),
+            ),
+            (
                 "CARGO_REGISTRIES_VM_INDEX".into(),
                 self.endpoints.cargo_index(),
             ),
@@ -207,6 +211,9 @@ fi
 if [ -n "$vm_node_executable" ]; then
   PATH="${vm_node_executable%/npm}:$PATH"
 fi
+if [ -d "$HOME/.local/bin" ]; then
+  PATH="$HOME/.local/bin:$PATH"
+fi
 export PATH
 unset vm_node_executable
 "#,
@@ -261,7 +268,16 @@ mod tests {
         );
         let environment = ClientEnvironment::new(endpoints, "read secret").unwrap();
         let variables = environment.variables();
-        assert_eq!(variables.len(), 10);
+        assert_eq!(variables.len(), 11);
+        let pip_index = variables
+            .iter()
+            .find(|(name, _)| name == "PIP_INDEX_URL")
+            .unwrap();
+        let uv_index = variables
+            .iter()
+            .find(|(name, _)| name == "UV_DEFAULT_INDEX")
+            .unwrap();
+        assert_eq!(uv_index.1, pip_index.1);
         assert_eq!(variables[0].1, "https://packages.internal/npm/");
         assert!(!variables[0].1.contains("read secret"));
 
@@ -275,7 +291,7 @@ mod tests {
             .with_canonical_workspace("/workspace")
             .unwrap()
             .variables();
-        assert_eq!(agent.len(), 15);
+        assert_eq!(agent.len(), 16);
         assert!(agent.contains(&("VM_PACKAGES_CONSUMER".into(), "project-a".into())));
         assert!(agent.contains(&(
             "VM_PACKAGES_CLIENT_URL".into(),
@@ -285,8 +301,8 @@ mod tests {
             "VM_PACKAGES_CANONICAL_WORKSPACE".into(),
             "/workspace".into()
         )));
-        assert_eq!(variables[3].1, "read secret");
-        assert_eq!(variables[7].1, "https://packages.internal");
+        assert!(variables.contains(&("CARGO_REGISTRIES_VM_TOKEN".into(), "read secret".into())));
+        assert!(variables.contains(&("VM_OCI_MIRROR".into(), "https://packages.internal".into())));
     }
 
     #[test]
@@ -352,5 +368,32 @@ mod tests {
 
         assert!(settings.profile.contains("$HOME/.cargo/bin"));
         assert!(settings.profile.contains("$HOME/.nvm/versions/node"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn managed_cargo_override_precedes_rustup_in_guest_shells() {
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(home.path().join(".cargo/bin")).unwrap();
+        std::fs::create_dir_all(home.path().join(".local/bin")).unwrap();
+        let settings = ClientEnvironment::new(
+            RegistryEndpoints::new("http://packages.internal").unwrap(),
+            "test-token",
+        )
+        .unwrap()
+        .managed_settings();
+        let output = std::process::Command::new("sh")
+            .args(["-c", &(settings.profile + "printf '%s' \"$PATH\"")])
+            .env("HOME", home.path())
+            .env("PATH", "/usr/bin:/bin")
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let path = String::from_utf8(output.stdout).unwrap();
+        assert!(path.starts_with(&format!(
+            "{}/.local/bin:{}/.cargo/bin:",
+            home.path().display(),
+            home.path().display()
+        )));
     }
 }

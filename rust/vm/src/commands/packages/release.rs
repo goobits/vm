@@ -237,7 +237,7 @@ pub(super) async fn handle_guest() -> VmResult<()> {
     }
     if managed_checkout {
         if let Err(error) =
-            checkout::cleanup_guest_after_release(&subject, &checkout, &release.source_commit)
+            checkout::cleanup_guest_after_release(&subject, &checkout, &published.submitted_commit)
         {
             vm_hint!("Published successfully; local checkout cleanup was skipped: {error}");
         }

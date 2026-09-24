@@ -23,6 +23,8 @@ pub struct CrateMetadata {
     pub version: String,
     pub deps: Value,
     pub features: Value,
+    pub links: Option<String>,
+    pub rust_version: Option<String>,
 }
 
 pub use handlers::*;

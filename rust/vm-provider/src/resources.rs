@@ -22,6 +22,8 @@ pub const THEMES_JSON: &str = include_str!("resources/templates/themes.json");
 pub const CLAUDE_SETTINGS_TEMPLATE: &str =
     include_str!("resources/settings/claude-settings.json.j2");
 pub(crate) const NODE_BOOTSTRAP: &str = include_str!("resources/scripts/bootstrap-node.sh");
+pub(crate) const NODE_BOOTSTRAP_BACKGROUND: &str =
+    include_str!("resources/scripts/bootstrap-node-background.sh");
 pub(crate) const NODE_TOOLCHAIN_INSTALLER: &str =
     include_str!("resources/scripts/install-node-toolchain.sh");
 pub(crate) const HOME_STATE_REPAIR: &str = include_str!("resources/scripts/repair-home-state.sh");
@@ -65,6 +67,10 @@ pub fn copy_embedded_resources(shared_dir: &Path) -> Result<()> {
         ),
         (directories[6].join("bootstrap-node.sh"), NODE_BOOTSTRAP),
         (
+            directories[6].join("bootstrap-node-background.sh"),
+            NODE_BOOTSTRAP_BACKGROUND,
+        ),
+        (
             directories[6].join("install-node-toolchain.sh"),
             NODE_TOOLCHAIN_INSTALLER,
         ),
@@ -92,8 +98,8 @@ fn write_if_changed(path: &Path, content: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ANSIBLE_PLAYBOOK, HOME_STATE_REPAIR, NODE_BOOTSTRAP, NODE_TOOLCHAIN_INSTALLER,
-        SHELL_CONFIG_VERSION, ZSHRC_TEMPLATE,
+        ANSIBLE_PLAYBOOK, HOME_STATE_REPAIR, NODE_BOOTSTRAP, NODE_BOOTSTRAP_BACKGROUND,
+        NODE_TOOLCHAIN_INSTALLER, SHELL_CONFIG_VERSION, ZSHRC_TEMPLATE,
     };
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
@@ -228,7 +234,8 @@ mod tests {
     #[test]
     fn node_bootstrap_is_shared_and_portable() {
         assert!(ANSIBLE_PLAYBOOK.contains("scripts/install-node-toolchain.sh"));
-        assert!(ANSIBLE_PLAYBOOK.contains("scripts/bootstrap-node.sh"));
+        assert!(ANSIBLE_PLAYBOOK.contains("scripts/bootstrap-node-background.sh"));
+        assert!(ANSIBLE_PLAYBOOK.contains("poll: 0"));
         assert!(!ANSIBLE_PLAYBOOK.contains("tasks/node-toolchain.yml"));
         assert!(!ANSIBLE_PLAYBOOK.contains("tasks/bootstrap-node.yml"));
         assert!(NODE_TOOLCHAIN_INSTALLER.contains("VM_NODE_TOOLCHAIN_CURRENT=1"));
@@ -238,6 +245,82 @@ mod tests {
         assert!(NODE_BOOTSTRAP.contains("VM_BOOTSTRAP_DEPENDENCIES_CURRENT=1"));
         assert!(NODE_BOOTSTRAP.contains("shasum -a 256"));
         assert!(!NODE_BOOTSTRAP.contains("mapfile"));
+        assert!(NODE_BOOTSTRAP_BACKGROUND.contains("bootstrap-node.sh"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn background_node_bootstrap_records_completion_and_failure() {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("home");
+        let scripts = root.path().join("scripts");
+        fs::create_dir_all(&home).unwrap();
+        fs::create_dir(&scripts).unwrap();
+        let wrapper = scripts.join("bootstrap-node-background.sh");
+        let bootstrap = scripts.join("bootstrap-node.sh");
+        fs::write(&wrapper, NODE_BOOTSTRAP_BACKGROUND).unwrap();
+
+        for (body, expected_status, expected_log, success) in [
+            ("echo installed", "complete", "installed", true),
+            (
+                "echo VM_BOOTSTRAP_DEPENDENCIES_DEFERRED=1",
+                "deferred",
+                "VM_BOOTSTRAP_DEPENDENCIES_DEFERRED=1",
+                true,
+            ),
+            (
+                "echo install-failed >&2; exit 1",
+                "failed",
+                "install-failed",
+                false,
+            ),
+        ] {
+            fs::write(&bootstrap, body).unwrap();
+            let output = Command::new("/bin/bash")
+                .arg(&wrapper)
+                .env("HOME", &home)
+                .output()
+                .unwrap();
+            assert_eq!(output.status.success(), success);
+            let state = home.join(".local/state/vm");
+            assert_eq!(
+                fs::read_to_string(state.join("bootstrap-node.status"))
+                    .unwrap()
+                    .trim(),
+                expected_status
+            );
+            assert!(fs::read_to_string(state.join("bootstrap-node.log"))
+                .unwrap()
+                .contains(expected_log));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn repeated_background_bootstrap_serializes_installers() {
+        let root = tempfile::tempdir().unwrap();
+        let wrapper = root.path().join("bootstrap-node-background.sh");
+        fs::write(&wrapper, NODE_BOOTSTRAP_BACKGROUND).unwrap();
+        fs::write(
+            root.path().join("bootstrap-node.sh"),
+            "set -e\nmkdir \"$HOME/installing\"\nsleep 0.1\nrmdir \"$HOME/installing\"\n",
+        )
+        .unwrap();
+        let start = || {
+            Command::new("/bin/bash")
+                .arg(&wrapper)
+                .env("HOME", root.path())
+                .spawn()
+                .unwrap()
+        };
+        let mut first = start();
+        let mut second = start();
+        assert!(first.wait().unwrap().success());
+        assert!(second.wait().unwrap().success());
+        assert_eq!(
+            fs::read_to_string(root.path().join(".local/state/vm/bootstrap-node.status")).unwrap(),
+            "complete\n"
+        );
     }
 
     #[cfg(unix)]

@@ -14,6 +14,8 @@ pub enum PackageInfrastructureEngine {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum PackageConsumerSubcommand {
+    /// Retry failed dependency updates for a registered consumer
+    Retry { name: String },
     /// Register a consumer repository and its current internal dependencies
     Register {
         name: String,
@@ -366,7 +368,7 @@ pub enum BaseSubcommand {
     /// Build a provider-native base artifact for a preset
     Build {
         preset: String,
-        #[arg(long, value_parser = ["docker", "tart"])]
+        #[arg(long, value_parser = ["docker", "podman", "tart"])]
         provider: String,
         /// Tart guest OS to build. Auto follows the active config/profile.
         #[arg(long = "guest-os", value_parser = ["auto", "linux", "macos"], default_value = "auto")]

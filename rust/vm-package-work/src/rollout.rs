@@ -167,10 +167,9 @@ impl Store {
         Ok(rollouts)
     }
 
-    pub async fn next_rollout(&self) -> Option<RolloutRecord> {
-        self.database
-            .lock()
-            .await
+    pub async fn next_rollout(&self) -> WorkResult<Option<RolloutRecord>> {
+        let mut current = self.database.lock().await;
+        let Some(selected) = current
             .rollouts
             .values()
             .filter(|rollout| {
@@ -181,6 +180,20 @@ impl Store {
             })
             .min_by_key(|rollout| rollout.updated_at)
             .cloned()
+        else {
+            return Ok(None);
+        };
+        let mut next = current.clone();
+        let rollout = next
+            .rollouts
+            .get_mut(&selected.rollout_id)
+            .expect("selected rollout exists");
+        // Rotate attempts even when downloading or pushing one consumer fails,
+        // so its repository cannot starve independent projects in the queue.
+        rollout.updated_at = Utc::now();
+        let result = rollout.clone();
+        self.commit(&mut current, next).await?;
+        Ok(Some(result))
     }
 
     pub async fn record_rollout_source(
@@ -442,6 +455,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unavailable_consumer_does_not_starve_other_rollouts() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = store_with_auth_release(directory.path(), true).await;
+        for consumer in ["project-a", "project-b"] {
+            store
+                .register_consumer(auth_consumer(consumer, "1.4.0"))
+                .await
+                .unwrap();
+        }
+        for rollout in store.ensure_automatic_rollouts().await.unwrap() {
+            store
+                .record_rollout_source(
+                    &rollout.rollout_id,
+                    "c".repeat(40),
+                    "rollouts/auth/test".into(),
+                    format!("/data/rollouts/{}/source", rollout.rollout_id),
+                )
+                .await
+                .unwrap();
+        }
+        let first = store.next_rollout().await.unwrap().unwrap();
+        // No completion is recorded: the first consumer's download failed.
+        let second = store.next_rollout().await.unwrap().unwrap();
+        assert_ne!(first.rollout_id, second.rollout_id);
+        assert_eq!(
+            store.next_rollout().await.unwrap().unwrap().rollout_id,
+            first.rollout_id
+        );
+    }
+
+    #[tokio::test]
     async fn published_versions_automatically_queue_each_drifted_consumer_once() {
         let directory = tempfile::tempdir().unwrap();
         let store = store_with_auth_release(directory.path(), false).await;
@@ -490,7 +534,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            store.next_rollout().await.unwrap().rollout_id,
+            store.next_rollout().await.unwrap().unwrap().rollout_id,
             rollout.rollout_id
         );
         store
@@ -508,7 +552,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert!(store.next_rollout().await.is_none());
+        assert!(store.next_rollout().await.unwrap().is_none());
 
         let consumers = store.package_consumers("auth").await.unwrap();
         assert_eq!(consumers[0].version, "1.4.2");

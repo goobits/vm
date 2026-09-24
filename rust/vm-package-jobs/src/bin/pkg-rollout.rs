@@ -100,14 +100,11 @@ async fn run_rollout(
     ) {
         return Err(record_failure(client, &rollout.rollout_id, error).await);
     }
-    let status = text(
-        Command::new("git")
-            .arg("-C")
-            .arg(&source)
-            .args(["status", "--porcelain"]),
-        "inspect consumer rollout changes",
-    )?;
-    if status.trim().is_empty() {
+    let has_changes = match stage_dependency_changes(rollout.ecosystem, &source) {
+        Ok(changed) => changed,
+        Err(error) => return Err(record_failure(client, &rollout.rollout_id, error).await),
+    };
+    if !has_changes {
         return Err(record_failure(
             client,
             &rollout.rollout_id,
@@ -115,13 +112,6 @@ async fn run_rollout(
         )
         .await);
     }
-    run(
-        Command::new("git")
-            .arg("-C")
-            .arg(&source)
-            .args(["add", "--all"]),
-        "stage consumer rollout",
-    )?;
     run(
         Command::new("git")
             .arg("-C")
@@ -173,6 +163,61 @@ async fn run_rollout(
         "package rollout is ready for review"
     );
     Ok(())
+}
+
+fn stage_dependency_changes(ecosystem: PackageEcosystem, source: &Path) -> Result<bool> {
+    let tracked = text(
+        Command::new("git")
+            .arg("-C")
+            .arg(source)
+            .args(["diff", "HEAD", "--name-only", "-z"]),
+        "check consumer source was not modified by tests",
+    )?;
+    if let Some(path) = tracked
+        .split('\0')
+        .filter(|path| !path.is_empty())
+        .find(|path| !vm_packages::rollout_paths(ecosystem).contains(path))
+    {
+        bail!("consumer checks modified unrelated tracked file '{path}'");
+    }
+    let files = text(
+        Command::new("git")
+            .arg("-C")
+            .arg(source)
+            .args([
+                "ls-files",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+                "-z",
+                "--",
+            ])
+            .args(vm_packages::rollout_paths(ecosystem)),
+        "find consumer dependency files",
+    )?;
+    let paths = files
+        .split('\0')
+        .filter(|path| !path.is_empty())
+        .collect::<std::collections::BTreeSet<_>>();
+    if paths.is_empty() {
+        return Ok(false);
+    }
+    run(
+        Command::new("git")
+            .arg("-C")
+            .arg(source)
+            .args(["add", "--all", "--"])
+            .args(paths),
+        "stage consumer dependency changes",
+    )?;
+    let changed = text(
+        Command::new("git")
+            .arg("-C")
+            .arg(source)
+            .args(["diff", "--cached", "--name-only"]),
+        "inspect staged consumer dependency changes",
+    )?;
+    Ok(!changed.trim().is_empty())
 }
 
 async fn record_failure(
@@ -303,4 +348,67 @@ fn configure_git(source: &Path) -> Result<()> {
         "configure rollout Git identity",
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rollout_stages_manifests_and_lockfiles_without_generated_output() {
+        let temporary = tempfile::tempdir().unwrap();
+        let source = temporary.path();
+        run(
+            Command::new("git").args(["init", "--quiet"]).arg(source),
+            "init fixture",
+        )
+        .unwrap();
+        configure_git(source).unwrap();
+        std::fs::write(source.join("package.json"), "{}\n").unwrap();
+        std::fs::write(source.join("yarn.lock"), "old\n").unwrap();
+        run(
+            Command::new("git").arg("-C").arg(source).args(["add", "."]),
+            "stage fixture",
+        )
+        .unwrap();
+        run(
+            Command::new("git")
+                .arg("-C")
+                .arg(source)
+                .args(["commit", "--quiet", "-m", "fixture"]),
+            "commit fixture",
+        )
+        .unwrap();
+        std::fs::write(source.join("package.json"), "{\"name\":\"consumer\"}\n").unwrap();
+        std::fs::remove_file(source.join("yarn.lock")).unwrap();
+        std::fs::write(source.join("package-lock.json"), "{}\n").unwrap();
+        std::fs::create_dir(source.join("dist")).unwrap();
+        std::fs::write(source.join("dist/test-output.js"), "generated").unwrap();
+        assert!(stage_dependency_changes(PackageEcosystem::Npm, source).unwrap());
+        let paths = text(
+            Command::new("git")
+                .arg("-C")
+                .arg(source)
+                .args(["diff", "--cached", "--name-only"]),
+            "read staged paths",
+        )
+        .unwrap();
+        assert_eq!(
+            paths.lines().collect::<Vec<_>>(),
+            ["package-lock.json", "package.json", "yarn.lock"]
+        );
+        run(
+            Command::new("git")
+                .arg("-C")
+                .arg(source)
+                .args(["commit", "--quiet", "-m", "upgrade"]),
+            "commit upgrade",
+        )
+        .unwrap();
+        assert!(
+            !stage_dependency_changes(PackageEcosystem::Npm, source).unwrap(),
+            "generated files alone are not a dependency change"
+        );
+        assert!(source.join("dist/test-output.js").exists());
+    }
 }

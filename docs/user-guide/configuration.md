@@ -203,6 +203,14 @@ installed for every resolved Playwright version only when their fingerprint
 changes. Bootstrap does not start tests, browsers, watchers, agents, or terminal
 sessions.
 
+For Docker and Podman environments, Node dependency and Playwright browser bootstrap runs
+in the background so the first shell opens promptly. Inside the environment,
+check `~/.local/state/vm/bootstrap-node.status` (`running`, `complete`,
+`deferred`, or `failed`) and `~/.local/state/vm/bootstrap-node.log` for progress.
+Project commands that need those dependencies should wait for `complete`.
+Repeated provisioning serializes this setup so concurrent installs cannot modify
+the same dependency tree or overwrite each other's progress log.
+
 The root `node_modules` volume contains pnpm's primary virtual store.
 Package-level symlink directories in a workspace may remain on the source bind.
 
