@@ -34,16 +34,22 @@ package-manager, and public-registry support requires separate scope and accepta
 | Checkout | An isolated editable source workspace owned by one environment. |
 
 Environment actions live at the top level. Resource groups use plural nouns:
-`snapshots`, `packages`, `tools`, `tunnels`, `secrets`, `plugins`, and `databases`.
-`config` and `system` name configuration and installation concerns.
+`snapshots`, `packages`, `tools`, `tunnels`, `secrets`, and `plugins`.
+`db` is the canonical database group. `config` and `system` name configuration
+and installation concerns. Familiar short names and frequent workflows take
+priority over uniform grammar.
 
 Use `list` for collections, `show` for one resource, `status` for live state,
 `remove` to delete a registered resource, and `set`/`unset` for configuration.
 Domain verbs such as `release`, `restore`, and `enable` retain their precise
-meaning. Do not add synonymous commands or allow abbreviations.
+meaning. Do not add synonymous commands or accept abbreviated spellings.
 
-Resource names are positional. Environment selection always uses `--env`;
-commands never guess whether the first argument is an environment or a payload.
+Resource names are positional. Commands whose only positional resource is an
+environment take its name directly: `vm start dev`, `vm shell dev`. Commands
+with another resource or a process payload use `--env`: `vm snapshots restore
+clean --env dev`, `vm exec --env dev -- cargo test`. Each command has exactly
+one explicit environment-selection syntax; a positional environment command
+does not also accept `--env`.
 In the inventory below, uppercase names are arguments, square brackets indicate
 optional arguments, and `...` indicates repetition.
 
@@ -51,8 +57,9 @@ optional arguments, and `...` indicates repetition.
 
 - Discover the project from the nearest configuration root above the working
   directory. `--project PATH_OR_ID` explicitly selects another project.
-- Select an environment with `--env NAME` inside that project. Without it, use
-  the configured default, or the sole declared environment. Multiple candidates
+- Select an environment with the command's positional name or `--env NAME`
+  inside that project. Without an explicit selection, use the configured
+  default, or the sole declared environment. Multiple candidates
   without a default are an error listing the choices.
 - Never select the first running environment, remember a hidden last target, or
   silently fall back to another project. Discovery commands can run without a
@@ -62,8 +69,10 @@ optional arguments, and `...` indicates repetition.
   invocation. Neither changes persistent defaults.
 - Existing environments use their recorded provider identity. `--provider`
   chooses a backend during creation; a fleet filter uses `--match-provider`.
-- Fleet-capable commands accept repeated `--env NAME` or `--all-envs` within one
-  project. `--match NAME_GLOB` and `--match-provider PROVIDER` require
+- Fleet-capable environment commands accept positional names (`vm stop dev test`);
+  `exec` and `tools update` accept repeated `--env NAME`. All fleet-capable
+  commands accept `--all-envs` within one project, mutually exclusive with named
+  targets. `--match NAME_GLOB` and `--match-provider PROVIDER` require
   `--all-envs`. Empty selections fail. The resolved set is frozen before execution.
 - Fleet support is limited to `start`, `stop`, `restart`, `status`, `remove`,
   `exec`, and explicit tool updates. Shells, copies, database changes, restores,
@@ -78,17 +87,17 @@ optional arguments, and `...` indicates repetition.
 ```text
 vm init [PATH]
 vm create NAME --provider PROVIDER (--image IMAGE | --snapshot SNAPSHOT)
-vm start [--env NAME]
-vm stop [--env NAME]
-vm restart [--env NAME]
+vm start [ENV... | --all-envs]
+vm stop [ENV... | --all-envs]
+vm restart [ENV... | --all-envs]
 vm list [--all-projects]
-vm status [--env NAME]
-vm remove [--env NAME] [--delete-data]
-vm shell [--env NAME] [--cwd PATH]
+vm status [ENV... | --all-envs]
+vm remove [ENV... | --all-envs] [--delete-data]
+vm shell [ENV] [--cwd PATH]
 vm exec [--env NAME] [--cwd PATH] [--user USER] -- PROGRAM [ARG...]
-vm logs [--env NAME] [--service NAME] [--follow] [--tail N]
+vm logs [ENV] [--service NAME] [--follow] [--tail N]
 vm copy [--env NAME] SOURCE DESTINATION
-vm doctor [--env NAME] [--fix]
+vm doctor [ENV] [--fix]
 ```
 
 `init` writes a minimal project configuration without starting services or
@@ -169,8 +178,8 @@ vm packages consumers remove NAME
 vm packages consumers drift [--package NAME]
 vm packages consumers retry NAME
 vm packages service init --source-root PATH
-vm packages service start [--engine ENGINE] [--port PORT]
-vm packages service stop
+vm packages up [--engine ENGINE] [--port PORT]
+vm packages down
 vm packages service status
 vm packages service doctor [--fix]
 vm packages service backups list
@@ -211,8 +220,11 @@ package. Consumer updates produce reviewed dependency changes. Retry resumes
 eligible failed work and reports whether anything was scheduled. It does not
 claim a reviewed update has merged merely because a branch was created.
 
-Service administration stays under `packages service`, out of the daily release
-path. Backups state their contents and consistency; restore requires the service
+`packages up` ensures the configured package service is running; `packages down`
+stops it while retaining its data. Both are idempotent. These frequent lifecycle
+actions stay directly under `packages`. Inspection, diagnostics, initialization,
+and backups stay under `packages service`. Backups state their contents and
+consistency; restore requires the service
 to be quiescent and checks format compatibility before replacing data. Authentication
 uses an interactive provider flow by default, with explicit secure token inputs
 for automation. Credentials are never exposed by `status`.
@@ -292,16 +304,16 @@ vm tunnels list [--env NAME]
 vm tunnels open NAME --local ADDRESS:PORT --remote HOST:PORT [--env NAME]
 vm tunnels close NAME [--env NAME]
 
-vm databases list [--env NAME]
-vm databases status NAME [--env NAME]
-vm databases backups list [--database NAME] [--env NAME]
-vm databases backups create NAME [--database NAME | --all] [--env NAME]
-vm databases backups restore BACKUP --database NAME [--env NAME]
-vm databases backups remove BACKUP [--env NAME]
-vm databases export NAME --output FILE [--env NAME]
-vm databases import NAME --file FILE [--env NAME]
-vm databases reset NAME [--env NAME]
-vm databases credentials NAME [--env NAME] [--reveal]
+vm db list [--env NAME]
+vm db status NAME [--env NAME]
+vm db backups list [--database NAME] [--env NAME]
+vm db backups create NAME [--database NAME | --all] [--env NAME]
+vm db backups restore BACKUP --database NAME [--env NAME]
+vm db backups remove BACKUP [--env NAME]
+vm db export NAME --output FILE [--env NAME]
+vm db import NAME --file FILE [--env NAME]
+vm db reset NAME [--env NAME]
+vm db credentials NAME [--env NAME] [--reveal]
 ```
 
 Secrets default to project scope. `set` prompts without echo on a terminal; scripts
@@ -504,8 +516,9 @@ vm snapshots restore before-experiment
 vm stop
 ```
 
-With multiple declared environments, select one using `--env dev` or configure
-a project default.
+With multiple declared environments, configure a project default or name the
+environment explicitly: `vm start dev`, `vm shell dev`, and
+`vm exec --env dev -- cargo test`.
 
 A source release in its owning workspace remains short:
 
@@ -518,7 +531,31 @@ vm packages release
 Automation makes context and output explicit:
 
 ```sh
-vm status --project /work/app --env dev --json
+vm status dev --project /work/app --json
 vm exec --project /work/app --env dev -- cargo test --locked
 vm stop --project /work/app --all-envs --non-interactive --json
 ```
+
+## Workflow review
+
+These are design walkthroughs, not runtime acceptance results. They check the
+grammar against frequent tasks and the points where terse commands can become
+ambiguous.
+
+| Workflow | Commands | Design check |
+| --- | --- | --- |
+| Work in the default environment | `vm start`, `vm shell`, `vm stop` | No repeated context flags. |
+| Switch between declared environments | `vm start dev`, `vm shell test` | The positional name always means an environment. |
+| Run a program named like an environment | `vm exec -- dev`, `vm exec --env test -- dev` | The delimiter separates program arguments from CLI options. |
+| Stop a selected set | `vm stop dev test` | Named scope is explicit without repeated flags. |
+| Stop every project environment | `vm stop --all-envs` | Wider scope is explicit and cannot combine with names. |
+| Restore a snapshot into another environment | `vm snapshots restore clean --env test` | Snapshot and environment identities cannot collide. |
+| Bring up the package service | `vm packages up` | Frequent infrastructure setup needs no extra subgroup. |
+| Inspect and retry consumer work | `vm packages consumers list --package lib`, `vm packages consumers retry app` | Discovery and retry share one resource group. |
+| Set a secret | `vm secrets set TOKEN` | Secure input is the default without extra flags. |
+| Inspect a database | `vm db list`, `vm db status app --env test` | A short domain name retains explicit resource targeting. |
+| Run from automation | `vm status dev --project /work/app --json` | Explicit context and structured output use the same operation. |
+
+The design review resolves positional-versus-payload ambiguity and keeps routine
+commands short. Implementation acceptance must still verify these workflows
+against the parser and supported providers before the interface is finalized.
