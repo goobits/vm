@@ -1,4 +1,4 @@
-//! Shared cross-provider targeting for `--fleet` operations.
+//! Shared project-scoped targeting for `--all-envs` operations.
 
 use std::collections::BTreeMap;
 
@@ -28,6 +28,28 @@ pub(in crate::commands) fn resolve_fleet_targets(
     state: InstanceStateFilter,
 ) -> VmResult<Vec<InstanceInfo>> {
     resolve_targets(query_for(targets, state))
+}
+
+fn project_targets(
+    targets: &FleetArgs,
+    state: InstanceStateFilter,
+    project: &str,
+) -> VmResult<Vec<InstanceInfo>> {
+    let instances = filter_project_instances(resolve_fleet_targets(targets, state)?, project);
+    if instances.is_empty() {
+        return Err(VmError::validation(
+            format!("No matching environments belong to project '{project}'"),
+            Some("Run `vm list` to inspect project environments"),
+        ));
+    }
+    Ok(instances)
+}
+
+fn filter_project_instances(instances: Vec<InstanceInfo>, project: &str) -> Vec<InstanceInfo> {
+    instances
+        .into_iter()
+        .filter(|instance| instance.project.as_deref() == Some(project))
+        .collect()
 }
 
 pub(in crate::commands) fn configured_provider(
@@ -61,16 +83,11 @@ impl FleetProgress {
     }
 }
 
-pub fn handle_fleet_exec(targets: &FleetArgs, command: &[String]) -> VmResult<()> {
+pub fn handle_fleet_exec(targets: &FleetArgs, project: &str, command: &[String]) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "fleet_exec");
     let _enter = span.enter();
 
-    let instances = resolve_fleet_targets(targets, InstanceStateFilter::Running)?;
-
-    if instances.is_empty() {
-        vm_println!("No instances found");
-        return Ok(());
-    }
+    let instances = project_targets(targets, InstanceStateFilter::Running, project)?;
 
     let mut progress = FleetProgress::default();
 
@@ -97,17 +114,17 @@ pub fn handle_fleet_exec(targets: &FleetArgs, command: &[String]) -> VmResult<()
     progress.finish()
 }
 
-pub fn handle_fleet_copy(targets: &FleetArgs, source: &str, destination: &str) -> VmResult<()> {
+pub fn handle_fleet_copy(
+    targets: &FleetArgs,
+    project: &str,
+    source: &str,
+    destination: &str,
+) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "fleet_copy");
     let _enter = span.enter();
     let direction = if source.contains(':') { "from" } else { "to" };
 
-    let instances = resolve_fleet_targets(targets, InstanceStateFilter::Running)?;
-
-    if instances.is_empty() {
-        vm_println!("No instances found");
-        return Ok(());
-    }
+    let instances = project_targets(targets, InstanceStateFilter::Running, project)?;
 
     let mut progress = FleetProgress::default();
 
@@ -143,6 +160,7 @@ pub enum FleetAction {
 
 pub async fn handle_fleet_lifecycle(
     targets: &FleetArgs,
+    project: &str,
     action: FleetAction,
     no_wait: bool,
 ) -> VmResult<()> {
@@ -153,12 +171,7 @@ pub async fn handle_fleet_lifecycle(
         FleetAction::Start => InstanceStateFilter::Stopped,
         FleetAction::Stop | FleetAction::Restart => InstanceStateFilter::Running,
     };
-    let instances = resolve_fleet_targets(targets, default_state)?;
-
-    if instances.is_empty() {
-        vm_println!("No instances found");
-        return Ok(());
-    }
+    let instances = project_targets(targets, default_state, project)?;
 
     let mut progress = FleetProgress::default();
     let context = ProviderContext::default();
@@ -238,8 +251,9 @@ fn summary(success: usize, failed: usize) -> VmResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{query_for, InstanceStateFilter};
+    use super::{filter_project_instances, query_for, InstanceStateFilter};
     use crate::cli::FleetArgs;
+    use vm_provider::InstanceInfo;
 
     fn targets() -> FleetArgs {
         FleetArgs {
@@ -267,5 +281,28 @@ mod tests {
 
         assert_eq!(query.provider, Some("docker"));
         assert_eq!(query.pattern, Some("app-*"));
+    }
+
+    #[test]
+    fn fleet_never_includes_another_project_even_with_a_matching_name() {
+        let instance = |name: &str, project: Option<&str>| InstanceInfo {
+            name: name.into(),
+            id: name.into(),
+            status: "running".into(),
+            provider: "docker".into(),
+            project: project.map(str::to_string),
+            uptime: None,
+            created_at: None,
+        };
+        let selected = filter_project_instances(
+            vec![
+                instance("app-dev", Some("app")),
+                instance("app-test", Some("other")),
+                instance("app-worker", None),
+            ],
+            "app",
+        );
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].name, "app-dev");
     }
 }

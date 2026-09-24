@@ -28,7 +28,69 @@ pub enum PackageConsumerSubcommand {
         dependencies: Vec<String>,
     },
     /// List registered consumer repositories
-    List,
+    List {
+        #[arg(long)]
+        package: Option<String>,
+    },
+    /// Show package-version drift across registered consumers
+    Drift,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum SnapshotSubcommand {
+    /// List snapshots for the selected environment
+    List {
+        #[arg(long)]
+        env: Option<String>,
+    },
+    /// Show snapshot metadata
+    Show {
+        name: String,
+        #[arg(long)]
+        env: Option<String>,
+    },
+    /// Capture an environment
+    Create {
+        name: String,
+        #[arg(long)]
+        env: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+        #[arg(long)]
+        quiesce: bool,
+    },
+    /// Restore a snapshot into an environment
+    Restore {
+        name: String,
+        #[arg(long)]
+        env: Option<String>,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Delete a snapshot
+    Remove {
+        name: String,
+        #[arg(long)]
+        env: Option<String>,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Export a snapshot as a portable archive
+    Export {
+        name: String,
+        #[arg(long)]
+        env: Option<String>,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, default_value_t = 6)]
+        compression: u8,
+    },
+    /// Import a portable snapshot archive
+    Import {
+        archive: PathBuf,
+        #[arg(long)]
+        name: String,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -97,14 +159,10 @@ pub enum PackagesSubcommand {
     /// List registered packages and their publication/consumability state
     List,
     /// Manage consumer repositories tracked by the package infrastructure
-    Consumer {
+    Consumers {
         #[command(subcommand)]
         command: PackageConsumerSubcommand,
     },
-    /// Show consumers and pending upgrades for one package
-    Consumers { package: String },
-    /// Show package-version drift across registered consumers
-    Drift,
     /// Open an attested package or tool in its owning Docker workspace without copying it
     Open {
         #[arg(value_name = "SOURCE")]
@@ -274,29 +332,29 @@ pub enum ConfigProfileSubcommand {
 #[derive(Debug, Clone, Default, clap::Args)]
 pub struct FleetArgs {
     /// Apply the command across matching managed environments
-    #[arg(long)]
+    #[arg(long = "all-envs")]
     pub fleet: bool,
     /// Provider filter (docker, podman, tart)
     #[arg(
-        long,
+        long = "match-provider",
         requires = "fleet",
         value_parser = vm_config::config::ProviderName::SUPPORTED
     )]
     pub provider: Option<String>,
     /// Match pattern for instance names
-    #[arg(long, requires = "fleet")]
+    #[arg(long = "match", requires = "fleet")]
     pub pattern: Option<String>,
 }
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum TunnelSubcommand {
-    /// Add a tunnel (e.g., vm tunnel add 8080:3000 backend)
+    /// Add a tunnel (e.g., vm tunnels add 8080:3000 backend)
     Add {
         mapping: String,
         environment: Option<String>,
     },
     /// List active tunnels
-    Ls { environment: Option<String> },
+    List { environment: Option<String> },
     /// Stop tunnel(s)
     Stop {
         port: Option<u16>,
@@ -311,27 +369,31 @@ pub enum SecretSubcommand {
     /// Check secret proxy status
     Status,
     /// Store a secret
-    Add {
+    Set {
         name: String,
-        value: String,
+        #[arg(long, conflicts_with = "file")]
+        stdin: bool,
+        #[arg(long, conflicts_with = "stdin")]
+        file: Option<PathBuf>,
         #[arg(long)]
         scope: Option<String>,
         #[arg(long)]
         description: Option<String>,
     },
     /// See all secrets
-    Ls {
-        #[arg(long)]
-        show_values: bool,
+    List,
+    /// Reveal one secret value
+    Show {
+        name: String,
+        #[arg(long, required = true)]
+        reveal: bool,
     },
     /// Delete a secret
-    Rm {
+    Remove {
         name: String,
         #[arg(long, short = 'f')]
         force: bool,
     },
-    /// Add a secret interactively
-    Interactive,
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -346,7 +408,7 @@ pub enum DbSubcommand {
     /// Restore a database from a backup
     Restore { name: String, db_name: String },
     /// List all databases and backups
-    Ls,
+    List,
     /// Export a database to a SQL file
     Export { name: String, file: PathBuf },
     /// Import a database from a SQL file
@@ -402,18 +464,18 @@ pub enum SystemSubcommand {
 #[derive(Debug, Clone, Subcommand)]
 pub enum PluginSubcommand {
     /// See installed plugins
-    Ls,
+    List,
     /// Get plugin details
-    Info { plugin_name: String },
+    Show { plugin_name: String },
     /// Add a plugin
     Install { source_path: String },
     /// Remove a plugin
-    Rm { plugin_name: String },
+    Remove { plugin_name: String },
     /// Create a new plugin
-    New {
+    Create {
         plugin_name: String,
         #[arg(long, value_parser = ["preset", "service"], ignore_case = true)]
-        r#type: String,
+        kind: String,
     },
     /// Check plugin configuration
     Validate { plugin_name: String },

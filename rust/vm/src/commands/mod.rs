@@ -6,6 +6,7 @@ use command_context::{
     load_or_create_runtime_subject, load_provider_context, load_runtime_context,
     load_runtime_subject, project_name,
 };
+use std::path::PathBuf;
 use vm_config::validation::{validate_config, ValidationMode};
 use vm_config::AppConfig;
 
@@ -16,7 +17,6 @@ mod completion;
 pub mod config;
 pub mod db;
 pub mod doctor;
-mod dry_run;
 mod environment;
 mod maintenance;
 mod managed_guest;
@@ -38,11 +38,6 @@ pub mod vm_ops;
 #[must_use = "command execution results should be handled"]
 pub async fn execute_command(args: Args) -> VmResult<()> {
     command_context::ensure_controller_host(&args.command)?;
-
-    if args.dry_run {
-        dry_run::print_summary(&args);
-        return Ok(());
-    }
 
     match args.command {
         Command::Doctor {
@@ -83,9 +78,9 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         Command::Config { command } => {
             config::handle_config_command(&command, args.profile, args.config)
         }
-        Command::Plugin { command } => plugin::handle_command(&command),
+        Command::Plugins { command } => plugin::handle_command(&command),
         Command::Db { command } => db::handle_db(command).await,
-        Command::Secret { command } => {
+        Command::Secrets { command } => {
             secrets::handle_command(&command, args.config, args.profile).await
         }
         Command::System { command } => system::handle(&command, args.config, args.profile).await,
@@ -112,7 +107,14 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             fleet,
         } => {
             if fleet.fleet {
-                vm_ops::handle_fleet_lifecycle(&fleet, vm_ops::FleetAction::Start, no_wait).await
+                let project = fleet_project(args.config, args.profile)?;
+                vm_ops::handle_fleet_lifecycle(
+                    &fleet,
+                    &project,
+                    vm_ops::FleetAction::Start,
+                    no_wait,
+                )
+                .await
             } else {
                 let subject = load_runtime_subject(args.config, args.profile, environment)?;
                 vm_ops::handle_start(
@@ -192,11 +194,12 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             if command.is_empty() {
                 return Err(VmError::validation(
                     "No command was provided",
-                    Some("Use: vm exec [environment] -- <command>"),
+                    Some("Use: vm exec [--env NAME] -- <command>"),
                 ));
             }
             if fleet.fleet {
-                vm_ops::handle_fleet_exec(&fleet, &command)
+                let project = fleet_project(args.config, args.profile)?;
+                vm_ops::handle_fleet_exec(&fleet, &project, &command)
             } else {
                 let subject = load_runtime_subject(args.config, args.profile, environment)?;
                 vm_ops::handle_exec(
@@ -231,7 +234,8 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             destination,
         } => {
             if fleet.fleet {
-                vm_ops::handle_fleet_copy(&fleet, &source, &destination)
+                let project = fleet_project(args.config, args.profile)?;
+                vm_ops::handle_fleet_copy(&fleet, &project, &source, &destination)
             } else {
                 let requested = vm_ops::target::copy_target(&source, &destination)?;
                 let subject =
@@ -247,7 +251,9 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         }
         Command::Stop { environment, fleet } => {
             if fleet.fleet {
-                vm_ops::handle_fleet_lifecycle(&fleet, vm_ops::FleetAction::Stop, false).await
+                let project = fleet_project(args.config, args.profile)?;
+                vm_ops::handle_fleet_lifecycle(&fleet, &project, vm_ops::FleetAction::Stop, false)
+                    .await
             } else {
                 let subject = load_runtime_subject(args.config, args.profile, environment)?;
                 vm_ops::handle_stop(
@@ -270,7 +276,14 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         }
         Command::Restart { environment, fleet } => {
             if fleet.fleet {
-                vm_ops::handle_fleet_lifecycle(&fleet, vm_ops::FleetAction::Restart, false).await
+                let project = fleet_project(args.config, args.profile)?;
+                vm_ops::handle_fleet_lifecycle(
+                    &fleet,
+                    &project,
+                    vm_ops::FleetAction::Restart,
+                    false,
+                )
+                .await
             } else {
                 let subject = load_runtime_subject(args.config, args.profile, environment)?;
                 vm_ops::handle_restart(
@@ -293,51 +306,14 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             )
             .await
         }
-        Command::Save {
-            words,
-            description,
-            quiesce,
-            force,
-        } => {
-            let (environment, snapshot) = state::parse_save(&words)?;
-            state::save(
-                args.config,
-                args.profile,
-                environment,
-                snapshot,
-                description,
-                quiesce,
-                force,
-            )
-            .await
-        }
-        Command::Revert { words, force } => {
-            let (environment, snapshot) = state::parse_revert(&words)?;
-            state::revert(args.config, args.profile, environment, snapshot, force).await
-        }
-        Command::Package {
-            environment,
-            output,
-            compress,
-            build,
-        } => {
-            state::package(
-                args.config,
-                args.profile,
-                environment,
-                output,
-                compress,
-                build,
-            )
-            .await
-        }
-        Command::Import {
-            archive,
-            name,
-            force,
-        } => state::import(archive, name, force).await,
+        Command::Snapshots { command } => state::handle(command, args.config, args.profile).await,
         Command::Packages { command } => packages::handle(command, args.config, args.profile).await,
         Command::Tools { command } => tools::handle(command, args.config, args.profile).await,
-        Command::Tunnel { command } => tunnel::handle_command(command, args.config, args.profile),
+        Command::Tunnels { command } => tunnel::handle_command(command, args.config, args.profile),
     }
+}
+
+fn fleet_project(config_path: Option<PathBuf>, profile: Option<String>) -> VmResult<String> {
+    let config = AppConfig::load(config_path, profile, None)?;
+    Ok(project_name(&config.vm).to_string())
 }

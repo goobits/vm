@@ -8,13 +8,13 @@ Database and secret workflows are built-in command groups rather than plugin
 commands:
 
 ```bash
-vm db ls
-vm secret interactive
+vm db list
+vm secrets set NAME
 ```
 
 A plugin does not claim an arbitrary command namespace. Managed guests receive
 remote command namespaces through the separate controller-approved registry.
-Use `vm plugin --help`, `vm db --help`, or `vm secret --help` for
+Use `vm plugins --help`, `vm db --help`, or `vm secrets --help` for
 installed-version help. The
 [CLI Reference](cli-reference.md#plugins-databases-and-secrets) owns the
 documented public inventory.

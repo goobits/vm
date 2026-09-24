@@ -53,10 +53,10 @@ fn test_vm_ssh_auto_creates_and_executes() -> Result<()> {
     fixture.create_test_dockerfile()?;
 
     // A shell command creates the configured environment before connecting.
-    let output = fixture.run_vm_command(&["ssh", "-e", "echo Hello from SSH"])?;
+    let output = fixture.run_vm_command(&["shell", "-e", "echo Hello from SSH"])?;
     assert!(
         output.status.success(),
-        "vm ssh --command failed: {}",
+        "vm shell --command failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 

@@ -91,7 +91,6 @@ fn top_level_namespace(arguments: &[std::ffi::OsString]) -> Option<&str> {
     while let Some(argument) = arguments.get(index).and_then(|value| value.to_str()) {
         match argument {
             "--config" | "--profile" => index += 2,
-            "--dry-run" => index += 1,
             value if value.starts_with("--config=") || value.starts_with("--profile=") => {
                 index += 1;
             }

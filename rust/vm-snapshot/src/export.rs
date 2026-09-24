@@ -130,13 +130,21 @@ pub async fn handle_export(
 
     if is_global {
         tracing::info!("\nTo import on another machine:");
-        tracing::info!("  vm import {}", output_file.display());
+        tracing::info!(
+            "  vm snapshots import {} --name {}",
+            output_file.display(),
+            clean_name
+        );
         tracing::info!("\nThen use in any project with:");
         tracing::info!("  vm:");
         tracing::info!("    image: @{}", clean_name);
     } else {
         tracing::info!("\nTo import on another machine:");
-        tracing::info!("  vm import {}", output_file.display());
+        tracing::info!(
+            "  vm snapshots import {} --name {}",
+            output_file.display(),
+            clean_name
+        );
     }
 
     Ok(())

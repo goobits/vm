@@ -4,7 +4,7 @@ This page is the single durable inventory of public built-in `vm` commands.
 Runtime `vm --help` output remains authoritative for the installed version.
 
 ```text
-vm [--config <path>] [--profile <name>] [--dry-run] <command>
+vm [--config <path>] [--profile <name>] <command>
 ```
 
 Global options apply to every command:
@@ -13,7 +13,6 @@ Global options apply to every command:
 | --- | --- |
 | `--config <path>` | Load a specific `vm.yaml` |
 | `--profile <name>` | Apply a named configuration profile |
-| `--dry-run` | Describe the operation without changing state |
 | `-h`, `--help` | Show command-specific help |
 | `-V`, `--version` | Show the installed version |
 
@@ -27,30 +26,34 @@ built-in help and this static inventory.
 | Command | Purpose |
 | --- | --- |
 | `vm run <mac\|linux\|container> [as <name>] [--provider <docker\|podman\|tart>] [--image <image>] [--build <path>] [--from-snapshot <name>] [--ephemeral] [--mount <host:guest>]... [--cpu <count>] [--memory <limit>]` | Create and start an environment |
-| `vm list [--all] [--raw]` | List project environments; `--all` crosses projects, `--raw` includes provider IDs; alias: `vm ls` |
+| `vm list [--all] [--raw]` | List project environments; `--all` crosses projects, `--raw` includes provider IDs |
 | `vm start [environment] [--no-wait] [<fleet-options>]` | Start an existing environment |
-| `vm shell [environment] [--path <path>] [-e\|--command <command>]` | Create or start an environment, then open a shell or run one shell command; alias: `vm ssh` |
-| `vm exec [environment] [<fleet-options>] -- <command>` | Start an existing environment and run one command |
+| `vm shell [environment] [--path <path>] [-e\|--command <command>]` | Create or start an environment, then open a shell or run one shell command |
+| `vm exec [--env <environment>] [<fleet-options>] -- <command>` | Start an existing environment and run one command |
 | `vm logs [environment] [-f\|--follow] [-n\|--tail <lines>] [-s\|--service <service>]` | Stream environment or service logs |
 | `vm copy [<fleet-options>] <source> <destination>` | Copy between host and environment paths |
 | `vm stop [environment] [<fleet-options>]` | Gracefully stop an environment |
 | `vm status [environment]` | Inspect runtime, storage, mounts, and resource state |
 | `vm restart [environment] [<fleet-options>]` | Stop and restart an environment |
 | `vm remove [environment] [--force]` | Remove an environment while preserving saved snapshots |
-| `vm save [environment] as <snapshot> [--description <text>] [--quiesce] [--force]` | Save an environment state |
-| `vm revert [environment] <snapshot> [--force]` | Restore a saved environment state |
-| `vm package [environment] [-o\|--output <file>] [--compress <level>] [--build <path>]` | Export an environment or build context as a portable artifact; compression defaults to `6` |
-| `vm import <archive> [--name <snapshot>] [--force]` | Import a portable snapshot artifact and verify platform compatibility |
+| `vm snapshots list [--env <environment>]` | List snapshots for an environment |
+| `vm snapshots show <name> [--env <environment>]` | Inspect snapshot metadata |
+| `vm snapshots create <name> [--env <environment>] [--description <text>] [--quiesce]` | Capture an environment state |
+| `vm snapshots restore <name> [--env <environment>] [--yes]` | Restore a saved state after confirmation |
+| `vm snapshots remove <name> [--env <environment>] [--yes]` | Delete a snapshot after confirmation |
+| `vm snapshots export <name> --output <file> [--env <environment>] [--compression <level>]` | Export a snapshot as a portable archive; compression defaults to `6` |
+| `vm snapshots import <archive> --name <name>` | Import a portable snapshot artifact |
 
 `<fleet-options>` means:
 
 ```text
---fleet [--provider <docker|podman|tart>] [--pattern <glob>]
+--all-envs [--match-provider <docker|podman|tart>] [--match <glob>]
 ```
 
 Fleet options are supported by `start`, `exec`, `copy`, `stop`, and `restart`.
-Provider and pattern filters require `--fleet`. Without filters, the command
-targets all applicable managed environments.
+Provider and pattern filters require `--all-envs`. Without filters, the command
+targets applicable environments with a matching project identity. An empty
+selection fails without making changes.
 
 ### Target Selection
 
@@ -61,7 +64,7 @@ list the candidates and stop. An environment named `docker` is still an
 environment, not a provider selector.
 
 `shell` creates a missing environment. `start`, `exec`, `status`, `logs`,
-`copy`, `stop`, `restart`, `remove`, `save`, and `revert` require an existing
+`copy`, `stop`, `restart`, `remove`, and snapshot operations require an existing
 environment. Host-to-guest copy paths use `environment:/path`.
 
 ## Configuration
@@ -87,9 +90,9 @@ Configuration fields and examples belong in the
 
 | Command | Purpose |
 | --- | --- |
-| `vm tunnel add <host-port>:<guest-port> [environment]` | Start a port forward |
-| `vm tunnel ls [environment]` | List active forwards |
-| `vm tunnel stop [port] [environment] [--all]` | Stop one or all forwards |
+| `vm tunnels add <host-port>:<guest-port> [environment]` | Start a port forward |
+| `vm tunnels list [environment]` | List active forwards |
+| `vm tunnels stop [port] [environment] [--all]` | Stop one or all forwards |
 
 ## Package Infrastructure
 
@@ -105,11 +108,11 @@ Configuration fields and examples belong in the
 | `vm packages restore <backup-id>` | Restore a backup while services are stopped |
 | `vm packages register <name-or-path>... [--ecosystem <npm\|cargo\|python>] [--repository <url>] [--branch <branch>] [--recursive]` | Register catalog metadata; successful local roots are remembered read-only |
 | `vm packages list` | List registered and published package state |
-| `vm packages consumer register <name> --repository <url> [--branch <branch>] --dependency <package@version>...` | Register a consumer and its internal dependencies |
-| `vm packages consumer list` | List registered consumers |
-| `vm packages consumer retry <name>` | Retry failed dependency updates without republishing the package |
-| `vm packages consumers <package>` | Show consumers and pending upgrades for one package |
-| `vm packages drift` | Show version drift across consumers |
+| `vm packages consumers register <name> --repository <url> [--branch <branch>] --dependency <package@version>...` | Register a consumer and its internal dependencies |
+| `vm packages consumers list` | List registered consumers |
+| `vm packages consumers retry <name>` | Retry failed dependency updates without republishing the package |
+| `vm packages consumers list --package <package>` | Show consumers and pending upgrades for one package |
+| `vm packages consumers drift` | Show version drift across consumers |
 | `vm packages open <source>` | Open an attested package or tool in its existing writable Docker owner; create no checkout |
 | `vm packages checkout <source>` | Create or resume a guest-owned package or tool checkout |
 | `vm packages release` | Release the checkout or canonical workspace containing the current directory; print durable job and phase progress |
@@ -185,13 +188,13 @@ explicitly states otherwise.
 
 | Command | Purpose |
 | --- | --- |
-| `vm plugin ls` | List installed plugins |
-| `vm plugin info <name>` | Show plugin details |
-| `vm plugin install <path>` | Install a plugin |
-| `vm plugin rm <name>` | Remove a plugin |
-| `vm plugin new <name> --type <preset\|service>` | Scaffold a plugin |
-| `vm plugin validate <name>` | Validate plugin configuration |
-| `vm db ls` | List databases and backups |
+| `vm plugins list` | List installed plugins |
+| `vm plugins show <name>` | Show plugin details |
+| `vm plugins install <path>` | Install a plugin |
+| `vm plugins remove <name>` | Remove a plugin |
+| `vm plugins create <name> --kind <preset\|service>` | Scaffold a plugin |
+| `vm plugins validate <name>` | Validate plugin configuration |
+| `vm db list` | List databases and backups |
 | `vm db backup [database] [name] [--all]` | Back up one or all databases |
 | `vm db restore <backup> <database>` | Restore a database backup |
 | `vm db export <database> <file>` | Export SQL |
@@ -199,11 +202,11 @@ explicitly states otherwise.
 | `vm db size` | Show database disk usage |
 | `vm db reset <database> [--force]` | Drop and recreate a database |
 | `vm db credentials <service>` | Show service credentials |
-| `vm secret status` | Check the secret proxy |
-| `vm secret add <name> <value> [--scope <scope>] [--description <text>]` | Store a secret |
-| `vm secret ls [--show-values]` | List secrets |
-| `vm secret rm <name> [-f\|--force]` | Delete a secret |
-| `vm secret interactive` | Add a secret without placing its value in shell history |
+| `vm secrets status` | Check the secret proxy |
+| `vm secrets set <name> [--stdin\|--file <path>] [--scope <scope>] [--description <text>]` | Prompt securely or read a secret from stdin or file |
+| `vm secrets list` | List secret metadata without values |
+| `vm secrets show <name> --reveal` | Explicitly print one secret value |
+| `vm secrets remove <name> [-f\|--force]` | Delete a secret |
 
 Plugin-backed commands depend on installed plugin support. Use
 `vm help <command>` or `vm help <command> <subcommand>` for the installed

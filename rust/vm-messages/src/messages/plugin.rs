@@ -48,7 +48,7 @@ pub struct PluginMessages {
 }
 
 pub const PLUGIN_MESSAGES: PluginMessages = PluginMessages {
-    list_empty: "No plugins installed.\n\nTo install a plugin:\n  vm plugin install <path-to-plugin>\n\nTo create a new plugin:\n  vm plugin new <plugin-name> --type <preset|service>",
+    list_empty: "No plugins installed.\n\nTo install a plugin:\n  vm plugins install <path-to-plugin>\n\nTo create a new plugin:\n  vm plugins create <plugin-name> --kind <preset|service>",
     list_header: "Installed plugins:\n",
     list_presets_header: "Presets:",
     list_services_header: "Services:",
@@ -90,6 +90,6 @@ pub const PLUGIN_MESSAGES: PluginMessages = PluginMessages {
     validate_error_suggestion: "    → {suggestion}",
     validate_warning_item: "  ⚠ {warning}",
     new_success: "✓ Created {type} plugin template: {name}\n",
-    new_next_steps: "Next steps:\n  1. cd {name}\n  2. Edit plugin.yaml to update metadata\n  3. Edit {type}.yaml to define your {type}\n  4. Test your plugin: vm plugin install .\n",
+    new_next_steps: "Next steps:\n  1. cd {name}\n  2. Edit plugin.yaml to update metadata\n  3. Edit {type}.yaml to define your {type}\n  4. Test your plugin: vm plugins install .\n",
     new_files_created: "Files created:\n  - plugin.yaml: Plugin metadata\n  - {type}.yaml: {type_cap} configuration\n  - README.md: Plugin documentation",
 };

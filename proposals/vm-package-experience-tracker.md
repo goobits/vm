@@ -17,6 +17,8 @@ them. Tart acceptance remains outside this tracker's scope.
 The release implementation and 2026-09-24 package workflow audit are complete.
 Repairs cover registry routing and Cargo metadata, retained publication artifacts,
 checkout/integration recovery, consumer update retries, queue fairness, and cleanup.
+The CLI now groups consumer listing, drift, registration, and retry under
+`vm packages consumers`; the release service and rollout behavior are unchanged.
 Operational behavior is documented in the
 [package infrastructure guide](../docs/user-guide/package-infrastructure.md).
 

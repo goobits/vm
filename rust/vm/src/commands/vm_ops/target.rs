@@ -73,7 +73,7 @@ pub(in crate::commands) fn resolve_runtime_instance(
                 .unwrap_or("vm-project");
             VmError::validation(
                 format!("No environment exists for project '{project}'"),
-                Some("Create it from vm.yaml with `vm ssh`"),
+                Some("Create it from vm.yaml with `vm shell`"),
             )
         }
     })

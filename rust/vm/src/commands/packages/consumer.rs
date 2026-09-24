@@ -1,7 +1,10 @@
 use std::collections::BTreeMap;
 
 use vm_core::{vm_println, vm_success};
-use vm_packages::{CreateRollout, PackageDrift, RegisterConsumer, RolloutRecord, RolloutState};
+use vm_packages::{
+    CreateRollout, PackageDrift, PackageInfrastructureClient, RegisterConsumer, RolloutRecord,
+    RolloutState,
+};
 
 use crate::cli::PackageConsumerSubcommand;
 use crate::error::{VmError, VmResult};
@@ -23,7 +26,7 @@ pub(super) async fn handle_catalog(
             {
                 return Err(VmError::validation(
                     format!("Consumer '{name}' is not registered"),
-                    Some("Run `vm packages consumer list` to see registered projects"),
+                    Some("Run `vm packages consumers list` to see registered projects"),
                 ));
             }
             let rollouts = client.rollouts().await?;
@@ -65,7 +68,12 @@ pub(super) async fn handle_catalog(
                 .await?;
             vm_success!("Registered consumer {}", consumer.name);
         }
-        PackageConsumerSubcommand::List => {
+        PackageConsumerSubcommand::List {
+            package: Some(package),
+        } => {
+            return show_consumers(&client, &package).await;
+        }
+        PackageConsumerSubcommand::List { package: None } => {
             let consumers = client.consumers().await?;
             if consumers.is_empty() {
                 vm_println!("No package consumers are registered");
@@ -85,12 +93,12 @@ pub(super) async fn handle_catalog(
                 );
             }
         }
+        PackageConsumerSubcommand::Drift => return show_drift(&client).await,
     }
     Ok(())
 }
 
-pub(super) async fn show_consumers(files: &ApplianceFiles, package: &str) -> VmResult<()> {
-    let (_, client) = configured_state_and_client(files)?;
+async fn show_consumers(client: &PackageInfrastructureClient, package: &str) -> VmResult<()> {
     let consumers = client.package_consumers(package).await?;
     if consumers.is_empty() {
         vm_println!("No registered consumers use {package}");
@@ -107,8 +115,7 @@ pub(super) async fn show_consumers(files: &ApplianceFiles, package: &str) -> VmR
     Ok(())
 }
 
-pub(super) async fn show_drift(files: &ApplianceFiles) -> VmResult<()> {
-    let (_, client) = configured_state_and_client(files)?;
+async fn show_drift(client: &PackageInfrastructureClient) -> VmResult<()> {
     let rollouts = client.rollouts().await?;
     for package in client.drift().await? {
         let latest = package.latest_version.as_deref().unwrap_or("unpublished");
@@ -193,7 +200,7 @@ fn print_rollout(rollouts: &[RolloutRecord], package: &str, consumer: &str, curr
             }
         }
         RolloutState::Failed => {
-            vm_println!("  Update to {} failed; repair consumer checks, then run: vm packages consumer retry {}", rollout.version, consumer);
+            vm_println!("  Update to {} failed; repair consumer checks, then run: vm packages consumers retry {}", rollout.version, consumer);
         }
         _ => {}
     }

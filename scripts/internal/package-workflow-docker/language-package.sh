@@ -30,7 +30,7 @@ assert_language_dependency_restoration() {
   # Add a durable dependency pin, activate a checkout override, then prove a
   # failed restoration retains the checkout in cancelled state. Retrying after
   # repair must restore the published dependency before durable closure.
-  run_vm packages consumer register "$project_name" \
+  run_vm packages consumers register "$project_name" \
     --repository "https://example.invalid/$project_name.git" \
     --dependency vm-acceptance-language@1.0.1
   docker exec --user acceptance "$environment_name" sh -ec '

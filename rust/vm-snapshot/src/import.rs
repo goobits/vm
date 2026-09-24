@@ -126,7 +126,11 @@ pub async fn handle_import(
         tracing::info!("\nThe VM will start instantly using the imported base image!");
     } else {
         tracing::info!("\nTo restore this project snapshot:");
-        tracing::info!("  vm revert {}", snapshot_name);
+        tracing::info!(
+            "  vm snapshots restore {} --env {}",
+            snapshot_name,
+            project_name
+        );
     }
 
     Ok(())

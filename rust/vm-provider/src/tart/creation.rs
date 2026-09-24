@@ -135,7 +135,7 @@ impl TartProvider {
                 }
                 TartImageSource::Image(image) => Ok(image),
                 TartImageSource::Snapshot(name) => Err(VmError::Config(format!(
-                    "Use 'vm revert {name}' for snapshots"
+                    "Use 'vm snapshots restore {name}' for snapshots"
                 ))),
             };
         }

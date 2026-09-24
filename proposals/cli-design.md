@@ -1,7 +1,19 @@
 # VM CLI design
 
-Status: proposed. This document specifies the intended product interface; it does
-not claim that these commands or all described capabilities are implemented.
+Status: implementation in progress. This document specifies the intended product
+interface; the public reference describes the commands currently available.
+
+Implemented in the first CLI pass: snapshot command group, explicit `exec --env`,
+project-scoped `--all-envs` selection, grouped consumer commands, plural secret
+and plugin namespaces, short `db list`, secure secret input, and selected command
+spelling cleanup. The parser no longer offers a generic dry-run summary.
+
+Still to deliver: project and environment creation semantics, named multi-target
+selection, full snapshot ownership and archive contract, package service and
+tool targeting refinements, configuration schema and profile grammar, tunnel and
+database resource models, plugin and storage administration, structured output,
+exit codes, receipt observation, and genuine per-command plans. Each needs
+implementation and acceptance before this proposal can be marked complete.
 
 ## Product contract
 

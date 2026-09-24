@@ -17,42 +17,29 @@ fn run(temp_dir: &TempDir, args: &[&str]) -> Output {
 }
 
 #[test]
-fn dry_run_redacts_secret_values_and_changes_nothing() {
+fn secret_set_requires_a_secure_input_source_without_starting_services() {
     let temp_dir = TempDir::new().unwrap();
-    let output = run(
-        &temp_dir,
-        &["--dry-run", "secret", "add", "API_TOKEN", "do-not-print-me"],
-    );
-    let stdout = String::from_utf8(output.stdout).unwrap();
+    let output = run(&temp_dir, &["secrets", "set", "API_TOKEN"]);
     let stderr = String::from_utf8(output.stderr).unwrap();
 
-    assert!(output.status.success(), "{stderr}");
-    assert!(stdout.contains("values redacted"));
-    assert!(stdout.contains("No changes made."));
-    assert!(!stdout.contains("do-not-print-me"));
-    assert!(!stderr.contains("do-not-print-me"));
+    assert!(!output.status.success());
+    assert!(stderr.contains("Use --stdin or --file"), "{stderr}");
     assert!(!temp_dir.path().join(".vm").join("secrets").exists());
 }
 
 #[test]
-fn package_open_dry_run_names_the_direct_owner_without_creating_state() {
+fn generic_dry_run_is_rejected_until_a_real_plan_exists() {
     let temp_dir = TempDir::new().unwrap();
     let output = run(&temp_dir, &["--dry-run", "packages", "open", "auth"]);
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    let stderr = String::from_utf8(output.stderr).unwrap();
-
-    assert!(output.status.success(), "{stderr}");
-    assert!(stdout.contains("original workspace for 'auth'"), "{stdout}");
-    assert!(stdout.contains("owning Docker environment"), "{stdout}");
-    assert!(stdout.contains("No changes made."), "{stdout}");
+    assert!(!output.status.success());
     assert!(!temp_dir.path().join(".vm").exists());
 }
 
 #[test]
-fn managed_guest_guard_precedes_dry_run_and_prints_the_exact_host_command() {
+fn managed_guest_guard_prints_the_exact_host_command() {
     let temp_dir = TempDir::new().unwrap();
     let output = Command::new(cargo_bin!("vm"))
-        .args(["--dry-run", "tools", "update", "--to", "dev"])
+        .args(["tools", "update", "--to", "dev"])
         .current_dir(temp_dir.path())
         .env("HOME", temp_dir.path())
         .env("VM_MANAGED_GUEST", "1")
@@ -66,7 +53,7 @@ fn managed_guest_guard_precedes_dry_run_and_prints_the_exact_host_command() {
 
     assert!(!output.status.success());
     assert!(stdout.is_empty(), "{stdout}");
-    assert!(stderr.contains("Run on the host: vm --dry-run tools update --to dev"));
+    assert!(stderr.contains("Run on the host: vm tools update --to dev"));
 }
 
 #[test]
@@ -210,9 +197,27 @@ fn config_show_tolerates_a_closed_stdout_pipe() {
 fn every_public_command_has_clean_help() {
     let temp_dir = TempDir::new().unwrap();
     for command in [
-        "start", "run", "list", "shell", "exec", "logs", "copy", "stop", "status", "restart",
-        "remove", "save", "revert", "package", "config", "tunnel", "doctor", "plugin", "system",
-        "db", "secret",
+        "start",
+        "run",
+        "list",
+        "shell",
+        "exec",
+        "logs",
+        "copy",
+        "stop",
+        "status",
+        "restart",
+        "remove",
+        "snapshots",
+        "packages",
+        "tools",
+        "config",
+        "tunnels",
+        "doctor",
+        "plugins",
+        "system",
+        "db",
+        "secrets",
     ] {
         let output = run(&temp_dir, &[command, "--help"]);
         let stdout = String::from_utf8(output.stdout).unwrap();

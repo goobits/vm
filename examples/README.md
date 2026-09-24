@@ -6,8 +6,8 @@ Examples use the v5 humane CLI surface.
 vm run linux as app
 vm shell app
 vm exec app -- npm test
-vm save app as configured
-vm revert app configured
+vm snapshots create configured --env app
+vm snapshots restore configured --env app
 vm package app --output app.tar.gz
 ```
 

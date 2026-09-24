@@ -13,14 +13,14 @@ This creates the environment if needed, starts it, and names it `dev`.
 ## Work Inside It
 
 ```bash
-vm ssh
+vm shell
 vm exec -- npm test
 vm logs --follow
 vm copy ./config.json dev:/workspace/config.json
 ```
 
-With no name, these commands use the project's default environment. `vm ssh`
-creates it from `vm.yaml` when missing; `vm ssh` and `vm exec` start it first
+With no name, these commands use the project's default environment. `vm shell`
+creates it from `vm.yaml` when missing; `vm shell` and `vm exec` start it first
 when it already exists but is stopped.
 
 ## See What Is Running
@@ -74,16 +74,16 @@ vm run container as db --provider podman
 ## Save And Restore State
 
 ```bash
-vm save dev as stable
-vm revert dev stable
-vm package dev --output dev.tar.gz
+vm snapshots create stable --env dev
+vm snapshots restore stable --env dev
+vm snapshots export stable --env dev --output dev.tar.gz
 ```
 
 ## Advanced Tools
 
 ```bash
 vm config show
-vm tunnel add 8080:3000 dev
+vm tunnels add 8080:3000 dev
 vm doctor
 vm system update
 ```
@@ -91,6 +91,6 @@ vm system update
 Plugin-backed workflows stay top-level:
 
 ```bash
-vm db ls
-vm secret interactive
+vm db list
+vm secrets set NAME
 ```

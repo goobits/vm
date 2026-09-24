@@ -7,45 +7,55 @@
 use crate::cli::SecretSubcommand;
 use crate::error::{VmError, VmResult};
 use crate::services::service_lifecycle;
-use dialoguer::{Confirm, Input, Password, Select};
+use dialoguer::{Confirm, Password};
+use std::io::{IsTerminal, Read};
 use vm_auth_proxy::{self, check_server_running, SecretScope};
 use vm_config::{AppConfig, GlobalConfig};
-use vm_core::{vm_println, vm_progress, vm_success, vm_warning};
+use vm_core::{vm_print, vm_println, vm_progress, vm_success};
 
 pub(super) async fn handle_command(
     command: &SecretSubcommand,
     config_path: Option<std::path::PathBuf>,
     profile: Option<String>,
 ) -> VmResult<()> {
-    let global_config = AppConfig::load(config_path, profile, None)?.global;
-    handle_secrets_command(command, global_config).await
+    let config = AppConfig::load(config_path, profile, None)?;
+    let default_scope = format!(
+        "project:{}",
+        super::command_context::project_name(&config.vm)
+    );
+    handle_secrets_command(command, config.global, &default_scope).await
 }
 
 /// Handle secrets commands
 async fn handle_secrets_command(
     command: &SecretSubcommand,
     global_config: GlobalConfig,
+    default_scope: &str,
 ) -> VmResult<()> {
     match command {
         SecretSubcommand::Status => handle_status(&global_config).await,
-        SecretSubcommand::Add {
+        SecretSubcommand::Set {
             name,
-            value,
+            stdin,
+            file,
             scope,
             description,
         } => {
+            let value = read_secret_value(*stdin, file.as_deref())?;
             handle_add(
                 name,
-                value,
-                scope.as_deref(),
+                &value,
+                Some(scope.as_deref().unwrap_or(default_scope)),
                 description.as_deref(),
                 &global_config,
             )
             .await
         }
-        SecretSubcommand::Ls { show_values } => handle_list(*show_values, &global_config).await,
-        SecretSubcommand::Rm { name, force } => handle_remove(name, *force, &global_config).await,
-        SecretSubcommand::Interactive => handle_interactive(&global_config).await,
+        SecretSubcommand::List => handle_list(&global_config).await,
+        SecretSubcommand::Show { name, reveal: _ } => handle_show(name, &global_config).await,
+        SecretSubcommand::Remove { name, force } => {
+            handle_remove(name, *force, &global_config).await
+        }
     }
 }
 
@@ -136,7 +146,7 @@ async fn handle_add(
 }
 
 /// List secrets
-async fn handle_list(show_values: bool, global_config: &GlobalConfig) -> VmResult<()> {
+async fn handle_list(global_config: &GlobalConfig) -> VmResult<()> {
     let server_url = server_url(global_config);
     ensure_server(global_config).await?;
     let list = vm_auth_proxy::list_secrets(&server_url)
@@ -155,33 +165,49 @@ async fn handle_list(show_values: bool, global_config: &GlobalConfig) -> VmResul
             SecretScope::Project(project) => format!("project:{project}"),
             SecretScope::Instance(instance) => format!("instance:{instance}"),
         };
-        let value = if show_values {
-            match vm_auth_proxy::get_secret_value(&server_url, &secret.name).await {
-                Ok(value) => format!(" = {}", masked_secret(&value)),
-                Err(error) => {
-                    vm_warning!("Could not read secret '{}': {}", secret.name, error);
-                    " = <error>".to_string()
-                }
-            }
-        } else {
-            String::new()
-        };
         let description = secret
             .description
             .map(|value| format!(" - {value}"))
             .unwrap_or_default();
-        vm_println!("  {} [{}]{}{}", secret.name, scope, value, description);
+        vm_println!("  {} [{}]{}", secret.name, scope, description);
     }
 
     Ok(())
 }
 
-fn masked_secret(value: &str) -> String {
-    if value.chars().count() > 20 {
-        format!("{}...", value.chars().take(17).collect::<String>())
+fn read_secret_value(stdin: bool, file: Option<&std::path::Path>) -> VmResult<String> {
+    let value = if let Some(path) = file {
+        std::fs::read_to_string(path)
+            .map_err(|error| VmError::general(error, "Failed to read secret file"))?
+    } else if stdin {
+        let mut value = String::new();
+        std::io::stdin()
+            .read_to_string(&mut value)
+            .map_err(|error| VmError::general(error, "Failed to read secret from stdin"))?;
+        value
     } else {
-        value.to_string()
+        if !std::io::stdin().is_terminal() {
+            return Err(VmError::validation(
+                "Secret input requires a terminal",
+                Some("Use --stdin or --file in scripts"),
+            ));
+        }
+        Password::new()
+            .with_prompt("Secret value")
+            .interact()
+            .map_err(|error| VmError::general(error, "Failed to read secret value"))?
+    };
+    if value.is_empty() {
+        return Err(VmError::validation("Secret value is empty", None::<String>));
     }
+    Ok(value)
+}
+
+async fn handle_show(name: &str, global_config: &GlobalConfig) -> VmResult<()> {
+    ensure_server(global_config).await?;
+    let value = vm_auth_proxy::get_secret_value(&server_url(global_config), name).await?;
+    vm_print!("{value}");
+    Ok(())
 }
 
 /// Remove a secret
@@ -208,89 +234,4 @@ async fn handle_remove(name: &str, force: bool, global_config: &GlobalConfig) ->
 
     vm_success!("Removed secret '{name}'");
     Ok(())
-}
-
-/// Interactive secret addition
-async fn handle_interactive(global_config: &GlobalConfig) -> VmResult<()> {
-    let server_url = server_url(global_config);
-    ensure_server(global_config).await?;
-
-    vm_println!("Add a secret");
-
-    // Get secret name
-    let name: String = Input::new()
-        .with_prompt("Secret name")
-        .interact_text()
-        .map_err(|e| VmError::general(e, "Failed to read secret name"))?;
-
-    // Get secret value (hidden input)
-    let value: String = Password::new()
-        .with_prompt("Secret value")
-        .interact()
-        .map_err(|e| VmError::general(e, "Failed to read secret value"))?;
-
-    // Get scope
-    let scope_options = vec!["Global", "Project", "Instance"];
-    let scope_selection = Select::new()
-        .with_prompt("Secret scope")
-        .items(&scope_options)
-        .default(0)
-        .interact()
-        .map_err(|e| VmError::general(e, "Failed to read scope selection"))?;
-
-    let scope = match scope_selection {
-        0 => None, // Global
-        1 => {
-            let project_name: String = Input::new()
-                .with_prompt("Project name")
-                .interact_text()
-                .map_err(|e| VmError::general(e, "Failed to read project name"))?;
-            Some(format!("project:{project_name}"))
-        }
-        2 => {
-            let instance_name: String =
-                Input::new()
-                    .with_prompt("Instance name")
-                    .interact_text()
-                    .map_err(|e| VmError::general(e, "Failed to read instance name"))?;
-            Some(format!("instance:{instance_name}"))
-        }
-        _ => None,
-    };
-
-    // Get optional description
-    let description: Option<String> = Input::new()
-        .with_prompt("Description (optional)")
-        .allow_empty(true)
-        .interact_text()
-        .ok()
-        .filter(|s: &String| !s.is_empty());
-
-    // Add the secret
-    vm_auth_proxy::add_secret(
-        &server_url,
-        &name,
-        &value,
-        scope.as_deref(),
-        description.as_deref(),
-    )
-    .await
-    .map_err(VmError::from)?;
-
-    vm_success!("Added secret '{name}'");
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::masked_secret;
-
-    #[test]
-    fn masking_is_unicode_safe() {
-        assert_eq!(masked_secret("short"), "short");
-        assert_eq!(
-            masked_secret("🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐"),
-            "🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐..."
-        );
-    }
 }

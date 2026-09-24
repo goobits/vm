@@ -8,8 +8,8 @@ use clap::Parser;
 #[test]
 fn failed_consumer_updates_can_be_retried_by_project_name() {
     assert!(matches!(
-        Args::parse_from(["vm", "packages", "consumer", "retry", "project-a"]).command,
-        Command::Packages { command: PackagesSubcommand::Consumer {
+        Args::parse_from(["vm", "packages", "consumers", "retry", "project-a"]).command,
+        Command::Packages { command: PackagesSubcommand::Consumers {
             command: super::PackageConsumerSubcommand::Retry { name }
         }} if name == "project-a"
     ));
@@ -28,64 +28,20 @@ fn run_parses_kind_and_humane_name() {
 }
 
 #[test]
-fn shell_and_ssh_parse_the_same_environment() {
-    for name in ["shell", "ssh"] {
-        assert!(matches!(
-            Args::parse_from(["vm", name, "backend"]).command,
-            Command::Shell {
-                environment: Some(environment),
-                ..
-            } if environment == "backend"
-        ));
-    }
-}
-
-#[test]
-fn start_and_ssh_accept_the_project_default() {
+fn shell_accepts_an_explicit_or_default_environment() {
     assert!(matches!(
-        Args::parse_from(["vm", "start"]).command,
-        Command::Start {
-            environment: None,
-            no_wait: false,
-            ..
-        }
+        Args::parse_from(["vm", "shell", "backend"]).command,
+        Command::Shell { environment: Some(environment), .. } if environment == "backend"
     ));
     assert!(matches!(
-        Args::parse_from(["vm", "ssh"]).command,
+        Args::parse_from(["vm", "shell"]).command,
         Command::Shell {
             environment: None,
             ..
         }
     ));
-}
-
-#[test]
-fn ssh_alias_parses_command_execution() {
-    assert!(matches!(
-        Args::parse_from(["vm", "ssh", "-e", "echo hello"]).command,
-        Command::Shell {
-            command: Some(command),
-            ..
-        } if command == "echo hello"
-    ));
-}
-
-#[test]
-fn list_aliases_parse_filters() {
-    assert!(matches!(
-        Args::parse_from(["vm", "ls", "--all"]).command,
-        Command::List {
-            all: true,
-            raw: false
-        }
-    ));
-    assert!(matches!(
-        Args::parse_from(["vm", "list", "--raw"]).command,
-        Command::List {
-            all: false,
-            raw: true
-        }
-    ));
+    assert!(Args::try_parse_from(["vm", "ssh"]).is_err());
+    assert!(Args::try_parse_from(["vm", "ls"]).is_err());
 }
 
 #[test]
@@ -143,27 +99,17 @@ fn retired_lifecycle_aliases_are_rejected() {
 }
 
 #[test]
-fn exec_parses_command() {
+fn exec_uses_an_explicit_or_default_environment() {
     assert!(matches!(
-        Args::parse_from(["vm", "exec", "backend", "--", "npm", "test"]).command,
-        Command::Exec {
-            environment: Some(environment),
-            command,
-            ..
-        } if environment == "backend" && command == ["npm", "test"]
+        Args::parse_from(["vm", "exec", "--env", "backend", "--", "npm", "test"]).command,
+        Command::Exec { environment: Some(environment), command, .. }
+            if environment == "backend" && command == ["npm", "test"]
     ));
-}
-
-#[test]
-fn exec_uses_default_environment_when_omitted() {
     assert!(matches!(
         Args::parse_from(["vm", "exec", "--", "npm", "test"]).command,
-        Command::Exec {
-            environment: None,
-            command,
-            ..
-        } if command == ["npm", "test"]
+        Command::Exec { environment: None, command, .. } if command == ["npm", "test"]
     ));
+    assert!(Args::try_parse_from(["vm", "exec", "backend", "--", "npm"]).is_err());
 }
 
 #[test]
@@ -172,10 +118,10 @@ fn fleet_is_a_shared_targeting_flag() {
         Args::parse_from([
             "vm",
             "exec",
-            "--fleet",
-            "--provider",
+            "--all-envs",
+            "--match-provider",
             "docker",
-            "--pattern",
+            "--match",
             "app-*",
             "--",
             "npm",
@@ -188,27 +134,23 @@ fn fleet_is_a_shared_targeting_flag() {
                 && fleet.pattern.as_deref() == Some("app-*")
                 && command == ["npm", "test"]
     ));
-    assert!(Args::try_parse_from(["vm", "stop", "backend", "--fleet"]).is_err());
+    assert!(Args::try_parse_from(["vm", "stop", "backend", "--all-envs"]).is_err());
     assert!(Args::try_parse_from(["vm", "fleet", "stop"]).is_err());
 }
 
 #[test]
-fn save_parses_humane_snapshot_name() {
+fn snapshot_commands_are_grouped() {
     assert!(matches!(
-        Args::parse_from(["vm", "save", "backend", "as", "stable"]).command,
-        Command::Save { words, .. } if words == ["backend", "as", "stable"]
+        Args::parse_from(["vm", "snapshots", "create", "stable", "--env", "backend"]).command,
+        Command::Snapshots { command: super::SnapshotSubcommand::Create { name, env: Some(env), .. } }
+            if name == "stable" && env == "backend"
     ));
-}
-
-#[test]
-fn import_parses_portable_snapshot_archive() {
     assert!(matches!(
-        Args::parse_from(["vm", "import", "stable.snapshot.tar.gz", "--name", "stable", "--force"]).command,
-        Command::Import { archive, name, force }
-            if archive == std::path::Path::new("stable.snapshot.tar.gz")
-                && name.as_deref() == Some("stable")
-                && force
+        Args::parse_from(["vm", "snapshots", "import", "stable.tar.gz", "--name", "stable"]).command,
+        Command::Snapshots { command: super::SnapshotSubcommand::Import { archive, name } }
+            if archive == std::path::Path::new("stable.tar.gz") && name == "stable"
     ));
+    assert!(Args::try_parse_from(["vm", "save", "as", "stable"]).is_err());
 }
 
 #[test]
@@ -513,7 +455,7 @@ fn package_inventory_commands_parse() {
         Args::parse_from([
             "vm",
             "packages",
-            "consumer",
+            "consumers",
             "register",
             "project-a",
             "--repository",
@@ -523,7 +465,7 @@ fn package_inventory_commands_parse() {
         ]),
         Args {
             command: Command::Packages {
-                command: PackagesSubcommand::Consumer { .. }
+                command: PackagesSubcommand::Consumers { .. }
             },
             ..
         }
@@ -676,8 +618,8 @@ fn tool_refresh_status_and_batch_update_commands_parse() {
 #[test]
 fn plugin_install_parses() {
     assert!(matches!(
-        Args::parse_from(["vm", "plugin", "install", "/path/to/plugin"]).command,
-        Command::Plugin {
+        Args::parse_from(["vm", "plugins", "install", "/path/to/plugin"]).command,
+        Command::Plugins {
             command: PluginSubcommand::Install { source_path }
         } if source_path == "/path/to/plugin"
     ));
@@ -686,22 +628,41 @@ fn plugin_install_parses() {
 #[test]
 fn plugin_new_accepts_only_supported_definition_types() {
     assert!(matches!(
-        Args::parse_from(["vm", "plugin", "new", "demo", "--type", "preset"]).command,
-        Command::Plugin {
-            command: PluginSubcommand::New { plugin_name, r#type }
-        } if plugin_name == "demo" && r#type == "preset"
+        Args::parse_from(["vm", "plugins", "create", "demo", "--kind", "preset"]).command,
+        Command::Plugins {
+            command: PluginSubcommand::Create { plugin_name, kind }
+        } if plugin_name == "demo" && kind == "preset"
     ));
-    assert!(Args::try_parse_from(["vm", "plugin", "new", "demo", "--type", "command"]).is_err());
+    assert!(
+        Args::try_parse_from(["vm", "plugins", "create", "demo", "--kind", "command"]).is_err()
+    );
 }
 
 #[test]
 fn db_remains_top_level_builtin_command() {
     assert!(matches!(
-        Args::parse_from(["vm", "db", "ls"]).command,
+        Args::parse_from(["vm", "db", "list"]).command,
         Command::Db {
-            command: DbSubcommand::Ls
+            command: DbSubcommand::List
         }
     ));
+}
+
+#[test]
+fn secrets_require_explicit_secure_input_or_a_prompt() {
+    assert!(matches!(
+        Args::parse_from(["vm", "secrets", "set", "TOKEN", "--stdin"]).command,
+        Command::Secrets {
+            command: super::SecretSubcommand::Set {
+                name,
+                stdin: true,
+                file: None,
+                ..
+            }
+        } if name == "TOKEN"
+    ));
+    assert!(Args::try_parse_from(["vm", "secrets", "set", "TOKEN", "value"]).is_err());
+    assert!(Args::try_parse_from(["vm", "secrets", "show", "TOKEN"]).is_err());
 }
 
 #[test]

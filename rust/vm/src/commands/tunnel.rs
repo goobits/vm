@@ -33,7 +33,7 @@ pub(super) fn handle_command(
             config,
             global_config,
         ),
-        TunnelSubcommand::Ls { environment } => {
+        TunnelSubcommand::List { environment } => {
             handle_tunnel_list(provider, environment.as_deref(), config, global_config)
         }
         TunnelSubcommand::Stop {
@@ -165,7 +165,7 @@ impl<'a> TunnelManager<'a> {
             container_name,
             container_port
         );
-        vm_hint!("Stop with: vm tunnel stop {host_port}");
+        vm_hint!("Stop with: vm tunnels stop {host_port}");
 
         Ok(())
     }
@@ -265,7 +265,7 @@ fn handle_tunnel(
     if parts.len() != 2 {
         return Err(VmError::validation(
             "Invalid port mapping format. Use: <host_port>:<container_port>".to_string(),
-            Some("Example: vm tunnel add 8080:3000".to_string()),
+            Some("Example: vm tunnels add 8080:3000".to_string()),
         ));
     }
 
@@ -310,7 +310,7 @@ fn handle_tunnel_list(
         } else {
             vm_println!("No active tunnels");
         }
-        vm_hint!("Create one with: vm tunnel add <host>:<container>");
+        vm_hint!("Create one with: vm tunnels add <host>:<container>");
         return Ok(());
     }
 
@@ -361,7 +361,7 @@ fn handle_tunnel_stop(
     } else {
         return Err(VmError::validation(
             "Must specify port number or use --all flag".to_string(),
-            Some("Example: vm tunnel stop 8080 or vm tunnel stop --all".to_string()),
+            Some("Example: vm tunnels stop 8080 or vm tunnels stop --all".to_string()),
         ));
     }
 

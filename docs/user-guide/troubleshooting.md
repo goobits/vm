@@ -47,15 +47,15 @@ Confirm the rendered `/workspace` bind before applying lifecycle changes.
 
 ```bash
 vm list
-vm ssh
+vm shell
 vm exec -- pwd
 ```
 
-`vm ssh` creates the selected environment from `vm.yaml` when it is missing and
+`vm shell` creates the selected environment from `vm.yaml` when it is missing and
 starts it when stopped. `vm exec` starts an existing stopped environment but
 does not create one.
 
-For Tart, `vm ssh` prefers the guest agent. A running macOS guest can fall back
+For Tart, `vm shell` prefers the guest agent. A running macOS guest can fall back
 to native SSH. The first recovery of an older guest may ask for the `admin`
 password while installing `~/.vm/ssh/tart_ed25519.pub`; repeat connections must
 be passwordless. If both transports fail, run `vm doctor` and inspect the Tart
@@ -83,7 +83,7 @@ that guest:
 
 ```bash
 vm config profile set tart
-vm ssh
+vm shell
 docker version
 docker run --rm busybox echo run-ok
 ```
@@ -119,9 +119,9 @@ socket.
 
 ```bash
 vm config ports --fix
-vm tunnel ls
-vm tunnel stop 8080
-vm tunnel add 8080:3000 dev
+vm tunnels list
+vm tunnels stop 8080
+vm tunnels add 8080:3000 dev
 ```
 
 Named instances can coexist, but complete stacks cannot share the same host
@@ -296,16 +296,16 @@ durable checkout remains cancelled until local restoration succeeds.
 ## Secrets
 
 ```bash
-vm secret status
-vm secret ls
+vm secrets status
+vm secrets list
 ```
 
 ## State
 
 ```bash
-vm save dev as before-change
-vm revert dev before-change
-vm package dev --output dev.tar.gz
+vm snapshots create before-change --env dev
+vm snapshots restore before-change --env dev
+vm snapshots export stable --env dev --output dev.tar.gz
 ```
 
 ## Debug Output

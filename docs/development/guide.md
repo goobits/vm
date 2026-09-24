@@ -26,5 +26,5 @@ contributor docs.
 ## Lifecycle Hooks
 
 Environment lifecycle commands register and unregister services through the
-service registry. `vm shell`/`vm ssh` and `vm exec -- <command>` select the
+service registry. `vm shell`/`vm shell` and `vm exec -- <command>` select the
 project default when no name is supplied and start it if needed.

@@ -14,20 +14,19 @@ use crate::error::{VmError, VmResult};
 
 pub(super) fn handle_command(command: &PluginSubcommand) -> VmResult<()> {
     match command {
-        PluginSubcommand::Ls => handle_plugin_list().map_err(VmError::from),
-        PluginSubcommand::Info { plugin_name } => {
+        PluginSubcommand::List => handle_plugin_list().map_err(VmError::from),
+        PluginSubcommand::Show { plugin_name } => {
             handle_plugin_info(plugin_name).map_err(VmError::from)
         }
         PluginSubcommand::Install { source_path } => {
             handle_plugin_install(source_path).map_err(VmError::from)
         }
-        PluginSubcommand::Rm { plugin_name } => {
+        PluginSubcommand::Remove { plugin_name } => {
             handle_plugin_remove(plugin_name).map_err(VmError::from)
         }
-        PluginSubcommand::New {
-            plugin_name,
-            r#type,
-        } => super::plugin_new::handle_plugin_new(plugin_name, r#type).map_err(VmError::from),
+        PluginSubcommand::Create { plugin_name, kind } => {
+            super::plugin_new::handle_plugin_new(plugin_name, kind).map_err(VmError::from)
+        }
         PluginSubcommand::Validate { plugin_name } => {
             handle_plugin_validate(plugin_name).map_err(VmError::from)
         }
@@ -335,7 +334,7 @@ fn handle_plugin_install(source_path: &str) -> Result<()> {
     // Check if plugin already exists
     if target.exists() {
         anyhow::bail!(
-            "Plugin '{}' is already installed. Remove it first with: vm plugin rm {}",
+            "Plugin '{}' is already installed. Remove it first with: vm plugins remove {}",
             info.name,
             info.name
         );

@@ -77,7 +77,7 @@ chmod 600 "$HOME/.ssh/authorized_keys""#
         }
         if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
             return Err(VmError::Provider(format!(
-                "Tart SSH key is not installed for {user}@{ip}; run `vm ssh` from an interactive terminal once"
+                "Tart SSH key is not installed for {user}@{ip}; run `vm shell` from an interactive terminal once"
             )));
         }
 

@@ -6,7 +6,7 @@ Common workflows:
 
 ```bash
 vm run linux as app
-vm db ls
+vm db list
 vm db backup app_db
 vm db credentials postgresql
 ```

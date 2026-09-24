@@ -662,7 +662,7 @@ main() {
     # Show next steps
     echo -e "${BLUE}Open a new terminal, then:${NC}"
     echo -e "${BLUE}Check your setup:${NC} ${YELLOW}vm doctor${NC}"
-    echo -e "${BLUE}Start this project:${NC} ${YELLOW}vm ssh${NC}"
+    echo -e "${BLUE}Start this project:${NC} ${YELLOW}vm shell${NC}"
     echo ""
     echo -e "${BLUE}Documentation:${NC} $REPO_URL"
     echo -e "${BLUE}Support:${NC} ${REPO_URL}/issues"

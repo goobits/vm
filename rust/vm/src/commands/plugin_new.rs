@@ -192,7 +192,7 @@ This preset provides a development environment with pre-configured packages, ser
 ## Installation
 
 ```bash
-vm plugin install /path/to/{plugin_name}
+vm plugins install /path/to/{plugin_name}
 ```
 
 ## Usage
@@ -261,7 +261,7 @@ This plugin packages a containerized service definition for inspection and valid
 ## Installation
 
 ```bash
-vm plugin install /path/to/{plugin_name}
+vm plugins install /path/to/{plugin_name}
 ```
 
 ## Usage
@@ -269,8 +269,8 @@ vm plugin install /path/to/{plugin_name}
 Inspect and validate the installed definition:
 
 ```bash
-vm plugin info {plugin_name}
-vm plugin validate {plugin_name}
+vm plugins show {plugin_name}
+vm plugins validate {plugin_name}
 ```
 
 ## Configuration
@@ -316,8 +316,8 @@ mod tests {
         assert!(preset.contains("project:\n  name: my-project"));
 
         let service = generate_readme_template("demo", "service");
-        assert!(service.contains("vm plugin info demo"));
-        assert!(service.contains("vm plugin validate demo"));
+        assert!(service.contains("vm plugins show demo"));
+        assert!(service.contains("vm plugins validate demo"));
         assert!(!service.contains("services:\n  - demo"));
         assert!(generate_service_template().contains("image: redis:7-alpine"));
     }

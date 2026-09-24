@@ -269,11 +269,9 @@ pub(super) async fn handle(
             .await
         }
         PackagesSubcommand::List => catalog::list(&files).await,
-        PackagesSubcommand::Consumer { command } => consumer::handle_catalog(&files, command).await,
-        PackagesSubcommand::Consumers { package } => {
-            consumer::show_consumers(&files, &package).await
+        PackagesSubcommand::Consumers { command } => {
+            consumer::handle_catalog(&files, command).await
         }
-        PackagesSubcommand::Drift => consumer::show_drift(&files).await,
         PackagesSubcommand::Open { source } => work_session::open(&files, source, profile).await,
         PackagesSubcommand::Checkout { source } => Err(VmError::validation(
             "Managed source checkout runs inside a managed VM",

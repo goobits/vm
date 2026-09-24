@@ -142,9 +142,9 @@ pub struct ServiceMessages {
 pub const SERVICE_MESSAGES: ServiceMessages = ServiceMessages {
     // Auth Proxy
     auth_secret_added: "✅ Secret '{name}' added successfully",
-    auth_secrets_empty: "📭 No secrets stored\n\n💡 Add secrets with: vm secret add <name> <value>",
+    auth_secrets_empty: "📭 No secrets stored\n\n💡 Add secrets with: vm secrets set <name>",
     auth_secrets_list_header: "🔐 Stored Secrets ({count})\n",
-    auth_secrets_show_values_hint: "\n💡 Show values with: vm secret ls --show-values",
+    auth_secrets_show_values_hint: "\n💡 Show values with: vm secrets show <name> --reveal",
     auth_secret_removed: "✅ Secret '{name}' removed successfully",
     auth_remove_cancelled: "❌ Cancelled",
     auth_server_starting: "🚀 Starting auth proxy server...",

@@ -16,7 +16,7 @@ For a Linux Tart VM with Docker Engine:
 ```bash
 vm config preset vibe-tart
 vm config profile set tart
-vm ssh
+vm shell
 ```
 
 `vibe-tart` already uses `tart` as its default profile; the profile command is
@@ -49,7 +49,7 @@ instead of opening a partially working Codex session.
 When the versioned Linux vibe base is missing locally, environment creation
 pulls it from GHCR into a versioned local cache. If that image is unavailable,
 `vm` builds the same cache locally. This applies when creation starts through
-`vm ssh` as well as `vm run`. Use `vm system base build` directly to
+`vm shell` as well as `vm run`. Use `vm system base build` directly to
 deliberately rebuild a base.
 
 Set `tart.storage_path` to place Tart bases and environments on another disk:

@@ -66,7 +66,7 @@ Engine inside it:
 
 ```bash
 vm config preset vibe-tart
-vm ssh
+vm shell
 ```
 
 The preset selects its Linux Tart profile by default. The equivalent minimal
@@ -85,7 +85,7 @@ vm:
   memory: 16384
 ```
 
-`vm ssh` creates the environment when missing. If the versioned Linux base is
+`vm shell` creates the environment when missing. If the versioned Linux base is
 not local, `vm` pulls it into the Tart cache or builds it when the published
 image is unavailable. Docker runs directly against the Linux guest kernel, so
 Colima is not part of this path.
@@ -97,7 +97,7 @@ created on another volume. Base replacement is staged and renamed only after
 validation; a failed pull or local fallback keeps the previous usable base.
 
 Interactive shells prefer Tart's guest agent. For a running macOS guest whose
-guest-agent transport is unavailable, `vm ssh` falls back to native SSH using
+guest-agent transport is unavailable, `vm shell` falls back to native SSH using
 `~/.vm/ssh/tart_ed25519`. New guests receive that public key during
 provisioning; an existing guest may request its password once to install the
 key. Later connections are key-only. Linux guests keep the stricter guest-agent
@@ -387,15 +387,15 @@ the supported workflow.
 ## State
 
 ```bash
-vm save backend as before-refactor
-vm revert backend before-refactor
-vm package backend --output backend.tar.gz
+vm snapshots create before-refactor --env backend
+vm snapshots restore before-refactor --env backend
+vm snapshots export before-refactor --env backend --output backend.tar.gz
 ```
 
 ## Tunnels
 
 ```bash
-vm tunnel add 8080:3000 backend
-vm tunnel ls backend
-vm tunnel stop 8080
+vm tunnels add 8080:3000 backend
+vm tunnels list backend
+vm tunnels stop 8080
 ```

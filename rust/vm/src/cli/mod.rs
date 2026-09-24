@@ -25,10 +25,6 @@ pub struct Args {
     /// Select a configuration profile to apply
     #[arg(long, global = true)]
     pub profile: Option<String>,
-
-    /// Show what would be executed without running
-    #[arg(long, global = true)]
-    pub dry_run: bool,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
@@ -96,7 +92,6 @@ pub enum Command {
         memory: Option<String>,
     },
     /// List environments for this project
-    #[command(visible_alias = "ls")]
     List {
         /// Show environments across all projects
         #[arg(long)]
@@ -106,7 +101,6 @@ pub enum Command {
         raw: bool,
     },
     /// Open a shell promptly; safe runtime updates continue in the background
-    #[command(visible_alias = "ssh")]
     Shell {
         /// Environment name; omit to use the project default
         environment: Option<String>,
@@ -119,8 +113,8 @@ pub enum Command {
     },
     /// Run a single command inside an environment
     Exec {
-        /// Environment name; omit it before `--` to use and start the project default
-        #[arg(conflicts_with = "fleet")]
+        /// Run in this environment instead of the project default
+        #[arg(long = "env", conflicts_with = "fleet")]
         environment: Option<String>,
         #[command(flatten)]
         fleet: FleetArgs,
@@ -169,44 +163,10 @@ pub enum Command {
         #[arg(long)]
         force: bool,
     },
-    /// Save the current state of an environment
-    Save {
-        /// Either `as <snapshot>` or `<environment> as <snapshot>`
-        #[arg(required = true, num_args = 2..=3)]
-        words: Vec<String>,
-        #[arg(long)]
-        description: Option<String>,
-        #[arg(long)]
-        quiesce: bool,
-        #[arg(long)]
-        force: bool,
-    },
-    /// Restore an environment to a saved state
-    Revert {
-        /// Either `<snapshot>` or `<environment> <snapshot>`
-        #[arg(required = true, num_args = 1..=2)]
-        words: Vec<String>,
-        #[arg(long)]
-        force: bool,
-    },
-    /// Export an environment or base as a portable artifact
-    Package {
-        environment: Option<String>,
-        #[arg(long, short = 'o')]
-        output: Option<PathBuf>,
-        #[arg(long, default_value = "6")]
-        compress: u8,
-        /// Build package directly from a Dockerfile
-        #[arg(long, value_name = "PATH")]
-        build: Option<PathBuf>,
-    },
-    /// Import a portable snapshot artifact
-    Import {
-        archive: PathBuf,
-        #[arg(long)]
-        name: Option<String>,
-        #[arg(long)]
-        force: bool,
+    /// Manage environment snapshots and portable archives
+    Snapshots {
+        #[command(subcommand)]
+        command: SnapshotSubcommand,
     },
     /// Manage the shared package-infrastructure appliance
     Packages {
@@ -224,7 +184,7 @@ pub enum Command {
         command: ConfigSubcommand,
     },
     /// Manage active port forwards
-    Tunnel {
+    Tunnels {
         #[command(subcommand)]
         command: TunnelSubcommand,
     },
@@ -242,7 +202,7 @@ pub enum Command {
         container: Option<String>,
     },
     /// Extend with plugins
-    Plugin {
+    Plugins {
         #[command(subcommand)]
         command: PluginSubcommand,
     },
@@ -257,7 +217,7 @@ pub enum Command {
         command: DbSubcommand,
     },
     /// Secret workflows
-    Secret {
+    Secrets {
         #[command(subcommand)]
         command: SecretSubcommand,
     },

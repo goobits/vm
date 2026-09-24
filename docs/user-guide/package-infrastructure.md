@@ -398,7 +398,7 @@ vm packages register auth \
   --ecosystem cargo \
   --repository ssh://git@github.com/example/auth.git
 
-vm packages consumer register project-a \
+vm packages consumers register project-a \
   --repository ssh://git@github.com/example/project-a.git \
   --dependency auth@1.4.2
 ```
@@ -609,7 +609,7 @@ paths preserve the edge cache named volume and leave the primary environment
 and base image intact. Both also repair managed client files in place so a new
 shell no longer depends on the primary container's creation-time environment.
 `vm exec` performs package-edge, client-file, and remote-command repair before
-running the requested command. `vm ssh` schedules the same shared repair engine,
+running the requested command. `vm shell` schedules the same shared repair engine,
 plus package-tool and vendor-tool reconciliation, without delaying the shell.
 The explicit tool update then
 repairs base-owned vendor tools in the foreground, waiting for any
@@ -626,7 +626,7 @@ Interactive-shell reconciliation is single-flight at each ownership boundary:
 one host worker runs per environment, one controller catalog refresh may run at
 a time, and each guest reconciliation type retains its own lock. The host worker
 uses the same implementation as explicit updates. A successful shell-triggered
-pass is reused for 60 seconds, so a burst of `vm ssh` sessions neither delays
+pass is reused for 60 seconds, so a burst of `vm shell` sessions neither delays
 attachment nor repeats downloads or probes.
 Explicit `refresh` and `update` commands bypass the recent-success window while
 still respecting active locks.
@@ -652,19 +652,19 @@ review branch. There is no host rollout or sync command.
 Use these read-only commands to inspect progress:
 
 ```bash
-vm packages consumers auth
-vm packages drift
+vm packages status
+vm packages consumers drift
 ```
 
 The registered consumer version changes only after its normal review process
-updates the inventory. Rerun `vm packages consumer register` with the reviewed
+updates the inventory. Rerun `vm packages consumers register` with the reviewed
 version to refresh that inventory and close the matching rollout receipt.
 
 `consumers` and `drift` include the ready branch or failed-update recovery hint.
 After fixing a failed consumer check, retry its dependency updates on the host:
 
 ```bash
-vm packages consumer retry project-a
+vm packages consumers retry project-a
 ```
 
 This uses the latest published versions, retains the failed attempt's history,
