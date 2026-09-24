@@ -6,7 +6,6 @@
 use fs2::FileExt;
 use serde_yaml_ng as serde_yaml;
 use std::fs::{self, File, OpenOptions};
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 use vm_core::error::{Result, VmError};
@@ -173,11 +172,9 @@ impl StateManager {
 
     /// Save temp VM state to disk atomically
     pub fn save_state(&self, state: &TempVmState) -> std::result::Result<(), StateError> {
-        let _lock = self.acquire_lock()?;
-
         Self::validate_state(state)?;
 
-        // Create state directory if it doesn't exist
+        // The lock file lives in the state directory, including for custom paths.
         fs::create_dir_all(&self.state_dir).map_err(|e| {
             StateError::Vm(VmError::Filesystem(format!(
                 "Failed to create state directory {}: {}",
@@ -185,6 +182,7 @@ impl StateManager {
                 e
             )))
         })?;
+        let _lock = self.acquire_lock()?;
 
         // Serialize state to YAML
         let yaml_content = serde_yaml::to_string(state).map_err(|e| {
@@ -193,31 +191,15 @@ impl StateManager {
             )))
         })?;
 
-        // Write atomically using a unique temporary file
-        let temp_file = tempfile::Builder::new()
-            .prefix("temp-vm-state-")
-            .suffix(".tmp")
-            .tempfile_in(&self.state_dir)?;
-
-        temp_file
-            .as_file()
-            .write_all(yaml_content.as_bytes())
-            .map_err(|e| {
+        vm_core::file_system::atomic_write(&self.state_file, yaml_content.as_bytes()).map_err(
+            |e| {
                 StateError::Vm(VmError::Filesystem(format!(
-                    "Failed to write temporary state file {}: {}",
-                    temp_file.path().display(),
+                    "Failed to write state file {}: {}",
+                    self.state_file.display(),
                     e
                 )))
-            })?;
-
-        // Atomic move to final location
-        temp_file.persist(&self.state_file).map_err(|e| {
-            StateError::Vm(VmError::Filesystem(format!(
-                "Failed to move state file to final location {}: {}",
-                self.state_file.display(),
-                e.error
-            )))
-        })?;
+            },
+        )?;
 
         Ok(())
     }

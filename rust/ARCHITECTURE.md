@@ -249,13 +249,12 @@ store, source manager, and persistence records remain service-internal.
 **Key Exports**: Review, release, and rollout binaries
 
 #### vm-auth-proxy
-**Role**: Authentication and authorization proxy for VM services.
+**Role**: Encrypted secret storage and authenticated HTTP access for VMs.
 
 **Responsibilities**:
-- Authentication proxy for development services
-- Session management and token validation
-- Security middleware for VM-exposed services
-- OAuth and API key management
+- Encrypted secret storage and scoped environment values
+- Bearer token validation for secret endpoints
+- Authenticated HTTP access for local VM clients
 
 **Key Exports**: Auth proxy server, middleware, session management
 

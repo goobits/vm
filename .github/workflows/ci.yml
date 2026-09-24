@@ -35,7 +35,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ${{ runner.temp }}/vm-rust-target
+            ${{ github.workspace }}/.cache/vm-rust-target
           key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
 
       - name: Set up Rust toolchain
@@ -44,14 +44,20 @@ jobs:
           toolchain: stable
 
       - name: Run unit tests
-        continue-on-error: ${{ matrix.os != 'ubuntu-latest' }}
         working-directory: rust
         run: cargo test --workspace --lib -- --test-threads=10
 
-      - name: Run integration tests
-        continue-on-error: ${{ matrix.os != 'ubuntu-latest' }}
+      - name: Run CLI unit tests
         working-directory: rust
-        run: cargo test --workspace --test '*' --features integration,standalone-binary -- --test-threads=2
+        run: cargo test -p goobits-vm --bin vm -- --test-threads=10
+
+      - name: Run integration tests
+        working-directory: rust
+        run: cargo test --workspace --test '*' --features integration,vm-package-server/standalone-binary -- --test-threads=2
+
+      - name: Run shell regressions
+        if: matrix.os == 'ubuntu-latest'
+        run: make test-shell
 
   clippy:
     name: Run clippy
@@ -70,7 +76,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ${{ runner.temp }}/vm-rust-target
+            ${{ github.workspace }}/.cache/vm-rust-target
           key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
 
       - name: Set up Rust toolchain

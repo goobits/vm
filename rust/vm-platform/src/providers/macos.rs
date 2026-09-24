@@ -77,19 +77,7 @@ impl PlatformProvider for MacOSPlatform {
     }
 
     fn install_executable(&self, source: &Path, dest_dir: &Path, name: &str) -> Result<()> {
-        std::fs::create_dir_all(dest_dir).context("Failed to create destination directory")?;
-
-        let dest = dest_dir.join(name);
-
-        // Remove existing file/symlink if it exists
-        if dest.exists() || dest.is_symlink() {
-            std::fs::remove_file(&dest).context("Failed to remove existing file/symlink")?;
-        }
-
-        // Create symlink
-        std::os::unix::fs::symlink(source, &dest).context("Failed to create symlink")?;
-
-        Ok(())
+        self.install_symlink(source, dest_dir, name)
     }
 
     // === Package Manager Paths ===

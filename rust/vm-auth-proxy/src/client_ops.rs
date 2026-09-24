@@ -1,6 +1,6 @@
 //! Authenticated HTTP client operations for the auth proxy.
 
-use crate::storage::{get_auth_data_dir, SecretStore};
+use crate::storage::{get_auth_data_dir, read_auth_token};
 use crate::types::{EnvironmentResponse, SecretListResponse, SecretRequest, SecretScope};
 use anyhow::{anyhow, Context, Result};
 use reqwest::{Client, Response};
@@ -39,12 +39,7 @@ fn endpoint_url(server_url: &str, segments: &[&str]) -> Result<reqwest::Url> {
 }
 
 async fn auth_token() -> Result<String> {
-    let store =
-        SecretStore::new(get_auth_data_dir()?).context("Failed to open local secret store")?;
-    store
-        .get_auth_token()
-        .map(str::to_string)
-        .ok_or_else(|| anyhow!("No authentication token found. Is the auth service running?"))
+    read_auth_token(&get_auth_data_dir()?).context("Failed to read local auth token")
 }
 
 async fn response_or_error(response: Response, operation: &str) -> Result<Response> {

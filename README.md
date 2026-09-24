@@ -76,10 +76,6 @@ image, platform SDK, or provider.
 - [Plugins](docs/user-guide/plugins.md)
 - [Troubleshooting](docs/user-guide/troubleshooting.md)
 
-The maintained installation guide still repeats the unsupported curl-pipe
-pattern. Use the source checkout installation above until that guide and
-installer are reconciled.
-
 ## License
 
 [MIT](LICENSE).

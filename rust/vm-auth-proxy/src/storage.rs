@@ -34,7 +34,7 @@ impl SecretStore {
         let storage_file = data_dir.join(SECRETS_FILE);
 
         // Load or create storage
-        let mut storage = match fs::symlink_metadata(&storage_file) {
+        let (mut storage, created) = match fs::symlink_metadata(&storage_file) {
             Ok(metadata) => {
                 if metadata.file_type().is_symlink() || !metadata.is_file() {
                     bail!(
@@ -44,10 +44,10 @@ impl SecretStore {
                 }
                 vm_core::file_system::set_permissions_mode(&storage_file, FILE_PERMISSIONS)
                     .context("Failed to secure secrets file")?;
-                Self::load_storage(&storage_file)?
+                (Self::load_storage(&storage_file)?, false)
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                Self::create_new_storage()?
+                (Self::create_new_storage()?, true)
             }
             Err(error) => return Err(error).context("Failed to inspect secrets file"),
         };
@@ -66,7 +66,8 @@ impl SecretStore {
         let encryption_key = EncryptionKey::derive_from_password(&master_password, &salt_bytes)?;
 
         // Generate auth token if not present
-        if storage.auth_token.is_none() {
+        let missing_token = storage.auth_token.is_none();
+        if missing_token {
             storage.auth_token = Some(generate_auth_token());
         }
 
@@ -76,8 +77,9 @@ impl SecretStore {
             storage,
         };
 
-        // Save if we made changes (like adding auth token)
-        store.save()?;
+        if created || missing_token {
+            store.save()?;
+        }
 
         Ok(store)
     }
@@ -98,10 +100,19 @@ impl SecretStore {
 
         // Create or update secret
         let secret = Secret::new(encrypted_value, scope, description);
-        self.storage.secrets.insert(name.to_string(), secret);
-
-        // Save to disk
-        self.save().context("Failed to save secrets")
+        let previous = self.storage.secrets.insert(name.to_string(), secret);
+        if let Err(error) = self.save() {
+            match previous {
+                Some(previous) => {
+                    self.storage.secrets.insert(name.to_string(), previous);
+                }
+                None => {
+                    self.storage.secrets.remove(name);
+                }
+            }
+            return Err(error).context("Failed to save secrets");
+        }
+        Ok(())
     }
 
     /// Get a secret value (decrypted)
@@ -124,12 +135,15 @@ impl SecretStore {
 
     /// Remove a secret
     pub fn remove_secret(&mut self, name: &str) -> Result<bool> {
-        let removed = self.storage.secrets.remove(name).is_some();
-        if removed {
-            self.save()
-                .context("Failed to save secrets after removal")?;
+        let previous = self.storage.secrets.remove(name);
+        if let Some(secret) = previous {
+            if let Err(error) = self.save() {
+                self.storage.secrets.insert(name.to_string(), secret);
+                return Err(error).context("Failed to save secrets after removal");
+            }
+            return Ok(true);
         }
-        Ok(removed)
+        Ok(false)
     }
 
     /// Get environment variables for a VM
@@ -210,17 +224,43 @@ impl SecretStore {
         vm_core::file_system::atomic_write(&self.storage_file, content.as_bytes())
             .context("Failed to write secrets file")?;
 
-        // Set restrictive permissions on the file
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let perms = fs::Permissions::from_mode(FILE_PERMISSIONS);
-            fs::set_permissions(&self.storage_file, perms)
-                .context("Failed to set file permissions")?;
-        }
-
         Ok(())
     }
+}
+
+/// Read the controller token without modifying the store or creating a new one.
+pub fn read_auth_token(data_dir: &Path) -> Result<String> {
+    let directory =
+        fs::symlink_metadata(data_dir).context("Failed to inspect auth data directory")?;
+    if directory.file_type().is_symlink() || !directory.is_dir() {
+        bail!(
+            "Auth data path is not a private directory: {}",
+            data_dir.display()
+        );
+    }
+    let storage_file = data_dir.join(SECRETS_FILE);
+    let metadata = fs::symlink_metadata(&storage_file).context("Failed to inspect secrets file")?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        bail!(
+            "Secrets path is not a regular file: {}",
+            storage_file.display()
+        );
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if directory.permissions().mode() & 0o077 != 0 || metadata.permissions().mode() & 0o077 != 0
+        {
+            bail!("Auth token storage permissions are too broad");
+        }
+    }
+    let storage = SecretStore::load_storage(&storage_file)?;
+    if storage.version != SECRET_STORAGE_VERSION {
+        bail!("Unsupported secret storage version {}", storage.version);
+    }
+    storage
+        .auth_token
+        .context("No authentication token found. Is the auth service running?")
 }
 
 /// Get the default auth data directory
@@ -302,6 +342,82 @@ mod tests {
             .expect("should get secret metadata");
         assert_eq!(metadata.scope, SecretScope::Global);
         assert_eq!(metadata.description, Some("Test secret".to_string()));
+    }
+
+    #[test]
+    fn failed_persistence_does_not_change_in_memory_secrets() {
+        let temp_dir = TempDir::new().unwrap();
+        let data_dir = temp_dir.path().join("auth");
+        let mut store = SecretStore::new(data_dir.clone()).unwrap();
+        store
+            .add_secret("existing", "first", SecretScope::Global, None)
+            .unwrap();
+
+        // An inaccessible backing path gives a deterministic write failure even
+        // when the test process has permission to write otherwise.
+        fs::remove_dir_all(&data_dir).unwrap();
+        assert!(store
+            .add_secret("new", "second", SecretScope::Global, None)
+            .is_err());
+        assert!(store.get_secret("new").unwrap().is_none());
+        assert!(store.remove_secret("existing").is_err());
+        assert_eq!(
+            store.get_secret("existing").unwrap().as_deref(),
+            Some("first")
+        );
+    }
+
+    #[test]
+    fn token_reads_do_not_rewrite_secret_storage() {
+        let temp_dir = TempDir::new().unwrap();
+        let data_dir = temp_dir.path().to_path_buf();
+        let mut store = SecretStore::new(data_dir.clone()).unwrap();
+        store
+            .add_secret("first", "one", SecretScope::Global, None)
+            .unwrap();
+        let before = fs::read(data_dir.join(SECRETS_FILE)).unwrap();
+
+        assert_eq!(
+            read_auth_token(&data_dir).unwrap(),
+            store.get_auth_token().unwrap()
+        );
+        assert_eq!(fs::read(data_dir.join(SECRETS_FILE)).unwrap(), before);
+
+        store
+            .add_secret("second", "two", SecretScope::Global, None)
+            .unwrap();
+        assert_eq!(
+            read_auth_token(&data_dir).unwrap(),
+            store.get_auth_token().unwrap()
+        );
+        let reopened = SecretStore::new(data_dir).unwrap();
+        assert_eq!(
+            reopened.get_secret("first").unwrap().as_deref(),
+            Some("one")
+        );
+        assert_eq!(
+            reopened.get_secret("second").unwrap().as_deref(),
+            Some("two")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn token_reads_reject_exposed_or_symlinked_storage() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+
+        let temp_dir = TempDir::new().unwrap();
+        let data_dir = temp_dir.path().join("auth");
+        SecretStore::new(data_dir.clone()).unwrap();
+        let storage_file = data_dir.join(SECRETS_FILE);
+
+        fs::set_permissions(&storage_file, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(read_auth_token(&data_dir).is_err());
+        fs::set_permissions(&storage_file, fs::Permissions::from_mode(0o600)).unwrap();
+
+        let linked_dir = temp_dir.path().join("linked-auth");
+        symlink(&data_dir, &linked_dir).unwrap();
+        assert!(read_auth_token(&linked_dir).is_err());
     }
 
     #[test]

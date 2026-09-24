@@ -54,6 +54,18 @@ impl IntegrationTestFixture {
 }
 
 #[test]
+fn custom_state_directory_is_created_before_locking() -> Result<()> {
+    let fixture = IntegrationTestFixture::new()?;
+    let nested_dir = fixture.state_dir.join("new").join("nested");
+    let manager = StateManager::with_state_dir(nested_dir);
+    let state = fixture.create_test_state();
+
+    manager.save_state(&state)?;
+    assert_eq!(manager.load_state()?.container_name, state.container_name);
+    Ok(())
+}
+
+#[test]
 fn test_concurrent_state_operations() -> Result<()> {
     let fixture = IntegrationTestFixture::new()?;
     let state_manager = Arc::new(fixture.create_state_manager());

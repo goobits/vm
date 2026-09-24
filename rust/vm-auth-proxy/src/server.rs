@@ -198,12 +198,7 @@ async fn add_secret(
         }
         Err(error) => {
             error!(operation = "add_secret", error = %error, "secret operation failed");
-            let response = SecretResponse {
-                name,
-                success: false,
-                message: Some(format!("Failed to add secret: {error}")),
-            };
-            Ok(Json(response))
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
 }
@@ -251,22 +246,10 @@ async fn remove_secret(
             };
             Ok(Json(response))
         }
-        Ok(false) => {
-            let response = SecretResponse {
-                name,
-                success: false,
-                message: Some("Secret not found".to_string()),
-            };
-            Ok(Json(response))
-        }
+        Ok(false) => Err(StatusCode::NOT_FOUND),
         Err(error) => {
             error!(operation = "remove_secret", error = %error, "secret operation failed");
-            let response = SecretResponse {
-                name,
-                success: false,
-                message: Some(format!("Failed to remove secret: {error}")),
-            };
-            Ok(Json(response))
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
 }
@@ -380,7 +363,7 @@ mod tests {
     use axum_test::TestServer;
     use tempfile::TempDir;
 
-    async fn create_test_server() -> (TestServer, String) {
+    async fn create_test_server() -> (TestServer, String, TempDir) {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let store =
             SecretStore::new(temp_dir.path().to_path_buf()).expect("Failed to create SecretStore");
@@ -394,12 +377,12 @@ mod tests {
             start_time: Instant::now(),
         };
 
-        (TestServer::new(app_router(state)), auth_token)
+        (TestServer::new(app_router(state)), auth_token, temp_dir)
     }
 
     #[tokio::test]
     async fn test_health_check() {
-        let (server, _) = create_test_server().await;
+        let (server, _, _storage) = create_test_server().await;
 
         let response = server
             .get("/health")
@@ -418,7 +401,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_and_get_secret() {
-        let (server, token) = create_test_server().await;
+        let (server, token, storage) = create_test_server().await;
 
         // Add a secret
         let request = SecretRequest {
@@ -434,6 +417,12 @@ mod tests {
             .await;
         response.assert_status_ok();
 
+        let reopened = SecretStore::new(storage.path().to_path_buf()).unwrap();
+        assert_eq!(
+            reopened.get_secret("test_key").unwrap().as_deref(),
+            Some("test-secret-value")
+        );
+
         // Get the secret
         let response = server
             .get("/secrets/test_key")
@@ -445,7 +434,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_unauthorized_access() {
-        let (server, _) = create_test_server().await;
+        let (server, _, _storage) = create_test_server().await;
 
         // Try to access without token
         let response = server.get("/secrets").await;
@@ -460,8 +449,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn failed_secret_write_returns_error_and_preserves_memory() {
+        let (server, token, storage) = create_test_server().await;
+        let request = SecretRequest {
+            value: "value".to_string(),
+            scope: SecretScope::Global,
+            description: None,
+        };
+        std::fs::remove_dir_all(storage.path()).unwrap();
+
+        let response = server
+            .post("/secrets/key")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .json(&request)
+            .await;
+        response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+
+        let response = server
+            .get("/secrets/key")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await;
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn failed_secret_removal_returns_error_and_preserves_memory() {
+        let (server, token, storage) = create_test_server().await;
+        let request = SecretRequest {
+            value: "value".to_string(),
+            scope: SecretScope::Global,
+            description: None,
+        };
+        let response = server
+            .post("/secrets/key")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .json(&request)
+            .await;
+        response.assert_status_ok();
+        std::fs::remove_dir_all(storage.path()).unwrap();
+
+        let response = server
+            .delete("/secrets/key")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await;
+        response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+
+        let response = server
+            .get("/secrets/key")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await;
+        response.assert_status_ok();
+        response.assert_text("value");
+    }
+
+    #[tokio::test]
     async fn test_list_secrets() {
-        let (server, token) = create_test_server().await;
+        let (server, token, _storage) = create_test_server().await;
 
         // Add some secrets first
         let request = SecretRequest {

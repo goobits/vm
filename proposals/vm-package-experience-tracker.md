@@ -1,6 +1,6 @@
-# VM Package Experience Completion Tracker
+# VM Package Experience Tracker
 
-Status: complete
+Status: in progress
 
 ## Outcome
 

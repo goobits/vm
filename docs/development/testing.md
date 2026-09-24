@@ -8,6 +8,7 @@ The root `Makefile` owns the supported test and quality commands. It uses
 | Goal | Command |
 | --- | --- |
 | Unit tests | `make test-unit` |
+| CLI binary unit tests | `make test-bin` |
 | Non-network integration tests | `make test-integration` |
 | Unit and integration tests | `make test` |
 | Network-dependent tests | `make test-network` |
@@ -21,8 +22,9 @@ The Docker workflow entrypoint sources its assertions and scenarios from
 `scripts/internal/package-workflow-docker/`; static fixture files live under
 that directory instead of being embedded in the runner.
 
-`make quality-gates` also requires `cargo-deny`, nightly Rust with
-`cargo-udeps`, and any provider dependencies used by integration tests.
+`make quality-gates` also requires `cargo-deny`, `jscpd`, and any provider
+dependencies used by integration tests. Use `make udeps` separately to inspect
+unused dependencies; it requires nightly Rust and `cargo-udeps`.
 
 ## Test Layers
 
@@ -32,8 +34,10 @@ Unit tests cover pure behavior without contacting providers:
 
 ```bash
 make test-unit
+make test-bin
 # Equivalent fallback:
-cd rust && cargo test --workspace --lib -- --test-threads=10
+(cd rust && cargo test --workspace --lib -- --test-threads=10)
+(cd rust && cargo test -p goobits-vm --bin vm -- --test-threads=10)
 ```
 
 ### Integration Tests

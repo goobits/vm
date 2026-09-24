@@ -6,10 +6,21 @@
 
 use crate::traits::PlatformProvider;
 use anyhow::{Context, Result};
+#[cfg(unix)]
+use std::path::Path;
 use std::path::PathBuf;
 
 /// Provides default implementations for common path operations
 pub trait SharedPlatformOps: PlatformProvider {
+    #[cfg(unix)]
+    fn install_symlink(&self, source: &Path, dest_dir: &Path, name: &str) -> Result<()> {
+        std::fs::create_dir_all(dest_dir).context("Failed to create destination directory")?;
+        let dest = dest_dir.join(name);
+        if dest.exists() || dest.is_symlink() {
+            std::fs::remove_file(&dest).context("Failed to remove existing file/symlink")?;
+        }
+        std::os::unix::fs::symlink(source, &dest).context("Failed to create symlink")
+    }
     /// Default implementation for user_config_dir
     fn default_user_config_dir(&self) -> Result<PathBuf> {
         Ok(dirs::config_dir()
