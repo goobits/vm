@@ -126,7 +126,8 @@ mod cli_integration_tests {
         assert!(output.status.success());
 
         let stdout = String::from_utf8(output.stdout)?;
-        assert_eq!(stdout.trim(), "4096");
+        assert_eq!(stdout.lines().next(), Some("4096"));
+        assert!(stdout.contains("Source:") && stdout.contains("vm.yaml"));
 
         // Test getting all config
         let output = fixture.run_vm_command(&["config", "show", "--scope", "project"])?;
@@ -163,7 +164,8 @@ mod cli_integration_tests {
         assert!(output.status.success());
 
         let stdout = String::from_utf8(output.stdout)?;
-        assert_eq!(stdout.trim(), "tart");
+        assert_eq!(stdout.lines().next(), Some("tart"));
+        assert!(stdout.contains("Source:") && stdout.contains("config.yaml"));
 
         // Test setting another global value
         let output =
@@ -194,7 +196,10 @@ mod cli_integration_tests {
 
         // Verify values exist
         let output = fixture.run_vm_command(&["config", "get", "vm.memory"])?;
-        assert_eq!(String::from_utf8(output.stdout)?.trim(), "4096");
+        assert_eq!(
+            String::from_utf8(output.stdout)?.lines().next(),
+            Some("4096")
+        );
 
         // Unset a value
         let output = fixture.run_vm_command(&["config", "unset", "vm.memory"])?;
@@ -356,7 +361,7 @@ npm_packages:
             "global-preset",
             r#"
 services:
-  - docker
+  - redis
 "#,
         )?;
 
@@ -369,7 +374,11 @@ services:
             "--scope",
             "user",
         ])?;
-        assert!(output.status.success());
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
 
         let stdout = String::from_utf8(output.stdout)?;
         assert!(stdout.contains("✅ Applied preset 'global-preset' to global"));
@@ -382,7 +391,7 @@ services:
         assert!(output.status.success());
 
         let stdout = String::from_utf8(output.stdout)?;
-        assert!(stdout.contains("docker:"));
+        assert!(stdout.contains("redis:"));
 
         Ok(())
     }
@@ -509,6 +518,7 @@ profiles:
         let stdout = String::from_utf8(output.stdout)?;
         assert!(stdout.contains("provider: tart"));
         assert!(stdout.contains("default_profile: tart"));
+        assert!(stdout.contains("provider: profile tart"), "{stdout}");
 
         Ok(())
     }
@@ -567,7 +577,7 @@ profiles:
         let output = fixture.run_vm_command(&["config", "get", "services.postgresql.version"])?;
         assert!(output.status.success());
         let stdout = String::from_utf8(output.stdout)?;
-        assert_eq!(stdout.trim().trim_matches('\''), "15");
+        assert_eq!(stdout.lines().next().unwrap().trim_matches('\''), "15");
 
         Ok(())
     }

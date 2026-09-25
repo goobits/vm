@@ -22,6 +22,14 @@ impl Store {
                 .cloned()
                 .ok_or_else(|| WorkError::Internal("idempotency target is missing".into()));
         }
+        if current.removed_packages.contains(&request.package)
+            || current.removed_consumers.contains(&request.consumer)
+        {
+            return Err(WorkError::NotFound(format!(
+                "registered package '{}' or consumer '{}'",
+                request.package, request.consumer
+            )));
+        }
         if let Some(existing) = current.rollouts.values().find(|rollout| {
             rollout.package == request.package
                 && rollout.consumer == request.consumer

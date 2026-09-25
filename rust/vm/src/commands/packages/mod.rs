@@ -285,6 +285,7 @@ pub(super) async fn handle(
         }
         PackagesSubcommand::List => catalog::list(&files).await,
         PackagesSubcommand::Show { name } => catalog::show_package(&files, &name).await,
+        PackagesSubcommand::Remove { name } => catalog::remove_package(&files, &name).await,
         PackagesSubcommand::Consumers { command } => {
             consumer::handle_catalog(&files, command).await
         }

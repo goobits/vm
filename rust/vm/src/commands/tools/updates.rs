@@ -13,8 +13,7 @@ use super::reconcile::{apply_updates, reconcile_subject};
 use crate::cli::FleetArgs;
 use crate::commands::base;
 use crate::commands::command_context::{
-    load_runtime_subject, load_runtime_subject_for_instance, project_name, require_project_config,
-    RuntimeSubject,
+    load_runtime_subject, load_runtime_subject_for_instance, RuntimeSubject,
 };
 use crate::commands::vm_ops::{self, FleetProgress, InstanceStateFilter};
 use crate::error::{VmError, VmResult};
@@ -196,7 +195,7 @@ fn resolve_request(
         );
     }
     let config = VmConfig::load(config_path.clone()).map_err(VmError::from)?;
-    require_project_config(&config)?;
+    let project = vm_ops::FleetProject::new(config)?;
     let selected = if all_envs || !environments.is_empty() {
         None
     } else {
@@ -206,10 +205,12 @@ fn resolve_request(
         tools,
         environments,
         all_envs,
-        Some(project_name(&config)),
+        Some(&project.name),
         selected.as_deref(),
         include_stopped,
-        vm_ops::resolve_fleet_targets,
+        |query, state| {
+            vm_ops::filter_project_instances(vm_ops::resolve_fleet_targets(query, state)?, &project)
+        },
     )
 }
 

@@ -16,6 +16,11 @@ impl PackageInfrastructureClient {
         self.get_work("v1/consumers").await
     }
 
+    pub async fn remove_consumer(&self, name: &str) -> Result<()> {
+        let name = url::form_urlencoded::byte_serialize(name.as_bytes()).collect::<String>();
+        self.delete_work(&format!("v1/consumers/{name}")).await
+    }
+
     pub async fn package_consumers(&self, package: &str) -> Result<Vec<ConsumerUsage>> {
         let package = url::form_urlencoded::byte_serialize(package.as_bytes()).collect::<String>();
         self.get_work(&format!("v1/consumers/by-package/{package}"))

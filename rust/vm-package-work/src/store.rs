@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -42,15 +42,21 @@ pub(crate) struct Database {
     #[serde(default)]
     pub(crate) packages: BTreeMap<String, PackageDefinition>,
     #[serde(default)]
+    pub(crate) removed_packages: BTreeSet<String>,
+    #[serde(default)]
     pub(crate) submissions: BTreeMap<String, SubmissionRecord>,
     #[serde(default)]
     pub(crate) releases: BTreeMap<String, ReleaseRecord>,
     #[serde(default)]
     pub(crate) consumers: BTreeMap<String, ConsumerRecord>,
     #[serde(default)]
+    pub(crate) removed_consumers: BTreeSet<String>,
+    #[serde(default)]
     pub(crate) rollouts: BTreeMap<String, RolloutRecord>,
     #[serde(default)]
     pub(crate) tools: BTreeMap<String, ToolDefinition>,
+    #[serde(default)]
+    pub(crate) removed_tools: BTreeSet<String>,
     #[serde(default)]
     pub(crate) tool_artifacts: BTreeMap<String, ToolArtifactRecord>,
     #[serde(default)]

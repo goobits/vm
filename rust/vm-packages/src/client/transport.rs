@@ -86,6 +86,21 @@ fn clean_diagnostic(value: &str, limit: usize) -> String {
 }
 
 impl PackageInfrastructureClient {
+    pub(super) async fn delete_work(&self, path: &str) -> Result<()> {
+        let token = self
+            .controller_token
+            .as_deref()
+            .context("package workflow controller credential is unavailable")?;
+        let url = self.work_url(path);
+        let response = self
+            .http
+            .delete(&url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .with_context(|| format!("failed to connect to package workflow at {url}"))?;
+        decode_json(response, "package workflow", "DELETE", &url).await
+    }
     pub(super) async fn get_json<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T> {
         let url = format!("{}/{}", self.endpoints.gateway(), path);
         let mut request = self.http.get(&url);

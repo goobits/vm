@@ -389,10 +389,12 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
     }
 }
 
-fn fleet_project(config_path: Option<PathBuf>, profile: Option<String>) -> VmResult<String> {
+fn fleet_project(
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+) -> VmResult<vm_ops::FleetProject> {
     let config = AppConfig::load(config_path, profile, None)?;
-    command_context::require_project_config(&config.vm)?;
-    Ok(project_name(&config.vm).to_string())
+    vm_ops::FleetProject::new(config.vm)
 }
 
 fn resolve_named_subjects(

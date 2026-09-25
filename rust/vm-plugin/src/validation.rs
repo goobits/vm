@@ -180,6 +180,17 @@ environment:
     }
 
     #[test]
+    fn provisioning_scripts_are_rejected_as_unsupported() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let plugin = create_test_preset_plugin(&temp_dir, "scripted", "1.0.0")?;
+        fs::write(&plugin.content_file, "provision: [echo hello]\n")?;
+        let result = validate_plugin(&plugin)?;
+        assert!(!result.is_valid);
+        assert!(result.errors.iter().any(|error| error.field == "provision"));
+        Ok(())
+    }
+
+    #[test]
     fn test_invalid_plugin_name() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let plugin = create_test_preset_plugin(&temp_dir, "invalid name!", "1.0.0")?;

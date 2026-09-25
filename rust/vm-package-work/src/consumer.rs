@@ -12,13 +12,14 @@ impl Store {
         validate_consumer(&request)?;
         let mut current = self.database.lock().await;
         for package in request.dependencies.keys() {
-            if !current.packages.contains_key(package) {
+            if !current.packages.contains_key(package) || current.removed_packages.contains(package)
+            {
                 return Err(WorkError::Invalid(format!(
                     "consumer dependency '{package}' is not a registered shared package"
                 )));
             }
         }
-        if let Some(existing) = current.consumers.get(&request.name) {
+        if let Some(existing) = current.consumers.get(&request.name).cloned() {
             if !repository_urls_equivalent(&existing.repository, &request.repository)
                 || existing.default_branch != request.default_branch
             {
@@ -28,10 +29,16 @@ impl Store {
                 )));
             }
             if existing.dependencies == request.dependencies {
-                return Ok(existing.clone());
+                if current.removed_consumers.contains(&request.name) {
+                    let mut next = current.clone();
+                    next.removed_consumers.remove(&request.name);
+                    self.commit(&mut current, next).await?;
+                }
+                return Ok(existing);
             }
 
             let mut next = current.clone();
+            next.removed_consumers.remove(&request.name);
             let now = Utc::now();
             let consumer = next
                 .consumers
@@ -85,9 +92,11 @@ impl Store {
     }
 
     pub async fn consumer(&self, name: &str) -> WorkResult<ConsumerRecord> {
-        self.database
-            .lock()
-            .await
+        let database = self.database.lock().await;
+        if database.removed_consumers.contains(name) {
+            return Err(WorkError::NotFound(format!("consumer {name}")));
+        }
+        database
             .consumers
             .get(name)
             .cloned()
@@ -95,18 +104,18 @@ impl Store {
     }
 
     pub async fn consumers(&self) -> Vec<ConsumerRecord> {
-        self.database
-            .lock()
-            .await
+        let database = self.database.lock().await;
+        database
             .consumers
             .values()
+            .filter(|consumer| !database.removed_consumers.contains(&consumer.name))
             .cloned()
             .collect()
     }
 
     pub async fn package_consumers(&self, package: &str) -> WorkResult<Vec<ConsumerUsage>> {
         let database = self.database.lock().await;
-        if !database.packages.contains_key(package) {
+        if !database.packages.contains_key(package) || database.removed_packages.contains(package) {
             return Err(WorkError::NotFound(format!("package {package}")));
         }
         Ok(package_consumers(&database, package))
@@ -117,6 +126,7 @@ impl Store {
         database
             .packages
             .keys()
+            .filter(|package| !database.removed_packages.contains(*package))
             .map(|package| PackageDrift {
                 package: package.clone(),
                 latest_version: latest_version(&database, package),
@@ -124,12 +134,45 @@ impl Store {
             })
             .collect()
     }
+
+    pub async fn remove_consumer(&self, name: &str) -> WorkResult<()> {
+        let mut current = self.database.lock().await;
+        if !current.consumers.contains_key(name) {
+            return Err(WorkError::NotFound(format!("consumer {name}")));
+        }
+        if current.removed_consumers.contains(name) {
+            return Ok(());
+        }
+        if current.checkouts.values().any(|checkout| {
+            checkout.consumers.iter().any(|consumer| consumer == name)
+                && !checkout.state.is_terminal()
+        }) {
+            return Err(WorkError::Conflict(format!(
+                "consumer '{name}' has an unfinished checkout"
+            )));
+        }
+        if current.rollouts.values().any(|rollout| {
+            rollout.consumer == name
+                && !matches!(
+                    rollout.state,
+                    RolloutState::Closed | RolloutState::Cancelled | RolloutState::Failed
+                )
+        }) {
+            return Err(WorkError::Conflict(format!(
+                "consumer '{name}' has unfinished dependency updates"
+            )));
+        }
+        let mut next = current.clone();
+        next.removed_consumers.insert(name.to_string());
+        self.commit(&mut current, next).await
+    }
 }
 
 fn package_consumers(database: &crate::store::Database, package: &str) -> Vec<ConsumerUsage> {
     database
         .consumers
         .values()
+        .filter(|consumer| !database.removed_consumers.contains(&consumer.name))
         .filter_map(|consumer| {
             consumer.dependencies.get(package).map(|version| {
                 let pending = database

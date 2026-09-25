@@ -34,6 +34,8 @@ pub enum PackageConsumerSubcommand {
     },
     /// Show a registered consumer and its declared dependencies
     Show { name: String },
+    /// Remove a consumer registration while preserving rollout records and source repositories
+    Remove { name: String },
     /// Show package-version drift across registered consumers
     Drift {
         #[arg(long)]
@@ -199,6 +201,8 @@ pub enum PackagesSubcommand {
     List,
     /// Show one registered package
     Show { name: String },
+    /// Remove a package registration while preserving published versions and source repositories
+    Remove { name: String },
     /// Manage consumer repositories tracked by the package infrastructure
     Consumers {
         #[command(subcommand)]
@@ -251,6 +255,8 @@ pub enum ToolsSubcommand {
     List,
     /// Show one vendor definition or package tool and its published releases
     Show { name: String },
+    /// Remove a managed tool registration while preserving published artifacts
+    Remove { name: String },
     /// Refresh the appliance-generated tool catalog cache
     Refresh {
         #[arg(long, hide = true)]

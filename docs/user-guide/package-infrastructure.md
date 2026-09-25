@@ -452,6 +452,12 @@ when it finds no Git repositories. Registration is idempotent.
 Supported ecosystems are `npm`, `cargo`, and `python`. A package has one
 canonical repository and immutable published versions.
 
+`vm packages consumers remove NAME` retires a consumer after its checkouts and
+dependency updates finish. `vm packages remove NAME` also requires its consumers
+to be removed or updated first. Neither command deletes a repository, published
+version, or release receipt. Registering the same source identity restores its
+catalog entry; a different repository or branch remains a conflict.
+
 ## Advanced: Tool Manifests and Targeting
 
 Tool definitions use the same private appliance but remain separate from
@@ -558,6 +564,12 @@ vm tools update codex claude antigravity
 vm tools update agent-skills another-tool
 vm tools update agent-skills --env projects-dev --env typemill-dev
 ```
+
+`vm tools remove NAME` retires a managed tool registration after it is disabled
+globally and removed from the current project's selection. Active checkouts,
+activations, and dependent tool builds block removal. Published artifacts and
+existing guest files remain available for audit; the command does not uninstall
+them from guests. Remove selections in other projects before their next update.
 
 These status and targeted-update commands are diagnostic and recovery controls,
 not daily release steps. See the

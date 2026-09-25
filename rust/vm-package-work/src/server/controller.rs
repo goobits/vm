@@ -31,6 +31,22 @@ pub(super) async fn register_consumer(
     ))
 }
 
+pub(super) async fn remove_package(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> WorkResult<Json<()>> {
+    state.store.remove_package(&name).await?;
+    Ok(Json(()))
+}
+
+pub(super) async fn remove_consumer(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> WorkResult<Json<()>> {
+    state.store.remove_consumer(&name).await?;
+    Ok(Json(()))
+}
+
 pub(super) async fn create_rollout(
     State(state): State<AppState>,
     Json(request): Json<CreateRollout>,

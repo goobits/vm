@@ -100,8 +100,21 @@ impl AppConfig {
             return Some(profile.to_string());
         }
 
-        let effective_provider =
-            provider_override.or_else(|| vm.provider.as_ref().map(config::ProviderName::as_str));
+        if let Some(provider_name) = provider_override {
+            if vm
+                .profiles
+                .as_ref()
+                .is_some_and(|profiles| profiles.contains_key(provider_name))
+            {
+                return Some(provider_name.to_string());
+            }
+        }
+
+        if let Some(default_profile) = &vm.default_profile {
+            return Some(default_profile.clone());
+        }
+
+        let effective_provider = vm.provider.as_ref().map(config::ProviderName::as_str);
         if let Some(provider_name) = effective_provider {
             if vm
                 .profiles
@@ -112,12 +125,10 @@ impl AppConfig {
             }
         }
 
-        vm.default_profile.clone().or_else(|| {
-            vm.profiles
-                .as_ref()
-                .filter(|profiles| profiles.len() == 1)
-                .and_then(|profiles| profiles.keys().next().cloned())
-        })
+        vm.profiles
+            .as_ref()
+            .filter(|profiles| profiles.len() == 1)
+            .and_then(|profiles| profiles.keys().next().cloned())
     }
 
     /// Load complete configuration from standard locations
@@ -290,7 +301,7 @@ profiles:
 
     #[test]
     #[serial]
-    fn configured_provider_uses_matching_profile_when_present() -> Result<()> {
+    fn default_profile_precedes_configured_provider_match() -> Result<()> {
         with_temp_home(|temp_dir| {
             let config_path = temp_dir.path().join("vm.yaml");
             std::fs::write(
@@ -311,14 +322,14 @@ profiles:
             )?;
 
             let app = AppConfig::load(Some(config_path), None, None)?;
-            assert_eq!(app.vm.provider.as_deref(), Some("tart"));
+            assert_eq!(app.vm.provider.as_deref(), Some("docker"));
             assert_eq!(
                 app.vm
                     .vm
                     .as_ref()
                     .and_then(|vm| vm.image.as_ref())
                     .map(|b| serde_yaml_ng::to_string(b).unwrap().trim().to_string()),
-                Some("vibe-tart-sequoia-base".to_string())
+                Some("'@vibe-image'".to_string())
             );
             Ok(())
         })

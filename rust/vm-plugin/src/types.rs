@@ -12,6 +12,7 @@ pub enum PresetCategory {
 
 /// Plugin metadata (stored in plugin.yaml)
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PluginInfo {
     pub name: String,
     pub version: String,
@@ -39,6 +40,7 @@ pub struct Plugin {
 
 /// Preset content (stored in preset.yaml)
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PresetContent {
     #[serde(default)]
     pub packages: Vec<String>,
@@ -88,6 +90,7 @@ pub struct PresetContent {
 
 /// Service content (stored in service.yaml)
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ServiceContent {
     pub image: String,
 
@@ -206,6 +209,22 @@ depends_on:
 
         assert!(preset_yaml.contains("preset"));
         assert!(service_yaml.contains("service"));
+    }
+
+    #[test]
+    fn manifests_reject_undeclared_capabilities() {
+        assert!(serde_yaml_ng::from_str::<PluginInfo>(
+            "name: demo\nversion: 1.0.0\nplugin_type: preset\ncommands: [shell]\n"
+        )
+        .is_err());
+        assert!(serde_yaml_ng::from_str::<PresetContent>(
+            "packages: [git]\nhost_command: whoami\n"
+        )
+        .is_err());
+        assert!(
+            serde_yaml_ng::from_str::<ServiceContent>("image: redis:7\nprivileged: true\n")
+                .is_err()
+        );
     }
 
     #[test]

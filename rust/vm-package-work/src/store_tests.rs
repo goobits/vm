@@ -19,6 +19,58 @@ fn request(key: &str, agent: &str) -> CreateCheckout {
     }
 }
 
+#[tokio::test]
+async fn registration_removal_preserves_history_and_blocks_live_references() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::open(directory.path()).await.unwrap();
+    let package = RegisterPackage {
+        name: "auth".into(),
+        ecosystem: PackageEcosystem::Cargo,
+        repository: "https://example.com/auth.git".into(),
+        default_branch: "main".into(),
+        workspace_release: false,
+    };
+    store.register_package(package.clone()).await.unwrap();
+    store
+        .register_consumer(RegisterConsumer {
+            name: "app".into(),
+            repository: "https://example.com/app.git".into(),
+            default_branch: "main".into(),
+            dependencies: BTreeMap::from([("auth".into(), "1.0.0".into())]),
+        })
+        .await
+        .unwrap();
+    assert!(matches!(
+        store.remove_package("auth").await,
+        Err(crate::WorkError::Conflict(_))
+    ));
+    store.remove_consumer("app").await.unwrap();
+    assert!(store.consumers().await.is_empty());
+
+    let checkout = store
+        .create_checkout(request("remove-checkout", "agent"))
+        .await
+        .unwrap();
+    assert!(matches!(
+        store.remove_package("auth").await,
+        Err(crate::WorkError::Conflict(_))
+    ));
+    assert_eq!(checkout.checkout.package, "auth");
+    // A fresh store without active work can retire registrations while keeping
+    // their durable definitions available for an exact re-registration.
+    let clean = Store::open(directory.path().join("clean")).await.unwrap();
+    clean.register_package(package.clone()).await.unwrap();
+    clean.remove_package("auth").await.unwrap();
+    assert!(clean.packages().await.is_empty());
+    assert!(clean.package("auth").await.is_err());
+    assert!(clean.database.lock().await.packages.contains_key("auth"));
+    drop(clean);
+    let reopened = Store::open(directory.path().join("clean")).await.unwrap();
+    assert!(reopened.packages().await.is_empty());
+    reopened.register_package(package).await.unwrap();
+    assert_eq!(reopened.packages().await.len(), 1);
+}
+
 #[test]
 fn idempotency_records_require_the_current_target_field() {
     assert!(serde_json::from_str::<IdempotencyRecord>(

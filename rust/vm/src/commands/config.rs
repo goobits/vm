@@ -26,19 +26,29 @@ fn load_selected_config(
 
 /// Handle the `vm config validate` command.
 fn handle_validate_command(config_path: Option<PathBuf>, profile: Option<String>) -> VmResult<()> {
-    let config = load_selected_config(config_path, profile)?.vm;
-    let report = validate_config(&config, ValidationMode::Static).map_err(|error| {
-        VmError::validation(
-            format!("Unexpected configuration validation error: {error}"),
-            None::<String>,
-        )
+    let path = config_path
+        .clone()
+        .map(Ok)
+        .unwrap_or_else(find_project_config)?;
+    ConfigOps::validate_file(&path).map_err(|error| match error {
+        vm_core::error::VmError::Config(message) => VmError::validation(message, None::<String>),
+        other => VmError::from(other),
     })?;
+    let config = load_selected_config(config_path, profile)?.vm;
+    if config.environments.is_empty() || config.provider.is_some() {
+        let report = validate_config(&config, ValidationMode::Static).map_err(|error| {
+            VmError::validation(
+                format!("Unexpected configuration validation error: {error}"),
+                None::<String>,
+            )
+        })?;
 
-    if report.has_errors() {
-        return Err(VmError::validation(
-            format!("Configuration is invalid:\n{report}"),
-            None::<String>,
-        ));
+        if report.has_errors() {
+            return Err(VmError::validation(
+                format!("Configuration is invalid:\n{report}"),
+                None::<String>,
+            ));
+        }
     }
 
     vm_success!("Configuration is valid.");
@@ -51,7 +61,10 @@ fn handle_show_command(
     profile: Option<String>,
     scope: ConfigReadScope,
 ) -> VmResult<()> {
-    let (mut value, source) = read_scope(scope, config_path, profile)?;
+    let (mut value, source) = read_scope(scope, config_path.clone(), profile.clone())?;
+    let origins = ConfigOrigins::load(scope, config_path, profile)?;
+    let mut paths = Vec::new();
+    collect_field_paths(&value, "", &mut paths);
     redact_yaml(&mut value, "");
     vm_println!("Config source: {source}");
     vm_println!(
@@ -59,7 +72,167 @@ fn handle_show_command(
         serde_yaml::to_string(&value)
             .map_err(|e| { VmError::config(e, "Failed to serialize configuration to YAML") })?
     );
+    vm_println!("Sources:");
+    for path in paths {
+        vm_println!("  {path}: {}", origins.source_for(&path));
+    }
     Ok(())
+}
+
+struct ConfigOrigins {
+    scope: ConfigReadScope,
+    project_path: Option<PathBuf>,
+    project: Option<serde_yaml::Value>,
+    user_path: PathBuf,
+    user: Option<serde_yaml::Value>,
+    profile_name: Option<String>,
+    preset_name: Option<String>,
+    defaults: serde_yaml::Value,
+    effective: Option<serde_yaml::Value>,
+}
+
+impl ConfigOrigins {
+    fn load(
+        scope: ConfigReadScope,
+        config_path: Option<PathBuf>,
+        profile: Option<String>,
+    ) -> VmResult<Self> {
+        let user_path = vm_core::user_paths::global_config_path()?;
+        let user = if scope == ConfigReadScope::Project {
+            None
+        } else {
+            user_path
+                .is_file()
+                .then(|| read_raw_config(user_path.clone()).map(|(value, _)| value))
+                .transpose()?
+        };
+        let project_path = if scope == ConfigReadScope::User {
+            None
+        } else {
+            match config_path {
+                Some(path) => Some(path),
+                None => find_project_config().ok(),
+            }
+        };
+        let project = project_path
+            .as_ref()
+            .filter(|path| path.is_file())
+            .map(|path| read_raw_config(path.clone()).map(|(value, _)| value))
+            .transpose()?;
+        let loaded = if scope == ConfigReadScope::Effective {
+            project_path
+                .as_ref()
+                .filter(|path| path.is_file())
+                .map(|path| VmConfig::load(Some(path.clone())))
+                .transpose()?
+        } else {
+            None
+        };
+        let profile_name = loaded
+            .as_ref()
+            .and_then(|config| AppConfig::resolve_profile_name(config, profile.as_deref(), None));
+        let preset_name = project
+            .as_ref()
+            .and_then(|value| nested_value(value, "preset"))
+            .and_then(serde_yaml::Value::as_str)
+            .map(str::to_string);
+        let defaults = serde_yaml::to_value(VmConfig::default())
+            .map_err(|error| VmError::config(error, "Cannot serialize default configuration"))?;
+        let effective = if scope == ConfigReadScope::Effective {
+            Some(read_scope(scope, project_path.clone(), profile)?.0)
+        } else {
+            None
+        };
+        Ok(Self {
+            scope,
+            project_path,
+            project,
+            user_path,
+            user,
+            profile_name,
+            preset_name,
+            defaults,
+            effective,
+        })
+    }
+
+    fn source_for(&self, field: &str) -> String {
+        match self.scope {
+            ConfigReadScope::Project => {
+                return self
+                    .project_path
+                    .as_ref()
+                    .map_or_else(|| "project".to_string(), |path| path.display().to_string())
+            }
+            ConfigReadScope::User => return self.user_path.display().to_string(),
+            ConfigReadScope::Effective => {}
+        }
+        if let (Some(profile), Some(project)) = (&self.profile_name, &self.project) {
+            let profile_field = format!("profiles.{profile}.{field}");
+            if nested_value(project, &profile_field).is_some() {
+                return format!(
+                    "profile {profile} in {}",
+                    self.project_path.as_ref().unwrap().display()
+                );
+            }
+        }
+        if self
+            .project
+            .as_ref()
+            .is_some_and(|project| nested_value(project, field).is_some())
+        {
+            return self.project_path.as_ref().unwrap().display().to_string();
+        }
+        if let Some(name) = field
+            .strip_prefix("tools.")
+            .and_then(|tail| tail.split('.').next())
+        {
+            if self
+                .project
+                .as_ref()
+                .is_some_and(|project| nested_value(project, &format!("tools.{name}")).is_some())
+            {
+                return self.project_path.as_ref().unwrap().display().to_string();
+            }
+        }
+        if field.starts_with("tools.")
+            && self
+                .user
+                .as_ref()
+                .is_some_and(|user| nested_value(user, field).is_some())
+        {
+            return self.user_path.display().to_string();
+        }
+        if let Some(preset) = &self.preset_name {
+            if nested_value(&self.defaults, field)
+                != self
+                    .effective
+                    .as_ref()
+                    .and_then(|value| nested_value(value, field))
+            {
+                return format!("preset {preset}");
+            }
+        }
+        "built-in defaults".to_string()
+    }
+}
+
+fn collect_field_paths(value: &serde_yaml::Value, prefix: &str, paths: &mut Vec<String>) {
+    if let Some(fields) = value.as_mapping() {
+        for (key, child) in fields {
+            let Some(key) = key.as_str() else { continue };
+            let path = if prefix.is_empty() {
+                key.to_string()
+            } else {
+                format!("{prefix}.{key}")
+            };
+            if child.as_mapping().is_some_and(|map| !map.is_empty()) {
+                collect_field_paths(child, &path, paths);
+            } else {
+                paths.push(path);
+            }
+        }
+    }
 }
 
 fn read_scope(
@@ -165,7 +338,8 @@ fn handle_get_command(
     config_path: Option<PathBuf>,
     profile: Option<String>,
 ) -> VmResult<()> {
-    let (value, _) = read_scope(scope, config_path, profile)?;
+    let (value, _) = read_scope(scope, config_path.clone(), profile.clone())?;
+    let origins = ConfigOrigins::load(scope, config_path, profile)?;
     let mut selected = nested_value(&value, field)
         .ok_or_else(|| {
             VmError::validation(
@@ -180,6 +354,7 @@ fn handle_get_command(
         serde_yaml::to_string(&selected)
             .map_err(|e| VmError::config(e, "Failed to serialize configuration field"))?
     );
+    vm_println!("Source: {}", origins.source_for(field));
     Ok(())
 }
 
@@ -193,11 +368,15 @@ fn nested_value<'a>(value: &'a serde_yaml::Value, field: &str) -> Option<&'a ser
 
 fn report_unset_effective(
     field: &str,
-    scope: ConfigWriteScope,
+    _scope: ConfigWriteScope,
     config_path: Option<PathBuf>,
     profile: Option<String>,
 ) {
-    let Ok((value, _)) = read_scope(ConfigReadScope::Effective, config_path, profile) else {
+    let Ok((value, _)) = read_scope(
+        ConfigReadScope::Effective,
+        config_path.clone(),
+        profile.clone(),
+    ) else {
         vm_println!("Effective {field}: unavailable outside a project");
         return;
     };
@@ -209,12 +388,9 @@ fn report_unset_effective(
     redact_yaml(&mut value, field);
     if let Ok(serialized) = serde_yaml::to_string(&value) {
         vm_println!("Effective {field}: {}", serialized.trim());
-        let source = if scope == ConfigWriteScope::Project {
-            "inherited configuration"
-        } else {
-            "resolved project configuration or defaults"
-        };
-        vm_println!("Source: {source}");
+        if let Ok(origins) = ConfigOrigins::load(ConfigReadScope::Effective, config_path, profile) {
+            vm_println!("Source: {}", origins.source_for(field));
+        }
     }
 }
 
@@ -676,6 +852,19 @@ mod tests {
         handle_validate_command(Some(config_path.clone()), None).unwrap();
 
         assert_eq!(std::fs::read(config_path).unwrap(), contents);
+    }
+
+    #[test]
+    fn validation_rejects_misspelled_nested_fields() {
+        let directory = tempfile::tempdir().unwrap();
+        let config_path = directory.path().join("vm.yaml");
+        let contents = "project:\n  name: selected\nprovider: docker\nvm:\n  memroy: 4096\n";
+        std::fs::write(&config_path, contents).unwrap();
+        let error = handle_validate_command(Some(config_path.clone()), None).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("Unknown configuration field: vm.memroy"));
+        assert_eq!(std::fs::read_to_string(config_path).unwrap(), contents);
     }
 
     #[test]

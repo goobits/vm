@@ -1,10 +1,12 @@
 //! Shared project-scoped targeting for `--all-envs` operations.
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use tracing::{debug, info_span};
 
 use crate::cli::FleetArgs;
+use crate::commands::command_context::{project_name, require_project_config};
 use crate::commands::status;
 use crate::error::{VmError, VmResult};
 use vm_config::config::VmConfig;
@@ -31,26 +33,79 @@ pub(in crate::commands) fn resolve_fleet_targets(
     resolve_targets(query_for(targets, state))
 }
 
+pub struct FleetProject {
+    pub name: String,
+    pub config_path: PathBuf,
+    pub config: VmConfig,
+}
+
+impl FleetProject {
+    pub fn new(config: VmConfig) -> VmResult<Self> {
+        require_project_config(&config)?;
+        let config_path = config
+            .owning_config_path()
+            .ok_or_else(|| {
+                VmError::validation("Project configuration has no source path", None::<String>)
+            })?
+            .canonicalize()
+            .map_err(VmError::from)?;
+        Ok(Self {
+            name: project_name(&config).to_string(),
+            config_path,
+            config,
+        })
+    }
+}
+
 fn project_targets(
     targets: &FleetArgs,
     state: InstanceStateFilter,
-    project: &str,
+    project: &FleetProject,
 ) -> VmResult<Vec<InstanceInfo>> {
-    let instances = filter_project_instances(resolve_fleet_targets(targets, state)?, project);
+    let instances = filter_project_instances(resolve_fleet_targets(targets, state)?, project)?;
     if instances.is_empty() {
         return Err(VmError::validation(
-            format!("No matching environments belong to project '{project}'"),
+            format!(
+                "No matching environments belong to project '{}'",
+                project.name
+            ),
             Some("Run `vm list` to inspect project environments"),
         ));
     }
     Ok(instances)
 }
 
-fn filter_project_instances(instances: Vec<InstanceInfo>, project: &str) -> Vec<InstanceInfo> {
-    instances
-        .into_iter()
-        .filter(|instance| instance.project.as_deref() == Some(project))
-        .collect()
+pub(in crate::commands) fn filter_project_instances(
+    instances: Vec<InstanceInfo>,
+    project: &FleetProject,
+) -> VmResult<Vec<InstanceInfo>> {
+    filter_project_instances_with(instances, project, |instance| {
+        let provider = configured_provider(&project.config, &instance.provider)?;
+        provider
+            .instance_config_path(&instance.name)
+            .map_err(VmError::from)
+    })
+}
+
+fn filter_project_instances_with(
+    instances: Vec<InstanceInfo>,
+    project: &FleetProject,
+    mut owner: impl FnMut(&InstanceInfo) -> VmResult<Option<PathBuf>>,
+) -> VmResult<Vec<InstanceInfo>> {
+    let mut selected = Vec::new();
+    for instance in instances {
+        if instance.project.as_deref() != Some(&project.name) {
+            continue;
+        }
+        if same_owner(owner(&instance)?.as_deref(), &project.config_path) {
+            selected.push(instance);
+        }
+    }
+    Ok(selected)
+}
+
+fn same_owner(owner: Option<&std::path::Path>, selected: &std::path::Path) -> bool {
+    owner.and_then(|path| path.canonicalize().ok()).as_deref() == Some(selected)
 }
 
 pub(in crate::commands) fn configured_provider(
@@ -84,7 +139,11 @@ impl FleetProgress {
     }
 }
 
-pub fn handle_fleet_exec(targets: &FleetArgs, project: &str, command: &[String]) -> VmResult<()> {
+pub fn handle_fleet_exec(
+    targets: &FleetArgs,
+    project: &FleetProject,
+    command: &[String],
+) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "fleet_exec");
     let _enter = span.enter();
 
@@ -93,7 +152,7 @@ pub fn handle_fleet_exec(targets: &FleetArgs, project: &str, command: &[String])
     let mut progress = FleetProgress::default();
 
     for (provider_name, provider_instances) in group_by_provider(instances) {
-        let provider = provider_for(&provider_name)?;
+        let provider = configured_provider(&project.config, &provider_name)?;
         for instance in provider_instances {
             debug!(
                 provider = %provider_name,
@@ -115,11 +174,11 @@ pub fn handle_fleet_exec(targets: &FleetArgs, project: &str, command: &[String])
     progress.finish()
 }
 
-pub fn handle_fleet_status(targets: &FleetArgs, project: &str) -> VmResult<()> {
+pub fn handle_fleet_status(targets: &FleetArgs, project: &FleetProject) -> VmResult<()> {
     let instances = project_targets(targets, InstanceStateFilter::Any, project)?;
     let mut progress = FleetProgress::default();
     for (provider_name, provider_instances) in group_by_provider(instances) {
-        let provider = provider_for(&provider_name)?;
+        let provider = configured_provider(&project.config, &provider_name)?;
         for instance in provider_instances {
             match provider.status(Some(&instance.name)) {
                 Ok(report) => status::display(&report),
@@ -132,7 +191,7 @@ pub fn handle_fleet_status(targets: &FleetArgs, project: &str) -> VmResult<()> {
 
 pub fn handle_fleet_copy(
     targets: &FleetArgs,
-    project: &str,
+    project: &FleetProject,
     source: &str,
     destination: &str,
 ) -> VmResult<()> {
@@ -145,7 +204,7 @@ pub fn handle_fleet_copy(
     let mut progress = FleetProgress::default();
 
     for (provider_name, provider_instances) in group_by_provider(instances) {
-        let provider = provider_for(&provider_name)?;
+        let provider = configured_provider(&project.config, &provider_name)?;
         for instance in provider_instances {
             debug!(
                 provider = %provider_name,
@@ -176,7 +235,7 @@ pub enum FleetAction {
 
 pub async fn handle_fleet_lifecycle(
     targets: &FleetArgs,
-    project: &str,
+    project: &FleetProject,
     action: FleetAction,
     no_wait: bool,
 ) -> VmResult<()> {
@@ -193,7 +252,7 @@ pub async fn handle_fleet_lifecycle(
     let context = ProviderContext::default();
 
     for (provider_name, provider_instances) in group_by_provider(instances) {
-        let provider = provider_for(&provider_name)?;
+        let provider = configured_provider(&project.config, &provider_name)?;
         for instance in provider_instances {
             match apply_lifecycle(provider.as_ref(), &context, &instance.name, action, no_wait)
                 .await
@@ -232,10 +291,6 @@ async fn apply_lifecycle(
     Ok(())
 }
 
-fn provider_for(provider_name: &str) -> VmResult<Box<dyn Provider>> {
-    configured_provider(&VmConfig::default(), provider_name)
-}
-
 fn group_by_provider(instances: Vec<InstanceInfo>) -> BTreeMap<String, Vec<InstanceInfo>> {
     let mut grouped: BTreeMap<String, Vec<InstanceInfo>> = BTreeMap::new();
     for instance in instances {
@@ -267,8 +322,12 @@ fn summary(success: usize, failed: usize) -> VmResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{filter_project_instances, query_for, InstanceStateFilter};
+    use super::{
+        filter_project_instances_with, query_for, same_owner, FleetProject, InstanceStateFilter,
+    };
     use crate::cli::FleetArgs;
+    use std::fs;
+    use vm_config::config::VmConfig;
     use vm_provider::InstanceInfo;
 
     fn targets() -> FleetArgs {
@@ -300,25 +359,45 @@ mod tests {
     }
 
     #[test]
-    fn fleet_never_includes_another_project_even_with_a_matching_name() {
-        let instance = |name: &str, project: Option<&str>| InstanceInfo {
+    fn fleet_requires_the_exact_owning_configuration() {
+        let temp = tempfile::tempdir().unwrap();
+        let selected = temp.path().join("selected.yaml");
+        let other = temp.path().join("other.yaml");
+        fs::write(&selected, "project: app").unwrap();
+        fs::write(&other, "project: app").unwrap();
+        let selected = selected.canonicalize().unwrap();
+        assert!(same_owner(Some(&selected), &selected));
+        assert!(!same_owner(Some(&other), &selected));
+        assert!(!same_owner(None, &selected));
+
+        let project = FleetProject {
+            name: "app".into(),
+            config_path: selected.clone(),
+            config: VmConfig::default(),
+        };
+        let instance = |name: &str, project: &str| InstanceInfo {
             name: name.into(),
             id: name.into(),
             status: "running".into(),
             provider: "docker".into(),
-            project: project.map(str::to_string),
+            project: Some(project.into()),
             uptime: None,
             created_at: None,
         };
-        let selected = filter_project_instances(
-            vec![
-                instance("app-dev", Some("app")),
-                instance("app-test", Some("other")),
-                instance("app-worker", None),
-            ],
-            "app",
-        );
-        assert_eq!(selected.len(), 1);
-        assert_eq!(selected[0].name, "app-dev");
+        let instances = vec![
+            instance("owned", "app"),
+            instance("same-name-other-config", "app"),
+            instance("other-project", "other"),
+        ];
+        let actual = filter_project_instances_with(instances, &project, |instance| {
+            Ok(Some(if instance.name == "owned" {
+                selected.clone()
+            } else {
+                other.clone()
+            }))
+        })
+        .unwrap();
+        assert_eq!(actual.len(), 1);
+        assert_eq!(actual[0].name, "owned");
     }
 }

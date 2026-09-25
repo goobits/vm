@@ -7,6 +7,95 @@ use super::{router, WorkCredentials};
 use crate::Store;
 
 #[tokio::test]
+async fn controller_removal_is_scoped_and_preserves_registered_history() {
+    use std::collections::BTreeMap;
+    use vm_packages::{
+        PackageEcosystem, RegisterConsumer, RegisterPackage, RegisterTool, ToolKind,
+    };
+
+    let directory = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::open(directory.path()).await.unwrap());
+    store
+        .register_package(RegisterPackage {
+            name: "auth".into(),
+            ecosystem: PackageEcosystem::Cargo,
+            repository: "https://example.com/auth.git".into(),
+            default_branch: "main".into(),
+            workspace_release: false,
+        })
+        .await
+        .unwrap();
+    store
+        .register_consumer(RegisterConsumer {
+            name: "app".into(),
+            repository: "https://example.com/app.git".into(),
+            default_branch: "main".into(),
+            dependencies: BTreeMap::from([("auth".into(), "1.0.0".into())]),
+        })
+        .await
+        .unwrap();
+    store
+        .register_tool(RegisterTool {
+            name: "helper".into(),
+            kind: ToolKind::Binary,
+            repository: "https://example.com/helper.git".into(),
+            default_branch: "main".into(),
+            build_sources: Vec::new(),
+            workspace_release: false,
+        })
+        .await
+        .unwrap();
+    let server = TestServer::new(router(
+        store.clone(),
+        WorkCredentials::new(
+            "read",
+            "controller",
+            "reviewer",
+            "build",
+            "release",
+            "rollout",
+            "agent-signing-key-012345678901234567890123456789",
+        ),
+    ));
+    assert_eq!(
+        server
+            .delete("/v1/packages/auth")
+            .add_header(header::AUTHORIZATION, "Bearer read")
+            .await
+            .status_code(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        server
+            .delete("/v1/packages/auth")
+            .add_header(header::AUTHORIZATION, "Bearer controller")
+            .await
+            .status_code(),
+        StatusCode::CONFLICT
+    );
+    for path in ["/v1/consumers/app", "/v1/packages/auth", "/v1/tools/helper"] {
+        assert_eq!(
+            server
+                .delete(path)
+                .add_header(header::AUTHORIZATION, "Bearer controller")
+                .await
+                .status_code(),
+            StatusCode::OK
+        );
+    }
+    assert_eq!(
+        server
+            .get("/v1/packages/auth")
+            .add_header(header::AUTHORIZATION, "Bearer read")
+            .await
+            .status_code(),
+        StatusCode::NOT_FOUND
+    );
+    assert!(store.database.lock().await.packages.contains_key("auth"));
+    assert!(store.database.lock().await.tools.contains_key("helper"));
+}
+
+#[tokio::test]
 async fn rollout_completion_retry_cleans_persisted_source_without_pushing_again() {
     use vm_packages::{PackageEcosystem, RolloutRecord, RolloutState, RolloutValidationRequest};
     let directory = tempfile::tempdir().unwrap();

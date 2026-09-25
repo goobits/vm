@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use vm_core::msg;
 use vm_core::vm_println;
 use vm_messages::messages::MESSAGES;
@@ -230,47 +230,16 @@ fn handle_plugin_info(plugin_name: &str) -> Result<()> {
 
 fn handle_plugin_install(source_path: &str) -> Result<()> {
     let source = PathBuf::from(source_path);
-
-    if !source.exists() {
-        anyhow::bail!("Plugin source path does not exist: {source_path}");
-    }
-
-    if !source.is_dir() {
-        anyhow::bail!("Plugin source must be a directory: {source_path}");
-    }
-
-    // Verify plugin.yaml exists
-    let metadata_path = source.join("plugin.yaml");
-    if !metadata_path.exists() {
-        anyhow::bail!("Invalid plugin: missing plugin.yaml in {source_path}");
-    }
-
-    // Parse metadata to get plugin name and type
-    let metadata_content =
-        fs::read_to_string(&metadata_path).context("Failed to read plugin.yaml")?;
-
-    let info: vm_plugin::PluginInfo =
-        serde_yaml_ng::from_str(&metadata_content).context("Failed to parse plugin.yaml")?;
-
-    // Verify content file exists
+    let temp_plugin = plugin_from_source(&source)?;
+    let info = &temp_plugin.info;
     let content_file = match info.plugin_type {
         PluginType::Preset => "preset.yaml",
         PluginType::Service => "service.yaml",
     };
 
-    if !source.join(content_file).exists() {
-        anyhow::bail!("Invalid plugin: missing {content_file} in {source_path}");
-    }
-
-    // Create temporary plugin object for validation
-    let temp_plugin = vm_plugin::Plugin {
-        info: info.clone(),
-        content_file: source.join(content_file),
-    };
-
     // Validate plugin before installation
     vm_println!("{}", MESSAGES.plugin.install_validating);
-    let validation_result = vm_plugin::validate_plugin(&temp_plugin)?;
+    let validation_result = validate_plugin_with_context(&temp_plugin)?;
 
     if !validation_result.is_valid {
         vm_println!("{}", MESSAGES.plugin.install_validation_failed);
@@ -322,26 +291,7 @@ fn handle_plugin_install(source_path: &str) -> Result<()> {
         PluginType::Service => "services",
     };
 
-    let target_dir = plugins_base.join(target_subdir);
-
-    // Create target directory if it doesn't exist
-    if !target_dir.exists() {
-        fs::create_dir_all(&target_dir).context("Failed to create plugins directory")?;
-    }
-
-    let target = target_dir.join(&info.name);
-
-    // Check if plugin already exists
-    if target.exists() {
-        anyhow::bail!(
-            "Plugin '{}' is already installed. Remove it first with: vm plugins remove {}",
-            info.name,
-            info.name
-        );
-    }
-
-    // Copy plugin directory
-    copy_dir_all(&source, &target).context("Failed to copy plugin files")?;
+    install_validated_plugin(&source, &plugins_base, target_subdir, info, content_file)?;
 
     let plugin_type_str = match info.plugin_type {
         PluginType::Preset => "preset",
@@ -371,19 +321,34 @@ fn handle_plugin_remove(plugin_name: &str) -> Result<()> {
     let plugins_base = vm_platform::platform::vm_state_dir()
         .map_err(|e| anyhow::anyhow!("Could not determine VM state directory: {e}"))?
         .join("plugins");
+    require_real_directory(plugins_base.parent().context("Invalid plugin state path")?)?;
+    require_real_directory(&plugins_base)?;
+    let _lock = lock_plugin_changes(&plugins_base)?;
 
     // Check both presets and services subdirectories
     let preset_path = plugins_base.join("presets").join(plugin_name);
     let service_path = plugins_base.join("services").join(plugin_name);
 
-    if preset_path.exists() {
+    let preset_exists = fs::symlink_metadata(&preset_path).is_ok();
+    let service_exists = fs::symlink_metadata(&service_path).is_ok();
+    if preset_exists && service_exists {
+        anyhow::bail!(
+            "Plugin '{plugin_name}' exists in both plugin groups; inspect storage before removal"
+        );
+    }
+
+    if preset_exists {
+        require_real_directory(&plugins_base.join("presets"))?;
+        require_real_directory(&preset_path)?;
         fs::remove_dir_all(&preset_path).context("Failed to remove plugin directory")?;
         vm_println!(
             "{}",
             msg!(MESSAGES.plugin.remove_success_preset, name = plugin_name)
         );
         Ok(())
-    } else if service_path.exists() {
+    } else if service_exists {
+        require_real_directory(&plugins_base.join("services"))?;
+        require_real_directory(&service_path)?;
         fs::remove_dir_all(&service_path).context("Failed to remove plugin directory")?;
         vm_println!(
             "{}",
@@ -395,13 +360,44 @@ fn handle_plugin_remove(plugin_name: &str) -> Result<()> {
     }
 }
 
-fn handle_plugin_validate(plugin_name: &str) -> Result<()> {
-    let plugins = discover_plugins()?;
+fn require_real_directory(path: &Path) -> Result<()> {
+    if !fs::symlink_metadata(path)?.file_type().is_dir() {
+        anyhow::bail!("Plugin path is not a real directory: {}", path.display());
+    }
+    Ok(())
+}
 
-    let plugin = plugins
-        .iter()
-        .find(|p| p.info.name == plugin_name)
-        .ok_or_else(|| anyhow::anyhow!("Plugin '{plugin_name}' not found"))?;
+fn lock_plugin_changes(plugins_base: &Path) -> Result<fs::File> {
+    let path = plugins_base.join(".install.lock");
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) if metadata.file_type().is_file() => {}
+        Ok(_) => anyhow::bail!("Plugin lock path is not a regular file"),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(&path)?;
+    fs2::FileExt::lock_exclusive(&file)?;
+    Ok(file)
+}
+
+fn handle_plugin_validate(plugin_name: &str) -> Result<()> {
+    let path = Path::new(plugin_name);
+    let source_plugin;
+    let installed_plugins;
+    let plugin = if path.exists() || path.components().count() > 1 {
+        source_plugin = plugin_from_source(path)?;
+        &source_plugin
+    } else {
+        installed_plugins = discover_plugins()?;
+        installed_plugins
+            .iter()
+            .find(|plugin| plugin.info.name == plugin_name)
+            .ok_or_else(|| anyhow::anyhow!("Plugin '{plugin_name}' not found"))?
+    };
 
     vm_println!(
         "{}",
@@ -475,22 +471,244 @@ fn handle_plugin_validate(plugin_name: &str) -> Result<()> {
     Ok(())
 }
 
-// Helper function to recursively copy directories
-fn copy_dir_all(src: &PathBuf, dst: &PathBuf) -> Result<()> {
-    fs::create_dir_all(dst)?;
+fn validate_plugin_source(source: &Path) -> Result<()> {
+    let metadata = fs::symlink_metadata(source)
+        .with_context(|| format!("Plugin source does not exist: {}", source.display()))?;
+    if !metadata.file_type().is_dir() {
+        anyhow::bail!(
+            "Plugin source must be a real directory: {}",
+            source.display()
+        );
+    }
+    Ok(())
+}
 
-    for entry in fs::read_dir(src)? {
+fn plugin_from_source(source: &Path) -> Result<vm_plugin::Plugin> {
+    validate_plugin_source(source)?;
+    let metadata_path = source.join("plugin.yaml");
+    require_regular_file(&metadata_path)?;
+    let info: vm_plugin::PluginInfo = serde_yaml_ng::from_str(
+        &fs::read_to_string(&metadata_path).context("Failed to read plugin.yaml")?,
+    )
+    .context("Failed to parse plugin.yaml")?;
+    let content_file = match info.plugin_type {
+        PluginType::Preset => "preset.yaml",
+        PluginType::Service => "service.yaml",
+    };
+    require_regular_file(&source.join(content_file))?;
+    validate_plugin_files(source, content_file)?;
+    Ok(vm_plugin::Plugin {
+        info,
+        content_file: source.join(content_file),
+    })
+}
+
+fn require_regular_file(path: &Path) -> Result<()> {
+    if !fs::symlink_metadata(path)?.file_type().is_file() {
+        anyhow::bail!("Plugin manifest must be a real file: {}", path.display());
+    }
+    Ok(())
+}
+
+fn validate_plugin_files(source: &Path, content_file: &str) -> Result<Vec<&'static str>> {
+    let mut files = Vec::new();
+    for entry in fs::read_dir(source)? {
         let entry = entry?;
-        let ty = entry.file_type()?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
+        let name = entry.file_name();
+        let name = name
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Plugin file name is not UTF-8"))?;
+        if !entry.file_type()?.is_file() {
+            anyhow::bail!("Plugin contains a directory, link, or special file: {name}");
+        }
+        let known = match name {
+            "plugin.yaml" => "plugin.yaml",
+            "preset.yaml" if content_file == "preset.yaml" => "preset.yaml",
+            "service.yaml" if content_file == "service.yaml" => "service.yaml",
+            "README.md" => "README.md",
+            _ => anyhow::bail!("Plugin contains unsupported file: {name}"),
+        };
+        files.push(known);
+    }
+    if !files.contains(&"plugin.yaml") || !files.contains(&content_file) {
+        anyhow::bail!("Plugin is missing plugin.yaml or {content_file}");
+    }
+    Ok(files)
+}
 
-        if ty.is_dir() {
-            copy_dir_all(&src_path, &dst_path)?;
-        } else {
-            fs::copy(&src_path, &dst_path)?;
+fn ensure_real_directory(path: &Path) -> Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_dir() => Ok(()),
+        Ok(_) => anyhow::bail!(
+            "Plugin installation path is not a real directory: {}",
+            path.display()
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            fs::create_dir(path).with_context(|| format!("Failed to create {}", path.display()))
+        }
+        Err(error) => Err(error).with_context(|| format!("Failed to inspect {}", path.display())),
+    }
+}
+
+fn install_validated_plugin(
+    source: &Path,
+    plugins_base: &Path,
+    target_subdir: &str,
+    info: &vm_plugin::PluginInfo,
+    content_file: &str,
+) -> Result<()> {
+    if !is_valid_plugin_name(&info.name) {
+        anyhow::bail!("Invalid plugin name '{}'", info.name);
+    }
+    let state_dir = plugins_base.parent().context("Invalid plugins directory")?;
+    ensure_real_directory(state_dir)?;
+    ensure_real_directory(plugins_base)?;
+    let _lock = lock_plugin_changes(plugins_base)?;
+    let target_dir = plugins_base.join(target_subdir);
+    ensure_real_directory(&target_dir)?;
+    for kind in ["presets", "services"] {
+        let existing = plugins_base.join(kind).join(&info.name);
+        if fs::symlink_metadata(&existing).is_ok() {
+            anyhow::bail!("Plugin '{}' is already installed", info.name);
+        }
+    }
+    if info.plugin_type == PluginType::Preset
+        && vm_config::PresetDetector::new(PathBuf::new())
+            .list_all_presets()?
+            .contains(&info.name)
+    {
+        anyhow::bail!("Plugin '{}' conflicts with an existing preset", info.name);
+    }
+
+    let stage = tempfile::Builder::new()
+        .prefix(".install-")
+        .tempdir_in(plugins_base)?;
+    let payload = stage.path().join("payload");
+    fs::create_dir(&payload)?;
+    for file in validate_plugin_files(source, content_file)? {
+        fs::copy(source.join(file), payload.join(file))
+            .with_context(|| format!("Failed to stage {file}"))?;
+        restrict_file_permissions(&payload.join(file))?;
+    }
+    restrict_directory_permissions(&payload)?;
+    let staged_plugin = vm_plugin::Plugin {
+        info: info.clone(),
+        content_file: payload.join(content_file),
+    };
+    let staged_info: vm_plugin::PluginInfo =
+        serde_yaml_ng::from_str(&fs::read_to_string(payload.join("plugin.yaml"))?)?;
+    if staged_info.name != info.name
+        || staged_info.version != info.version
+        || staged_info.description != info.description
+        || staged_info.author != info.author
+        || staged_info.plugin_type != info.plugin_type
+        || staged_info.preset_category != info.preset_category
+    {
+        anyhow::bail!("Plugin metadata changed during installation");
+    }
+    let staged_validation = validate_plugin_with_context(&staged_plugin)?;
+    if !staged_validation.is_valid {
+        anyhow::bail!("Plugin content changed during installation and no longer validates");
+    }
+
+    let target = target_dir.join(&info.name);
+    if fs::symlink_metadata(&target).is_ok() {
+        anyhow::bail!("Plugin '{}' is already installed", info.name);
+    }
+    fs::rename(&payload, &target).context("Failed to activate staged plugin")?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn restrict_directory_permissions(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn restrict_directory_permissions(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn restrict_file_permissions(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn restrict_file_permissions(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        handle_plugin_validate, install_validated_plugin, validate_plugin_files,
+        validate_plugin_source,
+    };
+    use std::fs;
+    use vm_plugin::{PluginInfo, PluginType};
+
+    fn preset_info() -> PluginInfo {
+        PluginInfo {
+            name: "unique-test-preset-plugin".to_string(),
+            version: "1.0.0".to_string(),
+            description: Some("Test preset".to_string()),
+            author: None,
+            plugin_type: PluginType::Preset,
+            preset_category: None,
         }
     }
 
-    Ok(())
+    #[test]
+    fn plugin_install_stages_only_declared_files() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        fs::create_dir(&source).unwrap();
+        let info = preset_info();
+        fs::write(
+            source.join("plugin.yaml"),
+            serde_yaml_ng::to_string(&info).unwrap(),
+        )
+        .unwrap();
+        fs::write(source.join("preset.yaml"), "packages: [git]\n").unwrap();
+        fs::write(source.join("README.md"), "Documentation\n").unwrap();
+        handle_plugin_validate(source.to_str().unwrap()).unwrap();
+        let plugins = root.path().join("state").join("plugins");
+        install_validated_plugin(&source, &plugins, "presets", &info, "preset.yaml").unwrap();
+        let target = plugins.join("presets").join(&info.name);
+        assert!(target.join("plugin.yaml").is_file());
+        assert!(target.join("preset.yaml").is_file());
+        assert!(target.join("README.md").is_file());
+        assert!(
+            install_validated_plugin(&source, &plugins, "presets", &info, "preset.yaml").is_err()
+        );
+        fs::write(source.join("run.sh"), "echo hi\n").unwrap();
+        assert!(validate_plugin_files(&source, "preset.yaml").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn plugin_install_rejects_links_and_keeps_target_absent() {
+        use std::os::unix::fs::symlink;
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        fs::create_dir(&source).unwrap();
+        fs::write(
+            source.join("plugin.yaml"),
+            serde_yaml_ng::to_string(&preset_info()).unwrap(),
+        )
+        .unwrap();
+        fs::write(source.join("preset.yaml"), "packages: [git]\n").unwrap();
+        symlink(source.join("preset.yaml"), source.join("linked.yaml")).unwrap();
+        assert!(validate_plugin_files(&source, "preset.yaml").is_err());
+        assert!(validate_plugin_source(&source.join("linked.yaml")).is_err());
+        assert!(!root
+            .path()
+            .join("state/plugins/presets/unique-test-preset-plugin")
+            .exists());
+    }
 }

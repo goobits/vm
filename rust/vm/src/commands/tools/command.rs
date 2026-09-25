@@ -108,6 +108,34 @@ pub(in crate::commands) async fn handle(
             }
             Ok(())
         }
+        ToolsSubcommand::Remove { name } => {
+            if base::is_vendor_tool(&name) {
+                return Err(VmError::validation(
+                    format!("'{name}' is managed by the base runtime"),
+                    None::<String>,
+                ));
+            }
+            if GlobalConfig::load()
+                .map_err(VmError::from)?
+                .tools
+                .contains_key(&name)
+            {
+                return Err(VmError::validation(
+                    format!("Tool '{name}' is enabled globally"),
+                    Some(format!("Run `vm tools disable {name}` first")),
+                ));
+            }
+            let config = vm_config::config::VmConfig::load(config_path).map_err(VmError::from)?;
+            if config.tools.entries.contains_key(&name) {
+                return Err(VmError::validation(
+                    format!("Tool '{name}' is selected in this project"),
+                    Some("Remove it from this project's tools configuration first"),
+                ));
+            }
+            tooling::client()?.remove_tool(&name).await?;
+            vm_success!("Removed tool registration {name}");
+            Ok(())
+        }
         ToolsSubcommand::Refresh { quiet } => {
             let config = vm_config::AppConfig::load(config_path, profile, None)?.vm;
             match tooling::refresh(&config).await? {

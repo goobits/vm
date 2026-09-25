@@ -72,6 +72,15 @@ impl Store {
             });
         }
 
+        if current.removed_packages.contains(&request.package)
+            || current.removed_tools.contains(&request.package)
+        {
+            return Err(WorkError::NotFound(format!(
+                "registered source {}",
+                request.package
+            )));
+        }
+
         let source = source_definition(&current, &request.package)?;
         let source_kind = if request.workspace_release {
             let source = source.ok_or_else(|| {

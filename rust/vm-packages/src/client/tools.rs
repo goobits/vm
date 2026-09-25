@@ -27,6 +27,11 @@ impl PackageInfrastructureClient {
         self.get_work(&format!("v1/tools/{name}")).await
     }
 
+    pub async fn remove_tool(&self, name: &str) -> Result<()> {
+        let name = url::form_urlencoded::byte_serialize(name.as_bytes()).collect::<String>();
+        self.delete_work(&format!("v1/tools/{name}")).await
+    }
+
     pub async fn resolve_tool(
         &self,
         name: &str,

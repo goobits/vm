@@ -25,6 +25,93 @@ static VM_SCHEMA_CACHE: Lazy<HashMap<String, SchemaType>> =
     Lazy::new(|| build_schema_cache(include_str!("../../../configs/schema/vm.schema.yaml")));
 static GLOBAL_SCHEMA_CACHE: Lazy<HashMap<String, SchemaType>> =
     Lazy::new(|| build_schema_cache(include_str!("../../../configs/schema/global.schema.yaml")));
+static VM_SCHEMA: Lazy<Value> = Lazy::new(|| {
+    serde_yaml_ng::from_str(include_str!("../../../configs/schema/vm.schema.yaml"))
+        .expect("embedded project schema must be valid YAML")
+});
+static GLOBAL_SCHEMA: Lazy<Value> = Lazy::new(|| {
+    serde_yaml_ng::from_str(include_str!("../../../configs/schema/global.schema.yaml"))
+        .expect("embedded user schema must be valid YAML")
+});
+
+/// Reject misspelled keys inside schema-owned objects while preserving root
+/// fields retained by the configuration models for extensions.
+pub(crate) fn validate_known_keys(value: &Value, global: bool) -> Result<()> {
+    let schema = if global { &*GLOBAL_SCHEMA } else { &*VM_SCHEMA };
+    validate_keys_in(schema, schema, value, "", true)
+}
+
+fn validate_keys_in(
+    root: &Value,
+    schema: &Value,
+    value: &Value,
+    path: &str,
+    root_object: bool,
+) -> Result<()> {
+    let schema = resolve_reference(root, schema);
+    if let Some(items) = value.as_sequence() {
+        if let Some(item_schema) = value_field(schema, "items") {
+            for (index, item) in items.iter().enumerate() {
+                validate_keys_in(root, item_schema, item, &format!("{path}[{index}]"), false)?;
+            }
+        }
+        return Ok(());
+    }
+    let Some(fields) = value.as_mapping() else {
+        return Ok(());
+    };
+    if mapping_field(schema, "properties").is_none()
+        && value_field(schema, "additionalProperties").is_none()
+    {
+        let object_variants: Vec<_> = sequence_field(schema, "oneOf")
+            .filter(|variant| {
+                string_field(resolve_reference(root, variant), "type") == Some("object")
+            })
+            .collect();
+        if !object_variants.is_empty() {
+            let mut first_error = None;
+            for variant in object_variants {
+                match validate_keys_in(root, variant, value, path, false) {
+                    Ok(()) => return Ok(()),
+                    Err(error) => first_error.get_or_insert(error),
+                };
+            }
+            return Err(first_error.expect("object variants should have an error"));
+        }
+    }
+    for (key, child) in fields {
+        let Some(key) = key.as_str() else {
+            return Err(VmError::Config(format!(
+                "Configuration key at '{path}' must be a string"
+            )));
+        };
+        let next = joined_path(path, key);
+        if let Some(property) = mapping_field(schema, "properties").and_then(|items| items.get(key))
+        {
+            validate_keys_in(root, property, child, &next, false)?;
+        } else if root_object {
+            // Both config models flatten extra root fields for installed extensions.
+            continue;
+        } else {
+            match value_field(schema, "additionalProperties") {
+                Some(Value::Bool(false)) => {
+                    return Err(VmError::Config(format!(
+                        "Unknown configuration field: {next}"
+                    )));
+                }
+                Some(Value::Mapping(_)) => validate_keys_in(
+                    root,
+                    value_field(schema, "additionalProperties").unwrap(),
+                    child,
+                    &next,
+                    false,
+                )?,
+                _ => {}
+            }
+        }
+    }
+    Ok(())
+}
 
 fn build_schema_cache(source: &str) -> HashMap<String, SchemaType> {
     let schema: Value =
@@ -480,5 +567,35 @@ mod tests {
         } else {
             panic!("Expected number");
         }
+    }
+
+    #[test]
+    fn unknown_nested_keys_fail_while_extension_roots_remain_available() {
+        let typo: Value =
+            serde_yaml_ng::from_str("project:\n  name: test\nvm:\n  memroy: 4096\n").unwrap();
+        assert!(validate_known_keys(&typo, false)
+            .unwrap_err()
+            .to_string()
+            .contains("Unknown configuration field: vm.memroy"));
+
+        let extension: Value =
+            serde_yaml_ng::from_str("project:\n  name: test\nx-plugin:\n  custom: true\n").unwrap();
+        validate_known_keys(&extension, false).unwrap();
+
+        let environment: Value = serde_yaml_ng::from_str("environments:\n  dev:\n    provider: docker\n    image: ubuntu:24.04\n    memroy: 4096\n").unwrap();
+        assert!(validate_known_keys(&environment, false)
+            .unwrap_err()
+            .to_string()
+            .contains("environments.dev.memroy"));
+
+        let user_typo: Value =
+            serde_yaml_ng::from_str("services:\n  redis:\n    enabeld: true\n").unwrap();
+        assert!(validate_known_keys(&user_typo, true)
+            .unwrap_err()
+            .to_string()
+            .contains("services.redis.enabeld"));
+        let user_extension: Value =
+            serde_yaml_ng::from_str("x-plugin:\n  arbitrary: true\n").unwrap();
+        validate_known_keys(&user_extension, true).unwrap();
     }
 }

@@ -42,9 +42,13 @@ and host paths are redacted. Reads default to the effective configuration;
 `--scope project` reads only `vm.yaml` and `--scope user` reads user settings.
 Writes default to the current project and require a project configuration.
 `--scope user` writes user settings. Sensitive fields are redacted on reads.
+`config show` lists the source for each field; `config get` prints the selected
+field's source after its value.
 Use `--value-json` to set a complete array or object, such as
 `vm config set networking.networks --value-json '["dev"]'`.
-Writes validate the resulting configuration before replacing the file. Applying a
+`config validate` and writes reject misspelled fields inside schema-owned
+objects. Root extension fields remain available. Writes validate the resulting
+configuration before replacing the file. Applying a
 preset reports conflicting explicit fields; unset those fields before applying
 the preset. `config unset` prints the resulting effective value.
 
@@ -56,6 +60,9 @@ vm config profiles show docker
 vm config profiles set-default docker
 vm run linux as backend --profile docker
 ```
+
+An explicit profile wins for one command. The project default profile wins when
+no profile is specified; provider-matched and sole-profile selection are fallbacks.
 
 ## Provider Routing
 

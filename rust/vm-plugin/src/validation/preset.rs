@@ -77,23 +77,14 @@ fn validate_preset_packages(content: &PresetContent, result: &mut ValidationResu
 /// Validate preset environment variables
 /// Validate preset provision scripts
 fn validate_preset_provision(content: &PresetContent, result: &mut ValidationResult) {
-    for (i, script) in content.provision.iter().enumerate() {
-        if script.trim().is_empty() {
-            result.add_warning(format!(
-                "Empty provision script at index {i}. Consider removing it."
-            ));
-        }
-
-        // Warn about potentially destructive commands
-        if script.contains("rm -rf /") || script.contains("dd if=") {
-            result.add_error(
-                ValidationError::new(
-                    "provision",
-                    format!("Potentially destructive command in provision script: {script}"),
-                )
-                .with_suggestion("Remove dangerous commands from provision scripts"),
-            );
-        }
+    if !content.provision.is_empty() {
+        result.add_error(
+            ValidationError::new(
+                "provision",
+                "Provision scripts are not a supported plugin capability",
+            )
+            .with_suggestion("Remove provision; use validated configuration fields"),
+        );
     }
 }
 

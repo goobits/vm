@@ -112,6 +112,10 @@ pub(super) async fn handle_catalog(
                 vm_println!("Dependency: {package}@{version}");
             }
         }
+        PackageConsumerSubcommand::Remove { name } => {
+            client.remove_consumer(&name).await?;
+            vm_success!("Removed consumer registration {name}");
+        }
         PackageConsumerSubcommand::Drift { package } => {
             return show_drift(&client, package.as_deref()).await
         }

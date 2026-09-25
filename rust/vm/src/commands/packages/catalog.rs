@@ -47,6 +47,12 @@ pub(super) async fn show_package(files: &ApplianceFiles, name: &str) -> VmResult
     Ok(())
 }
 
+pub(super) async fn remove_package(files: &ApplianceFiles, name: &str) -> VmResult<()> {
+    configured_client(files)?.remove_package(name).await?;
+    vm_core::vm_success!("Removed package registration {name}");
+    Ok(())
+}
+
 fn package_is_published(
     inventory: &PackageInventory,
     ecosystem: PackageEcosystem,

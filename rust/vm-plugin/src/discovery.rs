@@ -20,18 +20,25 @@ pub fn discover_plugins() -> Result<Vec<Plugin>> {
 pub fn discover_plugins_in_directory(plugins_dir: &Path) -> Result<Vec<Plugin>> {
     let mut plugins = Vec::new();
 
-    if !plugins_dir.exists() {
-        return Ok(plugins);
+    match fs::symlink_metadata(plugins_dir) {
+        Ok(metadata) if metadata.file_type().is_dir() => {}
+        Ok(_) => anyhow::bail!(
+            "Plugin root must be a real directory: {}",
+            plugins_dir.display()
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(plugins),
+        Err(error) => return Err(error.into()),
     }
 
     // Discover preset plugins
     let presets_dir = plugins_dir.join("presets");
-    if presets_dir.exists() {
+    if existing_real_directory(&presets_dir)? {
+        require_real_directory(&presets_dir)?;
         for entry in fs::read_dir(&presets_dir)? {
             let entry = entry?;
             let path = entry.path();
 
-            if path.is_dir() {
+            if entry.file_type()?.is_dir() {
                 match load_plugin(&path, PluginType::Preset) {
                     Ok(plugin) => plugins.push(plugin),
                     Err(error) => {
@@ -50,12 +57,13 @@ pub fn discover_plugins_in_directory(plugins_dir: &Path) -> Result<Vec<Plugin>> 
 
     // Discover service plugins
     let services_dir = plugins_dir.join("services");
-    if services_dir.exists() {
+    if existing_real_directory(&services_dir)? {
+        require_real_directory(&services_dir)?;
         for entry in fs::read_dir(&services_dir)? {
             let entry = entry?;
             let path = entry.path();
 
-            if path.is_dir() {
+            if entry.file_type()?.is_dir() {
                 match load_plugin(&path, PluginType::Service) {
                     Ok(plugin) => plugins.push(plugin),
                     Err(error) => {
@@ -77,17 +85,21 @@ pub fn discover_plugins_in_directory(plugins_dir: &Path) -> Result<Vec<Plugin>> 
 
 /// Loads a single plugin from a directory
 fn load_plugin(plugin_dir: &Path, expected_type: PluginType) -> Result<Plugin> {
+    require_real_directory(plugin_dir)?;
     let info_path = plugin_dir.join("plugin.yaml");
 
-    if !info_path.exists() {
-        anyhow::bail!("Plugin metadata not found: {info_path:?}");
-    }
+    require_regular_file(&info_path)?;
 
     let info_content = fs::read_to_string(&info_path)
         .with_context(|| format!("Failed to read plugin metadata: {info_path:?}"))?;
 
     let info: PluginInfo = serde_yaml_ng::from_str(&info_content)
         .with_context(|| format!("Failed to parse plugin metadata: {info_path:?}"))?;
+    if !crate::validation::is_valid_plugin_name(&info.name)
+        || plugin_dir.file_name().and_then(|name| name.to_str()) != Some(info.name.as_str())
+    {
+        anyhow::bail!("Plugin metadata name does not match its safe directory name");
+    }
 
     // Validate plugin type matches expected type
     if info.plugin_type != expected_type {
@@ -105,11 +117,41 @@ fn load_plugin(plugin_dir: &Path, expected_type: PluginType) -> Result<Plugin> {
         PluginType::Service => plugin_dir.join("service.yaml"),
     };
 
-    if !content_file.exists() {
-        anyhow::bail!("Plugin content file not found: {content_file:?}");
-    }
+    require_regular_file(&content_file)?;
 
     Ok(Plugin { info, content_file })
+}
+
+fn require_real_directory(path: &Path) -> Result<()> {
+    if !fs::symlink_metadata(path)?.file_type().is_dir() {
+        anyhow::bail!(
+            "Plugin directory is a link or special file: {}",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
+fn existing_real_directory(path: &Path) -> Result<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_dir() => Ok(true),
+        Ok(_) => anyhow::bail!(
+            "Plugin directory is a link or special file: {}",
+            path.display()
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn require_regular_file(path: &Path) -> Result<()> {
+    if !fs::symlink_metadata(path)?.file_type().is_file() {
+        anyhow::bail!(
+            "Plugin manifest is a link or special file: {}",
+            path.display()
+        );
+    }
+    Ok(())
 }
 
 /// Helper to get presets from discovered plugins
@@ -135,6 +177,7 @@ pub fn load_preset_content(plugin: &Plugin) -> Result<PresetContent> {
         anyhow::bail!("Plugin {} is not a preset plugin", plugin.info.name);
     }
 
+    require_regular_file(&plugin.content_file)?;
     let content = fs::read_to_string(&plugin.content_file)
         .with_context(|| format!("Failed to read preset content: {:?}", plugin.content_file))?;
 
@@ -148,6 +191,7 @@ pub fn load_service_content(plugin: &Plugin) -> Result<ServiceContent> {
         anyhow::bail!("Plugin {} is not a service plugin", plugin.info.name);
     }
 
+    require_regular_file(&plugin.content_file)?;
     let content = fs::read_to_string(&plugin.content_file)
         .with_context(|| format!("Failed to read service content: {:?}", plugin.content_file))?;
 
@@ -222,6 +266,24 @@ environment:
         let temp_dir = TempDir::new()?;
         let plugins = discover_plugins_in_directory(temp_dir.path())?;
         assert_eq!(plugins.len(), 0);
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn discovery_ignores_linked_plugins_and_manifests() -> Result<()> {
+        use std::os::unix::fs::symlink;
+        let root = TempDir::new()?;
+        create_preset_plugin(root.path(), "safe")?;
+        let plugin = root.path().join("presets/safe");
+        symlink(&plugin, root.path().join("presets/linked"))?;
+        assert_eq!(discover_plugins_in_directory(root.path())?.len(), 1);
+
+        fs::remove_file(plugin.join("preset.yaml"))?;
+        let outside = root.path().join("outside.yaml");
+        fs::write(&outside, "packages: [git]\n")?;
+        symlink(&outside, plugin.join("preset.yaml"))?;
+        assert!(discover_plugins_in_directory(root.path())?.is_empty());
         Ok(())
     }
 

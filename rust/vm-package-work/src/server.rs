@@ -133,7 +133,15 @@ pub(crate) fn router(store: Arc<Store>, credentials: WorkCredentials) -> Router 
         .route_layer(middleware::from_fn_with_state(state.clone(), auth::read));
     let writes = Router::new()
         .route("/v1/packages", post(controller::register_package))
+        .route(
+            "/v1/packages/{*name}",
+            axum::routing::delete(controller::remove_package),
+        )
         .route("/v1/consumers", post(controller::register_consumer))
+        .route(
+            "/v1/consumers/{name}",
+            axum::routing::delete(controller::remove_consumer),
+        )
         .route("/v1/rollouts", post(controller::create_rollout))
         .merge(crate::tools::controller_routes())
         .merge(crate::tool_activation::controller_routes())

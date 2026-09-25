@@ -67,7 +67,8 @@ the environment.
 
 Fleet options are supported by `start`, `exec`, `copy`, `stop`, `status`, and `restart`.
 Provider and pattern filters require `--all-envs`. Without filters, the command
-targets applicable environments with a matching project identity. An empty
+targets applicable environments owned by the selected project configuration.
+Environments with the same project name in another configuration are excluded. An empty
 selection fails without making changes.
 
 ### Target Selection
@@ -90,9 +91,9 @@ existing environment. Host-to-guest copy paths use `environment:/path`.
 | Command | Purpose |
 | --- | --- |
 | `vm config validate` | Validate the active configuration |
-| `vm config show [--scope project\|user\|effective]` | Show redacted configuration |
+| `vm config show [--scope project\|user\|effective]` | Show redacted configuration with field sources |
 | `vm config render [--env <name>]` | Render redacted provider configuration without applying it |
-| `vm config get <field> [--scope project\|user\|effective]` | Read a redacted field |
+| `vm config get <field> [--scope project\|user\|effective]` | Read a redacted field and its source |
 | `vm config set <field> <value>... [--scope project\|user]` | Set a typed scalar field; use `--value-json` for arrays or objects |
 | `vm config unset <field> [--scope project\|user]` | Remove a field override |
 | `vm config presets list\|show <name>\|apply <name>...` | Inspect or apply presets |
@@ -127,9 +128,11 @@ The relay supports loopback endpoints and Docker or Podman environments.
 | `vm packages register <name-or-path>... [--ecosystem <npm\|cargo\|python>] [--repository <url>] [--branch <branch>] [--recursive]` | Register catalog metadata; successful local roots are remembered read-only |
 | `vm packages list` | List registered and published package state |
 | `vm packages show <name>` | Show a registered package and publication state |
+| `vm packages remove <name>` | Remove a package registration while retaining published versions and source repositories |
 | `vm packages consumers register <name> --repository <url> [--branch <branch>] --dependency <package@version>...` | Register a consumer and its internal dependencies |
 | `vm packages consumers list` | List registered consumers |
 | `vm packages consumers show <name>` | Show one registered consumer and its dependencies |
+| `vm packages consumers remove <name>` | Remove a consumer registration while retaining rollout records and its repository |
 | `vm packages consumers retry <name>` | Retry failed dependency updates without republishing the package |
 | `vm packages consumers list --package <package>` | Show consumers and pending upgrades for one package |
 | `vm packages consumers drift` | Show version drift across consumers |
@@ -163,6 +166,7 @@ release, security, recovery, and consumer workflow details.
 | `vm tools register <name> --repository <url> [--branch <branch>] [--kind <binary\|collection>]` | Register a trusted tool source |
 | `vm tools list` | List VM-owned vendor tools and registered package tools |
 | `vm tools show <name>` | Show one vendor definition or package tool and its releases |
+| `vm tools remove <name>` | Remove a disabled managed tool registration while retaining published artifacts |
 | `vm tools refresh` | Refresh the controller tool catalog |
 | `vm tools status [--env NAME]` | Combine controller workflow/job, publication, installed, and consumable state |
 | `vm tools enable <tool>...` | Select tools globally and activate them in running managed environments |
@@ -219,7 +223,7 @@ explicitly states otherwise.
 | `vm plugins install <path>` | Install a plugin |
 | `vm plugins remove <name>` | Remove a plugin |
 | `vm plugins create <name> --kind <preset\|service>` | Scaffold a plugin |
-| `vm plugins validate <name>` | Validate plugin configuration |
+| `vm plugins validate <path-or-name>` | Validate a local plugin source or installed plugin |
 | `vm db list` | List databases and backup counts |
 | `vm db status <database>` | Show database size and backup count |
 | `vm db backups list [--database <database>]` | List retained backups |

@@ -611,8 +611,16 @@ fn package_inventory_commands_parse() {
         Command::Packages { command: PackagesSubcommand::Show { name } } if name == "auth"
     ));
     assert!(matches!(
+        Args::parse_from(["vm", "packages", "remove", "auth"]).command,
+        Command::Packages { command: PackagesSubcommand::Remove { name } } if name == "auth"
+    ));
+    assert!(matches!(
         Args::parse_from(["vm", "packages", "consumers", "show", "app"]).command,
         Command::Packages { command: PackagesSubcommand::Consumers { command: super::PackageConsumerSubcommand::Show { name } } } if name == "app"
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "packages", "consumers", "remove", "app"]).command,
+        Command::Packages { command: PackagesSubcommand::Consumers { command: super::PackageConsumerSubcommand::Remove { name } } } if name == "app"
     ));
     assert!(matches!(
         Args::parse_from(["vm", "packages", "consumers", "drift", "--package", "auth"]).command,
@@ -661,6 +669,10 @@ fn tool_refresh_status_and_batch_update_commands_parse() {
         Command::Tools {
             command: ToolsSubcommand::Show { name }
         } if name == "codex"
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "tools", "remove", "agent-skills"]).command,
+        Command::Tools { command: ToolsSubcommand::Remove { name } } if name == "agent-skills"
     ));
     assert!(matches!(
         Args::parse_from(["vm", "tools", "refresh"]).command,

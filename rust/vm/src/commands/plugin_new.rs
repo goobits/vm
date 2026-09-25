@@ -98,7 +98,7 @@ plugin_type: {plugin_type}
 
 fn generate_preset_template() -> String {
     r#"# Preset configuration
-# Define packages, services, environment variables, and provisioning steps
+# Define packages, services, and environment variables
 
 # System packages to install via apt/yum
 packages:
@@ -135,10 +135,6 @@ aliases:
   ll: ls -la
   gst: git status
 
-# Provisioning commands (run during VM setup)
-provision:
-  - echo "Running custom provisioning"
-  - echo "Add your setup commands here"
 "#
     .to_string()
 }

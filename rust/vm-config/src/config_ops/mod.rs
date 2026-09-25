@@ -32,6 +32,16 @@ use vm_core::error::Result;
 pub struct ConfigOps;
 
 impl ConfigOps {
+    /// Validate the raw project document, including schema-owned key names,
+    /// before applying profiles or other derived settings.
+    pub fn validate_file(path: &std::path::Path) -> Result<()> {
+        let content = std::fs::read_to_string(path)?;
+        let value = crate::yaml::CoreOperations::parse_yaml_with_diagnostics(
+            &content,
+            &path.display().to_string(),
+        )?;
+        validate::candidate(&value, path, false)
+    }
     /// Set a configuration value using dot notation with schema-aware type detection.
     /// Accepts multiple values for array fields.
     pub fn set(field: &str, values: &[String], global: bool, dry_run: bool) -> Result<()> {

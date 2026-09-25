@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use axum::extract::{Extension, Path, Query, State};
 use axum::http::StatusCode;
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use chrono::Utc;
 use semver::Version;
@@ -30,7 +30,9 @@ pub(crate) fn read_routes() -> Router<AppState> {
 }
 
 pub(crate) fn controller_routes() -> Router<AppState> {
-    Router::new().route("/v1/tools", post(register_tool))
+    Router::new()
+        .route("/v1/tools", post(register_tool))
+        .route("/v1/tools/{name}", delete(remove_tool))
 }
 
 pub(crate) fn agent_routes() -> Router<AppState> {
@@ -101,6 +103,14 @@ async fn register_tool(
     ))
 }
 
+async fn remove_tool(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> WorkResult<Json<()>> {
+    state.store.remove_tool(&name).await?;
+    Ok(Json(()))
+}
+
 async fn register_attested_tool(
     State(state): State<AppState>,
     Extension(access): Extension<AgentAccess>,
@@ -110,7 +120,12 @@ async fn register_attested_tool(
     })?;
     Ok((
         StatusCode::CREATED,
-        Json(state.store.register_tool(source.registration()).await?),
+        Json(
+            state
+                .store
+                .register_attested_tool(source.registration())
+                .await?,
+        ),
     ))
 }
 
@@ -127,8 +142,29 @@ async fn publish_tool_artifact(
 
 impl Store {
     pub async fn register_tool(&self, request: RegisterTool) -> WorkResult<ToolDefinition> {
+        self.register_tool_with_reactivation(request, true).await
+    }
+
+    pub async fn register_attested_tool(
+        &self,
+        request: RegisterTool,
+    ) -> WorkResult<ToolDefinition> {
+        self.register_tool_with_reactivation(request, false).await
+    }
+
+    async fn register_tool_with_reactivation(
+        &self,
+        request: RegisterTool,
+        allow_reactivation: bool,
+    ) -> WorkResult<ToolDefinition> {
         request.validate()?;
         let mut current = self.database.lock().await;
+        if !allow_reactivation && current.removed_tools.contains(&request.name) {
+            return Err(WorkError::Conflict(format!(
+                "tool '{}' registration was removed",
+                request.name
+            )));
+        }
         if current.packages.contains_key(&request.name) {
             return Err(WorkError::Conflict(format!(
                 "source '{}' is already registered as a package",
@@ -140,6 +176,20 @@ impl Store {
                 && repository_urls_equivalent(&existing.repository, &request.repository)
                 && existing.default_branch == request.default_branch
             {
+                if current.removed_tools.contains(&request.name) {
+                    let mut next = current.clone();
+                    next.removed_tools.remove(&request.name);
+                    let definition = next
+                        .tools
+                        .get_mut(&request.name)
+                        .expect("tool remains registered");
+                    definition.repository = request.repository;
+                    definition.build_sources = request.build_sources;
+                    definition.workspace_release |= request.workspace_release;
+                    let definition = definition.clone();
+                    self.commit(&mut current, next).await?;
+                    return Ok(definition);
+                }
                 if existing.repository != request.repository
                     || existing.build_sources != request.build_sources
                     || (request.workspace_release && !existing.workspace_release)
@@ -181,12 +231,21 @@ impl Store {
     }
 
     pub async fn tools(&self) -> Vec<ToolDefinition> {
-        self.database.lock().await.tools.values().cloned().collect()
+        let database = self.database.lock().await;
+        database
+            .tools
+            .values()
+            .filter(|tool| !database.removed_tools.contains(&tool.name))
+            .cloned()
+            .collect()
     }
 
     pub async fn tool(&self, name: &str) -> WorkResult<ToolInventory> {
         validate_tool_name(name)?;
         let database = self.database.lock().await;
+        if database.removed_tools.contains(name) {
+            return Err(WorkError::NotFound(format!("tool {name}")));
+        }
         let definition = database
             .tools
             .get(name)
@@ -203,6 +262,45 @@ impl Store {
             definition,
             artifacts,
         })
+    }
+
+    pub async fn remove_tool(&self, name: &str) -> WorkResult<()> {
+        validate_tool_name(name)?;
+        let mut current = self.database.lock().await;
+        if !current.tools.contains_key(name) {
+            return Err(WorkError::NotFound(format!("tool {name}")));
+        }
+        if current.removed_tools.contains(name) {
+            return Ok(());
+        }
+        if current.tools.values().any(|tool| {
+            !current.removed_tools.contains(&tool.name)
+                && tool.build_sources.iter().any(|source| source == name)
+        }) {
+            return Err(WorkError::Conflict(format!(
+                "tool '{name}' is a build source for another registered tool"
+            )));
+        }
+        if current
+            .checkouts
+            .values()
+            .any(|checkout| checkout.package == name && !checkout.state.is_terminal())
+        {
+            return Err(WorkError::Conflict(format!(
+                "tool '{name}' has an unfinished checkout"
+            )));
+        }
+        if current.tool_activations.values().any(|activation| {
+            activation.tool == name
+                && activation.state != vm_packages::ToolActivationState::Complete
+        }) {
+            return Err(WorkError::Conflict(format!(
+                "tool '{name}' has unfinished activation"
+            )));
+        }
+        let mut next = current.clone();
+        next.removed_tools.insert(name.to_string());
+        self.commit(&mut current, next).await
     }
 
     pub async fn publish_tool_artifact(
@@ -222,6 +320,10 @@ impl Store {
                 .get(&existing.target_id)
                 .cloned()
                 .ok_or_else(|| WorkError::Internal("tool idempotency target is missing".into()));
+        }
+
+        if current.removed_tools.contains(name) {
+            return Err(WorkError::NotFound(format!("tool {name}")));
         }
 
         let definition = current
@@ -326,7 +428,7 @@ impl Store {
             validate_tool_version(version)?;
         }
         let database = self.database.lock().await;
-        if !database.tools.contains_key(name) {
+        if !database.tools.contains_key(name) || database.removed_tools.contains(name) {
             return Err(WorkError::NotFound(format!("tool {name}")));
         }
         select_artifact(database.tool_artifacts.values(), name, version, target)
@@ -340,6 +442,7 @@ impl Store {
         let tools = database
             .tools
             .keys()
+            .filter(|name| !database.removed_tools.contains(*name))
             .filter_map(|name| {
                 select_artifact(database.tool_artifacts.values(), name, None, target)
                     .cloned()
@@ -445,6 +548,45 @@ mod tests {
             actor: "release-service".into(),
             idempotency_key: key.into(),
         }
+    }
+
+    #[tokio::test]
+    async fn removed_tool_preserves_immutable_artifacts_and_can_be_re_registered() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).await.unwrap();
+        let tool = definition("helper", ToolKind::Binary);
+        store.register_tool(tool.clone()).await.unwrap();
+        let published = store
+            .publish_tool_artifact(
+                "helper",
+                publication("1.0.0", "linux-arm64", "helper-first"),
+            )
+            .await
+            .unwrap();
+        store.remove_tool("helper").await.unwrap();
+        store.remove_tool("helper").await.unwrap();
+        assert!(matches!(
+            store.register_attested_tool(tool.clone()).await,
+            Err(WorkError::Conflict(_))
+        ));
+        assert!(store.tools().await.is_empty());
+        assert!(store.tool("helper").await.is_err());
+        assert!(store
+            .resolve_tool("helper", None, "linux-arm64")
+            .await
+            .is_err());
+        assert_eq!(store.database.lock().await.tool_artifacts.len(), 1);
+        drop(store);
+        let reopened = Store::open(directory.path()).await.unwrap();
+        assert!(reopened.tools().await.is_empty());
+        reopened.register_tool(tool).await.unwrap();
+        assert_eq!(
+            reopened
+                .resolve_tool("helper", None, "linux-arm64")
+                .await
+                .unwrap(),
+            published
+        );
     }
 
     #[tokio::test]

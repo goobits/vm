@@ -21,4 +21,9 @@ impl PackageInfrastructureClient {
         let name = url::form_urlencoded::byte_serialize(name.as_bytes()).collect::<String>();
         self.get_work(&format!("v1/packages/{name}")).await
     }
+
+    pub async fn remove_package(&self, name: &str) -> Result<()> {
+        let name = url::form_urlencoded::byte_serialize(name.as_bytes()).collect::<String>();
+        self.delete_work(&format!("v1/packages/{name}")).await
+    }
 }

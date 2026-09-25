@@ -17,7 +17,12 @@ impl Store {
     }
 
     async fn materialize_catalog_locked(&self, database: &Database) -> WorkResult<()> {
-        let catalog = InternalPackageCatalog::from_definitions(database.packages.values())?;
+        let catalog = InternalPackageCatalog::from_definitions(
+            database
+                .packages
+                .values()
+                .filter(|package| !database.removed_packages.contains(&package.name)),
+        )?;
         atomic_write_async(self.root().join(CATALOG_FILE), pretty_json(&catalog)?).await?;
         Ok(())
     }
@@ -39,6 +44,19 @@ impl Store {
                 && repository_urls_equivalent(&existing.repository, &request.repository)
                 && existing.default_branch == request.default_branch
             {
+                if current.removed_packages.contains(&request.name) {
+                    let mut next = current.clone();
+                    next.removed_packages.remove(&request.name);
+                    let definition = next
+                        .packages
+                        .get_mut(&request.name)
+                        .expect("package remains registered");
+                    definition.workspace_release |= request.workspace_release;
+                    let definition = definition.clone();
+                    self.commit(&mut current, next).await?;
+                    self.materialize_catalog_locked(&current).await?;
+                    return Ok(definition);
+                }
                 if request.workspace_release && !existing.workspace_release {
                     let mut next = current.clone();
                     let definition = next
@@ -76,9 +94,11 @@ impl Store {
     }
 
     pub async fn package(&self, name: &str) -> WorkResult<PackageDefinition> {
-        self.database
-            .lock()
-            .await
+        let database = self.database.lock().await;
+        if database.removed_packages.contains(name) {
+            return Err(WorkError::NotFound(format!("package {name}")));
+        }
+        database
             .packages
             .get(name)
             .cloned()
@@ -92,18 +112,68 @@ impl Store {
     }
 
     pub async fn packages(&self) -> Vec<PackageDefinition> {
-        self.database
-            .lock()
-            .await
+        let database = self.database.lock().await;
+        database
             .packages
             .values()
+            .filter(|package| !database.removed_packages.contains(&package.name))
             .cloned()
             .collect()
     }
 
     pub async fn internal_catalog(&self) -> WorkResult<InternalPackageCatalog> {
-        InternalPackageCatalog::from_definitions(self.database.lock().await.packages.values())
-            .map_err(Into::into)
+        let database = self.database.lock().await;
+        InternalPackageCatalog::from_definitions(
+            database
+                .packages
+                .values()
+                .filter(|package| !database.removed_packages.contains(&package.name)),
+        )
+        .map_err(Into::into)
+    }
+
+    pub async fn remove_package(&self, name: &str) -> WorkResult<()> {
+        let mut current = self.database.lock().await;
+        if !current.packages.contains_key(name) {
+            return Err(WorkError::NotFound(format!("package {name}")));
+        }
+        if current.removed_packages.contains(name) {
+            return self.materialize_catalog_locked(&current).await;
+        }
+        if current.consumers.values().any(|consumer| {
+            !current.removed_consumers.contains(&consumer.name)
+                && consumer.dependencies.contains_key(name)
+        }) {
+            return Err(WorkError::Conflict(format!(
+                "package '{name}' is still declared by a registered consumer"
+            )));
+        }
+        if current
+            .checkouts
+            .values()
+            .any(|checkout| checkout.package == name && !checkout.state.is_terminal())
+        {
+            return Err(WorkError::Conflict(format!(
+                "package '{name}' has an unfinished checkout"
+            )));
+        }
+        if current.rollouts.values().any(|rollout| {
+            rollout.package == name
+                && !matches!(
+                    rollout.state,
+                    vm_packages::RolloutState::Closed
+                        | vm_packages::RolloutState::Cancelled
+                        | vm_packages::RolloutState::Failed
+                )
+        }) {
+            return Err(WorkError::Conflict(format!(
+                "package '{name}' has unfinished consumer updates"
+            )));
+        }
+        let mut next = current.clone();
+        next.removed_packages.insert(name.to_string());
+        self.commit(&mut current, next).await?;
+        self.materialize_catalog_locked(&current).await
     }
 }
 
@@ -111,7 +181,16 @@ pub(crate) fn source_definition(
     database: &Database,
     name: &str,
 ) -> WorkResult<Option<SourceDefinition>> {
-    match (database.packages.get(name), database.tools.get(name)) {
+    match (
+        database
+            .packages
+            .get(name)
+            .filter(|_| !database.removed_packages.contains(name)),
+        database
+            .tools
+            .get(name)
+            .filter(|_| !database.removed_tools.contains(name)),
+    ) {
         (Some(package), None) => Ok(Some(SourceDefinition {
             kind: SourceKind::Package,
             name: package.name.clone(),

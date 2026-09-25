@@ -7,14 +7,18 @@ Implemented so far: project initialization and explicit project selection;
 project-owned environment declarations with stopped `create` and retryable
 `start`; deterministic named targeting and repeated `exec --env`; project-scoped
 snapshots with archive checksums and mount coverage; grouped package,
-configuration, database, and tunnel commands; explicit tool targeting; safe
-Docker/Podman storage inspection; and removal of dynamic top-level tool commands.
+configuration, database, and tunnel commands; config field provenance and
+validated atomic mutations; explicit tool targeting; exact project ownership
+checks for fleet actions and tool updates; safe
+Docker/Podman storage inspection; controller-only package, consumer, and tool
+registration removal with retained history; restricted, staged plugin installation;
+and removal of dynamic top-level tool commands.
 The public reference records the current spelling and capability limits.
 
 Still to deliver: runtime drift detection, complete fleet removal and data
-ownership, provider-native snapshots beyond Compose, package/tool removal
-service APIs and Docker acceptance, per-environment database routing, general
-tunnel endpoints, plugin trust, Tart/file storage ownership, structured output,
+ownership, provider-native snapshots beyond Compose, package Docker acceptance,
+per-environment database routing, general tunnel endpoints, typed plugin preset
+capabilities and service activation, Tart/file storage ownership, structured output,
 exit codes, receipts, generated reference, and genuine per-command plans. These
 require backend and acceptance work before this proposal can be marked complete.
 
@@ -305,6 +309,10 @@ override and reports the resulting effective value.
 `render` displays generated provider configuration with secrets redacted. Profile
 default selection persists in project configuration. `ports --fix` only repairs
 managed configuration after checking conflicts; it does not stop other processes.
+The current key validator rejects unknown fields inside schema-owned objects
+while preserving flattened root fields used by extensions. User configuration
+currently contributes managed tools; broader user defaults and field provenance
+through generated preset values still require acceptance against real projects.
 
 ### Secrets, tunnels, and databases
 

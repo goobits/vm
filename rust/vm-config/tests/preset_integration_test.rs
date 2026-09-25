@@ -66,7 +66,7 @@ impl PresetTestFixture {
     }
 
     fn create_vibe_preset_plugin(&self) -> Result<()> {
-        let vibe_dir = self.plugins_dir.join("presets").join("vibe-dev");
+        let vibe_dir = self.plugins_dir.join("presets").join("vibe");
         fs::create_dir_all(&vibe_dir)?;
 
         // Write plugin.yaml

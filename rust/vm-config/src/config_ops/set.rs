@@ -263,4 +263,25 @@ mod tests {
             .contains("no port specified"));
         assert_eq!(std::fs::read_to_string(path).unwrap(), original);
     }
+
+    #[test]
+    fn misspelled_nested_field_is_rejected_before_write() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("vm.yaml");
+        let original = "project:\n  name: test\nprovider: docker\n";
+        std::fs::write(&path, original).unwrap();
+
+        let result = ConfigOps::set_at(
+            "vm.memroy",
+            &["4096".to_string()],
+            false,
+            false,
+            Some(path.clone()),
+        );
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unknown configuration field: vm.memroy"));
+        assert_eq!(std::fs::read_to_string(path).unwrap(), original);
+    }
 }

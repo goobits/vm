@@ -10,6 +10,7 @@ use crate::validation::{validate_config, ValidationMode};
 
 /// Validate the exact document that would be persisted before replacing the file.
 pub(super) fn candidate(value: &Value, path: &Path, global: bool) -> Result<()> {
+    crate::schema::validate_known_keys(value, global)?;
     if global {
         let config: GlobalConfig = serde_yaml_ng::from_value(value.clone())?;
         let tools = crate::config::ToolsConfig {
