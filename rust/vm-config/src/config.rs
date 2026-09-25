@@ -114,6 +114,9 @@ pub struct VmConfig {
 pub struct EnvironmentDeclaration {
     pub provider: ProviderName,
     pub image: ImageSpec,
+    /// Service definitions specific to this environment.
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub services: IndexMap<String, ServiceConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cpus: Option<CpuLimit>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -137,6 +140,7 @@ impl EnvironmentDeclaration {
         if !self.mounts.is_empty() {
             selected.mounts = self.mounts.clone();
         }
+        selected.services.extend(self.services.clone());
         selected
     }
 }

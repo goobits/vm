@@ -1,11 +1,11 @@
 # Configuration
 
-`vm` works from intent-first commands and uses `vm.yaml` for durable project defaults.
+`vm` uses `vm.yaml` for durable project defaults and environment declarations.
 
 ```bash
-vm run linux as backend
-vm run mac as xcode
-vm run container as redis
+vm init
+vm create backend --provider docker --image ubuntu:24.04
+vm start backend
 ```
 
 A minimal config:
@@ -58,7 +58,7 @@ Profiles remain available for project variants:
 vm config profiles list
 vm config profiles show docker
 vm config profiles set-default docker
-vm run linux as backend --profile docker
+vm start backend --profile docker
 ```
 
 An explicit profile wins for one command. The project default profile wins when
@@ -66,12 +66,12 @@ no profile is specified; provider-matched and sole-profile selection are fallbac
 
 ## Provider Routing
 
-Daily commands use environment kinds. Provider names are advanced routing overrides.
+Choose a provider when creating an environment; daily commands use its recorded provider.
 
 ```bash
-vm run linux as backend
-vm run linux as isolated --provider tart
-vm run container as db --provider podman
+vm create backend --provider docker --image ubuntu:24.04
+vm create isolated --provider tart --image vibe-tart-linux-base
+vm create db --provider podman --image postgres:17
 ```
 
 ## Linux Tart With Docker
@@ -82,6 +82,7 @@ Engine inside it:
 ```bash
 vm config set provider tart
 vm config presets apply vibe-tart
+vm start
 vm shell
 ```
 
@@ -101,7 +102,7 @@ vm:
   memory: 16384
 ```
 
-`vm shell` creates the environment when missing. If the versioned Linux base is
+`vm start` provisions the declared environment when missing. If the versioned Linux base is
 not local, `vm` pulls it into the Tart cache or builds it when the published
 image is unavailable. Docker runs directly against the Linux guest kernel, so
 Colima is not part of this path.
@@ -399,6 +400,21 @@ Inside the environment, project files are mounted at `project.workspace_path`, u
 Shared services can be configured in `vm.yaml` and are managed with the
 environment lifecycle. See the [Shared Services Guide](shared-services.md) for
 the supported workflow.
+
+An environment can select its own PostgreSQL database identity:
+
+```yaml
+environments:
+  test:
+    provider: docker
+    image: ubuntu:24.04
+    services:
+      postgresql:
+        enabled: true
+        database: myapp_test
+```
+
+`vm db list --env test` and backup commands then target only `myapp_test`.
 
 ## State
 

@@ -5,7 +5,10 @@ use serde_yaml_ng as serde_yaml;
 use std::path::PathBuf;
 use tracing::instrument;
 use vm_core::error::{Result, VmError};
-use vm_core::vm_warning;
+
+mod plugin;
+use plugin::parse_plugin_fields;
+pub use plugin::validate_plugin_preset_content;
 
 /// Metadata about a preset
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,11 +113,14 @@ impl PresetDetector {
             // Load preset content
             let mut content = match vm_plugin::load_preset_content(plugin) {
                 Ok(c) => c,
-                Err(e) => {
-                    vm_warning!("Failed to load preset content from plugin {name}: {e}");
-                    return Ok(None);
+                Err(error) => {
+                    return Err(VmError::Config(format!(
+                        "Invalid plugin preset '{name}': {error}"
+                    )))
                 }
             };
+
+            let fields = parse_plugin_fields(&content)?;
 
             // Convert PresetContent to VmConfig
             let environment: indexmap::IndexMap<String, String> = content
@@ -154,36 +160,6 @@ impl PresetDetector {
                 ..Default::default()
             });
 
-            // Deserialize networking from YAML value if present
-            let networking = content
-                .networking
-                .as_ref()
-                .and_then(|v| serde_yaml_ng::from_value(v.clone()).ok());
-
-            // Deserialize host_sync from YAML value if present
-            let host_sync = content
-                .host_sync
-                .as_ref()
-                .and_then(|v| serde_yaml_ng::from_value(v.clone()).ok());
-
-            // Deserialize terminal from YAML value if present
-            let terminal = content
-                .terminal
-                .as_ref()
-                .and_then(|v| serde_yaml_ng::from_value(v.clone()).ok());
-
-            let mounts = content
-                .mounts
-                .as_ref()
-                .and_then(|value| serde_yaml_ng::from_value(value.clone()).ok())
-                .unwrap_or_default();
-
-            let tools = content
-                .tools
-                .as_ref()
-                .and_then(|value| serde_yaml_ng::from_value(value.clone()).ok())
-                .unwrap_or_default();
-
             let config = VmConfig {
                 apt_packages: content.packages,
                 npm_packages: content.npm_packages,
@@ -193,11 +169,11 @@ impl PresetDetector {
                 aliases,
                 services,
                 vm,
-                networking,
-                host_sync,
-                terminal,
-                mounts,
-                tools,
+                networking: fields.networking,
+                host_sync: fields.host_sync,
+                terminal: fields.terminal,
+                mounts: fields.mounts,
+                tools: fields.tools,
                 ..Default::default()
             };
 
@@ -335,6 +311,17 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn plugin_preset_rejects_invalid_nested_configuration() {
+        let typo: vm_plugin::PresetContent =
+            serde_yaml_ng::from_str("networking:\n  netwroks: [private]\n").unwrap();
+        assert!(validate_plugin_preset_content(&typo).is_err());
+
+        let invalid_type: vm_plugin::PresetContent =
+            serde_yaml_ng::from_str("mounts: invalid\n").unwrap();
+        assert!(validate_plugin_preset_content(&invalid_type).is_err());
+    }
 
     #[test]
     fn test_preset_detection() {

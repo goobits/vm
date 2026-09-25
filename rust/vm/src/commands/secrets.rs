@@ -7,7 +7,7 @@
 use crate::cli::SecretSubcommand;
 use crate::error::{VmError, VmResult};
 use crate::services::service_lifecycle;
-use dialoguer::{Confirm, Password};
+use dialoguer::Password;
 use std::io::{IsTerminal, Read};
 use vm_auth_proxy::{self, check_server_running, SecretScope};
 use vm_config::{AppConfig, GlobalConfig};
@@ -53,9 +53,7 @@ async fn handle_secrets_command(
         }
         SecretSubcommand::List => handle_list(&global_config).await,
         SecretSubcommand::Show { name, reveal: _ } => handle_show(name, &global_config).await,
-        SecretSubcommand::Remove { name, force } => {
-            handle_remove(name, *force, &global_config).await
-        }
+        SecretSubcommand::Remove { name, yes } => handle_remove(name, *yes, &global_config).await,
     }
 }
 
@@ -211,21 +209,22 @@ async fn handle_show(name: &str, global_config: &GlobalConfig) -> VmResult<()> {
 }
 
 /// Remove a secret
-async fn handle_remove(name: &str, force: bool, global_config: &GlobalConfig) -> VmResult<()> {
-    let server_url = server_url(global_config);
-    ensure_server(global_config).await?;
-
-    if !force
-        && !Confirm::new()
-            .with_prompt(format!("Remove secret '{name}'?"))
-            .default(false)
-            .interact()
-            .map_err(|error| VmError::general(error, "Failed to confirm secret removal"))?
-    {
-        vm_println!("Secret removal cancelled.");
-        return Ok(());
+async fn handle_remove(name: &str, yes: bool, global_config: &GlobalConfig) -> VmResult<()> {
+    if !yes {
+        if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
+            return Err(VmError::validation(
+                format!("Removing secret '{name}' requires confirmation"),
+                Some("Review the secret name, then repeat with --yes"),
+            ));
+        }
+        if !vm_core::prompts::confirm_select(&format!("Remove secret '{name}'?"), false)? {
+            vm_println!("Secret removal cancelled.");
+            return Ok(());
+        }
     }
 
+    let server_url = server_url(global_config);
+    ensure_server(global_config).await?;
     vm_progress!("Removing secret '{name}'...");
 
     vm_auth_proxy::remove_secret(&server_url, name)

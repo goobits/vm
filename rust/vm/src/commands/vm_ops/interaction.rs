@@ -7,9 +7,7 @@ use tracing::debug;
 use crate::error::{VmError, VmResult};
 use vm_config::{config::VmConfig, ConfigLoader, GlobalConfig};
 use vm_core::{vm_progress, vm_success};
-use vm_provider::{InstanceState, Provider};
-
-use super::lifecycle::ensure_running_for_shell;
+use vm_provider::{GuestExit, InstanceState, Provider};
 
 fn detected_relative_path(path: Option<PathBuf>) -> PathBuf {
     if let Some(path) = path {
@@ -29,13 +27,12 @@ fn detected_relative_path(path: Option<PathBuf>) -> PathBuf {
     }
 }
 
-/// Start an existing environment when needed, then open an interactive shell.
+/// Open an interactive shell in an existing, running environment.
 pub async fn handle_ssh(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     path: Option<PathBuf>,
     config: VmConfig,
-    global_config: GlobalConfig,
 ) -> VmResult<()> {
     let relative_path = detected_relative_path(path);
     let vm_name = container.unwrap_or_else(|| {
@@ -52,20 +49,19 @@ pub async fn handle_ssh(
         relative_path = %relative_path.display(),
         "Connecting to VM"
     );
+    if provider.instance_state(container).map_err(VmError::from)? != InstanceState::Running
+        || !provider.is_shell_ready(container).map_err(VmError::from)?
+    {
+        return Err(VmError::conflict(
+            "Environment is not ready for a shell",
+            Some("Start it with `vm start` before using `vm shell`"),
+        ));
+    }
     vm_progress!("Connecting to '{vm_name}'...");
-    let started = std::time::Instant::now();
-    ensure_running_for_shell(provider.as_ref(), container, &config, &global_config).await?;
-    debug!(
-        elapsed_ms = started.elapsed().as_millis(),
-        "Shell target is ready"
-    );
     if let Err(error) = crate::commands::tools::schedule(vm_name) {
         debug!(%error, "Could not schedule background guest reconciliation");
     }
-    debug!(
-        elapsed_ms = started.elapsed().as_millis(),
-        "Handing off interactive shell"
-    );
+    debug!("Handing off interactive shell");
     provider
         .ssh(container, &relative_path)
         .map_err(VmError::from)
@@ -78,7 +74,7 @@ pub async fn handle_exec(
     command: Vec<String>,
     config: VmConfig,
     global_config: GlobalConfig,
-) -> VmResult<()> {
+) -> VmResult<GuestExit> {
     debug!(
         argument_count = command.len(),
         provider = provider.name(),
@@ -86,7 +82,7 @@ pub async fn handle_exec(
     );
 
     if provider.instance_state(container).map_err(VmError::from)? != InstanceState::Running {
-        return Err(VmError::validation(
+        return Err(VmError::conflict(
             "Environment is not running",
             Some("Start it with `vm start` before using `vm exec`"),
         ));
@@ -105,7 +101,9 @@ pub async fn handle_exec(
         &config,
         &global_config,
     )?;
-    provider.exec(container, &command).map_err(VmError::from)
+    provider
+        .exec_status(container, &command)
+        .map_err(VmError::from)
 }
 
 /// View environment logs.

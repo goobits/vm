@@ -2,10 +2,7 @@
 
 use crate::cli::{Args, Command};
 use crate::error::{VmError, VmResult};
-use command_context::{
-    load_or_create_runtime_subject, load_provider_context, load_runtime_context,
-    load_runtime_subject, project_name,
-};
+use command_context::{load_provider_context, load_runtime_context, load_runtime_subject};
 use std::path::PathBuf;
 use vm_config::validation::{validate_config, ValidationMode};
 use vm_config::AppConfig;
@@ -25,7 +22,6 @@ mod packages;
 pub mod plugin;
 pub mod plugin_new;
 mod project;
-mod run;
 pub mod secrets;
 mod state;
 mod status;
@@ -106,13 +102,17 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
             config::handle_config_command(&command, args.profile, args.config)
         }
         Command::Plugins { command } => plugin::handle_command(&command),
-        Command::Db { command } => db::handle_db(command).await,
+        Command::Db { command } => db::handle_db(command, args.config, args.profile).await,
         Command::Secrets { command } => {
             secrets::handle_command(&command, args.config, args.profile).await
         }
         Command::System { command } => system::handle(&command, args.config, args.profile).await,
         Command::InternalCompletion { shell } => completion::handle(&shell),
-        Command::List { all_projects, raw } => {
+        Command::List {
+            all_projects,
+            raw,
+            json,
+        } => {
             let project_selected = args.config.is_some()
                 || vm_config::ConfigLoader::new()
                     .find_config_path()
@@ -120,22 +120,48 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
                     .as_deref()
                     .is_some_and(|path| path.file_name().is_some_and(|name| name == "vm.yaml"));
             if all_projects || !project_selected {
-                vm_ops::handle_list_enhanced(None, None, None, raw, None)
+                if json {
+                    let instances = vm_ops::collect_list_instances(None, None, None)?;
+                    crate::presentation::success("list", vm_ops::list_output(instances, None, raw))
+                } else {
+                    vm_ops::handle_list_enhanced(None, None, None, raw, None)
+                }
             } else {
-                let (provider, config, _) = load_provider_context(args.config, args.profile, None)?;
+                let config = AppConfig::load(args.config.clone(), args.profile.clone(), None)?.vm;
                 command_context::require_project_config(&config)?;
                 if !config.environments.is_empty() {
-                    return vm_ops::handle_declared_project_list(&config, raw);
+                    return if json {
+                        let (instances, default_name) =
+                            vm_ops::collect_declared_project_instances(&config)?;
+                        crate::presentation::success(
+                            "list",
+                            vm_ops::list_output(instances, default_name.as_deref(), raw),
+                        )
+                    } else {
+                        vm_ops::handle_declared_project_list(&config, raw)
+                    };
                 }
-                let project = project_name(&config);
+                let (provider, config, _) = load_provider_context(args.config, args.profile, None)?;
                 let default_name = provider.resolve_instance_name(None).ok();
-                vm_ops::handle_list_enhanced(
-                    Some(provider.as_ref()),
-                    None,
-                    Some(project),
-                    raw,
-                    default_name.as_deref(),
-                )
+                if json {
+                    let instances = vm_ops::collect_list_instances(
+                        Some(provider.as_ref()),
+                        None,
+                        Some(&config),
+                    )?;
+                    crate::presentation::success(
+                        "list",
+                        vm_ops::list_output(instances, default_name.as_deref(), raw),
+                    )
+                } else {
+                    vm_ops::handle_list_enhanced(
+                        Some(provider.as_ref()),
+                        None,
+                        Some(&config),
+                        raw,
+                        default_name.as_deref(),
+                    )
+                }
             }
         }
         Command::Start {
@@ -145,13 +171,7 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
         } => {
             if fleet.fleet {
                 let project = fleet_project(args.config, args.profile)?;
-                vm_ops::handle_fleet_lifecycle(
-                    &fleet,
-                    &project,
-                    vm_ops::FleetAction::Start,
-                    no_wait,
-                )
-                .await
+                vm_ops::handle_fleet_start(&fleet, &project, no_wait).await
             } else {
                 let subjects = resolve_named_starts(args.config, args.profile, environments)?;
                 let mut failures = Vec::new();
@@ -164,64 +184,15 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
                 named_outcome(failures)
             }
         }
-        Command::Run {
-            kind,
-            words,
-            provider,
-            image,
-            build,
-            from_snapshot,
-            ephemeral,
-            mount,
-            cpu,
-            memory,
-        } => {
-            let name = run::parse_name(&words)?;
-            run::handle(run::RunIntent {
-                kind,
-                name,
-                provider_override: provider,
-                image,
-                build,
-                from_snapshot,
-                ephemeral,
-                mounts: mount,
-                cpu,
-                memory,
-                config_path: args.config,
-                profile: args.profile,
-            })
+        Command::Shell { environment, path } => {
+            let subject = load_runtime_subject(args.config, args.profile, environment)?;
+            vm_ops::handle_ssh(
+                subject.provider,
+                Some(subject.target.as_str()),
+                path,
+                subject.config,
+            )
             .await
-        }
-        Command::Shell {
-            environment,
-            path,
-            command,
-        } => {
-            let subject =
-                load_or_create_runtime_subject(args.config, args.profile, environment).await?;
-            match command {
-                Some(command) => {
-                    vm_ops::handle_exec(
-                        subject.provider,
-                        Some(subject.target.as_str()),
-                        vec!["/bin/sh".to_string(), "-c".to_string(), command],
-                        subject.config,
-                        subject.global_config,
-                    )
-                    .await
-                }
-                None => {
-                    vm_ops::handle_ssh(
-                        subject.provider,
-                        Some(subject.target.as_str()),
-                        path,
-                        subject.config,
-                        subject.global_config,
-                    )
-                    .await
-                }
-            }
         }
         Command::Exec {
             environments,
@@ -239,10 +210,26 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
                 vm_ops::handle_fleet_exec(&fleet, &project, &command)
             } else {
                 let subjects = resolve_named_subjects(args.config, args.profile, environments)?;
+                if subjects.len() == 1 {
+                    let subject = subjects.into_iter().next().expect("one subject");
+                    let exit = vm_ops::handle_exec(
+                        subject.provider,
+                        Some(subject.target.as_str()),
+                        command,
+                        subject.config,
+                        subject.global_config,
+                    )
+                    .await?;
+                    return if exit.success() {
+                        Ok(())
+                    } else {
+                        Err(VmError::guest_exit(exit.code()))
+                    };
+                }
                 let mut failures = Vec::new();
                 for subject in subjects {
                     let target = subject.target.clone();
-                    if let Err(error) = vm_ops::handle_exec(
+                    match vm_ops::handle_exec(
                         subject.provider,
                         Some(subject.target.as_str()),
                         command.clone(),
@@ -251,7 +238,14 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
                     )
                     .await
                     {
-                        failures.push(format!("{target}: {error}"));
+                        Ok(exit) if !exit.success() => {
+                            failures.push(format!(
+                                "{target}: guest command exited with status {}",
+                                exit.code()
+                            ));
+                        }
+                        Err(error) => failures.push(format!("{target}: {error}")),
+                        Ok(_) => {}
                     }
                 }
                 named_outcome(failures)
@@ -274,25 +268,19 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
             )
         }
         Command::Copy {
-            fleet,
             source,
             destination,
         } => {
-            if fleet.fleet {
-                let project = fleet_project(args.config, args.profile)?;
-                vm_ops::handle_fleet_copy(&fleet, &project, &source, &destination)
-            } else {
-                let requested = vm_ops::target::copy_target(&source, &destination)?;
-                let subject =
-                    load_runtime_context(args.config, args.profile, None, requested.as_deref())?;
-                vm_ops::handle_copy(
-                    subject.provider,
-                    &source,
-                    &destination,
-                    Some(subject.target.as_str()),
-                    subject.config,
-                )
-            }
+            let requested = vm_ops::target::copy_target(&source, &destination)?;
+            let subject =
+                load_runtime_context(args.config, args.profile, None, requested.as_deref())?;
+            vm_ops::handle_copy(
+                subject.provider,
+                &source,
+                &destination,
+                Some(subject.target.as_str()),
+                subject.config,
+            )
         }
         Command::Stop {
             environments,
@@ -324,7 +312,11 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
         Command::Status {
             environments,
             fleet,
+            json,
         } => {
+            if json {
+                return status_json(args.config, args.profile, environments, fleet);
+            }
             if fleet.fleet {
                 let project = fleet_project(args.config, args.profile)?;
                 vm_ops::handle_fleet_status(&fleet, &project)
@@ -335,6 +327,20 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
                         .status(Some(subject.target.as_str()))
                         .map_err(VmError::from)?;
                     status::display(&report);
+                    if !subject.provider.supports_runtime_drift_detection() {
+                        vm_core::vm_println!(
+                            "Configuration: unknown (provider has no drift record)"
+                        );
+                    } else {
+                        match subject
+                            .provider
+                            .runtime_drift(&subject.target)
+                            .map_err(VmError::from)?
+                        {
+                            Some(reason) => vm_core::vm_println!("Configuration drift: {reason}"),
+                            None => vm_core::vm_println!("Configuration: current"),
+                        }
+                    }
                 }
                 Ok(())
             }
@@ -371,16 +377,41 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
                 named_outcome(failures)
             }
         }
-        Command::Remove { environment, force } => {
-            let subject = load_runtime_subject(args.config, args.profile, environment)?;
-            vm_ops::handle_destroy(
-                subject.provider,
-                Some(subject.target.as_str()),
-                subject.config,
-                subject.global_config,
-                force,
-            )
-            .await
+        Command::Remove {
+            environments,
+            fleet,
+            delete_data,
+            yes,
+        } => {
+            if fleet.fleet {
+                let project = fleet_project(args.config, args.profile)?;
+                vm_ops::handle_fleet_remove(&fleet, &project, delete_data, yes).await
+            } else {
+                let subjects = resolve_named_subjects(args.config, args.profile, environments)?;
+                let names = subjects
+                    .iter()
+                    .map(|subject| format!("{} ({})", subject.target, subject.provider.name()))
+                    .collect::<Vec<_>>();
+                if !vm_ops::confirm_removal(&names, delete_data, yes)? {
+                    return Ok(());
+                }
+                let mut failures = Vec::new();
+                for subject in subjects {
+                    let target = subject.target.clone();
+                    if let Err(error) = vm_ops::handle_destroy(
+                        subject.provider,
+                        Some(subject.target.as_str()),
+                        subject.config,
+                        subject.global_config,
+                        delete_data,
+                    )
+                    .await
+                    {
+                        failures.push(format!("{target}: {error}"));
+                    }
+                }
+                named_outcome(failures)
+            }
         }
         Command::Snapshots { command } => state::handle(command, args.config, args.profile).await,
         Command::Packages { command } => packages::handle(command, args.config, args.profile).await,
@@ -393,8 +424,58 @@ fn fleet_project(
     config_path: Option<PathBuf>,
     profile: Option<String>,
 ) -> VmResult<vm_ops::FleetProject> {
-    let config = AppConfig::load(config_path, profile, None)?;
+    let mut config = AppConfig::load(config_path, profile, None)?;
+    packages::apply_client_environment(&mut config.vm)?;
     vm_ops::FleetProject::new(config.vm)
+}
+
+fn status_json(
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+    environments: Vec<String>,
+    fleet: crate::cli::FleetArgs,
+) -> VmResult<()> {
+    let (output, errors) = if fleet.fleet {
+        let project = fleet_project(config_path, profile)?;
+        vm_ops::collect_fleet_status(&fleet, &project)?
+    } else {
+        let subjects = resolve_named_subjects(config_path, profile, environments)?;
+        let mut targets = Vec::with_capacity(subjects.len());
+        let mut errors = Vec::new();
+        for subject in subjects {
+            let provider_name = subject.provider.name().to_string();
+            let result = status::collect(subject.provider.as_ref(), &subject.target);
+            match result {
+                Ok(report) => targets.push(status::StatusTarget::success(
+                    subject.target,
+                    provider_name,
+                    report,
+                )),
+                Err(error) => {
+                    targets.push(status::StatusTarget::failure(
+                        subject.target,
+                        provider_name,
+                        &error,
+                    ));
+                    errors.push(crate::presentation::ErrorRecord::from_error(&error));
+                }
+            }
+        }
+        (status::StatusOutput::from_targets(targets), errors)
+    };
+    let failed = output.failed;
+    crate::presentation::outcome("status", output, errors)?;
+    if failed > 0 {
+        return Err(VmError::general(
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "one or more status checks failed",
+            ),
+            format!("{failed} status checks failed"),
+        )
+        .reported());
+    }
+    Ok(())
 }
 
 fn resolve_named_subjects(

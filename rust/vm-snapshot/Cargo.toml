@@ -17,6 +17,7 @@ tar = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+uuid = { workspace = true }
 walkdir = { workspace = true }
 
 vm-config = { path = "../vm-config" }

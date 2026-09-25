@@ -28,6 +28,7 @@ services:
       com.vm.role: "environment"
       com.vm.project: {{ base_project_name | json_encode }}
       com.vm.instance: {{ project_name | json_encode }}
+      com.vm.runtime-fingerprint: {{ runtime_fingerprint | json_encode }}
       {% if config_path_label %}
       com.vm.config-path: {{ config_path_label }}
       {% endif %}
@@ -385,6 +386,10 @@ volumes:
       com.vm.project: {{ base_project_name | json_encode }}
       com.vm.instance: {{ project_name | json_encode }}
       com.vm.retention: "keep"
+      com.vm.scope: "instance"
+      {% if config_path_label %}
+      com.vm.config-path: {{ config_path_label }}
+      {% endif %}
   {% endif %}
   {% for volume in named_volumes %}
   {{ volume.alias }}:
@@ -394,6 +399,10 @@ volumes:
       com.vm.project: {{ base_project_name | json_encode }}
       com.vm.instance: {{ project_name | json_encode }}
       com.vm.retention: "{{ volume.retention }}"
+      com.vm.scope: "{{ volume.scope }}"
+      {% if config_path_label %}
+      com.vm.config-path: {{ config_path_label }}
+      {% endif %}
   {% endfor %}
 
 {% if config.networking and config.networking.networks and config.networking.networks | length > 0 -%}

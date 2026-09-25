@@ -32,10 +32,12 @@ vm --help
 vm doctor
 ```
 
-Start a Linux environment with the default provider:
+Create and start a Linux environment:
 
 ```bash
-vm run linux as dev
+vm init
+vm create dev --provider docker --image ubuntu:24.04
+vm start dev
 vm shell dev
 ```
 
@@ -43,9 +45,10 @@ vm shell dev
 
 | Command | Purpose |
 | --- | --- |
-| `vm run <kind> as <name>` | Create or start a named macOS, Linux, or container environment |
+| `vm create <name> --provider <provider> --image <image>` | Declare and provision a stopped environment |
+| `vm start <name>` | Start a declared environment |
 | `vm shell <name>` | Open an interactive shell |
-| `vm exec <name> -- <command>` | Run a command in an environment |
+| `vm exec --env <name> -- <command>` | Run a command in an environment |
 | `vm restart <name>` | Restart an environment |
 | `vm list` | List managed environments |
 | `vm remove <name>` | Remove an environment |

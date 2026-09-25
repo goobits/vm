@@ -454,10 +454,10 @@ fn fresh_setup_and_existing_state_reconciliation_are_idempotent() {
         "{}",
         String::from_utf8_lossy(&first.stderr)
     );
-    let first_stdout = String::from_utf8_lossy(&first.stdout);
-    assert!(first_stdout.contains("Package infrastructure is ready"));
-    assert!(first_stdout.contains("Reconciling 1 managed package shelf"));
-    assert!(first_stdout.contains("Registered @shared/auth (npm)"));
+    let first_stderr = String::from_utf8_lossy(&first.stderr);
+    assert!(first_stderr.contains("Package infrastructure is ready"));
+    assert!(first_stderr.contains("Reconciling 1 managed package shelf"));
+    assert!(first_stderr.contains("Registered @shared/auth (npm)"));
 
     let appliance = directory.path().join(".vm/infrastructure/packages");
     let read_token = fs::read(appliance.join("read-token")).unwrap();
@@ -514,7 +514,7 @@ fn configured_empty_shelf_is_a_successful_noop() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(String::from_utf8(output.stdout)
+    assert!(String::from_utf8(output.stderr)
         .unwrap()
         .contains("Package source scan complete; no package or tool repositories found"));
     assert_eq!(gateway.package_registrations(), 0);

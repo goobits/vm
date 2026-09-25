@@ -26,25 +26,6 @@ pub(in crate::commands) enum StartOutcome {
     Started,
 }
 
-#[derive(Debug, Clone, Copy)]
-enum ReadyFor {
-    Commands,
-    Shell,
-}
-
-impl ReadyFor {
-    fn check(
-        self,
-        provider: &dyn InstanceProvider,
-        container: Option<&str>,
-    ) -> vm_core::error::Result<bool> {
-        match self {
-            Self::Commands => provider.is_ready(container),
-            Self::Shell => provider.is_shell_ready(container),
-        }
-    }
-}
-
 fn project_name(config: &VmConfig) -> &str {
     config
         .project
@@ -67,13 +48,11 @@ async fn wait_until_ready(
     provider: &dyn InstanceProvider,
     container: Option<&str>,
     display_name: &str,
-    ready_for: ReadyFor,
 ) -> VmResult<()> {
     wait_until_ready_for(
         provider,
         container,
         display_name,
-        ready_for,
         READY_TIMEOUT,
         READY_INTERVAL,
     )
@@ -85,14 +64,13 @@ pub(in crate::commands) async fn wait_until_commands_ready(
     container: Option<&str>,
     display_name: &str,
 ) -> VmResult<()> {
-    wait_until_ready(provider, container, display_name, ReadyFor::Commands).await
+    wait_until_ready(provider, container, display_name).await
 }
 
 async fn wait_until_ready_for(
     provider: &dyn InstanceProvider,
     container: Option<&str>,
     display_name: &str,
-    ready_for: ReadyFor,
     timeout: Duration,
     interval: Duration,
 ) -> VmResult<()> {
@@ -101,7 +79,7 @@ async fn wait_until_ready_for(
     let deadline = tokio::time::Instant::now() + timeout;
 
     loop {
-        match ready_for.check(provider, container) {
+        match provider.is_ready(container) {
             Ok(true) => return Ok(()),
             Ok(false) => {}
             Err(error) => last_error = Some(error),
@@ -142,30 +120,7 @@ pub(in crate::commands) async fn ensure_running(
     global_config: &GlobalConfig,
     wait: bool,
 ) -> VmResult<StartOutcome> {
-    ensure_running_for(
-        provider,
-        container,
-        config,
-        global_config,
-        wait.then_some(ReadyFor::Commands),
-    )
-    .await
-}
-
-pub(in crate::commands) async fn ensure_running_for_shell(
-    provider: &dyn InstanceProvider,
-    container: Option<&str>,
-    config: &VmConfig,
-    global_config: &GlobalConfig,
-) -> VmResult<StartOutcome> {
-    ensure_running_for(
-        provider,
-        container,
-        config,
-        global_config,
-        Some(ReadyFor::Shell),
-    )
-    .await
+    ensure_running_for(provider, container, config, global_config, wait).await
 }
 
 async fn ensure_running_for(
@@ -173,10 +128,19 @@ async fn ensure_running_for(
     container: Option<&str>,
     config: &VmConfig,
     global_config: &GlobalConfig,
-    ready_for: Option<ReadyFor>,
+    wait: bool,
 ) -> VmResult<StartOutcome> {
     let display_name = target_name(provider, container, config);
     let state = provider.instance_state(container).map_err(VmError::from)?;
+    if let Some(drift) = provider
+        .runtime_drift(&display_name)
+        .map_err(VmError::from)?
+    {
+        return Err(VmError::validation(
+            format!("Configuration drift for '{display_name}': {drift}"),
+            Some("Review the changed runtime settings, then remove and recreate this environment"),
+        ));
+    }
 
     let should_start = match state {
         InstanceState::Running => false,
@@ -203,8 +167,8 @@ async fn ensure_running_for(
         }
     };
 
-    if let Some(ready_for) = ready_for {
-        wait_until_ready(provider, container, &display_name, ready_for).await?;
+    if wait {
+        wait_until_ready(provider, container, &display_name).await?;
     }
 
     if !should_start {
@@ -286,6 +250,15 @@ pub async fn handle_restart(
     debug!(target = %display_name, "Restarting environment");
 
     vm_progress!("Restarting '{display_name}'...");
+    if let Some(drift) = provider
+        .runtime_drift(&display_name)
+        .map_err(VmError::from)?
+    {
+        return Err(VmError::validation(
+            format!("Configuration drift for '{display_name}': {drift}"),
+            Some("Review the changed runtime settings, then remove and recreate this environment"),
+        ));
+    }
     let context = ProviderContext::default().with_config(global_config.clone());
     match provider.instance_state(container).map_err(VmError::from)? {
         InstanceState::Running | InstanceState::Starting => provider
@@ -302,13 +275,7 @@ pub async fn handle_restart(
         }
     }
 
-    wait_until_ready(
-        provider.as_ref(),
-        container,
-        &display_name,
-        ReadyFor::Commands,
-    )
-    .await?;
+    wait_until_ready(provider.as_ref(), container, &display_name).await?;
     if has_enabled_services(&config, &global_config) {
         register_vm_services_helper(&display_name, &config, &global_config).await?;
     }

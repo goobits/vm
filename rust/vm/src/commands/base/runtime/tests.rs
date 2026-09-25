@@ -61,6 +61,15 @@ impl CommandProvider for FakeProvider {
         Ok(())
     }
 
+    fn exec_status(
+        &self,
+        container: Option<&str>,
+        command: &[String],
+    ) -> vm_core::error::Result<vm_provider::GuestExit> {
+        self.exec(container, command)?;
+        Ok(vm_provider::GuestExit::new(0))
+    }
+
     fn exec_output(
         &self,
         _container: Option<&str>,

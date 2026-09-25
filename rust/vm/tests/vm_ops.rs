@@ -6,8 +6,8 @@ mod vm_ops {
     pub mod lifecycle_integration_tests;
     pub mod multi_instance_tests;
     pub mod provider_parity_tests;
-    pub mod run_remove_tests;
     pub mod service_lifecycle_tests;
+    pub mod start_remove_tests;
     pub mod status_tests;
 
     // Re-export helpers for easy access in test modules

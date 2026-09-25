@@ -6,6 +6,7 @@ use tracing::{debug, info};
 
 use super::LifecycleOperations;
 use crate::{container::UserConfig, security::SecurityValidator, shell_session};
+use crate::{guest_exit::run_guest_command, GuestExit};
 use vm_core::msg;
 use vm_core::{
     command_stream::stream_command_visible,
@@ -233,6 +234,15 @@ impl<'a> LifecycleOperations<'a> {
         let args = self.container_exec_args(container, cmd, false)?;
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
         stream_command_visible(self.runtime.executable(), &arg_refs)
+    }
+
+    pub fn exec_status_in_container(
+        &self,
+        container: Option<&str>,
+        cmd: &[String],
+    ) -> Result<GuestExit> {
+        let args = self.container_exec_args(container, cmd, false)?;
+        run_guest_command(std::process::Command::new(self.runtime.executable()).args(args))
     }
 
     #[must_use = "command execution results should be handled"]

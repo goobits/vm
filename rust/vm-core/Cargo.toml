@@ -8,6 +8,8 @@ tracing = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 serde_json = { workspace = true }
+serde = { workspace = true }
+sha2 = { workspace = true }
 serde_yaml_ng = { workspace = true }
 duct = { workspace = true }
 dialoguer = { workspace = true }

@@ -23,35 +23,6 @@ pub(in crate::commands) fn canonical_instance_name(
     }
 }
 
-pub(super) fn creation_instance_name(
-    provider: &str,
-    project: &str,
-    requested: Option<&str>,
-) -> Option<String> {
-    let requested = requested?;
-    if requested == project || requested == canonical_instance_name(provider, project, None) {
-        return None;
-    }
-
-    let project_prefix = format!("{project}-");
-    let instance = match provider {
-        "tart" => requested.strip_prefix(&project_prefix),
-        _ => requested
-            .strip_prefix(&project_prefix)
-            .and_then(|name| name.strip_suffix("-dev")),
-    };
-
-    Some(instance.unwrap_or(requested).to_string())
-}
-
-pub fn resolve_runtime_target(
-    provider: &dyn InstanceProvider,
-    config: &VmConfig,
-    requested: Option<&str>,
-) -> VmResult<String> {
-    resolve_runtime_instance(provider, config, requested).map(|instance| instance.name)
-}
-
 pub(in crate::commands) fn resolve_runtime_instance(
     provider: &dyn InstanceProvider,
     config: &VmConfig,
@@ -89,18 +60,66 @@ pub(in crate::commands) fn find_runtime_target(
     let canonical = provider
         .resolve_instance_name(None)
         .map_err(VmError::from)?;
+    let selected_owner = config
+        .owning_config_path()
+        .map(|path| path.canonicalize())
+        .transpose()
+        .map_err(VmError::from)?;
     let instances = provider
         .list_instances()
         .map_err(VmError::from)?
         .into_iter()
         .filter(|instance| instance.project.as_deref() == Some(project))
-        .collect::<Vec<_>>();
+        .filter_map(|instance| {
+            if let Some(owner) = selected_owner.as_deref() {
+                match instance_owner_matches(provider, owner, &instance.name) {
+                    Ok(true) => {}
+                    Ok(false) => return None,
+                    Err(error) => return Some(Err(error)),
+                }
+            }
+            Some(Ok(instance))
+        })
+        .collect::<VmResult<Vec<_>>>()?;
 
     match choose_target(&instances, project, &canonical, requested) {
         TargetChoice::Selected(name) => Ok(Some(name)),
         TargetChoice::Ambiguous(candidates) => Err(ambiguous_target(candidates)),
         TargetChoice::Missing => Ok(None),
     }
+}
+
+pub(super) fn verify_runtime_owner(
+    provider: &dyn InstanceProvider,
+    config: &VmConfig,
+    target: &str,
+) -> VmResult<()> {
+    let selected = config
+        .owning_config_path()
+        .ok_or_else(|| {
+            VmError::validation("Cannot verify owning project configuration", None::<String>)
+        })?
+        .canonicalize()
+        .map_err(VmError::from)?;
+    if !instance_owner_matches(provider, &selected, target)? {
+        return Err(VmError::validation(
+            format!("Environment '{target}' is not owned by the selected project configuration"),
+            Some("Run `vm list` and select the owning project"),
+        ));
+    }
+    Ok(())
+}
+
+fn instance_owner_matches(
+    provider: &dyn InstanceProvider,
+    selected: &std::path::Path,
+    target: &str,
+) -> VmResult<bool> {
+    let owner = provider
+        .instance_config_path(target)
+        .map_err(VmError::from)?
+        .and_then(|path| path.canonicalize().ok());
+    Ok(owner.as_deref() == Some(selected))
 }
 
 fn choose_target(
@@ -196,15 +215,9 @@ fn remote_target(path: &str) -> Option<&str> {
     (!prefix.is_empty() && !prefix.contains('/') && !prefix.contains('\\')).then_some(prefix)
 }
 
-pub fn project_instance_matches(instance: &InstanceInfo, project_name: &str) -> bool {
-    instance.project.as_deref() == Some(project_name)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{
-        canonical_instance_name, choose_target, copy_target, creation_instance_name, TargetChoice,
-    };
+    use super::{canonical_instance_name, choose_target, copy_target, TargetChoice};
     use vm_provider::InstanceInfo;
 
     fn instance(name: &str) -> InstanceInfo {
@@ -289,22 +302,5 @@ mod tests {
         );
         assert_eq!(canonical_instance_name("docker", "demo", None), "demo-dev");
         assert_eq!(canonical_instance_name("tart", "demo", None), "demo");
-    }
-
-    #[test]
-    fn creation_names_normalize_default_and_canonical_targets() {
-        assert_eq!(creation_instance_name("tart", "demo", Some("demo")), None);
-        assert_eq!(
-            creation_instance_name("docker", "demo", Some("demo-dev")),
-            None
-        );
-        assert_eq!(
-            creation_instance_name("tart", "demo", Some("demo-feature")),
-            Some("feature".to_string())
-        );
-        assert_eq!(
-            creation_instance_name("docker", "demo", Some("demo-feature-dev")),
-            Some("feature".to_string())
-        );
     }
 }

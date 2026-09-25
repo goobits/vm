@@ -30,6 +30,7 @@ pub(super) struct RenderedVolume {
     pub target: Option<String>,
     pub nocopy: bool,
     pub retention: &'static str,
+    pub scope: &'static str,
 }
 
 #[derive(Serialize)]
@@ -73,6 +74,11 @@ impl RenderedStorage {
                     target: Some(volume.target.clone()),
                     nocopy: volume.nocopy,
                     retention: volume.retention.as_label(),
+                    scope: match volume.scope {
+                        VolumeScope::Project => "project",
+                        VolumeScope::Instance => "instance",
+                        VolumeScope::Platform => "platform",
+                    },
                 }
             })
             .collect::<Vec<_>>();
@@ -97,11 +103,20 @@ impl RenderedStorage {
                 target: Some(dependency_target),
                 nocopy: true,
                 retention: VolumeRetention::Keep.as_label(),
+                scope: "instance",
             });
         }
         let mut named_volumes = mounts.clone();
-        named_volumes.push(builtin_volume(instance_project, "shell_history"));
-        named_volumes.push(builtin_volume(instance_project, "package_checkouts"));
+        named_volumes.push(builtin_volume(
+            instance_project,
+            "shell_history",
+            "instance",
+        ));
+        named_volumes.push(builtin_volume(
+            instance_project,
+            "package_checkouts",
+            "instance",
+        ));
         let tool_cache_target = (!config
             .storage
             .volumes
@@ -110,14 +125,18 @@ impl RenderedStorage {
         .then(|| tool_cache_target.to_string());
         if tool_cache_target.is_some() {
             let platform_scope = format!("{base_project}_linux_{}", container_architecture());
-            named_volumes.push(builtin_volume(&platform_scope, "tool_cache"));
+            named_volumes.push(builtin_volume(&platform_scope, "tool_cache", "platform"));
         }
         if config
             .services
             .get("postgresql")
             .is_some_and(|service| service.enabled)
         {
-            named_volumes.push(builtin_volume(instance_project, "postgres_data"));
+            named_volumes.push(builtin_volume(
+                instance_project,
+                "postgres_data",
+                "instance",
+            ));
         }
 
         let mut tmpfs = config
@@ -158,13 +177,14 @@ impl RenderedStorage {
     }
 }
 
-fn builtin_volume(project: &str, logical_name: &str) -> RenderedVolume {
+fn builtin_volume(project: &str, logical_name: &str, scope: &'static str) -> RenderedVolume {
     RenderedVolume {
         alias: logical_name.to_string(),
         name: stable_volume_name(project, logical_name),
         target: None,
         nocopy: true,
         retention: VolumeRetention::Keep.as_label(),
+        scope,
     }
 }
 

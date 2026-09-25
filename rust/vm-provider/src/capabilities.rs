@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use vm_config::config::VmConfig;
 use vm_core::error::Result;
 
-use crate::{InstanceInfo, InstanceState, ProviderContext, TempVmState, VmError, VmStatusReport};
+use crate::{
+    GuestExit, InstanceInfo, InstanceState, ProviderContext, TempVmState, VmError, VmStatusReport,
+};
 
 /// Non-interactive and interactive command forms supported by a provider.
 pub trait CommandProvider {
@@ -12,6 +14,9 @@ pub trait CommandProvider {
 
     /// Execute a command and stream its output.
     fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()>;
+
+    /// Execute a guest command with inherited output and return its exact exit status.
+    fn exec_status(&self, container: Option<&str>, cmd: &[String]) -> Result<GuestExit>;
 
     fn exec_interactive(
         &self,
@@ -102,6 +107,15 @@ pub trait InstanceProvider {
         Ok(None)
     }
 
+    /// Explain configuration drift that requires runtime recreation.
+    fn runtime_drift(&self, _instance: &str) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    fn supports_runtime_drift_detection(&self) -> bool {
+        false
+    }
+
     fn reusable_host_ports(&self, _environment: &str) -> Result<Vec<u16>> {
         Ok(Vec::new())
     }
@@ -139,8 +153,10 @@ pub trait TunnelProvider {
     fn start_tcp_relay(
         &self,
         relay_name: &str,
+        local_address: &str,
         host_port: u16,
         target_instance: &str,
+        remote_host: &str,
         target_port: u16,
     ) -> Result<String>;
 

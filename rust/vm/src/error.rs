@@ -11,6 +11,9 @@ pub struct VmError {
     message: String,
     hint: Option<String>,
     source: Option<ErrorSource>,
+    exit_code: i32,
+    guest_exit: bool,
+    reported: bool,
 }
 
 impl VmError {
@@ -22,6 +25,53 @@ impl VmError {
             message: message.into(),
             hint: None,
             source: Some(Box::new(source)),
+            exit_code: 1,
+            guest_exit: false,
+            reported: false,
+        }
+    }
+
+    pub fn exit_code(&self) -> i32 {
+        self.exit_code
+    }
+
+    pub fn is_guest_exit(&self) -> bool {
+        self.guest_exit
+    }
+
+    pub fn is_reported(&self) -> bool {
+        self.reported
+    }
+
+    pub fn reported(mut self) -> Self {
+        self.reported = true;
+        self
+    }
+
+    pub fn guest_exit(code: i32) -> Self {
+        Self {
+            message: format!("Guest command exited with status {code}"),
+            hint: None,
+            source: None,
+            exit_code: code,
+            guest_exit: true,
+            reported: false,
+        }
+    }
+
+    pub fn exec_prelaunch(mut self) -> Self {
+        self.exit_code = 125;
+        self
+    }
+
+    pub fn code(&self) -> &'static str {
+        match self.exit_code {
+            2 => "invalid_request",
+            3 => "state_conflict",
+            4 => "authorization_failed",
+            5 => "deadline_exceeded",
+            125 => "exec_prelaunch_failed",
+            _ => "operation_failed",
         }
     }
 
@@ -46,7 +96,10 @@ impl VmError {
     where
         E: Error + Send + Sync + 'static,
     {
-        Self::with_source(format!("Configuration error: {}", context.into()), source)
+        let mut error =
+            Self::with_source(format!("Configuration error: {}", context.into()), source);
+        error.exit_code = 2;
+        error
     }
 
     pub fn vm_operation<E>(
@@ -89,6 +142,20 @@ impl VmError {
             message: format!("Validation error: {}", message.into()),
             hint: hint.map(Into::into),
             source: None,
+            exit_code: 2,
+            guest_exit: false,
+            reported: false,
+        }
+    }
+
+    pub fn conflict(message: impl Into<String>, hint: Option<impl Into<String>>) -> Self {
+        Self {
+            message: format!("Conflict: {}", message.into()),
+            hint: hint.map(Into::into),
+            source: None,
+            exit_code: 3,
+            guest_exit: false,
+            reported: false,
         }
     }
 
@@ -121,6 +188,9 @@ impl From<anyhow::Error> for VmError {
             message,
             hint: None,
             source: Some(error.into_boxed_dyn_error()),
+            exit_code: 1,
+            guest_exit: false,
+            reported: false,
         }
     }
 }
@@ -152,12 +222,23 @@ impl From<vm_packages::PackageValidationError> for VmError {
 
 impl From<vm_core::error::VmError> for VmError {
     fn from(error: vm_core::error::VmError) -> Self {
+        let exit_code = match &error {
+            vm_core::error::VmError::Config(_)
+            | vm_core::error::VmError::Validation { .. }
+            | vm_core::error::VmError::Serialization(_) => 2,
+            vm_core::error::VmError::Conflict(_) | vm_core::error::VmError::NotFound(_) => 3,
+            vm_core::error::VmError::Timeout(_) => 5,
+            _ => 1,
+        };
         let message = error.to_string();
         let hint = error.hint().map(str::to_string);
         Self {
             message,
             hint,
             source: Some(Box::new(error)),
+            exit_code,
+            guest_exit: false,
+            reported: false,
         }
     }
 }
@@ -218,11 +299,25 @@ mod tests {
         assert_eq!(error.to_string(), "Validation error: Invalid port number");
         assert_eq!(error.hint(), Some("Use a port from 1-65535"));
         assert!(error.source().is_none());
+        assert_eq!(error.exit_code(), 2);
+    }
+
+    #[test]
+    fn exit_codes_distinguish_conflicts_and_deadlines() {
+        assert_eq!(VmError::conflict("stopped", None::<String>).exit_code(), 3);
+        assert_eq!(
+            VmError::from(vm_core::error::VmError::Timeout("waited".into())).exit_code(),
+            5
+        );
+        assert_eq!(
+            VmError::from(vm_core::error::VmError::NotFound("environment".into())).exit_code(),
+            3
+        );
     }
 
     #[test]
     fn io_error_surfaces_the_underlying_message() {
-        let error = VmError::from(io::Error::other("connection closed"));
+        let error = VmError::from(io::Error::new(io::ErrorKind::Other, "connection closed"));
 
         assert_eq!(error.to_string(), "connection closed");
         assert_eq!(error.source().unwrap().to_string(), "connection closed");
@@ -237,7 +332,7 @@ mod tests {
         assert_eq!(validation.hint(), Some("select one environment"));
         assert!(validation.source().is_some());
 
-        let source = io::Error::other("disk unavailable");
+        let source = io::Error::new(io::ErrorKind::Other, "disk unavailable");
         let anyhow_error = anyhow::Error::new(source).context("could not save state");
         let converted = VmError::from(anyhow_error);
         assert_eq!(converted.to_string(), "could not save state");

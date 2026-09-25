@@ -21,9 +21,10 @@ use vm_logging::init_subscriber;
 mod cli;
 mod commands;
 mod error;
+mod presentation;
 mod services;
 
-use cli::Args;
+use cli::{Args, Command, ConfigSubcommand, SystemSubcommand};
 use commands::execute_command;
 
 /// Request ID for this execution - used for tracing logs across the entire request
@@ -35,8 +36,40 @@ fn get_request_id() -> &'static str {
 
 /// Executes the given command and handles top-level errors.
 async fn run_command(args: Args) {
+    let single_exec = matches!(
+        &args.command,
+        Command::Exec { environments, fleet, .. } if !fleet.fleet && environments.len() <= 1
+    );
+    let json_command = match &args.command {
+        Command::System {
+            command: SystemSubcommand::Info { json: true },
+        } => Some("system info"),
+        Command::Config {
+            command: ConfigSubcommand::Show { json: true, .. },
+        } => Some("config show"),
+        Command::Config {
+            command: ConfigSubcommand::Get { json: true, .. },
+        } => Some("config get"),
+        Command::List { json: true, .. } => Some("list"),
+        Command::Status { json: true, .. } => Some("status"),
+        _ => None,
+    };
+    if json_command.is_some() {
+        vm_core::output_macros::set_quiet(true);
+    }
     let result = execute_command(args).await;
     if let Err(error) = result {
+        if error.is_guest_exit() {
+            std::process::exit(error.exit_code());
+        }
+        if error.is_reported() {
+            std::process::exit(error.exit_code());
+        }
+        let error = if single_exec {
+            error.exec_prelaunch()
+        } else {
+            error
+        };
         tracing::error!(
             operation = "execute_command",
             outcome = "failed",
@@ -45,17 +78,23 @@ async fn run_command(args: Args) {
             hint = error.hint().unwrap_or_default(),
             "vm command failed"
         );
-        vm_error!("Error: {}", error);
-        if let Some(source) = error
-            .source_chain()
-            .filter(|source| source != &error.to_string())
-        {
-            vm_error!("Cause: {}", source);
+        if let Some(command) = json_command {
+            if let Err(output_error) = presentation::failure(command, &error) {
+                vm_error!("Error: [operation_failed] {}", output_error);
+            }
+        } else {
+            vm_error!("Error: [{}] {}", error.code(), error);
+            if let Some(source) = error
+                .source_chain()
+                .filter(|source| source != &error.to_string())
+            {
+                vm_error!("Cause: {}", source);
+            }
+            if let Some(hint) = error.hint() {
+                vm_hint!("{}", hint);
+            }
         }
-        if let Some(hint) = error.hint() {
-            vm_hint!("{}", hint);
-        }
-        std::process::exit(1);
+        std::process::exit(error.exit_code());
     }
 }
 
@@ -68,6 +107,10 @@ async fn main() {
     }
 
     let args = Args::parse();
+    if args.no_color {
+        std::env::set_var("NO_COLOR", "1");
+    }
+    vm_core::output_macros::set_quiet(args.quiet);
     // The guard must be kept in scope for the lifetime of the application
     // to ensure that all buffered logs are flushed to the file.
     let _guard = init_subscriber();

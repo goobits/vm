@@ -26,6 +26,9 @@ pub struct SnapshotMetadata {
     pub consistency: String,
     /// Project directory path at snapshot time
     pub project_dir: String,
+    /// Configuration that currently owns this saved snapshot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_config_path: Option<String>,
     /// Git commit hash at snapshot time
     pub git_commit: Option<String>,
     /// Whether working directory was dirty
@@ -36,6 +39,9 @@ pub struct SnapshotMetadata {
     pub services: Vec<ServiceSnapshot>,
     /// Volumes captured in snapshot
     pub volumes: Vec<VolumeSnapshot>,
+    /// Provider-native VM archive, when no Compose services are involved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_vm_file: Option<String>,
     /// Mounts omitted from the snapshot after inspecting normalized Compose configuration
     pub excluded_mounts: Vec<ExcludedMount>,
     /// Relative path to compose file
@@ -126,6 +132,7 @@ mod tests {
             architecture: "x86_64".to_string(),
             consistency: "quiesced".to_string(),
             project_dir: "/workspace/myproject".to_string(),
+            owner_config_path: Some("/workspace/myproject/vm.yaml".to_string()),
             git_commit: Some("abc123def456".to_string()),
             git_dirty: true,
             git_branch: Some("main".to_string()),
@@ -141,6 +148,7 @@ mod tests {
                 archive_file: "postgres_data.tar.gz".to_string(),
                 size_bytes: 1048576,
             }],
+            native_vm_file: None,
             excluded_mounts: vec![ExcludedMount {
                 service: "web".to_string(),
                 kind: "bind".to_string(),

@@ -30,13 +30,16 @@ vm doctor
 Start an environment:
 
 ```bash
-vm run linux as dev
+vm init
+vm create dev --provider docker --image ubuntu:24.04
+vm start dev
 ```
 
 macOS environments require Apple Silicon macOS and Tart:
 
 ```bash
-vm run mac as xcode
+vm create xcode --provider tart --image <macos-base-image>
+vm start xcode
 ```
 
 Advanced self-management:

@@ -3,21 +3,41 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
-#[cfg(target_os = "macos")]
+#[cfg(feature = "tart")]
 use std::process::Command;
+#[cfg(feature = "tart")]
+use std::process::Stdio;
 use vm_config::config::VmConfig;
 use vm_core::error::{Result, VmError};
+
+#[cfg(feature = "tart")]
+mod inventory;
+#[cfg(feature = "tart")]
+mod receipt;
+#[cfg(feature = "tart")]
+pub use inventory::{remove_storage, storage_inventory, TartStorageEntry};
+#[cfg(feature = "tart")]
+pub(super) use receipt::{record_runtime_receipt, runtime_drift};
 
 const STATE_DIRECTORY: &str = "tart";
 const STATE_FILE: &str = "instances.json";
 const LOCK_FILE: &str = "instances.lock";
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct StorageState {
     managed: BTreeSet<String>,
     instances: BTreeMap<String, PathBuf>,
     configs: BTreeMap<String, PathBuf>,
+    #[serde(default)]
+    runtime_receipts: BTreeMap<String, RuntimeReceipt>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct RuntimeReceipt {
+    fingerprint: String,
+    device: u64,
+    inode: u64,
 }
 
 impl StorageState {
@@ -46,16 +66,45 @@ pub(super) fn resolve_project_home(config: &VmConfig, project: &str) -> Result<O
     }
 
     let state = read_state()?;
-    if let Some(home) = state
+    recorded_project_home(&state, config.owning_config_path(), project)
+}
+
+fn recorded_project_home(
+    state: &StorageState,
+    owner: Option<&Path>,
+    project: &str,
+) -> Result<Option<PathBuf>> {
+    let mut homes = state
         .instances
         .iter()
-        .find(|(instance, _)| belongs_to_project(instance, project))
+        .filter(|(instance, _)| belongs_to_project(instance, project))
+        .filter(|(instance, _)| {
+            state
+                .configs
+                .get(*instance)
+                .zip(owner)
+                .is_some_and(|(recorded, selected)| {
+                    recorded
+                        .canonicalize()
+                        .ok()
+                        .zip(selected.canonicalize().ok())
+                        .is_some_and(|(recorded, selected)| recorded == selected)
+                })
+        })
         .map(|(_, home)| home.clone())
-    {
-        return Ok(Some(home));
+        .collect::<BTreeSet<_>>();
+    if homes.len() > 1 {
+        return Err(VmError::validation(
+            format!("Project '{project}' has Tart instances in multiple storage homes"),
+            Some("Set tart.storage_path explicitly in the project configuration"),
+        ));
     }
+    Ok(homes.pop_first())
+}
 
-    recover_running_project_home(project)
+/// Resolve the same Tart home used for project runtime operations.
+pub fn project_home(config: &VmConfig, project: &str) -> Result<Option<PathBuf>> {
+    resolve_project_home(config, project)
 }
 
 pub(super) fn remember_instance(
@@ -89,26 +138,6 @@ pub(super) fn remember_instance(
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
-fn remember_home(instance: &str, home: &Path) -> Result<()> {
-    validate_instance(instance)?;
-    let state_dir = state_dir()?;
-    fs::create_dir_all(&state_dir)?;
-    vm_core::file_system::set_permissions_mode(&state_dir, 0o700)?;
-    let lock = lock(&state_dir)?;
-    let path = state_dir.join(STATE_FILE);
-    let mut state = read_state_at(&path)?;
-    state
-        .instances
-        .insert(instance.to_string(), home.to_path_buf());
-    let mut content = serde_json::to_vec_pretty(&state)?;
-    content.push(b'\n');
-    vm_core::file_system::atomic_write(&path, &content)?;
-    vm_core::file_system::set_permissions_mode(&path, 0o600)?;
-    FileExt::unlock(&lock)?;
-    Ok(())
-}
-
 #[cfg(feature = "tart")]
 pub(super) fn forget_instance(instance: &str) -> Result<()> {
     validate_instance(instance)?;
@@ -122,7 +151,8 @@ pub(super) fn forget_instance(instance: &str) -> Result<()> {
     let removed_managed = state.managed.remove(instance);
     let removed_home = state.instances.remove(instance).is_some();
     let removed_config = state.configs.remove(instance).is_some();
-    let changed = removed_managed || removed_home || removed_config;
+    let removed_receipt = state.runtime_receipts.remove(instance).is_some();
+    let changed = removed_managed || removed_home || removed_config || removed_receipt;
     if changed {
         let mut content = serde_json::to_vec_pretty(&state)?;
         content.push(b'\n');
@@ -133,39 +163,6 @@ pub(super) fn forget_instance(instance: &str) -> Result<()> {
     Ok(())
 }
 
-#[cfg(not(target_os = "macos"))]
-fn recover_running_project_home(_project: &str) -> Result<Option<PathBuf>> {
-    Ok(None)
-}
-
-#[cfg(target_os = "macos")]
-fn recover_running_project_home(project: &str) -> Result<Option<PathBuf>> {
-    let output = match Command::new("ps").args(["-axo", "pid=,command="]).output() {
-        Ok(output) if output.status.success() => output,
-        _ => return Ok(None),
-    };
-    let processes = parse_running_tart_processes(&String::from_utf8_lossy(&output.stdout));
-    for (pid, instance) in processes
-        .into_iter()
-        .filter(|(_, instance)| belongs_to_project(instance, project))
-    {
-        let output = match Command::new("lsof")
-            .args(["-a", "-p", &pid.to_string(), "-d", "cwd", "-Fn"])
-            .output()
-        {
-            Ok(output) if output.status.success() => output,
-            _ => continue,
-        };
-        if let Some(home) =
-            parse_tart_home_from_lsof(&String::from_utf8_lossy(&output.stdout), &instance)
-        {
-            remember_home(&instance, &home)?;
-            return Ok(Some(home));
-        }
-    }
-    Ok(None)
-}
-
 pub(super) fn instance_config_path(instance: &str) -> Result<Option<PathBuf>> {
     validate_instance(instance)?;
     Ok(read_state()?.configs.get(instance).cloned())
@@ -173,6 +170,11 @@ pub(super) fn instance_config_path(instance: &str) -> Result<Option<PathBuf>> {
 
 pub(super) fn managed_instances() -> Result<BTreeSet<String>> {
     Ok(read_state()?.managed_instances())
+}
+
+#[cfg(feature = "tart")]
+fn default_home() -> Result<PathBuf> {
+    Ok(vm_core::user_paths::home_dir()?.join(".tart"))
 }
 
 fn read_state() -> Result<StorageState> {
@@ -239,66 +241,10 @@ fn validate_instance(instance: &str) -> Result<()> {
     Ok(())
 }
 
-#[cfg(any(target_os = "macos", test))]
-fn parse_running_tart_processes(output: &str) -> Vec<(u32, String)> {
-    output
-        .lines()
-        .filter_map(|line| {
-            let line = line.trim();
-            let split = line.find(char::is_whitespace)?;
-            let pid = line[..split].parse().ok()?;
-            let command = line[split..].trim();
-            let words: Vec<&str> = command.split_whitespace().collect();
-            let _run = words.windows(2).position(|pair| {
-                Path::new(pair[0])
-                    .file_name()
-                    .is_some_and(|name| name == "tart")
-                    && pair[1] == "run"
-            })?;
-            let instance = words.last()?.trim_matches(['\'', '"']);
-            validate_instance(instance).ok()?;
-            Some((pid, instance.to_string()))
-        })
-        .collect()
-}
-
-#[cfg(any(target_os = "macos", test))]
-fn parse_tart_home_from_lsof(output: &str, instance: &str) -> Option<PathBuf> {
-    output.lines().find_map(|line| {
-        let path = Path::new(line.strip_prefix('n')?);
-        if path.file_name()? != instance || path.parent()?.file_name()? != "vms" {
-            return None;
-        }
-        path.parent()?.parent().map(Path::to_path_buf)
-    })
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{
-        belongs_to_project, parse_running_tart_processes, parse_tart_home_from_lsof, StorageState,
-    };
+    use super::{belongs_to_project, recorded_project_home, StorageState};
     use std::collections::{BTreeMap, BTreeSet};
-    use std::path::PathBuf;
-
-    #[test]
-    fn parses_only_tart_run_processes() {
-        let output = "70525 /opt/homebrew/bin/tart run --no-graphics --dir /Users/me/project:tag=workspace vm-mac\n70526 tart list\n";
-        assert_eq!(
-            parse_running_tart_processes(output),
-            vec![(70525, "vm-mac".to_string())]
-        );
-    }
-
-    #[test]
-    fn derives_home_only_from_exact_instance_directory() {
-        let output = "p70525\nfcwd\nn/Volumes/External/Tart/vms/vm-mac\n";
-        assert_eq!(
-            parse_tart_home_from_lsof(output, "vm-mac"),
-            Some(PathBuf::from("/Volumes/External/Tart"))
-        );
-        assert_eq!(parse_tart_home_from_lsof(output, "other"), None);
-    }
 
     #[test]
     fn project_matching_does_not_use_ambiguous_prefixes() {
@@ -323,11 +269,103 @@ mod tests {
                 "owned-before-managed-marker".into(),
                 "/work/vm.yaml".into(),
             )]),
+            runtime_receipts: BTreeMap::new(),
         };
 
         assert_eq!(
             state.managed_instances(),
             BTreeSet::from(["created".into(), "owned-before-managed-marker".into()])
+        );
+    }
+
+    #[test]
+    fn storage_home_resolution_requires_exact_config_owner() {
+        let root = tempfile::tempdir().unwrap();
+        let first = root.path().join("first.yaml");
+        let second = root.path().join("second.yaml");
+        std::fs::write(&first, "project: first").unwrap();
+        std::fs::write(&second, "project: second").unwrap();
+        let state = StorageState {
+            managed: BTreeSet::new(),
+            instances: BTreeMap::from([
+                ("demo-dev".into(), root.path().join("first-home")),
+                ("demo-test".into(), root.path().join("second-home")),
+            ]),
+            configs: BTreeMap::from([
+                ("demo-dev".into(), first.clone()),
+                ("demo-test".into(), second.clone()),
+            ]),
+            runtime_receipts: BTreeMap::new(),
+        };
+        assert_eq!(
+            recorded_project_home(&state, Some(&first), "demo").unwrap(),
+            Some(root.path().join("first-home"))
+        );
+        assert_eq!(
+            recorded_project_home(&state, Some(&second), "demo").unwrap(),
+            Some(root.path().join("second-home"))
+        );
+        assert_eq!(recorded_project_home(&state, None, "demo").unwrap(), None);
+    }
+
+    #[test]
+    #[cfg(all(feature = "tart", unix))]
+    fn storage_inventory_rejects_symlinked_vm_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let vms = root.path().join("vms");
+        std::fs::create_dir(&vms).unwrap();
+        let outside = root.path().join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, vms.join("demo")).unwrap();
+        assert!(!super::inventory::is_plain_directory(&vms.join("demo")));
+        assert!(super::inventory::is_plain_directory(&vms));
+    }
+
+    #[test]
+    #[cfg(all(feature = "tart", unix))]
+    fn runtime_receipt_detects_configuration_and_disk_replacement() {
+        let root = tempfile::tempdir().unwrap();
+        let owner = root.path().join("vm.yaml");
+        std::fs::write(&owner, "project: demo").unwrap();
+        let home = root.path().join("tart");
+        let vm = home.join("vms/demo-dev");
+        std::fs::create_dir_all(&vm).unwrap();
+        let mut config = vm_config::config::VmConfig {
+            source_path: Some(owner.clone()),
+            ..Default::default()
+        };
+        let (device, inode) = super::receipt::disk_identity(&vm).unwrap();
+        let state = StorageState {
+            managed: BTreeSet::from(["demo-dev".into()]),
+            instances: BTreeMap::from([("demo-dev".into(), home.clone())]),
+            configs: BTreeMap::from([("demo-dev".into(), owner)]),
+            runtime_receipts: BTreeMap::from([(
+                "demo-dev".into(),
+                super::RuntimeReceipt {
+                    fingerprint: crate::runtime_fingerprint::runtime_fingerprint(&config).unwrap(),
+                    device,
+                    inode,
+                },
+            )]),
+        };
+        assert_eq!(
+            super::receipt::detect_runtime_drift(&state, "demo-dev", &home, &config).unwrap(),
+            None
+        );
+        config.environment.insert("MODE".into(), "changed".into());
+        assert!(
+            super::receipt::detect_runtime_drift(&state, "demo-dev", &home, &config)
+                .unwrap()
+                .is_some()
+        );
+        config.environment.clear();
+        std::fs::rename(&vm, home.join("vms/previous")).unwrap();
+        std::fs::create_dir(&vm).unwrap();
+        assert!(
+            super::receipt::detect_runtime_drift(&state, "demo-dev", &home, &config)
+                .unwrap()
+                .unwrap()
+                .contains("disk identity")
         );
     }
 }

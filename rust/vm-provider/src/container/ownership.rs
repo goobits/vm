@@ -1,6 +1,8 @@
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
+use vm_config::config::VmConfig;
+
 use vm_core::error::{Result, VmError};
 
 use super::{engine::ContainerRuntime, ContainerOps};
@@ -69,6 +71,34 @@ pub(super) fn instance_config_path(
     }
     let containers: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout)?;
     Ok(containers.first().and_then(config_path_from_inspect))
+}
+
+pub(super) fn runtime_drift(
+    runtime: &ContainerRuntime,
+    instance: &str,
+    config: &VmConfig,
+) -> Result<Option<String>> {
+    let output = Command::new(runtime.executable())
+        .args(["inspect", "--type", "container", instance])
+        .output()?;
+    if !output.status.success() {
+        return Err(VmError::NotFound(format!(
+            "Container '{instance}' does not exist"
+        )));
+    }
+    let containers: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout)?;
+    let container = containers
+        .first()
+        .ok_or_else(|| VmError::Internal(format!("Container '{instance}' inspection was empty")))?;
+    let recorded = container["Config"]["Labels"]["com.vm.runtime-fingerprint"].as_str();
+    let expected = crate::runtime_fingerprint::runtime_fingerprint(config)?;
+    Ok(match recorded {
+        Some(recorded) if recorded == expected => None,
+        Some(_) => {
+            Some("runtime configuration differs from the selected project configuration".into())
+        }
+        None => Some("runtime has no configuration fingerprint".into()),
+    })
 }
 
 pub(super) fn reusable_host_ports(

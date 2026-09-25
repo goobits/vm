@@ -30,9 +30,9 @@ fn test_vm_lifecycle_provider_parity() -> Result<()> {
 
         fixture.create_config_for_provider(provider)?;
 
-        // Test the public create-and-start lifecycle.
-        let output = fixture.run_vm_command(&["run", "linux", "--provider", provider])?;
-        assert!(output.status.success(), "vm run failed for {}", provider);
+        // Start the environment declared by the provider-specific config.
+        let output = fixture.run_vm_command(&["start"])?;
+        assert!(output.status.success(), "vm start failed for {}", provider);
 
         // Stop before exercising an explicit start.
         let output = fixture.run_vm_command(&["stop"])?;
@@ -57,7 +57,7 @@ fn test_vm_lifecycle_provider_parity() -> Result<()> {
         assert!(output.status.success(), "vm stop failed for {}", provider);
 
         // Test `vm remove`
-        let output = fixture.run_vm_command(&["remove", "--force"])?;
+        let output = fixture.run_vm_command(&["remove", "--yes"])?;
         assert!(output.status.success(), "vm remove failed for {}", provider);
     }
 

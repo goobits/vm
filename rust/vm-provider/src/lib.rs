@@ -18,6 +18,7 @@ pub use capabilities::{
 #[cfg(feature = "docker")]
 pub use container::{render_compose_preview, ContainerEngine};
 pub use context::ProviderContext;
+pub use guest_exit::GuestExit;
 pub use instance::InstanceInfo;
 #[cfg(feature = "test-helpers")]
 pub use mock::MockProvider;
@@ -25,17 +26,22 @@ pub use status::{
     InstanceState, MountUsage, ResourceUsage, RuntimeDiagnostics, ServiceStatus, VmStatusReport,
 };
 #[cfg(feature = "tart")]
+pub use tart::tart_project_home;
+#[cfg(feature = "tart")]
 pub use tart::{
     build_vibe_base as build_tart_vibe_base,
     ensure_configured_vibe_base as ensure_configured_tart_vibe_base, PreparedTartBase,
     TartBaseSource,
 };
+#[cfg(feature = "tart")]
+pub use tart::{remove_tart_storage, tart_storage_inventory, TartStorageEntry};
 pub use vm_core::error::{Result as VmResult, VmError};
 
 mod capabilities;
 mod context;
 #[cfg(any(feature = "docker", feature = "tart"))]
 mod guest_cache;
+mod guest_exit;
 mod instance;
 #[cfg(any(feature = "docker", feature = "tart"))]
 mod project_plan;
@@ -43,6 +49,8 @@ mod project_plan;
 mod resource_limits;
 #[cfg(any(feature = "docker", feature = "tart"))]
 mod resources;
+#[cfg(any(feature = "docker", feature = "tart"))]
+mod runtime_fingerprint;
 #[cfg(any(feature = "docker", feature = "tart"))]
 mod security;
 #[cfg(any(feature = "docker", feature = "tart"))]

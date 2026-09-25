@@ -17,11 +17,11 @@ fn test_vm_lifecycle_integration() -> Result<()> {
     fixture.create_test_config()?;
     fixture.create_test_dockerfile()?;
 
-    // Test complete lifecycle: run -> status -> exec -> stop -> start -> remove
+    // Test complete lifecycle: start -> status -> exec -> stop -> start -> remove
 
     // 1. Create and start
-    let output = fixture.run_vm_command(&["run", "container"])?;
-    assert!(output.status.success(), "Run failed");
+    let output = fixture.run_vm_command(&["start"])?;
+    assert!(output.status.success(), "Start failed");
     assert!(fixture.wait_for_container_state("running", 30));
 
     // 2. Status check
@@ -29,7 +29,7 @@ fn test_vm_lifecycle_integration() -> Result<()> {
     assert!(output.status.success(), "Status failed");
 
     // 3. Exec command
-    let output = fixture.run_vm_command(&["exec", "pwd"])?;
+    let output = fixture.run_vm_command(&["exec", "--", "pwd"])?;
     assert!(output.status.success(), "Exec failed");
 
     // 4. Stop
@@ -43,7 +43,7 @@ fn test_vm_lifecycle_integration() -> Result<()> {
     assert!(fixture.wait_for_container_state("running", 30));
 
     // 6. Remove
-    let output = fixture.run_vm_command(&["remove", "--force"])?;
+    let output = fixture.run_vm_command(&["remove", "--yes"])?;
     assert!(output.status.success(), "Remove failed");
 
     // 7. Verify container is gone

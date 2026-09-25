@@ -10,10 +10,10 @@ use vm_core::error::{Result, VmError};
 
 /// Handle snapshot import
 pub async fn handle_import(
-    executable: &str,
     file_path: &Path,
     name_override: Option<&str>,
     project_override: Option<&str>,
+    owner_config_path: Option<&Path>,
     force: bool,
 ) -> Result<()> {
     let manager = SnapshotManager::new()?;
@@ -53,7 +53,7 @@ pub async fn handle_import(
 
     let manifest = ArchiveManifest::parse(&manifest_content)?;
     manifest.validate_files(&extract_dir)?;
-    manifest.validate_runtime(executable)?;
+    let executable = manifest.runtime()?;
 
     // Get snapshot name (from manifest or override)
     let snapshot_name = name_override
@@ -82,7 +82,15 @@ pub async fn handle_import(
     let scope = if is_global {
         SnapshotScope::Global
     } else {
-        SnapshotScope::Project(project_name)
+        SnapshotScope::OwnedProject {
+            name: project_name,
+            config_path: owner_config_path.ok_or_else(|| {
+                VmError::validation(
+                    "Snapshot import requires a project configuration",
+                    None::<String>,
+                )
+            })?,
+        }
     };
 
     if manager.snapshot_exists(scope, &snapshot_name)? && !force {
@@ -110,6 +118,17 @@ pub async fn handle_import(
     validate_import_contents(&manifest, &metadata, &extract_dir)?;
     metadata.name = snapshot_name.clone();
     metadata.project_name = project_name.to_string();
+    metadata.owner_config_path = if is_global {
+        None
+    } else {
+        Some(
+            owner_config_path
+                .unwrap()
+                .canonicalize()?
+                .display()
+                .to_string(),
+        )
+    };
     metadata.save(&metadata_path)?;
     tokio::fs::remove_file(&manifest_path)
         .await
@@ -117,10 +136,8 @@ pub async fn handle_import(
             VmError::filesystem(error, manifest_path.display().to_string(), "remove")
         })?;
 
-    tracing::info!("  Loading Docker images...");
-
     let images_dir = extract_dir.join("images");
-    if images_dir.exists() {
+    if metadata.native_vm_file.is_none() && images_dir.exists() {
         tracing::info!("Loading service images in parallel...");
         load_service_images(executable, &images_dir, &metadata.services).await?;
     }
@@ -137,7 +154,7 @@ pub async fn handle_import(
         tracing::info!("  1. Add to your vm.yaml:");
         tracing::info!("     vm:");
         tracing::info!("       image: @{}", snapshot_name);
-        tracing::info!("  2. Run: vm run linux");
+        tracing::info!("  2. Run: vm start");
         tracing::info!("\nThe VM will start instantly using the imported base image!");
     } else {
         tracing::info!("\nTo restore this project snapshot:");
@@ -170,6 +187,12 @@ fn validate_import_contents(
 
     manifest.validate_runtime(&metadata.provider)?;
     manifest.validate_architecture(&metadata.architecture)?;
+    if (metadata.provider == "tart") != metadata.native_vm_file.is_some() {
+        return Err(VmError::validation(
+            "Snapshot native VM payload does not match its provider",
+            None::<String>,
+        ));
+    }
 
     validate_snapshot_files(extract_dir, metadata)
 }
@@ -206,6 +229,7 @@ mod tests {
             architecture: "x86_64".to_string(),
             consistency: "built".to_string(),
             project_dir: ".".to_string(),
+            owner_config_path: None,
             git_commit: None,
             git_dirty: false,
             git_branch: None,
@@ -221,6 +245,7 @@ mod tests {
                 archive_file: "cache.tar.zst".to_string(),
                 size_bytes: 1,
             }],
+            native_vm_file: None,
             excluded_mounts: vec![],
             compose_file: String::new(),
             vm_config_file: String::new(),

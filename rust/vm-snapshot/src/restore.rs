@@ -36,7 +36,17 @@ pub async fn handle_restore(
     let project_name = project_override
         .map(|s| s.to_string())
         .unwrap_or_else(|| get_project_name(config));
-    let (scope, snapshot_name) = SnapshotScope::from_name(name, Some(project_name.as_str()));
+    let (_, snapshot_name) = SnapshotScope::from_name(name, Some(project_name.as_str()));
+    let owner = config.vm.owning_config_path().ok_or_else(|| {
+        VmError::validation(
+            "Snapshot restore requires a project configuration",
+            None::<String>,
+        )
+    })?;
+    let scope = SnapshotScope::OwnedProject {
+        name: &project_name,
+        config_path: owner,
+    };
 
     // Load snapshot metadata
     let snapshot_dir = manager.get_snapshot_dir(scope, snapshot_name)?;
@@ -55,6 +65,14 @@ pub async fn handle_restore(
     }
 
     let metadata = SnapshotMetadata::load(&metadata_file)?;
+    if metadata.owner_config_path.as_deref()
+        != Some(owner.canonicalize()?.to_string_lossy().as_ref())
+    {
+        return Err(VmError::validation(
+            "Snapshot has a different project configuration owner",
+            None::<String>,
+        ));
+    }
     validate_snapshot_files(&snapshot_dir, &metadata)?;
     if target_environment.is_some() && metadata.source_environment.as_deref() != target_environment
     {

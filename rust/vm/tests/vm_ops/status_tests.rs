@@ -22,7 +22,7 @@ fn test_vm_status_command() -> Result<()> {
     // Should succeed but show VM as not running
 
     // Create the VM, then stop it so both stopped and running status are covered.
-    fixture.run_vm_command(&["run", "container"])?;
+    fixture.run_vm_command(&["start"])?;
     fixture.run_vm_command(&["stop"])?;
 
     // Test status when VM exists but is stopped
@@ -63,9 +63,9 @@ fn test_vm_list_command() -> Result<()> {
     let output = fixture.run_vm_command(&["list"])?;
     assert!(output.status.success(), "VM list failed with no VMs");
 
-    // Run VM using vm tool (this should have proper labels)
-    let run_output = fixture.run_vm_command(&["run", "container"])?;
-    assert!(run_output.status.success(), "VM run failed");
+    // Start VM using vm tool (this should have proper labels)
+    let start_output = fixture.run_vm_command(&["start"])?;
+    assert!(start_output.status.success(), "VM start failed");
 
     // Verify the container has the expected labels
     let label_check = Command::new("docker")

@@ -14,6 +14,7 @@ pub async fn handle_export(
     output_path: Option<&Path>,
     compress_level: u8,
     project_override: Option<&str>,
+    owner_config_path: Option<&Path>,
     overwrite: bool,
 ) -> Result<()> {
     let manager = SnapshotManager::new()?;
@@ -40,7 +41,15 @@ pub async fn handle_export(
     let scope = if is_global {
         SnapshotScope::Global
     } else {
-        SnapshotScope::Project(&project_name)
+        SnapshotScope::OwnedProject {
+            name: &project_name,
+            config_path: owner_config_path.ok_or_else(|| {
+                VmError::validation(
+                    "Snapshot export requires a project configuration",
+                    None::<String>,
+                )
+            })?,
+        }
     };
 
     if !manager.snapshot_exists(scope, clean_name)? {
@@ -63,6 +72,21 @@ pub async fn handle_export(
     let snapshot_dir = manager.get_snapshot_dir(scope, clean_name)?;
     let metadata_path = snapshot_dir.join("metadata.json");
     let metadata = SnapshotMetadata::load(&metadata_path)?;
+    if !is_global
+        && metadata.owner_config_path.as_deref()
+            != Some(
+                owner_config_path
+                    .unwrap()
+                    .canonicalize()?
+                    .to_string_lossy()
+                    .as_ref(),
+            )
+    {
+        return Err(VmError::validation(
+            "Snapshot has a different project configuration owner",
+            None::<String>,
+        ));
+    }
     validate_snapshot_files(&snapshot_dir, &metadata)?;
 
     // Determine output file path
@@ -109,6 +133,10 @@ pub async fn handle_export(
     if compose_src.exists() {
         let compose_dest = export_build_dir.join("compose");
         copy_directory(&compose_src, &compose_dest).await?;
+    }
+    let native_src = snapshot_dir.join("native");
+    if native_src.exists() {
+        copy_directory(&native_src, &export_build_dir.join("native")).await?;
     }
 
     manifest.record_files(&export_build_dir)?;

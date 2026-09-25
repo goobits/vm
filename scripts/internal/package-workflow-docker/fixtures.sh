@@ -117,9 +117,9 @@ YAML
   test "$(run_vm packages list | grep -c 'vm-acceptance-alias')" = 1
   test "$(run_vm packages list | grep -c 'vm-acceptance-ignored' || true)" = 0
 
-  run_project_vm "$project_root" shell --command true
-  run_project_vm "$consumer_root" shell --command true
-  run_project_vm "$stopped_root" shell --command true
+  run_project_vm "$project_root" start
+  run_project_vm "$consumer_root" start
+  run_project_vm "$stopped_root" start
   wait_for_guest_vm "$environment_name"
   wait_for_guest_vm "$consumer_environment"
   wait_for_guest_vm "$stopped_environment"

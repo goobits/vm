@@ -1,11 +1,11 @@
 # Examples
 
-Examples use the v5 humane CLI surface.
+Examples use the current CLI.
 
 ```bash
-vm run linux as app
+vm start app
 vm shell app
-vm exec app -- npm test
+vm exec --env app -- npm test
 vm snapshots create configured --env app
 vm snapshots restore configured --env app
 vm package app --output app.tar.gz

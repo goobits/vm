@@ -193,11 +193,11 @@ vm plugins install /path/to/{plugin_name}
 
 ## Usage
 
-Run an environment using this preset:
+Start a declared environment using this preset:
 
 ```bash
 vm config presets apply {plugin_name}
-vm run linux as my-project
+vm start
 ```
 
 Or add to your `vm.yaml`:

@@ -1,7 +1,7 @@
 //! Integration tests for preset system
 //!
 //! This test suite validates the preset refactor, specifically:
-//! 1. Image preset initialization (`vm run` with a preset)
+//! 1. Image preset initialization (`vm start` with a preset)
 //! 2. Provision preset merging (vm config preset apply)
 //! 3. Preset filtering in different contexts
 //! 4. Project name derivation from directory

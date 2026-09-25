@@ -28,6 +28,29 @@ fn secret_set_requires_a_secure_input_source_without_starting_services() {
 }
 
 #[test]
+fn secret_remove_requires_confirmation_before_starting_services() {
+    let temp_dir = TempDir::new().unwrap();
+    let config = temp_dir.path().join("vm.yaml");
+    fs::write(&config, "project:\n  name: secure-test\nprovider: docker\n").unwrap();
+
+    let output = run(
+        &temp_dir,
+        &[
+            "--config",
+            config.to_str().unwrap(),
+            "secrets",
+            "remove",
+            "API_TOKEN",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("--yes"));
+    assert!(!temp_dir.path().join(".vm/services.json").exists());
+    assert!(!temp_dir.path().join(".vm/secrets").exists());
+}
+
+#[test]
 fn generic_dry_run_is_rejected_until_a_real_plan_exists() {
     let temp_dir = TempDir::new().unwrap();
     let output = run(&temp_dir, &["--dry-run", "packages", "open", "auth"]);
@@ -77,11 +100,82 @@ fn application_errors_are_rendered_once_on_stderr() {
         let stderr = String::from_utf8(output.stderr).unwrap();
 
         assert!(!output.status.success());
+        assert_eq!(output.status.code(), Some(2), "{stderr}");
         assert!(stdout.is_empty(), "{stdout}");
         assert_eq!(stderr.matches("Error:").count(), 1, "{stderr}");
         assert_eq!(stderr.contains("Cause:"), has_cause, "{stderr}");
         assert!(!stderr.contains("\u{1b}["));
     }
+}
+
+#[test]
+fn system_info_json_is_one_versioned_envelope() {
+    let temp_dir = TempDir::new().unwrap();
+    let output = run(&temp_dir, &["system", "info", "--json"]);
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["schema_version"], 1);
+    assert_eq!(value["command"], "system info");
+    assert_eq!(value["ok"], true);
+    assert!(value["data"]["version"].is_string());
+    assert!(value["data"]["executable"].is_string());
+    assert_eq!(value["data"]["managed_installation"], false);
+    assert!(value["data"]["installed_version"].is_null());
+    assert_eq!(value["errors"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        output.stdout.iter().filter(|byte| **byte == b'\n').count(),
+        1
+    );
+}
+
+#[test]
+fn list_json_reports_declared_environments_without_leaking_config_secrets() {
+    let temp_dir = TempDir::new().unwrap();
+    let config = temp_dir.path().join("vm.yaml");
+    fs::write(
+        &config,
+        "version: '2.0'\nprovider: docker\nproject:\n  name: output-test\n  default_environment: dev\nenvironments:\n  dev:\n    provider: docker\n    image: ubuntu:24.04\nenvironment:\n  API_TOKEN: top-secret\n",
+    )
+    .unwrap();
+    let output = run(
+        &temp_dir,
+        &["--config", config.to_str().unwrap(), "list", "--json"],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["command"], "list");
+    assert_eq!(value["ok"], true);
+    assert_eq!(value["data"]["count"], 1);
+    assert_eq!(value["data"]["environments"][0]["is_default"], true);
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("top-secret"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn status_json_errors_use_one_envelope() {
+    let temp_dir = TempDir::new().unwrap();
+    let config = temp_dir.path().join("vm.yaml");
+    fs::write(&config, "project: [").unwrap();
+    let output = run(
+        &temp_dir,
+        &["--config", config.to_str().unwrap(), "status", "--json"],
+    );
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["command"], "status");
+    assert_eq!(value["ok"], false);
+    assert_eq!(value["errors"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        output.stdout.iter().filter(|byte| **byte == b'\n').count(),
+        1
+    );
+    assert!(output.stderr.is_empty());
 }
 
 #[test]
@@ -142,6 +236,7 @@ fn config_show_never_materializes_package_credentials() {
   "job_image": "jobs/image:1",
   "controller_version": "1"
 }
+
 "#,
     )
     .unwrap();
@@ -158,6 +253,60 @@ fn config_show_never_materializes_package_credentials() {
     assert!(!stdout.contains("do-not-print-package-token"));
     assert!(!stdout.contains("NPM_CONFIG_REGISTRY"));
     assert!(!stdout.contains("CARGO_REGISTRIES_VM_TOKEN"));
+}
+
+#[test]
+fn config_show_json_is_redacted_and_identifies_sources() {
+    let temp_dir = TempDir::new().unwrap();
+    let config = temp_dir.path().join("vm.yaml");
+    fs::write(
+        &config,
+        "version: '2.0'\nprovider: docker\nproject:\n  name: output-test\nenvironment:\n  API_TOKEN: top-secret\n",
+    )
+    .unwrap();
+    let output = run(
+        &temp_dir,
+        &[
+            "--config",
+            config.to_str().unwrap(),
+            "config",
+            "show",
+            "--json",
+        ],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["schema_version"], 1);
+    assert_eq!(value["command"], "config show");
+    assert_eq!(value["ok"], true);
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("top-secret"));
+    assert!(value["data"]["sources"].is_object());
+
+    let output = run(
+        &temp_dir,
+        &[
+            "--config",
+            config.to_str().unwrap(),
+            "config",
+            "get",
+            "environment.API_TOKEN",
+            "--json",
+        ],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["command"], "config get");
+    assert_eq!(value["data"]["value"], "<redacted>");
+    assert!(value["data"]["source"].is_string());
 }
 
 #[test]
@@ -198,7 +347,6 @@ fn every_public_command_has_clean_help() {
     let temp_dir = TempDir::new().unwrap();
     for command in [
         "start",
-        "run",
         "list",
         "shell",
         "exec",

@@ -114,9 +114,9 @@ mod cli_integration_tests {
             String::from_utf8_lossy(&output.stderr)
         );
 
-        let stdout = String::from_utf8(output.stdout)?;
-        assert!(stdout.contains("✅ Set vm.memory = 4096"));
-        assert!(stdout.contains("vm.yaml"));
+        let stderr = String::from_utf8(output.stderr)?;
+        assert!(stderr.contains("✅ Set vm.memory = 4096"));
+        assert!(stderr.contains("vm.yaml"));
 
         // Verify file was created
         assert!(fixture.file_exists("vm.yaml"));
@@ -153,8 +153,8 @@ mod cli_integration_tests {
             String::from_utf8_lossy(&output.stderr)
         );
 
-        let stdout = String::from_utf8(output.stdout)?;
-        assert!(stdout.contains("✅ Set provider = tart"));
+        let stderr = String::from_utf8(output.stderr)?;
+        assert!(stderr.contains("✅ Set provider = tart"));
 
         // Verify global config file was created
         assert!(fixture.global_config_path().exists());
@@ -206,7 +206,8 @@ mod cli_integration_tests {
         assert!(output.status.success());
 
         let stdout = String::from_utf8(output.stdout)?;
-        assert!(stdout.contains("✅ Unset vm.memory"));
+        let stderr = String::from_utf8(output.stderr)?;
+        assert!(stderr.contains("✅ Unset vm.memory"));
         assert!(stdout.contains("Effective vm.memory:"));
 
         // Verify value is gone but others remain
@@ -285,8 +286,8 @@ npm_packages:
             String::from_utf8_lossy(&output.stderr)
         );
 
-        let stdout = String::from_utf8(output.stdout)?;
-        assert!(stdout.contains("✅ Applied preset 'test-preset' to local"));
+        let stderr = String::from_utf8(output.stderr)?;
+        assert!(stderr.contains("✅ Applied preset 'test-preset' to local"));
 
         // Verify the preset was applied
         assert!(fixture.file_exists("vm.yaml"));
@@ -336,8 +337,8 @@ npm_packages:
             String::from_utf8_lossy(&output.stderr)
         );
 
-        let stdout = String::from_utf8(output.stdout)?;
-        assert!(stdout.contains("✅ Applied preset 'preset1,preset2' to local"));
+        let stderr = String::from_utf8(output.stderr)?;
+        assert!(stderr.contains("✅ Applied preset 'preset1,preset2' to local"));
 
         // Verify both presets were merged correctly
         let config_content = fixture.read_file("vm.yaml")?;
@@ -380,8 +381,8 @@ services:
             String::from_utf8_lossy(&output.stderr)
         );
 
-        let stdout = String::from_utf8(output.stdout)?;
-        assert!(stdout.contains("✅ Applied preset 'global-preset' to global"));
+        let stderr = String::from_utf8(output.stderr)?;
+        assert!(stderr.contains("✅ Applied preset 'global-preset' to global"));
 
         // Verify global config was created
         assert!(fixture.global_config_path().exists());

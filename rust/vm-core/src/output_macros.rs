@@ -5,6 +5,13 @@
 
 use std::fmt;
 use std::io::{self, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static QUIET: AtomicBool = AtomicBool::new(false);
+
+pub fn set_quiet(quiet: bool) {
+    QUIET.store(quiet, Ordering::Relaxed);
+}
 
 fn write_output(mut writer: impl Write, arguments: fmt::Arguments<'_>, newline: bool) {
     let result = writer.write_fmt(arguments).and_then(|()| {
@@ -28,6 +35,20 @@ pub fn write_stdout(arguments: fmt::Arguments<'_>, newline: bool) {
 #[doc(hidden)]
 pub fn write_stderr(arguments: fmt::Arguments<'_>, newline: bool) {
     write_output(io::stderr().lock(), arguments, newline);
+}
+
+#[doc(hidden)]
+pub fn write_progress(arguments: fmt::Arguments<'_>, newline: bool) {
+    if !QUIET.load(Ordering::Relaxed) {
+        write_stderr(arguments, newline);
+    }
+}
+
+#[doc(hidden)]
+pub fn write_success(arguments: fmt::Arguments<'_>, newline: bool) {
+    if !QUIET.load(Ordering::Relaxed) {
+        write_stderr(arguments, newline);
+    }
 }
 
 #[macro_export]
@@ -67,7 +88,7 @@ macro_rules! vm_hint {
 #[macro_export]
 macro_rules! vm_success {
     ($($arg:tt)*) => {{
-        $crate::output_macros::write_stdout(
+        $crate::output_macros::write_success(
             format_args!("✓ {}", format_args!($($arg)*)),
             true,
         );
@@ -94,7 +115,7 @@ macro_rules! vm_warning {
 #[macro_export]
 macro_rules! vm_progress {
     ($($arg:tt)*) => {{
-        $crate::output_macros::write_stderr(format_args!($($arg)*), true);
+        $crate::output_macros::write_progress(format_args!($($arg)*), true);
     }}
 }
 

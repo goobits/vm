@@ -4,7 +4,7 @@ use std::process::Command;
 
 #[test]
 #[ignore = "Creates real Docker containers; run with --ignored"]
-fn test_vm_run_container_command() -> Result<()> {
+fn test_vm_start_from_config_command() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
 
@@ -18,10 +18,10 @@ fn test_vm_run_container_command() -> Result<()> {
     fixture.create_test_dockerfile()?;
 
     // Test VM creation and startup
-    let output = fixture.run_vm_command(&["run", "container"])?;
+    let output = fixture.run_vm_command(&["start"])?;
     assert!(
         output.status.success(),
-        "VM run failed: {}",
+        "VM start failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -52,7 +52,7 @@ fn test_vm_remove_command() -> Result<()> {
     fixture.create_test_dockerfile()?;
 
     // Create and start VM
-    fixture.run_vm_command(&["run", "container"])?;
+    fixture.run_vm_command(&["start"])?;
 
     // Verify container exists
     let check_output = Command::new("docker")
@@ -64,7 +64,7 @@ fn test_vm_remove_command() -> Result<()> {
     );
 
     // Test remove command with force flag (to avoid confirmation prompt)
-    let output = fixture.run_vm_command(&["remove", "--force"])?;
+    let output = fixture.run_vm_command(&["remove", "--yes"])?;
     assert!(
         output.status.success(),
         "VM remove failed: {}",

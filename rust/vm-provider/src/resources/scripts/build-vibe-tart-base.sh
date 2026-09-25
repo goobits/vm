@@ -328,7 +328,7 @@ Next steps:
        vm config preset vibe-tart
 
   2. Start Tart from the same project directory:
-       vm run mac
+       vm start --profile macos
 
   3. Docker inside the macOS guest uses Colima with QEMU software emulation and
      is much slower than Docker in the Linux Tart profile:
@@ -349,7 +349,7 @@ Next steps:
        vm config preset vibe-tart
 
   2. Start it with:
-       vm run linux --provider tart
+       vm start --profile tart
 
   3. The vibe-tart preset enables Docker inside the Linux guest:
        tart:

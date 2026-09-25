@@ -28,7 +28,8 @@ pub fn get(field: Option<&str>, global: bool) -> Result<()> {
             )));
         } else {
             return Err(vm_core::error::VmError::Config(
-                "No vm.yaml found in the current directory or its parents. Create an environment with `vm run linux` first".to_string()
+                "No vm.yaml found in the current directory or its parents. Run `vm init` first"
+                    .to_string(),
             ));
         }
     }

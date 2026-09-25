@@ -10,7 +10,6 @@ use vm_provider::InstanceInfo;
 pub enum InstanceStateFilter {
     Any,
     Running,
-    Stopped,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -45,9 +44,6 @@ fn filter_targets(instances: Vec<InstanceInfo>, query: TargetQuery<'_>) -> Vec<I
         InstanceStateFilter::Any => {}
         InstanceStateFilter::Running => {
             filtered.retain(|instance| is_running_status(&instance.status));
-        }
-        InstanceStateFilter::Stopped => {
-            filtered.retain(|instance| !is_running_status(&instance.status));
         }
     }
 

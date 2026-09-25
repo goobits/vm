@@ -14,15 +14,17 @@ mod import;
 mod manager;
 mod metadata;
 mod restore;
+mod tart;
 mod volumes;
 
 // Re-export key types
 pub use create::handle_create;
 pub use export::handle_export;
 pub use import::handle_import;
-pub use manager::{SnapshotManager, SnapshotScope};
+pub use manager::{SnapshotManager, SnapshotScope, SnapshotStorageEntry};
 pub use metadata::{ExcludedMount, ServiceSnapshot, SnapshotMetadata, VolumeSnapshot};
 pub use restore::handle_restore;
+pub use tart::{create as handle_tart_create, restore as handle_tart_restore};
 
 /// Calculate optimal concurrency limit based on available CPU count
 ///

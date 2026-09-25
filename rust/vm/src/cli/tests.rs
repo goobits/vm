@@ -1,9 +1,22 @@
 use super::{
-    Args, BaseSubcommand, Command, ConfigSubcommand, DbSubcommand, EnvironmentKind,
+    Args, BaseSubcommand, Command, ConfigSubcommand, DbBackupSubcommand, DbSubcommand,
     PackageInfrastructureEngine, PackagesSubcommand, PluginSubcommand, SystemSubcommand,
     ToolsSubcommand,
 };
 use clap::Parser;
+
+#[test]
+fn common_presentation_options_parse_globally() {
+    let args = Args::parse_from(["vm", "system", "info", "--json", "--quiet", "--no-color"]);
+    assert!(args.quiet);
+    assert!(args.no_color);
+    assert!(matches!(
+        args.command,
+        Command::System {
+            command: SystemSubcommand::Info { json: true }
+        }
+    ));
+}
 
 #[test]
 fn failed_consumer_updates_can_be_retried_by_project_name() {
@@ -16,15 +29,8 @@ fn failed_consumer_updates_can_be_retried_by_project_name() {
 }
 
 #[test]
-fn run_parses_kind_and_humane_name() {
-    assert!(matches!(
-        Args::parse_from(["vm", "run", "linux", "as", "backend"]).command,
-        Command::Run {
-            kind: EnvironmentKind::Linux,
-            words,
-            ..
-        } if words == ["as", "backend"]
-    ));
+fn retired_run_command_is_rejected() {
+    assert!(Args::try_parse_from(["vm", "run", "linux", "as", "backend"]).is_err());
 }
 
 #[test]
@@ -42,17 +48,25 @@ fn shell_accepts_an_explicit_or_default_environment() {
     ));
     assert!(Args::try_parse_from(["vm", "ssh"]).is_err());
     assert!(Args::try_parse_from(["vm", "ls"]).is_err());
+    assert!(Args::try_parse_from(["vm", "shell", "--command", "true"]).is_err());
+    assert!(Args::try_parse_from(["vm", "shell", "-e", "true"]).is_err());
 }
 
 #[test]
-fn remove_parses_environment_and_force() {
+fn remove_parses_environment_and_confirmation() {
     assert!(matches!(
-        Args::parse_from(["vm", "remove", "backend", "--force"]).command,
+        Args::parse_from(["vm", "remove", "backend", "--yes"]).command,
         Command::Remove {
-            environment: Some(environment),
-            force: true
-        } if environment == "backend"
+            environments,
+            yes: true,
+            ..
+        } if environments == ["backend"]
     ));
+    assert!(matches!(
+        Args::parse_from(["vm", "remove", "--all-envs", "--delete-data", "--yes"]).command,
+        Command::Remove { fleet, delete_data: true, yes: true, .. } if fleet.fleet
+    ));
+    assert!(Args::try_parse_from(["vm", "remove", "backend", "--all-envs"]).is_err());
 }
 
 #[test]
@@ -177,6 +191,9 @@ fn fleet_is_a_shared_targeting_flag() {
     ));
     assert!(Args::try_parse_from(["vm", "stop", "backend", "--all-envs"]).is_err());
     assert!(Args::try_parse_from(["vm", "fleet", "stop"]).is_err());
+    assert!(
+        Args::try_parse_from(["vm", "copy", "--all-envs", "host:/tmp/a", "env:/tmp/a"]).is_err()
+    );
 }
 
 #[test]
@@ -328,7 +345,8 @@ fn config_uses_canonical_scopes_and_resource_groups() {
         Args::parse_from(["vm", "config", "show", "--scope", "effective"]).command,
         Command::Config {
             command: ConfigSubcommand::Show {
-                scope: super::ConfigReadScope::Effective
+                scope: super::ConfigReadScope::Effective,
+                json: false,
             }
         }
     ));
@@ -810,8 +828,24 @@ fn db_remains_top_level_builtin_command() {
     assert!(matches!(
         Args::parse_from(["vm", "db", "list"]).command,
         Command::Db {
-            command: DbSubcommand::List
+            command: DbSubcommand::List { env: None }
         }
+    ));
+}
+
+#[test]
+fn database_environment_selector_reaches_nested_backup_commands() {
+    assert!(matches!(
+        Args::parse_from(["vm", "db", "status", "demo_test", "--env", "test"]).command,
+        Command::Db { command: DbSubcommand::Status { env: Some(name), .. } } if name == "test"
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "db", "backups", "list", "--env", "test"]).command,
+        Command::Db {
+            command: DbSubcommand::Backups {
+                command: DbBackupSubcommand::List { env: Some(name), .. }
+            }
+        } if name == "test"
     ));
 }
 

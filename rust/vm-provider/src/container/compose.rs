@@ -178,6 +178,10 @@ impl<'a> ComposeOperations<'a> {
 
         let mut tera_context = TeraContext::new();
         tera_context.insert("config", &final_config);
+        tera_context.insert(
+            "runtime_fingerprint",
+            &crate::runtime_fingerprint::runtime_fingerprint(self.config)?,
+        );
         tera_context.insert("project_name", &final_project_name);
         tera_context.insert("base_project_name", &base_project_name);
         tera_context.insert("dev_container_name", &format!("{final_project_name}-dev"));

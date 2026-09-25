@@ -130,11 +130,18 @@ impl ContainerEngine {
     pub(crate) fn start_tcp_relay(
         self,
         relay_name: &str,
+        local_address: &str,
         host_port: u16,
         target_container: &str,
+        remote_host: &str,
         target_port: u16,
     ) -> Result<String> {
         let (network_name, target_address) = self.container_network(target_container)?;
+        let destination = if matches!(remote_host, "localhost" | "127.0.0.1") {
+            target_address.as_str()
+        } else {
+            remote_host
+        };
         let output = Command::new(self.executable())
             .args([
                 "run",
@@ -144,10 +151,10 @@ impl ContainerEngine {
                 relay_name,
                 &format!("--network={network_name}"),
                 "-p",
-                &format!("127.0.0.1:{host_port}:{host_port}"),
+                &format!("{local_address}:{host_port}:{host_port}"),
                 "alpine/socat",
                 &format!("tcp-listen:{host_port},fork,reuseaddr"),
-                &format!("tcp-connect:{target_address}:{target_port}"),
+                &format!("tcp-connect:{destination}:{target_port}"),
             ])
             .output()
             .map_err(|error| VmError::general(error, "Failed to start tunnel relay"))?;

@@ -16,8 +16,8 @@ pub(super) async fn handle(
 ) -> VmResult<()> {
     match command {
         SnapshotSubcommand::List { env } => {
-            let project = snapshot_project_name(config_path, profile)?;
-            let snapshots = SnapshotManager::new()?.list_snapshots(Some(&project))?;
+            let project = snapshot_project(config_path, profile)?;
+            let snapshots = SnapshotManager::new()?.list_snapshots_in_scope(project.scope())?;
             for snapshot in snapshots.into_iter().filter(|snapshot| {
                 env.as_deref().map_or(true, |selected| {
                     snapshot.source_environment.as_deref() == Some(selected)
@@ -33,7 +33,7 @@ pub(super) async fn handle(
             Ok(())
         }
         SnapshotSubcommand::Show { name, env } => {
-            let project = snapshot_project_name(config_path, profile)?;
+            let project = snapshot_project(config_path, profile)?;
             let metadata = metadata(&project, &name)?;
             verify_environment_filter(&metadata, env.as_deref())?;
             vm_println!("Name: {}", metadata.name);
@@ -48,6 +48,9 @@ pub(super) async fn handle(
             vm_println!("Size: {} bytes", metadata.total_size_bytes);
             vm_println!("Services: {}", metadata.services.len());
             vm_println!("Volumes: {}", metadata.volumes.len());
+            if let Some(file) = &metadata.native_vm_file {
+                vm_println!("Native VM archive: {file}");
+            }
             for mount in &metadata.excluded_mounts {
                 vm_println!(
                     "Excluded mount: {} {} -> {} ({})",
@@ -80,21 +83,36 @@ pub(super) async fn handle(
                 vm: subject.config,
             };
             vm_progress!("Creating snapshot '{name}' for '{target}'...");
-            vm_snapshot::handle_create(
-                &config,
-                &provider,
-                &name,
-                description.as_deref(),
-                quiesce,
-                Some(&project),
-                Some(&target),
-                Some(&project_dir),
-                None,
-                None,
-                &[],
-                false,
-            )
-            .await?;
+            if provider == "tart" {
+                let home = tart_home(&config.vm, &project)?;
+                vm_snapshot::handle_tart_create(
+                    &config.vm,
+                    &name,
+                    description.as_deref(),
+                    quiesce,
+                    &project,
+                    &target,
+                    &project_dir,
+                    home.as_deref(),
+                )
+                .await?;
+            } else {
+                vm_snapshot::handle_create(
+                    &config,
+                    &provider,
+                    &name,
+                    description.as_deref(),
+                    quiesce,
+                    Some(&project),
+                    Some(&target),
+                    Some(&project_dir),
+                    None,
+                    None,
+                    &[],
+                    false,
+                )
+                .await?;
+            }
             vm_success!("Created snapshot '{name}'");
             Ok(())
         }
@@ -104,9 +122,25 @@ pub(super) async fn handle(
             ensure_snapshot_provider(&provider)?;
             require_project_config(&subject.config)?;
             let project = project_name(&subject.config).to_string();
+            let owner = subject
+                .config
+                .owning_config_path()
+                .ok_or_else(|| {
+                    VmError::validation(
+                        "Snapshot restore requires a project configuration",
+                        None::<String>,
+                    )
+                })?
+                .to_path_buf();
             let project_dir = snapshot_project_dir(config_path.as_deref(), &subject)?;
             let target = subject.target;
-            let snapshot = metadata(&project, &name)?;
+            let snapshot = metadata(
+                &ProjectSnapshotScope {
+                    name: project.clone(),
+                    config_path: owner.clone(),
+                },
+                &name,
+            )?;
             verify_environment_filter(&snapshot, Some(&target))?;
             if !yes
                 && !Confirm::new()
@@ -126,27 +160,34 @@ pub(super) async fn handle(
                 global: subject.global_config,
                 vm: subject.config,
             };
-            vm_snapshot::handle_restore(
-                &config,
-                &provider,
-                &name,
-                Some(&project),
-                Some(&target),
-                Some(&project_dir),
-                false,
-            )
-            .await?;
+            if provider == "tart" {
+                let home = tart_home(&config.vm, &project)?;
+                vm_snapshot::handle_tart_restore(&name, &project, &target, home.as_deref(), &owner)
+                    .await?;
+            } else {
+                vm_snapshot::handle_restore(
+                    &config,
+                    &provider,
+                    &name,
+                    Some(&project),
+                    Some(&target),
+                    Some(&project_dir),
+                    false,
+                )
+                .await?;
+            }
             vm_success!("Restored snapshot '{name}' into '{target}'");
             Ok(())
         }
         SnapshotSubcommand::Remove { name, env, yes } => {
-            let project = snapshot_project_name(config_path, profile)?;
+            let project = snapshot_project(config_path, profile)?;
             let snapshot = metadata(&project, &name)?;
             verify_environment_filter(&snapshot, env.as_deref())?;
             if !yes
                 && !Confirm::new()
                     .with_prompt(format!(
-                        "Remove snapshot '{name}' from project '{project}'?"
+                        "Remove snapshot '{name}' from project '{}'?",
+                        project.name
                     ))
                     .default(false)
                     .interact()
@@ -159,7 +200,7 @@ pub(super) async fn handle(
                     None::<String>,
                 ));
             }
-            SnapshotManager::new()?.delete_snapshot(SnapshotScope::Project(&project), &name)?;
+            SnapshotManager::new()?.delete_snapshot(project.scope(), &name)?;
             vm_success!("Removed snapshot '{name}'");
             Ok(())
         }
@@ -170,7 +211,7 @@ pub(super) async fn handle(
             compression,
             overwrite,
         } => {
-            let project = snapshot_project_name(config_path, profile)?;
+            let project = snapshot_project(config_path, profile)?;
             let snapshot = metadata(&project, &name)?;
             verify_environment_filter(&snapshot, env.as_deref())?;
             let provider = snapshot.provider;
@@ -185,7 +226,8 @@ pub(super) async fn handle(
                 &name,
                 Some(&output),
                 compression,
-                Some(&project),
+                Some(&project.name),
+                Some(&project.config_path),
                 overwrite,
             )
             .await?;
@@ -196,15 +238,14 @@ pub(super) async fn handle(
             let config = AppConfig::load(config_path, profile, None)?;
             require_project_config(&config.vm)?;
             let project = project_name(&config.vm);
-            let provider = config
-                .vm
-                .provider
-                .as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_else(|| config.global.container_provider().to_string());
-            ensure_snapshot_provider(&provider)?;
-            vm_snapshot::handle_import(&provider, &archive, Some(&name), Some(project), false)
-                .await?;
+            vm_snapshot::handle_import(
+                &archive,
+                Some(&name),
+                Some(project),
+                config.vm.owning_config_path(),
+                false,
+            )
+            .await?;
             vm_success!("Imported snapshot '{name}'");
             Ok(())
         }
@@ -212,7 +253,9 @@ pub(super) async fn handle(
 }
 
 fn ensure_snapshot_provider(provider: &str) -> VmResult<()> {
-    if matches!(provider, "docker" | "podman") {
+    if matches!(provider, "docker" | "podman")
+        || (provider == "tart" && cfg!(any(feature = "tart", target_os = "macos")))
+    {
         Ok(())
     } else {
         Err(VmError::validation(
@@ -220,6 +263,19 @@ fn ensure_snapshot_provider(provider: &str) -> VmResult<()> {
             None::<String>,
         ))
     }
+}
+
+#[cfg(any(feature = "tart", target_os = "macos"))]
+fn tart_home(config: &vm_config::config::VmConfig, project: &str) -> VmResult<Option<PathBuf>> {
+    vm_provider::tart_project_home(config, project).map_err(Into::into)
+}
+
+#[cfg(not(any(feature = "tart", target_os = "macos")))]
+fn tart_home(_config: &vm_config::config::VmConfig, _project: &str) -> VmResult<Option<PathBuf>> {
+    Err(VmError::validation(
+        "Tart provider support is not enabled in this build",
+        None::<String>,
+    ))
 }
 
 fn snapshot_project_dir(
@@ -242,13 +298,39 @@ fn snapshot_project_dir(
         .map_err(|error| VmError::general(error, "Cannot resolve snapshot project directory"))
 }
 
-fn snapshot_project_name(
+struct ProjectSnapshotScope {
+    name: String,
+    config_path: PathBuf,
+}
+
+impl ProjectSnapshotScope {
+    fn scope(&self) -> SnapshotScope<'_> {
+        SnapshotScope::OwnedProject {
+            name: &self.name,
+            config_path: &self.config_path,
+        }
+    }
+}
+
+fn snapshot_project(
     config_path: Option<PathBuf>,
     profile: Option<String>,
-) -> VmResult<String> {
+) -> VmResult<ProjectSnapshotScope> {
     let config = AppConfig::load(config_path, profile, None)?;
     require_project_config(&config.vm)?;
-    Ok(project_name(&config.vm).to_string())
+    Ok(ProjectSnapshotScope {
+        name: project_name(&config.vm).to_string(),
+        config_path: config
+            .vm
+            .owning_config_path()
+            .ok_or_else(|| {
+                VmError::validation(
+                    "Snapshot operation requires a project configuration",
+                    None::<String>,
+                )
+            })?
+            .to_path_buf(),
+    })
 }
 
 fn verify_environment_filter(metadata: &SnapshotMetadata, selected: Option<&str>) -> VmResult<()> {
@@ -265,18 +347,30 @@ fn verify_environment_filter(metadata: &SnapshotMetadata, selected: Option<&str>
     Ok(())
 }
 
-fn metadata(project: &str, name: &str) -> VmResult<SnapshotMetadata> {
+fn metadata(project: &ProjectSnapshotScope, name: &str) -> VmResult<SnapshotMetadata> {
     let path = SnapshotManager::new()?
-        .get_snapshot_dir(SnapshotScope::Project(project), name)?
+        .get_snapshot_dir(project.scope(), name)?
         .join("metadata.json");
     if !path.is_file() {
         return Err(VmError::validation(
-            format!("Snapshot '{name}' was not found in project '{project}'"),
+            format!(
+                "Snapshot '{name}' was not found in project '{}'",
+                project.name
+            ),
             None::<String>,
         ));
     }
     let metadata = SnapshotMetadata::load(&path)?;
-    if metadata.project_name != project {
+    if metadata.project_name != project.name
+        || metadata.owner_config_path.as_deref()
+            != Some(
+                project
+                    .config_path
+                    .canonicalize()?
+                    .to_string_lossy()
+                    .as_ref(),
+            )
+    {
         return Err(VmError::validation(
             format!("Snapshot '{name}' has a different project owner"),
             None::<String>,
@@ -287,7 +381,7 @@ fn metadata(project: &str, name: &str) -> VmResult<SnapshotMetadata> {
 
 #[cfg(test)]
 mod tests {
-    use super::snapshot_project_name;
+    use super::snapshot_project;
 
     #[test]
     fn snapshot_scope_resolves_from_project_without_a_runtime() {
@@ -299,7 +393,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            snapshot_project_name(Some(config), None).unwrap(),
+            snapshot_project(Some(config), None).unwrap().name,
             "example"
         );
     }

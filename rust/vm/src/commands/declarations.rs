@@ -197,6 +197,7 @@ fn declaration(request: &CreateRequest) -> VmResult<EnvironmentDeclaration> {
     Ok(EnvironmentDeclaration {
         provider: ProviderName::from(request.provider.as_str()),
         image,
+        services: Default::default(),
         cpus,
         memory,
         mounts,
@@ -293,6 +294,7 @@ mod tests {
         let declaration = EnvironmentDeclaration {
             provider: ProviderName::Docker,
             image: ImageSpec::String("debian:bookworm".into()),
+            services: Default::default(),
             cpus: None,
             memory: None,
             mounts: Vec::new(),
@@ -316,6 +318,7 @@ mod tests {
         let one = EnvironmentDeclaration {
             provider: ProviderName::Docker,
             image: ImageSpec::String("debian:bookworm".into()),
+            services: Default::default(),
             cpus: None,
             memory: None,
             mounts: Vec::new(),

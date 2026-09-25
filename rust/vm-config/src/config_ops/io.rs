@@ -32,8 +32,7 @@ pub fn read_config_or_init(path: &Path, allow_init: bool) -> Result<VmConfig> {
             .map_err(|e| VmError::Config(format!("Failed to read selection: {e}")))?
         {
             return Err(VmError::Config(
-                "Configuration required. Create an environment with `vm run linux` first."
-                    .to_string(),
+                "Configuration required. Run `vm init` first.".to_string(),
             ));
         }
 
@@ -93,7 +92,7 @@ fn find_local_config_impl() -> Result<PathBuf> {
     }
 
     Err(vm_core::error::VmError::Config(
-        "No vm.yaml configuration found in the current directory or its parents. Create an environment with `vm run linux` first".to_string()
+        "No vm.yaml configuration found in the current directory or its parents. Run `vm init` first".to_string()
     ))
 }
 

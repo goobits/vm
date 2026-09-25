@@ -1,9 +1,19 @@
 # VM Package Experience Tracker
 
-Status: Docker acceptance pending.
+Status: CLI completion and Docker acceptance pending.
 
 ## Remaining work
 
+- [ ] Add `packages release --receipt ID` to observe/resume the existing durable
+      release, plus `--background` only after an acceptance receipt is persisted.
+- [ ] Complete package-service backup commands: optional name on create,
+      exact-name removal, and restore preflight/format checks.
+- [ ] Add named filtering to `tools refresh`; make disable reconcile eligible
+      running environments and persist desired updates for stopped targets.
+- [ ] Verify publication, consumer review, activation, deferred targets, and
+      idempotent retries produce typed receipts and truthful partial outcomes.
+- [ ] Split oversized package discovery, release, tool activation/build, and
+      registry-adapter modules into focused owners without adding another pipeline.
 - [ ] Run [the Docker acceptance workflow](../scripts/internal/test-package-workflow-docker.sh)
       against the updated code on a host with Docker available.
 - [ ] Record the result and resolve any failures before closing this tracker.

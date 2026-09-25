@@ -5,9 +5,8 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use super::{ensure_running, wait_until_ready_for, ReadyFor, StartOutcome};
+use super::{ensure_running, wait_until_ready_for, StartOutcome};
 use crate::commands::vm_ops::interaction::{handle_exec, handle_ssh};
-use crate::commands::vm_ops::resolve_or_create_target;
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_provider::{
     CommandProvider, InstanceInfo, InstanceProvider, InstanceState, Provider, ProviderContext,
@@ -27,6 +26,7 @@ struct FakeProvider {
     shell_ready_checks: Arc<AtomicUsize>,
     fail_start_after_transition: bool,
     ready: bool,
+    exec_code: i32,
 }
 
 impl FakeProvider {
@@ -43,6 +43,7 @@ impl FakeProvider {
             shell_ready_checks: Arc::new(AtomicUsize::new(0)),
             fail_start_after_transition: false,
             ready: true,
+            exec_code: 0,
         }
     }
 
@@ -53,6 +54,11 @@ impl FakeProvider {
 
     fn never_ready(mut self) -> Self {
         self.ready = false;
+        self
+    }
+
+    fn with_exec_code(mut self, code: i32) -> Self {
+        self.exec_code = code;
         self
     }
 }
@@ -79,6 +85,15 @@ impl CommandProvider for FakeProvider {
     fn exec(&self, _container: Option<&str>, _cmd: &[String]) -> ProviderResult<()> {
         self.execs.fetch_add(1, Ordering::SeqCst);
         Ok(())
+    }
+
+    fn exec_status(
+        &self,
+        container: Option<&str>,
+        command: &[String],
+    ) -> ProviderResult<vm_provider::GuestExit> {
+        self.exec(container, command)?;
+        Ok(vm_provider::GuestExit::new(self.exec_code))
     }
 
     fn logs(&self, _container: Option<&str>) -> ProviderResult<()> {
@@ -265,43 +280,20 @@ async fn ensure_running_does_not_create_a_missing_environment() {
 }
 
 #[tokio::test]
-async fn shell_target_is_created_from_config_when_missing() {
+async fn shell_rejects_missing_environment_without_creation() {
     let provider = FakeProvider::new(None);
-    let config = project_config();
-
-    let target = resolve_or_create_target(&provider, &config, &GlobalConfig::default(), None)
-        .await
-        .unwrap();
-
-    handle_ssh(
+    let error = handle_ssh(
         Box::new(provider.clone()),
-        Some(&target),
+        Some("demo-dev"),
         Some(PathBuf::from(".")),
-        config,
-        GlobalConfig::default(),
+        project_config(),
     )
     .await
-    .unwrap();
+    .unwrap_err();
 
-    assert_eq!(target, "demo-dev");
-    assert_eq!(provider.creates.load(Ordering::SeqCst), 1);
-    assert_eq!(provider.shells.load(Ordering::SeqCst), 1);
-}
-
-#[tokio::test]
-async fn named_shell_target_is_created_when_missing() {
-    let provider = FakeProvider::new(None);
-    let target = resolve_or_create_target(
-        &provider,
-        &project_config(),
-        &GlobalConfig::default(),
-        Some("backend"),
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(target, "demo-backend-dev");
-    assert_eq!(provider.creates.load(Ordering::SeqCst), 1);
+    assert!(error.to_string().contains("does not exist"));
+    assert_eq!(provider.creates.load(Ordering::SeqCst), 0);
+    assert_eq!(provider.shells.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
@@ -324,28 +316,23 @@ async fn concurrent_start_is_idempotent() {
 }
 
 #[tokio::test]
-async fn shell_starts_a_stopped_environment_before_connecting() {
+async fn shell_rejects_stopped_environment_without_starting() {
     let provider = FakeProvider::new(Some(InstanceState::Stopped));
-    let config = project_config();
-    let target = resolve_or_create_target(&provider, &config, &GlobalConfig::default(), None)
-        .await
-        .unwrap();
-
-    handle_ssh(
+    let error = handle_ssh(
         Box::new(provider.clone()),
-        Some(&target),
+        Some("demo-dev"),
         Some(PathBuf::from(".")),
-        config,
-        GlobalConfig::default(),
+        project_config(),
     )
     .await
-    .unwrap();
+    .unwrap_err();
 
-    assert_eq!(provider.starts.load(Ordering::SeqCst), 1);
-    assert_eq!(provider.shells.load(Ordering::SeqCst), 1);
+    assert!(error.to_string().contains("not ready for a shell"));
+    assert_eq!(provider.starts.load(Ordering::SeqCst), 0);
+    assert_eq!(provider.shells.load(Ordering::SeqCst), 0);
     assert_eq!(provider.creates.load(Ordering::SeqCst), 0);
     assert_eq!(provider.command_ready_checks.load(Ordering::SeqCst), 0);
-    assert_eq!(provider.shell_ready_checks.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.shell_ready_checks.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
@@ -370,6 +357,23 @@ async fn exec_rejects_a_stopped_environment_without_starting_it() {
 }
 
 #[tokio::test]
+async fn exec_returns_guest_status_without_rewriting_it() {
+    let provider = FakeProvider::new(Some(InstanceState::Running)).with_exec_code(42);
+    let exit = handle_exec(
+        Box::new(provider.clone()),
+        Some("demo-dev"),
+        vec!["false".to_string()],
+        project_config(),
+        GlobalConfig::default(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(exit.code(), 42);
+    assert_eq!(provider.execs.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn shell_defers_maintenance_while_exec_reconciles_managed_package_access() {
     let provider = FakeProvider::new(Some(InstanceState::Running));
     let mut config = project_config();
@@ -386,7 +390,6 @@ async fn shell_defers_maintenance_while_exec_reconciles_managed_package_access()
         Some("demo-dev"),
         Some(PathBuf::from(".")),
         config.clone(),
-        GlobalConfig::default(),
     )
     .await
     .unwrap();
@@ -412,7 +415,6 @@ async fn readiness_wait_obeys_its_real_deadline() {
         &provider,
         Some("demo-dev"),
         "demo-dev",
-        ReadyFor::Shell,
         std::time::Duration::from_millis(20),
         std::time::Duration::from_millis(5),
     )
@@ -421,6 +423,6 @@ async fn readiness_wait_obeys_its_real_deadline() {
 
     assert!(started.elapsed() < std::time::Duration::from_secs(1));
     assert!(error.to_string().contains("wait until ready"));
-    assert!(provider.shell_ready_checks.load(Ordering::SeqCst) >= 2);
-    assert_eq!(provider.command_ready_checks.load(Ordering::SeqCst), 0);
+    assert_eq!(provider.shell_ready_checks.load(Ordering::SeqCst), 0);
+    assert!(provider.command_ready_checks.load(Ordering::SeqCst) >= 2);
 }

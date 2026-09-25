@@ -7,6 +7,12 @@ pub use base::{build_vibe_base, ensure_configured_vibe_base, PreparedTartBase, T
 #[cfg(feature = "tart")]
 pub(crate) use command::validate_environment;
 pub(crate) use command::TartCommand;
+pub use storage::project_home as tart_project_home;
+#[cfg(feature = "tart")]
+pub use storage::{
+    remove_storage as remove_tart_storage, storage_inventory as tart_storage_inventory,
+    TartStorageEntry,
+};
 
 #[cfg(feature = "tart")]
 mod creation;

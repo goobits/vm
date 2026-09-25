@@ -279,6 +279,18 @@ pub(crate) fn validate_snapshot_files(
     snapshot_dir: &Path,
     metadata: &SnapshotMetadata,
 ) -> Result<()> {
+    if let Some(file) = &metadata.native_vm_file {
+        let native = snapshot_file_path(&snapshot_dir.join("native"), file, "native VM archive")?;
+        if !native.is_file() || std::fs::metadata(&native)?.len() == 0 {
+            return Err(VmError::validation(
+                format!(
+                    "Snapshot native VM archive is missing or empty: {}",
+                    native.display()
+                ),
+                None::<String>,
+            ));
+        }
+    }
     let images_dir = snapshot_dir.join("images");
     for service in &metadata.services {
         let image_path = snapshot_file_path(&images_dir, &service.image_file, "image file")?;

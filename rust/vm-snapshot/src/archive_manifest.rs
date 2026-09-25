@@ -89,6 +89,16 @@ impl ArchiveManifest {
         }
     }
 
+    pub(crate) fn runtime(&self) -> Result<&str> {
+        match self.runtime.as_deref() {
+            Some(runtime @ ("docker" | "podman" | "tart")) => Ok(runtime),
+            _ => Err(VmError::validation(
+                "Snapshot archive has an unsupported provider",
+                None::<String>,
+            )),
+        }
+    }
+
     pub(crate) fn record_files(&mut self, root: &std::path::Path) -> Result<()> {
         self.files_sha256 = crate::archive::file_checksums(root)?;
         Ok(())
@@ -138,6 +148,7 @@ impl ArchiveManifest {
     }
 
     fn validate(&self) -> Result<()> {
+        self.runtime()?;
         if self.version != CURRENT_VERSION {
             return Err(VmError::validation(
                 format!("Unsupported snapshot archive version '{}'", self.version),
@@ -179,7 +190,7 @@ mod tests {
             version: CURRENT_VERSION.to_string(),
             snapshot_name: "stable".to_string(),
             is_global: false,
-            runtime: None,
+            runtime: Some("docker".to_string()),
             platform: ArchivePlatform {
                 os: "linux".to_string(),
                 arch: "x86_64".to_string(),

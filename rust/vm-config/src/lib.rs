@@ -63,7 +63,7 @@ pub use detector::{detect_worktrees, detect_worktrees_in};
 // Re-export ConfigLoader for relative path detection
 pub use loader::ConfigLoader;
 pub use merge::{apply_profile, merge_configs, ConfigMerger};
-pub use preset::PresetDetector;
+pub use preset::{validate_plugin_preset_content, PresetDetector};
 pub use yaml::CoreOperations;
 
 use std::path::PathBuf;

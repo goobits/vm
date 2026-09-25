@@ -38,12 +38,19 @@ pub(super) async fn open(
     vm_success!("Opening original workspace for {}", owner.source);
     vm_println!("Host source: {}", owner.root.display());
     vm_println!("Mode: direct workspace (no checkout)");
+    vm_ops::handle_start(
+        subject.provider.clone_box(),
+        Some(subject.target.as_str()),
+        subject.config.clone(),
+        subject.global_config,
+        false,
+    )
+    .await?;
     vm_ops::handle_ssh(
         subject.provider,
         Some(subject.target.as_str()),
         Some(PathBuf::from(".")),
         subject.config,
-        subject.global_config,
     )
     .await
 }

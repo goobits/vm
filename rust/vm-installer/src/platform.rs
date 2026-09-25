@@ -121,7 +121,10 @@ fn add_to_profile(profile_path: &Path, bin_dir: &Path) -> Result<()> {
         .open(profile_path)?;
 
     let line_to_add = if profile_path.ends_with("config.fish") {
-        format!("\nfish_add_path -p \"{}\"", bin_dir.display())
+        format!(
+            "\n# Added by VM tool installer\nfish_add_path -p \"{}\"",
+            bin_dir.display()
+        )
     } else if cfg!(windows) {
         // PowerShell syntax for Windows
         format!(

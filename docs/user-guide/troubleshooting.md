@@ -13,15 +13,15 @@ vm doctor --fix
 vm list
 vm logs dev --tail 100
 vm stop dev
-vm run linux as dev
+vm start dev
 ```
 
 For a clean active environment rebuild:
 
 ```bash
 vm config render
-vm remove dev --force
-vm run linux as dev
+vm remove dev --yes
+vm start dev
 ```
 
 Review the rendered mounts before removal. Saved snapshots and stable
@@ -51,9 +51,8 @@ vm shell
 vm exec -- pwd
 ```
 
-`vm shell` creates the selected environment from `vm.yaml` when it is missing and
-starts it when stopped. `vm exec` starts an existing stopped environment but
-does not create one.
+`vm start dev` provisions a missing declared environment or starts a stopped one.
+`vm shell` and `vm exec` require that environment to be running.
 
 For Tart, `vm shell` prefers the guest agent. A running macOS guest can fall back
 to native SSH. The first recovery of an older guest may ask for the `admin`
@@ -311,9 +310,9 @@ vm snapshots export stable --env dev --output dev.tar.gz
 ## Debug Output
 
 ```bash
-LOG_LEVEL=debug LOG_OUTPUT=console LOG_FORMAT=human vm run linux as dev
-VM_DEBUG=true vm run linux as dev
-VM_VERBOSE=true vm run linux as dev
+LOG_LEVEL=debug LOG_OUTPUT=console LOG_FORMAT=human vm start dev
+VM_DEBUG=true vm start dev
+VM_VERBOSE=true vm start dev
 ```
 
 CLI logs default to a file so requested command output stays clean. Long-running

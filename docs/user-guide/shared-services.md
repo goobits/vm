@@ -5,9 +5,9 @@ Shared services provide durable databases and infrastructure for environments.
 Common workflows:
 
 ```bash
-vm run linux as app
+vm start app
 vm db list
-vm db backup app_db
+vm db backups create daily --all
 vm db credentials postgresql
 ```
 
@@ -17,5 +17,7 @@ Use configuration to enable services and ports, then run the environment:
 
 ```bash
 vm config show
-vm run linux as app
+vm start app
 ```
+
+Database commands operate on the selected project's configured PostgreSQL database. For named environments, add a complete `services.postgresql` definition under each `environments.<name>` declaration when they need separate database identities. Select one with `--env <name>`; its backups live in a separate project and environment directory.

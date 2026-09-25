@@ -2,6 +2,7 @@ pub mod command_capture;
 pub mod command_stream;
 pub mod error;
 pub mod file_system;
+pub mod install_record;
 pub mod message;
 pub mod output_macros;
 pub mod prompts;

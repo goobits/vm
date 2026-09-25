@@ -4,7 +4,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-use vm_core::{vm_println, vm_success, vm_warning};
+use vm_core::{vm_progress, vm_success, vm_warning};
 use vm_packages::{repository_urls_equivalent, SourceKind, ToolKind};
 
 use crate::error::{VmError, VmResult};
@@ -117,7 +117,7 @@ async fn reconcile_sources(
         (SourcePolicy::Canonical, 1) => "read-only canonical source",
         (SourcePolicy::Canonical, _) => "read-only canonical sources",
     };
-    vm_println!("Reconciling {} {source_kind}", plan.source_count);
+    vm_progress!("Reconciling {} {source_kind}", plan.source_count);
     let mut outcome = SourceReconcileOutcome::default();
     for failure in plan.discovery.failures {
         vm_warning!("Source discovery failed: {}", failure.message);

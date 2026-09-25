@@ -1,6 +1,7 @@
 //! Snapshot management and lifecycle operations
 
 use crate::metadata::SnapshotMetadata;
+use sha2::{Digest, Sha256};
 use std::path::{Component, Path, PathBuf};
 use vm_core::error::{Result, VmError};
 
@@ -28,6 +29,10 @@ pub(crate) fn snapshot_file_path(base: &Path, name: &str, kind: &str) -> Result<
 pub enum SnapshotScope<'a> {
     Global,
     Project(&'a str),
+    OwnedProject {
+        name: &'a str,
+        config_path: &'a Path,
+    },
 }
 
 impl<'a> SnapshotScope<'a> {
@@ -43,6 +48,47 @@ impl<'a> SnapshotScope<'a> {
         match self {
             Self::Global => "global",
             Self::Project(name) => name,
+            Self::OwnedProject { name, .. } => name,
+        }
+    }
+
+    fn storage_key(self) -> Result<String> {
+        match self {
+            Self::Global => Ok("global".to_string()),
+            Self::Project(name) => Ok(name.to_string()),
+            Self::OwnedProject { name, config_path } => {
+                validate_storage_component(name, "project name")?;
+                let canonical = match config_path.canonicalize() {
+                    Ok(path) => path,
+                    Err(_error)
+                        if config_path.is_absolute()
+                            && !config_path
+                                .components()
+                                .any(|component| matches!(component, Component::ParentDir)) =>
+                    {
+                        config_path.to_path_buf()
+                    }
+                    Err(error) => {
+                        return Err(VmError::filesystem(
+                            error,
+                            config_path.display(),
+                            "canonicalize",
+                        ))
+                    }
+                };
+                let path = canonical.to_str().ok_or_else(|| {
+                    VmError::validation(
+                        "Project configuration path must be UTF-8 for snapshots",
+                        None::<String>,
+                    )
+                })?;
+                let digest = Sha256::digest(path.as_bytes());
+                let suffix = digest[..12]
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>();
+                Ok(format!("{name}-{suffix}"))
+            }
         }
     }
 }
@@ -50,6 +96,15 @@ impl<'a> SnapshotScope<'a> {
 /// Manages snapshot storage and lifecycle
 pub struct SnapshotManager {
     snapshots_dir: PathBuf,
+}
+
+/// A saved snapshot directory verified against its on-disk metadata.
+#[derive(Debug, Clone)]
+pub struct SnapshotStorageEntry {
+    pub id: String,
+    pub project: String,
+    pub name: String,
+    pub owner_config_path: Option<PathBuf>,
 }
 
 impl SnapshotManager {
@@ -68,9 +123,24 @@ impl SnapshotManager {
     /// Get the directory path for a specific snapshot
     pub fn get_snapshot_dir(&self, scope: SnapshotScope<'_>, name: &str) -> Result<PathBuf> {
         validate_storage_component(name, "snapshot name")?;
-        let project = scope.project_name();
-        validate_storage_component(project, "project name")?;
-        Ok(self.snapshots_dir.join(project).join(name))
+        let key = scope.storage_key()?;
+        validate_storage_component(&key, "project storage key")?;
+        Ok(self.snapshots_dir.join(key).join(name))
+    }
+
+    pub fn list_snapshots_in_scope(
+        &self,
+        scope: SnapshotScope<'_>,
+    ) -> Result<Vec<SnapshotMetadata>> {
+        let mut snapshots = self.list_snapshots(Some(&scope.storage_key()?))?;
+        if let SnapshotScope::OwnedProject { name, config_path } = scope {
+            let owner = config_path.canonicalize()?.display().to_string();
+            snapshots.retain(|snapshot| {
+                snapshot.project_name == name
+                    && snapshot.owner_config_path.as_deref() == Some(owner.as_str())
+            });
+        }
+        Ok(snapshots)
     }
 
     /// Create staging beside the final snapshot so installation can use renames.
@@ -243,6 +313,61 @@ impl SnapshotManager {
         Ok(snapshots)
     }
 
+    /// Inventory retained snapshot files without claiming unrelated directories.
+    /// Symlinked entries and inconsistent metadata are deliberately omitted.
+    pub fn storage_inventory(&self) -> Result<Vec<SnapshotStorageEntry>> {
+        let mut entries = Vec::new();
+        for project in std::fs::read_dir(&self.snapshots_dir)? {
+            let project = project?;
+            if !project.file_type()?.is_dir() {
+                continue;
+            }
+            let Some(project_name) = project.file_name().to_str().map(str::to_string) else {
+                continue;
+            };
+            if validate_storage_component(&project_name, "project name").is_err() {
+                continue;
+            }
+            for snapshot in std::fs::read_dir(project.path())? {
+                let snapshot = snapshot?;
+                if !snapshot.file_type()?.is_dir() {
+                    continue;
+                }
+                let Some(name) = snapshot.file_name().to_str().map(str::to_string) else {
+                    continue;
+                };
+                if validate_storage_component(&name, "snapshot name").is_err() {
+                    continue;
+                }
+                let metadata = match SnapshotMetadata::load(snapshot.path().join("metadata.json")) {
+                    Ok(metadata) => metadata,
+                    Err(_) => continue,
+                };
+                let expected_key = match metadata.owner_config_path.as_deref() {
+                    Some(path) => SnapshotScope::OwnedProject {
+                        name: &metadata.project_name,
+                        config_path: Path::new(path),
+                    }
+                    .storage_key()
+                    .ok(),
+                    None if metadata.project_name == "global" => Some("global".to_string()),
+                    None => None,
+                };
+                if metadata.name != name || expected_key.as_deref() != Some(&project_name) {
+                    continue;
+                }
+                entries.push(SnapshotStorageEntry {
+                    id: format!("snapshot:{project_name}/{name}"),
+                    project: metadata.project_name,
+                    name,
+                    owner_config_path: metadata.owner_config_path.map(PathBuf::from),
+                });
+            }
+        }
+        entries.sort_by(|left, right| left.id.cmp(&right.id));
+        Ok(entries)
+    }
+
     /// Delete a snapshot
     pub fn delete_snapshot(&self, scope: SnapshotScope<'_>, name: &str) -> Result<()> {
         let snapshot_dir = self.get_snapshot_dir(scope, name)?;
@@ -381,5 +506,90 @@ mod tests {
             std::fs::read_to_string(target.join("metadata.json")).unwrap(),
             "old"
         );
+    }
+
+    #[test]
+    fn storage_inventory_requires_matching_metadata_and_plain_directories() {
+        let root = tempfile::tempdir().unwrap();
+        let manager = manager(root.path());
+        let owner_dir = root.path().join("owner");
+        std::fs::create_dir(&owner_dir).unwrap();
+        let owner = owner_dir.join("vm.yaml");
+        std::fs::write(&owner, "project: demo").unwrap();
+        let project = manager
+            .get_snapshot_dir(
+                SnapshotScope::OwnedProject {
+                    name: "demo",
+                    config_path: &owner,
+                },
+                "stable",
+            )
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        let valid = project.join("stable");
+        let mismatch = project.join("wrong");
+        std::fs::create_dir_all(&valid).unwrap();
+        std::fs::create_dir_all(&mismatch).unwrap();
+        let metadata = serde_json::json!({
+            "name":"stable","created_at":"2026-09-25T00:00:00Z",
+            "description":null,"project_name":"demo","source_environment":"demo-dev",
+            "provider":"tart","architecture":"aarch64","consistency":"stopped",
+            "project_dir":owner_dir.display().to_string(),"owner_config_path":owner.display().to_string(),
+            "git_commit":null,"git_dirty":false,"git_branch":null,
+            "services":[],"volumes":[],"excluded_mounts":[],
+            "compose_file":"","vm_config_file":"","total_size_bytes":1
+        });
+        let encoded = serde_json::to_vec(&metadata).unwrap();
+        std::fs::write(valid.join("metadata.json"), &encoded).unwrap();
+        std::fs::write(mismatch.join("metadata.json"), &encoded).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&valid, project.join("linked")).unwrap();
+
+        let resources = manager.storage_inventory().unwrap();
+        assert_eq!(resources.len(), 1);
+        assert_eq!(
+            resources[0].id,
+            format!(
+                "snapshot:{}/stable",
+                project.file_name().unwrap().to_string_lossy()
+            )
+        );
+        assert_eq!(
+            resources[0].owner_config_path.as_deref(),
+            Some(owner.as_path())
+        );
+    }
+
+    #[test]
+    fn same_named_projects_have_separate_snapshot_roots() {
+        let root = tempfile::tempdir().unwrap();
+        let manager = manager(root.path());
+        let first = root.path().join("one/vm.yaml");
+        let second = root.path().join("two/vm.yaml");
+        std::fs::create_dir_all(first.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(second.parent().unwrap()).unwrap();
+        std::fs::write(&first, "project: demo").unwrap();
+        std::fs::write(&second, "project: demo").unwrap();
+        let first_path = manager
+            .get_snapshot_dir(
+                SnapshotScope::OwnedProject {
+                    name: "demo",
+                    config_path: &first,
+                },
+                "stable",
+            )
+            .unwrap();
+        let second_path = manager
+            .get_snapshot_dir(
+                SnapshotScope::OwnedProject {
+                    name: "demo",
+                    config_path: &second,
+                },
+                "stable",
+            )
+            .unwrap();
+        assert_ne!(first_path, second_path);
     }
 }

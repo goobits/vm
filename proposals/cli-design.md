@@ -1,26 +1,76 @@
 # VM CLI design
 
-Status: implementation in progress. This document specifies the intended product
-interface; the public reference describes the commands currently available.
+Status: implementation in progress. This document specifies the target interface;
+the [generated command inventory](../docs/user-guide/command-inventory.md) and
+[public reference](../docs/user-guide/cli-reference.md) describe the implemented
+surface.
 
-Implemented so far: project initialization and explicit project selection;
-project-owned environment declarations with stopped `create` and retryable
-`start`; deterministic named targeting and repeated `exec --env`; project-scoped
-snapshots with archive checksums and mount coverage; grouped package,
-configuration, database, and tunnel commands; config field provenance and
-validated atomic mutations; explicit tool targeting; exact project ownership
-checks for fleet actions and tool updates; safe
-Docker/Podman storage inspection; controller-only package, consumer, and tool
-registration removal with retained history; restricted, staged plugin installation;
-and removal of dynamic top-level tool commands.
-The public reference records the current spelling and capability limits.
+Implemented in code: project-owned declarations and deterministic targeting;
+exact-owner fleet actions, removable instance data, and Docker/Podman/Tart drift
+receipts; Compose and Tart snapshots with scoped ownership; grouped package,
+configuration, database, tunnel, plugin, and system commands; per-environment
+database identity; validated configuration mutations and field provenance;
+restricted plugin installation with typed preset validation; owned installation
+updates and removal; exit categories; and an initial versioned JSON envelope.
+Provider-dependent behavior still needs live acceptance.
 
-Still to deliver: runtime drift detection, complete fleet removal and data
-ownership, provider-native snapshots beyond Compose, package Docker acceptance,
-per-environment database routing, general tunnel endpoints, typed plugin preset
-capabilities and service activation, Tart/file storage ownership, structured output,
-exit codes, receipts, generated reference, and genuine per-command plans. These
-require backend and acceptance work before this proposal can be marked complete.
+Remaining work is tracked below. The proposal stays active until the workflows
+and provider acceptance pass.
+
+## Delivery checklist
+
+Checked items are implemented in code; provider acceptance is tracked separately.
+The [package experience tracker](vm-package-experience-tracker.md) owns package
+and managed-tool release work.
+
+- [x] Use canonical grouped commands, explicit project/environment context, and
+      a generated command inventory.
+- [x] Enforce exact project ownership for environment lists, fleet actions,
+      removal, and persistent-data deletion.
+- [x] Record Docker/Podman/Tart runtime drift and support Compose/Tart snapshots
+      with project-scoped ownership.
+- [x] Route named database operations by declared environment, persist scoped
+      backups, and support named IPv4/DNS tunnels.
+- [x] Validate plugin presets and stage plugin installation; verify ownership
+      before managed update/uninstall.
+- [x] Introduce exit categories and versioned JSON for `config show/get`,
+      `system info`, `list`, and `status`; preserve single-target `exec` bytes
+      and exit status.
+- [ ] Align environment options: `shell --cwd` and terminal check, `exec --cwd`
+      and `--user`, `copy --env`/`--overwrite` with exactly one guest endpoint,
+      and positional `doctor ENV`.
+- [ ] Give fleet `exec` explicit grouped/JSON Lines output, per-target exit
+      statuses, and aggregate failure behavior.
+- [ ] Complete snapshot metadata for native image identity and test snapshot
+      create/restore/import/export against live Docker, Podman, and Tart; align
+      export compression with a named format option.
+- [ ] Render Tart configuration and verify user-default/provenance and preset
+      conflict behavior against real project configurations.
+- [ ] Add project/user secret namespaces to set/list/show/remove; keep reveal
+      explicit and apply one confirmation policy before side effects.
+- [ ] Let tunnels list and close project-owned relays after their environment
+      disappears; complete endpoint/address-family acceptance.
+- [ ] Give database routes distinct physical service identities where declared;
+      implement true multi-database `--all` backup/member results and read
+      credentials from the selected environment service.
+- [ ] Activate validated service plugins through the provider configuration
+      model, with capability and conflict checks before effects.
+- [ ] Complete `system info` version context and inventory storage across all
+      installed providers, including unreferenced-resource checks.
+- [ ] Split remaining large Tart provider/provisioning and CLI domain modules
+      by responsibility while keeping one owner for each operation.
+- [ ] Add typed, redacted `--json` results to applicable read/mutation commands,
+      target-bearing errors, stable schema fixtures, and stdout/stderr checks.
+- [ ] Add `logs --json-lines` records and a final event; preserve application
+      bytes without interpreting them as JSON.
+- [ ] Centralize noninteractive confirmation, `--yes`, deadlines,
+      interruption, and receipt-aware timeout diagnostics.
+- [ ] Add real read-only `--dry-run` plans for supported mutations, with shared
+      validation and execution models; reject unsupported previews.
+- [ ] Finish durable activation/deferred-work receipts and release retry options
+      in the [package experience tracker](vm-package-experience-tracker.md).
+- [ ] Run live provider and package-manager acceptance, resolve failures, then
+      remove this proposal and the completed package tracker.
 
 ## Product contract
 

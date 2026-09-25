@@ -107,7 +107,17 @@ pub async fn handle_create(
     let project_name = project_override
         .map(|s| s.to_string())
         .unwrap_or_else(|| get_project_name(config));
-    let (scope, snapshot_name) = SnapshotScope::from_name(name, Some(project_name.as_str()));
+    let (_, snapshot_name) = SnapshotScope::from_name(name, Some(project_name.as_str()));
+    let owner = config.vm.owning_config_path().ok_or_else(|| {
+        VmError::validation(
+            "Snapshot creation requires a project configuration",
+            None::<String>,
+        )
+    })?;
+    let scope = SnapshotScope::OwnedProject {
+        name: &project_name,
+        config_path: owner,
+    };
 
     // Check if snapshot already exists
     if manager.snapshot_exists(scope, snapshot_name)? && !force {
@@ -251,11 +261,13 @@ pub async fn handle_create(
         architecture: vm_platform::platform::architecture().to_string(),
         consistency: if quiesce { "quiesced" } else { "live" }.to_string(),
         project_dir: project_dir.to_string_lossy().to_string(),
+        owner_config_path: Some(owner.canonicalize()?.display().to_string()),
         git_commit,
         git_dirty,
         git_branch,
         services,
         volumes,
+        native_vm_file: None,
         excluded_mounts: capture_plan.excluded_mounts,
         compose_file: compose_file.to_string(),
         vm_config_file: vm_config_file.to_string(),

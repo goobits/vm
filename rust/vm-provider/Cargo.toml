@@ -49,6 +49,7 @@ tart = [
     "dep:base64",
     "dep:duct",
     "dep:fs2",
+    "dep:sha2",
     "dep:serde_json",
     "dep:serde_yaml_ng",
     "dep:tera",
@@ -56,5 +57,6 @@ tart = [
     "dep:uuid",
     "dep:vm-messages",
     "dep:vm-platform",
+    "dep:vm-snapshot",
 ]
 test-helpers = ["dep:tracing", "vm-config/test-helpers"]

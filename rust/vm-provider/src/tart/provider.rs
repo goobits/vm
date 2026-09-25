@@ -137,6 +137,11 @@ impl CommandProvider for TartProvider {
         self.stream_tart_command(&arg_refs)
     }
 
+    fn exec_status(&self, container: Option<&str>, cmd: &[String]) -> Result<crate::GuestExit> {
+        let args = self.guest_exec_args(container, cmd)?;
+        crate::guest_exit::run_guest_command(self.tart().command().args(args))
+    }
+
     fn exec_interactive(
         &self,
         container: Option<&str>,
@@ -336,6 +341,14 @@ impl InstanceProvider for TartProvider {
 
     fn instance_config_path(&self, instance: &str) -> Result<Option<PathBuf>> {
         self.command.instance_config_path(instance)
+    }
+
+    fn runtime_drift(&self, instance: &str) -> Result<Option<String>> {
+        storage::runtime_drift(instance, self.command.home(), &self.config)
+    }
+
+    fn supports_runtime_drift_detection(&self) -> bool {
+        true
     }
 
     fn status(&self, container: Option<&str>) -> Result<VmStatusReport> {

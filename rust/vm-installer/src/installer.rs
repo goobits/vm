@@ -69,7 +69,56 @@ fn install_executable(source_binary: &Path, bin_dir: &Path) -> Result<()> {
     })?;
 
     let link_name = bin_dir.join(vm_platform::platform::executable_name("vm"));
-    copy_executable_atomically(source_binary, &link_name)?;
+    let existed = match fs::symlink_metadata(&link_name) {
+        Ok(metadata) if metadata.file_type().is_file() => {
+            vm_core::install_record::verified(&link_name).map_err(|error| {
+                vm_core::error::VmError::Conflict(format!(
+                    "Refusing to replace unowned or changed executable {}: {error}",
+                    link_name.display()
+                ))
+            })?;
+            true
+        }
+        Ok(_) => {
+            return Err(vm_core::error::VmError::Conflict(format!(
+                "Refusing to replace non-file executable {}",
+                link_name.display()
+            )))
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+        Err(error) => return Err(error.into()),
+    };
+    let backup = if existed {
+        let (path, file) = create_staged_file(&link_name)?;
+        drop(file);
+        fs::copy(&link_name, &path)?;
+        Some(path)
+    } else {
+        None
+    };
+    let result = (|| {
+        copy_executable_atomically(source_binary, &link_name)?;
+        vm_core::install_record::write(&link_name, env!("CARGO_PKG_VERSION"))?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        let rollback = if let Some(path) = &backup {
+            replace_file(path, &link_name)
+        } else if link_name.exists() {
+            fs::remove_file(&link_name)
+        } else {
+            Ok(())
+        };
+        if let Err(rollback) = rollback {
+            return Err(vm_core::error::VmError::Internal(format!(
+                "Installation failed ({error}) and executable rollback failed ({rollback})"
+            )));
+        }
+        return Err(error);
+    }
+    if let Some(path) = backup {
+        fs::remove_file(path)?;
+    }
 
     vm_success!("Executable installed: {}", link_name.display());
     Ok(())
@@ -164,7 +213,7 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn executable_installation_is_a_stable_copy_and_replaces_an_existing_link() {
+    fn executable_installation_refuses_unowned_link_and_updates_owned_copy() {
         let temp_dir = tempdir().expect("create temp directory");
         let bin_dir = temp_dir.path().join("bin");
         let source_binary = temp_dir.path().join("vm-binary");
@@ -178,6 +227,11 @@ mod tests {
         fs::write(&legacy_target, "legacy binary").expect("write legacy target");
         #[cfg(unix)]
         std::os::unix::fs::symlink(&legacy_target, bin_dir.join("vm")).expect("create legacy link");
+        #[cfg(unix)]
+        {
+            assert!(install_executable(&source_binary, &bin_dir).is_err());
+            fs::remove_file(bin_dir.join("vm")).unwrap();
+        }
 
         install_executable(&source_binary, &bin_dir).expect("install executable");
         fs::write(&source_binary, "replacement binary").expect("replace source binary");

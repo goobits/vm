@@ -54,6 +54,11 @@ impl TartCommand {
         storage::remember_instance(instance, self.home(), self.config_path.as_deref())
     }
 
+    #[cfg(feature = "tart")]
+    pub fn record_runtime_receipt(&self, instance: &str, config: &VmConfig) -> Result<()> {
+        storage::record_runtime_receipt(instance, self.home(), config)
+    }
+
     pub fn instance_config_path(&self, instance: &str) -> Result<Option<PathBuf>> {
         storage::instance_config_path(instance)
     }

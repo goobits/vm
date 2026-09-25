@@ -1,5 +1,6 @@
 use crate::cli::BaseSubcommand;
 use crate::error::{VmError, VmResult};
+use std::process::Command;
 use vm_config::{config::VmConfig, AppConfig};
 use vm_core::{vm_println, vm_progress};
 #[cfg(any(target_os = "macos", feature = "tart"))]
@@ -39,6 +40,7 @@ fn stage_docker_base() -> VmResult<tempfile::TempDir> {
 
 async fn handle_build(preset: &str, provider: &str, guest_os: &str) -> VmResult<()> {
     ensure_supported_preset(preset)?;
+    preflight_build(provider, guest_os)?;
 
     match provider {
         "docker" | "podman" => {
@@ -49,6 +51,41 @@ async fn handle_build(preset: &str, provider: &str, guest_os: &str) -> VmResult<
         _ => unreachable!(),
     }
 
+    Ok(())
+}
+
+fn preflight_build(provider: &str, guest_os: &str) -> VmResult<()> {
+    if provider != "tart" && guest_os != "auto" {
+        return Err(VmError::validation(
+            "--guest-os applies only to the Tart provider",
+            None::<String>,
+        ));
+    }
+    let (executable, args): (&str, &[&str]) = match provider {
+        "docker" | "podman" => (provider, &["info"]),
+        "tart" => ("tart", &["--version"]),
+        _ => {
+            return Err(VmError::validation(
+                format!("Unsupported base image provider '{provider}'"),
+                None::<String>,
+            ))
+        }
+    };
+    let output = Command::new(executable)
+        .args(args)
+        .output()
+        .map_err(|error| {
+            VmError::validation(
+                format!("{provider} is unavailable for base image builds: {error}"),
+                Some(format!("Install and start {provider}, then retry")),
+            )
+        })?;
+    if !output.status.success() {
+        return Err(VmError::validation(
+            format!("{provider} is not ready for base image builds"),
+            Some(String::from_utf8_lossy(&output.stderr).trim().to_string()),
+        ));
+    }
     Ok(())
 }
 
@@ -243,8 +280,8 @@ fn ensure_supported_preset(preset: &str) -> VmResult<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        preflight_snapshot_files, resolve_tart_guest_os, stage_docker_base, uses_docker_vibe_base,
-        DOCKER_BASE_DOCKERFILE,
+        preflight_build, preflight_snapshot_files, resolve_tart_guest_os, stage_docker_base,
+        uses_docker_vibe_base, DOCKER_BASE_DOCKERFILE,
     };
 
     #[test]
@@ -262,6 +299,12 @@ mod tests {
         assert_eq!(resolve_tart_guest_os("linux").unwrap(), "linux");
         assert_eq!(resolve_tart_guest_os("macos").unwrap(), "macos");
         assert!(resolve_tart_guest_os("windows").is_err());
+    }
+
+    #[test]
+    fn base_build_rejects_provider_option_mismatch_before_any_runtime_call() {
+        assert!(preflight_build("docker", "macos").is_err());
+        assert!(preflight_build("unknown", "auto").is_err());
     }
 
     #[test]

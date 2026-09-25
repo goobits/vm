@@ -23,7 +23,7 @@ pub(super) fn handle(command: &SystemStorageSubcommand) -> VmResult<()> {
         SystemStorageSubcommand::List => {
             let resources = inventory(engine)?;
             if resources.is_empty() {
-                vm_println!("No verified VM-owned storage on {engine}");
+                vm_println!("No verified VM-owned storage");
             }
             for resource in resources {
                 let status = resource.reason.as_deref().unwrap_or("removable");
@@ -82,6 +82,8 @@ pub(super) fn handle(command: &SystemStorageSubcommand) -> VmResult<()> {
                 run(engine, &["volume", "rm", name])?;
             } else if let Some(id) = resource_id.strip_prefix(&image_prefix) {
                 run(engine, &["image", "rm", id])?;
+            } else if resource_id.starts_with("tart:vm:") {
+                remove_tart_storage(resource_id)?;
             } else {
                 return Err(VmError::validation("Invalid resource ID", None::<String>));
             }
@@ -92,6 +94,47 @@ pub(super) fn handle(command: &SystemStorageSubcommand) -> VmResult<()> {
 }
 
 fn inventory(engine: &str) -> VmResult<Vec<Resource>> {
+    let mut resources = if Command::new(engine).arg("--version").output().is_ok() {
+        container_inventory(engine)?
+    } else {
+        Vec::new()
+    };
+    resources.extend(tart_resources()?);
+    resources.extend(snapshot_resources()?);
+    resources.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(resources)
+}
+
+fn snapshot_resources() -> VmResult<Vec<Resource>> {
+    let snapshots = vm_snapshot::SnapshotManager::new()?.storage_inventory()?;
+    Ok(snapshots
+        .into_iter()
+        .map(|snapshot| {
+            let command = snapshot.owner_config_path.as_ref().filter(|path| path.is_file())
+                .and_then(|path| vm_config::config::VmConfig::load(Some(path.clone())).ok().map(|config| (path, config)))
+                .filter(|(_, config)| config.project.as_ref().and_then(|project| project.name.as_deref()) == Some(snapshot.project.as_str()))
+                .map_or_else(
+                    || "owner configuration unavailable; select the project before removing this snapshot".to_string(),
+                    |(path, _)| format!(
+                        "reclaim with vm --config {} snapshots remove {}",
+                        shell_quote(&path.display().to_string()),
+                        shell_quote(&snapshot.name),
+                    ),
+                );
+            Resource {
+                id: snapshot.id,
+                owner: format!("saved snapshot for project {}", snapshot.project),
+                reason: Some(command),
+            }
+        })
+        .collect())
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+fn container_inventory(engine: &str) -> VmResult<Vec<Resource>> {
     let mut resources = Vec::new();
     let volumes = run(
         engine,
@@ -163,6 +206,36 @@ fn inventory(engine: &str) -> VmResult<Vec<Resource>> {
     Ok(resources)
 }
 
+#[cfg(any(feature = "tart", target_os = "macos"))]
+fn tart_resources() -> VmResult<Vec<Resource>> {
+    Ok(vm_provider::tart_storage_inventory()?
+        .into_iter()
+        .map(|item| Resource {
+            id: item.id,
+            owner: item.owner,
+            reason: item.reason,
+        })
+        .collect())
+}
+
+#[cfg(not(any(feature = "tart", target_os = "macos")))]
+fn tart_resources() -> VmResult<Vec<Resource>> {
+    Ok(Vec::new())
+}
+
+#[cfg(any(feature = "tart", target_os = "macos"))]
+fn remove_tart_storage(id: &str) -> VmResult<()> {
+    vm_provider::remove_tart_storage(id).map_err(Into::into)
+}
+
+#[cfg(not(any(feature = "tart", target_os = "macos")))]
+fn remove_tart_storage(_id: &str) -> VmResult<()> {
+    Err(VmError::validation(
+        "Tart provider support is not enabled in this build",
+        None::<String>,
+    ))
+}
+
 fn with_references(mut resource: Resource, refs: &str) -> Resource {
     if refs.lines().any(|line| !line.trim().is_empty()) {
         resource.reason = Some("referenced by a container".to_string());
@@ -179,14 +252,27 @@ fn volume_resource(engine: &str, inspect: &Value) -> VmResult<Option<Resource>> 
     let name = required_string(&item["Name"], "volume name")?;
     let project = required_string(&labels["com.vm.project"], "project owner")?;
     let instance = required_string(&labels["com.vm.instance"], "instance owner")?;
+    let scope = labels["com.vm.scope"].as_str().unwrap_or("unknown");
+    let config = labels["com.vm.config-path"].as_str();
     let reason = match labels["com.vm.retention"].as_str() {
         Some("disposable") => None,
         Some("keep") => Some("retained by its owner".to_string()),
         _ => Some("retention policy is unknown".to_string()),
     };
+    let reason = if matches!(scope, "project" | "instance") {
+        reason
+    } else {
+        Some("storage scope is unknown".to_string())
+    };
+    let config_description = config.map_or_else(
+        || "config unknown".to_string(),
+        |path| format!("config {path}"),
+    );
     Ok(Some(Resource {
         id: format!("{engine}:volume:{name}"),
-        owner: format!("project {project}, environment {instance}"),
+        owner: format!(
+            "project {project}, environment {instance}, {scope} scope, {config_description}"
+        ),
         reason,
     }))
 }
@@ -284,17 +370,21 @@ fn run(engine: &str, args: &[&str]) -> VmResult<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{image_resource, volume_resource, with_references};
+    use super::{image_resource, shell_quote, volume_resource, with_references};
     use serde_json::json;
 
     #[test]
     fn only_disposable_owned_unreferenced_volumes_are_removable() {
         let item = json!([{"Name":"demo_data","Labels":{
             "com.vm.managed":"true","com.vm.project":"demo",
-            "com.vm.instance":"demo-dev","com.vm.retention":"disposable"
+            "com.vm.instance":"demo-dev","com.vm.retention":"disposable",
+            "com.vm.scope":"instance","com.vm.config-path":"/work/demo/vm.yaml"
         }}]);
         let resource = volume_resource("docker", &item).unwrap().unwrap();
         assert_eq!(resource.id, "docker:volume:demo_data");
+        assert!(resource
+            .owner
+            .contains("instance scope, config /work/demo/vm.yaml"));
         assert_eq!(resource.reason, None);
         assert!(with_references(resource, "container123\n").reason.is_some());
         let mut retained = item.clone();
@@ -333,5 +423,13 @@ mod tests {
             .is_none());
         dangling[0].as_object_mut().unwrap().remove("RepoDigests");
         assert!(image_resource("podman", &dangling).is_err());
+    }
+
+    #[test]
+    fn generated_snapshot_reclaim_commands_quote_paths() {
+        assert_eq!(
+            shell_quote("/work/team's demo"),
+            "'/work/team'\"'\"'s demo'"
+        );
     }
 }

@@ -105,7 +105,7 @@ EOF
 if [[ "${PROVIDER}" == "docker" || "${PROVIDER}" == "all" ]]; then
   cat <<'EOF'
   1. Docker provider path
-     time vm run linux --provider docker
+     time vm start --profile docker
 
 EOF
 fi
@@ -113,12 +113,14 @@ fi
 if [[ "${PROVIDER}" == "tart" || "${PROVIDER}" == "all" ]]; then
   cat <<'EOF'
   2. Tart default path
-     time vm run linux --provider tart
+     time vm start --profile tart
 
 EOF
 fi
 
 cat <<'EOF'
+Stop and remove the first environment before switching provider profiles.
+
 Suggested checks after each start:
 
   vm exec -- which claude

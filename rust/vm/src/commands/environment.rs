@@ -75,28 +75,6 @@ pub(super) fn resolve_environment(
     ))
 }
 
-pub(super) fn mac_profile(config_path: Option<PathBuf>) -> Option<String> {
-    let profiles = VmConfig::load(config_path).ok()?.profiles?;
-
-    ["macos", "mac", "tart"]
-        .iter()
-        .find(|name| profile_is_macos(profiles.get(**name)))
-        .map(|name| (*name).to_string())
-        .or_else(|| {
-            profiles
-                .iter()
-                .find(|(_, profile)| profile_is_macos(Some(profile)))
-                .map(|(name, _)| name.to_string())
-        })
-}
-
-fn profile_is_macos(profile: Option<&VmConfig>) -> bool {
-    profile
-        .and_then(|profile| profile.tart.as_ref())
-        .and_then(|tart| tart.guest_os.as_deref())
-        .is_some_and(|guest_os| guest_os.eq_ignore_ascii_case("macos"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::{resolve_environment, resolve_noninteractive, ResolvedEnvironment};

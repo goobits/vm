@@ -75,7 +75,7 @@ impl TestFixture {
         // Use `vm remove` to clean up - it handles all Docker cleanup without sudo
         let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("vm"));
         cmd.current_dir(self.path());
-        cmd.args(["remove", "--force"]);
+        cmd.args(["remove", "--yes"]);
         // Do not assert success. Just run it and ignore the result.
         // This prevents a panic in a panic, which would abort the test runner.
         let _ = cmd.output();
@@ -119,7 +119,7 @@ ports:
     fs::write(&vm_yaml_path, config)?;
 
     // Create and start VM
-    fixture.run_vm_command(&["run", "container"])?;
+    fixture.run_vm_command(&["start"])?;
 
     // Verify port mapping exists
     let container_name = format!("{}-dev", project_name);
@@ -169,7 +169,7 @@ ports:
     fs::write(&vm_yaml_path, config)?;
 
     // Create and start VM
-    fixture.run_vm_command(&["run", "container"])?;
+    fixture.run_vm_command(&["start"])?;
 
     let container_name = format!("{}-dev", project_name);
 
@@ -209,7 +209,7 @@ fn test_port_conflict_detection() -> Result<()> {
     let _listener =
         TcpListener::bind("0.0.0.0:3333").context("Failed to bind to port 3333 for testing")?;
 
-    // Try to run an environment with a conflicting port
+    // Try to start an environment with a conflicting port
     let config = format!(
         r#"
 version: 1
@@ -229,9 +229,9 @@ ports:
     );
     fs::write(&vm_yaml_path, config)?;
 
-    // `vm run container` should fail with a clear error on stdout
+    // `vm start` should fail with a clear error on stdout
     fixture
-        .run_failing_vm_command(&["run", "container"])?
+        .run_failing_vm_command(&["start"])?
         .stdout(predicates::str::contains(
             "Configuration error: Port 3333 is already in use on host",
         ));

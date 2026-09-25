@@ -1,6 +1,6 @@
 use crate::{
-    CommandProvider, InstanceInfo, InstanceProvider, InstanceState, Provider, ProviderContext,
-    ProvisioningProvider, TempProvider, VmStatusReport,
+    CommandProvider, GuestExit, InstanceInfo, InstanceProvider, InstanceState, Provider,
+    ProviderContext, ProvisioningProvider, TempProvider, VmStatusReport,
 };
 use std::path::Path;
 use vm_config::config::VmConfig;
@@ -23,6 +23,11 @@ impl CommandProvider for MockProvider {
             "mock provider operation completed"
         );
         Ok(())
+    }
+
+    fn exec_status(&self, container: Option<&str>, cmd: &[String]) -> Result<GuestExit> {
+        self.exec(container, cmd)?;
+        Ok(GuestExit::new(0))
     }
 
     fn logs(&self, _container: Option<&str>) -> Result<()> {

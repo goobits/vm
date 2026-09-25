@@ -16,38 +16,7 @@ use vm_core::{vm_hint, vm_println, vm_progress, vm_success, vm_warning};
 use vm_provider::{Provider, ProviderContext};
 
 use super::helpers::{has_enabled_services, print_vm_runtime_details, register_vm_services_helper};
-use super::target::{
-    canonical_instance_name, creation_instance_name, find_runtime_target, resolve_runtime_target,
-};
-
-/// Resolve an existing target or create it from the loaded `vm.yaml` configuration.
-pub(crate) async fn resolve_or_create_target(
-    provider: &dyn Provider,
-    config: &VmConfig,
-    global_config: &GlobalConfig,
-    requested: Option<&str>,
-) -> VmResult<String> {
-    if let Some(target) = find_runtime_target(provider, config, requested)? {
-        return Ok(target.name);
-    }
-
-    vm_progress!("No environment found; creating it from vm.yaml...");
-    let project = config
-        .project
-        .as_ref()
-        .and_then(|project| project.name.as_deref())
-        .unwrap_or("vm-project");
-    handle_create(
-        provider.clone_box(),
-        config.clone(),
-        global_config.clone(),
-        false,
-        creation_instance_name(provider.name(), project, requested),
-    )
-    .await?;
-
-    resolve_runtime_target(provider, config, requested)
-}
+use super::target::canonical_instance_name;
 
 /// Handle VM creation
 pub async fn handle_create(
@@ -188,16 +157,19 @@ pub async fn handle_create(
     // Seed database if configured
     if let Some(service_config) = config.services.get("postgresql") {
         if let Some(seed_file) = &service_config.seed_file {
-            let default_db_name = format!("{}_dev", vm_name.replace('-', "_"));
-            let db_name = service_config
-                .database
-                .as_deref()
-                .unwrap_or(&default_db_name);
+            let route = crate::commands::db::route::DbRoute::for_config(
+                &config,
+                None,
+                global_config.container_provider().as_str(),
+            )?;
+            let db_name = &route.database;
             vm_progress!(
                 "Seeding database '{db_name}' from {}...",
                 seed_file.display()
             );
-            if let Err(e) = crate::commands::db::backup::import_db(db_name, seed_file, true).await {
+            if let Err(e) =
+                crate::commands::db::backup::import_db(&route, db_name, seed_file, true).await
+            {
                 vm_warning!("Database seeding failed: {e}");
             }
         }

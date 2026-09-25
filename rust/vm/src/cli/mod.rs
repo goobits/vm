@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 
 mod subcommands;
 pub use subcommands::*;
@@ -29,25 +29,14 @@ pub struct Args {
     /// Select a configuration profile to apply
     #[arg(long, global = true)]
     pub profile: Option<String>,
-}
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
-pub enum EnvironmentKind {
-    /// A macOS virtual machine powered by Tart
-    Mac,
-    /// A Linux development environment
-    Linux,
-    /// A generic container environment
-    Container,
-}
+    /// Disable colored terminal output
+    #[arg(long, global = true)]
+    pub no_color: bool,
 
-impl EnvironmentKind {
-    pub fn default_provider(self) -> &'static str {
-        match self {
-            Self::Mac => "tart",
-            Self::Linux | Self::Container => "docker",
-        }
-    }
+    /// Suppress progress messages
+    #[arg(long, global = true)]
+    pub quiet: bool,
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -85,38 +74,6 @@ pub enum Command {
         #[command(flatten)]
         fleet: FleetArgs,
     },
-    /// Create and start an environment
-    Run {
-        /// Environment kind: mac, linux, or container
-        kind: EnvironmentKind,
-        /// Optional natural-language name: as <name>
-        #[arg(num_args = 0..=2)]
-        words: Vec<String>,
-        /// Advanced provider override
-        #[arg(long, value_parser = vm_config::config::ProviderName::SUPPORTED)]
-        provider: Option<String>,
-        /// Use a specific image, distro, or snapshot name
-        #[arg(long)]
-        image: Option<String>,
-        /// Build from a local Dockerfile or context
-        #[arg(long, value_name = "PATH")]
-        build: Option<PathBuf>,
-        /// Clone from a saved snapshot
-        #[arg(long = "from-snapshot")]
-        from_snapshot: Option<String>,
-        /// Remove when stopped/exited
-        #[arg(long)]
-        ephemeral: bool,
-        /// Mount a local folder into the environment
-        #[arg(long)]
-        mount: Vec<String>,
-        /// CPU limit
-        #[arg(long)]
-        cpu: Option<String>,
-        /// Memory limit
-        #[arg(long)]
-        memory: Option<String>,
-    },
     /// List environments for this project
     List {
         /// Show environments across all projects
@@ -125,6 +82,9 @@ pub enum Command {
         /// Show provider IDs and raw provider names
         #[arg(long)]
         raw: bool,
+        /// Emit one machine-readable JSON envelope
+        #[arg(long)]
+        json: bool,
     },
     /// Open a shell promptly; safe runtime updates continue in the background
     Shell {
@@ -133,9 +93,6 @@ pub enum Command {
         /// Directory path to start shell in
         #[arg(long)]
         path: Option<PathBuf>,
-        /// Command to execute instead of opening an interactive shell
-        #[arg(short = 'e', long = "command")]
-        command: Option<String>,
     },
     /// Run a single command inside an environment
     Exec {
@@ -158,12 +115,7 @@ pub enum Command {
         service: Option<String>,
     },
     /// Move files between host and environment
-    Copy {
-        #[command(flatten)]
-        fleet: FleetArgs,
-        source: String,
-        destination: String,
-    },
+    Copy { source: String, destination: String },
     /// Gracefully halt an environment
     Stop {
         #[arg(conflicts_with = "fleet")]
@@ -178,6 +130,9 @@ pub enum Command {
         environments: Vec<String>,
         #[command(flatten)]
         fleet: FleetArgs,
+        /// Emit one machine-readable JSON envelope
+        #[arg(long)]
+        json: bool,
     },
     /// Stop and start an environment
     Restart {
@@ -186,11 +141,18 @@ pub enum Command {
         #[command(flatten)]
         fleet: FleetArgs,
     },
-    /// Remove an environment while preserving saved snapshots
+    /// Remove environments while preserving persistent data and snapshots
     Remove {
-        environment: Option<String>,
+        #[arg(conflicts_with = "fleet")]
+        environments: Vec<String>,
+        #[command(flatten)]
+        fleet: FleetArgs,
+        /// Delete exclusively owned persistent environment data too
         #[arg(long)]
-        force: bool,
+        delete_data: bool,
+        /// Confirm the displayed target set without prompting
+        #[arg(long)]
+        yes: bool,
     },
     /// Manage environment snapshots and portable archives
     Snapshots {

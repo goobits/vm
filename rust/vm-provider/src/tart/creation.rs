@@ -1,3 +1,4 @@
+use std::path::{Component, Path};
 use std::{fs::File, path::PathBuf, process::Stdio};
 
 use tracing::{info, warn};
@@ -12,6 +13,7 @@ use super::{
     provisioner::TartProvisioner,
 };
 use crate::{instance::extract_project_name, project_plan::ProjectPlan, tart_base, VmError};
+use vm_snapshot::{SnapshotManager, SnapshotMetadata, SnapshotScope};
 
 const DEFAULT_TART_IMAGE: &str = "ghcr.io/cirruslabs/macos-sequoia-base:latest";
 
@@ -184,14 +186,30 @@ impl TartProvider {
                 orphans.join(", ")
             );
         }
-        let image = self.get_tart_image(config)?;
-        if (image == tart_base::MACOS_NAME || image == tart_base::versioned_cache_name())
-            && !self.tart_image_exists(&image)?
-        {
-            return Err(VmError::Config(format!("Tart vibe base '{image}' was not found. Run `vm system base build vibe --provider tart` first.")));
+        let snapshot_name = config
+            .vm
+            .as_ref()
+            .and_then(|settings| settings.image.as_ref())
+            .map(TartImageSource::parse)
+            .transpose()?
+            .and_then(|source| match source {
+                TartImageSource::Snapshot(name) => Some(name),
+                TartImageSource::Image(_) => None,
+            });
+        if let Some(snapshot_name) = snapshot_name.as_deref() {
+            let archive = native_snapshot_archive(config, snapshot_name)?;
+            info!("Importing Tart snapshot '{snapshot_name}'");
+            self.stream_tart_command(&["import", &archive.to_string_lossy(), name])?;
+        } else {
+            let image = self.get_tart_image(config)?;
+            if (image == tart_base::MACOS_NAME || image == tart_base::versioned_cache_name())
+                && !self.tart_image_exists(&image)?
+            {
+                return Err(VmError::Config(format!("Tart vibe base '{image}' was not found. Run `vm system base build vibe --provider tart` first.")));
+            }
+            info!("Cloning Tart image '{image}'");
+            self.stream_tart_command(&["clone", &image, name])?;
         }
-        info!("Cloning Tart image '{image}'");
-        self.stream_tart_command(&["clone", &image, name])?;
         self.command.remember_instance(name)?;
         let resources = Self::resolved_tart_resources(config)?;
         if let Some(memory) = resources.memory_mb {
@@ -213,18 +231,20 @@ impl TartProvider {
         }
         info!("Starting Tart VM");
         self.start_vm_background_with_dir_shares(name, extra)?;
-        info!("Running initial Tart provisioning");
-        let provisioner = TartProvisioner::new(
-            name.to_string(),
-            self.effective_sync_directory(),
-            self.command.clone(),
-        );
-        let plan = ProjectPlan::detect(&self.host_workspace_path()?, config);
-        if let Err(error) = provisioner.provision(config, &plan) {
-            return Err(VmError::Provider(format!(
-                "{error}. Tart run log: {}",
-                tart_run_log_path(name)
-            )));
+        if snapshot_name.is_none() {
+            info!("Running initial Tart provisioning");
+            let provisioner = TartProvisioner::new(
+                name.to_string(),
+                self.effective_sync_directory(),
+                self.command.clone(),
+            );
+            let plan = ProjectPlan::detect(&self.host_workspace_path()?, config);
+            if let Err(error) = provisioner.provision(config, &plan) {
+                return Err(VmError::Provider(format!(
+                    "{error}. Tart run log: {}",
+                    tart_run_log_path(name)
+                )));
+            }
         }
         let mut shares = self.configured_dir_shares()?;
         shares.extend_from_slice(extra);
@@ -233,10 +253,61 @@ impl TartProvider {
             self.mount_tart_dir_shares_in_guest(name, &shares)?;
         }
         info!("Tart environment is ready");
+        if snapshot_name.is_none() {
+            self.command.record_runtime_receipt(name, config)?;
+        }
         info!("{}", MESSAGES.service.provider_tart_created_success);
         info!("{}", MESSAGES.service.provider_tart_connect_hint);
         Ok(())
     }
+}
+
+fn native_snapshot_archive(config: &VmConfig, name: &str) -> Result<PathBuf> {
+    let project = extract_project_name(config);
+    let owner = config.owning_config_path().ok_or_else(|| {
+        VmError::Config("Tart snapshot creation requires a project configuration".to_string())
+    })?;
+    let manager = SnapshotManager::new()?;
+    let snapshot_dir = manager.get_snapshot_dir(
+        SnapshotScope::OwnedProject {
+            name: project,
+            config_path: owner,
+        },
+        name,
+    )?;
+    let metadata = SnapshotMetadata::load(snapshot_dir.join("metadata.json"))?;
+    if metadata.provider != "tart"
+        || metadata.project_name != project
+        || metadata.owner_config_path.as_deref()
+            != Some(owner.canonicalize()?.to_string_lossy().as_ref())
+    {
+        return Err(VmError::Config(format!(
+            "Snapshot '{name}' is not a Tart snapshot for project '{project}'"
+        )));
+    }
+    if metadata.architecture != vm_platform::platform::architecture() {
+        return Err(VmError::Config(format!(
+            "Snapshot '{name}' architecture does not match this host"
+        )));
+    }
+    let file = metadata.native_vm_file.as_deref().ok_or_else(|| {
+        VmError::Config(format!("Snapshot '{name}' has no native Tart VM archive"))
+    })?;
+    if !matches!(
+        Path::new(file).components().collect::<Vec<_>>().as_slice(),
+        [Component::Normal(_)]
+    ) {
+        return Err(VmError::Config(format!(
+            "Snapshot '{name}' has an invalid Tart archive path"
+        )));
+    }
+    let archive = snapshot_dir.join("native").join(file);
+    if !archive.is_file() || std::fs::metadata(&archive)?.len() == 0 {
+        return Err(VmError::Config(format!(
+            "Snapshot '{name}' has no usable Tart archive"
+        )));
+    }
+    Ok(archive)
 }
 
 #[cfg(test)]

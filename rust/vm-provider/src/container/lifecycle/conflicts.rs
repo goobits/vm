@@ -49,9 +49,9 @@ impl<'a> LifecycleOperations<'a> {
         }
 
         let recovery = if let Some(name) = instance_name {
-            format!("vm remove {name} --force, then vm run linux as {name}")
+            format!("vm remove {name} --yes, then vm start {name}")
         } else {
-            "vm remove --force, then vm run linux".to_string()
+            "vm remove --yes, then vm start".to_string()
         };
 
         VmError::Internal(format!(

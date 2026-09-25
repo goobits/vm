@@ -9,7 +9,7 @@ vm init
 vm config presets list
 vm config presets apply nodejs
 vm config presets apply python postgres
-vm run linux as app
+vm start app
 ```
 
 For a Linux Tart VM with Docker Engine:
@@ -18,6 +18,7 @@ For a Linux Tart VM with Docker Engine:
 vm config set provider tart
 vm config presets apply vibe-tart
 vm config profiles set-default tart
+vm start
 vm shell
 ```
 
@@ -52,8 +53,7 @@ instead of opening a partially working Codex session.
 
 When the versioned Linux vibe base is missing locally, environment creation
 pulls it from GHCR into a versioned local cache. If that image is unavailable,
-`vm` builds the same cache locally. This applies when creation starts through
-`vm shell` as well as `vm run`. Use `vm system base build` directly to
+`vm` builds the same cache locally. This applies when creation starts through `vm start`. Use `vm system base build` directly to
 deliberately rebuild a base.
 
 Set `tart.storage_path` to place Tart bases and environments on another disk:
@@ -63,9 +63,9 @@ mkdir -p /Volumes/ExternalSSD/Tart
 vm config set tart.storage_path /Volumes/ExternalSSD/Tart
 ```
 
-Provider overrides remain advanced routing controls:
+Choose a provider when declaring a new environment:
 
 ```bash
-vm run linux as app --provider docker
-vm run linux as isolated --provider tart
+vm create app --provider docker --image ubuntu:24.04
+vm create isolated --provider tart --image vibe-tart-linux-base
 ```

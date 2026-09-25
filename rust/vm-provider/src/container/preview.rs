@@ -13,9 +13,9 @@ pub(super) fn redact_compose(content: &str) -> Result<String> {
             redact_build_context(service);
             redact_environment(service);
             redact_bind_mounts(service);
-            redact_host_labels(service);
         }
     }
+    redact_config_path_labels(&mut compose);
 
     serde_yaml_ng::to_string(&compose).map_err(|error| {
         VmError::Internal(format!(
@@ -24,12 +24,23 @@ pub(super) fn redact_compose(content: &str) -> Result<String> {
     })
 }
 
-fn redact_host_labels(service: &mut Mapping) {
-    let Some(labels) = service.get_mut("labels").and_then(Value::as_mapping_mut) else {
-        return;
-    };
-    if let Some(path) = labels.get_mut("com.vm.config-path") {
-        *path = Value::String("<host-path>".to_string());
+fn redact_config_path_labels(value: &mut Value) {
+    match value {
+        Value::Mapping(mapping) => {
+            for (key, child) in mapping {
+                if key.as_str() == Some("com.vm.config-path") {
+                    *child = Value::String("<host-path>".to_string());
+                } else {
+                    redact_config_path_labels(child);
+                }
+            }
+        }
+        Value::Sequence(sequence) => {
+            for child in sequence {
+                redact_config_path_labels(child);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -137,5 +148,18 @@ services:
         assert!(redacted.contains("<host-path>:/workspace:rw"));
         assert!(redacted.contains("source: node_modules"));
         assert!(redacted.contains("target: /workspace/node_modules"));
+    }
+
+    #[test]
+    fn redacts_ownership_labels_on_volumes_and_networks() {
+        let redacted = redact_compose(
+            "volumes:\n  data:\n    labels:\n      com.vm.config-path: /private/project/vm.yaml\nnetworks:\n  app:\n    labels:\n      com.vm.config-path: /private/project/vm.yaml\n",
+        )
+        .unwrap();
+        assert!(!redacted.contains("/private/project"));
+        assert_eq!(
+            redacted.matches("com.vm.config-path: <host-path>").count(),
+            2
+        );
     }
 }

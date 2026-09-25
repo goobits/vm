@@ -33,8 +33,8 @@ use vm_core::error::Result;
 
 // Internal imports
 use crate::{
-    context::ProviderContext, preflight, CommandProvider, InstanceProvider, InstanceState,
-    Provider, ProvisioningProvider, TempProvider, TunnelProvider, VmStatusReport,
+    context::ProviderContext, preflight, CommandProvider, GuestExit, InstanceProvider,
+    InstanceState, Provider, ProvisioningProvider, TempProvider, TunnelProvider, VmStatusReport,
 };
 use vm_config::config::VmConfig;
 
@@ -157,6 +157,11 @@ impl CommandProvider for ContainerProvider {
 
     fn exec(&self, container: Option<&str>, cmd: &[String]) -> Result<()> {
         self.lifecycle_ops().exec_in_container(container, cmd)
+    }
+
+    fn exec_status(&self, container: Option<&str>, cmd: &[String]) -> Result<GuestExit> {
+        self.lifecycle_ops()
+            .exec_status_in_container(container, cmd)
     }
 
     fn exec_interactive(
@@ -285,6 +290,14 @@ impl InstanceProvider for ContainerProvider {
         ownership::instance_config_path(&self.runtime, instance)
     }
 
+    fn runtime_drift(&self, instance: &str) -> Result<Option<String>> {
+        ownership::runtime_drift(&self.runtime, instance, &self.config)
+    }
+
+    fn supports_runtime_drift_detection(&self) -> bool {
+        true
+    }
+
     fn reusable_host_ports(&self, environment: &str) -> Result<Vec<u16>> {
         ownership::reusable_host_ports(&self.runtime, environment)
     }
@@ -324,13 +337,20 @@ impl TunnelProvider for ContainerProvider {
     fn start_tcp_relay(
         &self,
         relay_name: &str,
+        local_address: &str,
         host_port: u16,
         target_instance: &str,
+        remote_host: &str,
         target_port: u16,
     ) -> Result<String> {
-        self.runtime
-            .engine()
-            .start_tcp_relay(relay_name, host_port, target_instance, target_port)
+        self.runtime.engine().start_tcp_relay(
+            relay_name,
+            local_address,
+            host_port,
+            target_instance,
+            remote_host,
+            target_port,
+        )
     }
 
     fn relay_is_running(&self, relay_id: &str) -> bool {

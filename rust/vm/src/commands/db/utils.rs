@@ -1,10 +1,10 @@
 //! DB utility functions
 
+use super::route::DbRoute;
 use crate::error::{VmError, VmResult};
 use crate::services::service_lifecycle;
-use vm_config::GlobalConfig;
 
-pub async fn execute_psql_command(command: &str) -> VmResult<String> {
+pub async fn execute_psql_command(route: &DbRoute, command: &str) -> VmResult<String> {
     let lifecycle = service_lifecycle().map_err(|e| {
         VmError::general(
             std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
@@ -23,9 +23,7 @@ pub async fn execute_psql_command(command: &str) -> VmResult<String> {
         ));
     }
 
-    let global_config = GlobalConfig::load()?;
-    let provider = global_config.container_provider();
-    let output = tokio::process::Command::new(provider.as_str())
+    let output = tokio::process::Command::new(&route.engine)
         .arg("exec")
         .arg("-i")
         .arg("vm-postgres-global")

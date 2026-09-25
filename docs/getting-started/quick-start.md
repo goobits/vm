@@ -1,82 +1,66 @@
 # Quick Start
 
-`vm` creates humane virtual environments from intent-first commands.
-
-## Start An Environment
+Initialize a project, declare an environment, and start it:
 
 ```bash
-vm run linux as dev
+vm init
+vm create dev --provider docker --image ubuntu:24.04
+vm start dev
 ```
 
-This creates the environment if needed, starts it, and names it `dev`.
+`create` records and provisions a stopped environment. `start` runs it. If a
+configured environment is missing at runtime, `start` provisions it from its
+declaration.
 
 ## Work Inside It
 
 ```bash
-vm shell
-vm exec -- npm test
-vm logs --follow
-vm copy ./config.json dev:/workspace/config.json
+vm shell dev
+vm exec --env dev -- npm test
+vm logs dev --follow
+vm copy --env dev host:./config.json env:/workspace/config.json
 ```
 
-With no name, these commands use the project's default environment. `vm shell`
-creates it from `vm.yaml` when missing; `vm shell` and `vm exec` start it first
-when it already exists but is stopped.
+`shell` and `exec` require a running environment. Omit the name when the project
+has an unambiguous default environment.
 
 ## See What Is Running
 
 ```bash
 vm list
+vm status dev
 ```
 
-This lists environments for the current project. Use `vm list --all-projects` to see every `vm` environment on the machine.
+`vm list --all-projects` shows registered environments across projects.
 
 ## Stop Or Remove It
 
 ```bash
-vm stop
-vm restart
-vm remove
+vm stop dev
+vm restart dev
+vm remove dev
 ```
 
-Removing an environment frees active resources. Saved snapshots are preserved.
+Removal preserves persistent data and snapshots unless you explicitly request
+owned data removal.
 
-## Pick A Kind
+## Choose A Provider
 
 ```bash
-vm run mac as xcode
-vm run linux as backend
-vm run container as redis
+vm create backend --provider docker --image ubuntu:24.04
+vm create isolated --provider tart --image vibe-tart-linux-base
+vm create db --provider podman --image postgres:17
 ```
 
-Unnamed environments can be addressed by kind:
-
-```bash
-vm run mac
-vm shell mac
-```
-
-The default routing is:
-
-| Kind | Default engine |
-| --- | --- |
-| `mac` | Tart |
-| `linux` | Docker |
-| `container` | Docker |
-
-Override routing only when needed:
-
-```bash
-vm run linux as secure --provider tart
-vm run container as db --provider podman
-```
+Use a compatible local or published image for each provider. A Tart macOS guest
+requires Apple Silicon macOS and a macOS base image.
 
 ## Save And Restore State
 
 ```bash
 vm snapshots create stable --env dev
 vm snapshots restore stable --env dev
-vm snapshots export stable --env dev --output dev.tar.gz
+vm snapshots export stable --output dev.tar.gz
 ```
 
 ## Advanced Tools

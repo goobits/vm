@@ -733,6 +733,8 @@ properties:
           enum: [docker, podman, tart]
         image:
           $ref: '#/properties/vm/properties/image'
+        services:
+          $ref: '#/properties/services'
         cpus:
           $ref: '#/properties/vm/properties/cpus'
         memory:

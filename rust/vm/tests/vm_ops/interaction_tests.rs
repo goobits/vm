@@ -18,11 +18,11 @@ fn test_vm_exec_command() -> Result<()> {
     fixture.create_test_dockerfile()?;
 
     // Create and start VM
-    fixture.run_vm_command(&["run", "container"])?;
+    fixture.run_vm_command(&["start"])?;
     assert!(fixture.wait_for_container_state("running", 30));
 
     // Test exec command
-    let output = fixture.run_vm_command(&["exec", "echo", "Hello from VM"])?;
+    let output = fixture.run_vm_command(&["exec", "--", "echo", "Hello from VM"])?;
     assert!(
         output.status.success(),
         "VM exec failed: {}",
@@ -39,7 +39,7 @@ fn test_vm_exec_command() -> Result<()> {
 
 #[test]
 #[ignore = "Creates real Docker containers; run with --ignored"]
-fn test_vm_ssh_auto_creates_and_executes() -> Result<()> {
+fn test_vm_exec_on_started_environment() -> Result<()> {
     let _guard = TEST_MUTEX.lock().unwrap();
     let fixture = VmOpsTestFixture::new()?;
 
@@ -52,11 +52,12 @@ fn test_vm_ssh_auto_creates_and_executes() -> Result<()> {
     fixture.create_test_config()?;
     fixture.create_test_dockerfile()?;
 
-    // A shell command creates the configured environment before connecting.
-    let output = fixture.run_vm_command(&["shell", "-e", "echo Hello from SSH"])?;
+    // Start the declared environment before executing in it.
+    fixture.run_vm_command(&["start"])?;
+    let output = fixture.run_vm_command(&["exec", "--", "echo", "Hello from SSH"])?;
     assert!(
         output.status.success(),
-        "vm shell --command failed: {}",
+        "vm exec failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -64,12 +65,12 @@ fn test_vm_ssh_auto_creates_and_executes() -> Result<()> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("Hello from SSH"),
-        "SSH command output not found in stdout: {}",
+        "Exec output not found in stdout: {}",
         stdout
     );
     assert!(
         fixture.wait_for_container_state("running", 30),
-        "Container was not created and started"
+        "Container was not started"
     );
 
     fixture.cleanup_test_containers()?;
@@ -92,7 +93,7 @@ fn test_vm_logs_command() -> Result<()> {
     fixture.create_test_dockerfile()?;
 
     // Create and start VM
-    fixture.run_vm_command(&["run", "container"])?;
+    fixture.run_vm_command(&["start"])?;
     assert!(fixture.wait_for_container_state("running", 30));
 
     // Give container a moment to generate logs
@@ -126,7 +127,7 @@ fn test_vm_ssh_command() -> Result<()> {
     fixture.create_test_dockerfile()?;
 
     // Create and start VM
-    fixture.run_vm_command(&["run", "container"])?;
+    fixture.run_vm_command(&["start"])?;
     assert!(fixture.wait_for_container_state("running", 30));
 
     // Note: SSH command is interactive, so we can't easily test it in an automated way
