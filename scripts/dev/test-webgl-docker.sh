@@ -375,8 +375,8 @@ echo "=== Test Summary ==="
 if [ $WEBGL_EXIT -eq 0 ]; then
     echo "SUCCESS: All WebGL tests passed!"
     echo ""
-    echo "You can now rebuild @vibe-image with:"
-    echo "  vm snapshot create @vibe-image --from-dockerfile Dockerfile.vibe --force"
+    echo "You can now rebuild the vibe base image with:"
+    echo "  vm system images build vibe --provider docker"
     exit 0
 else
     echo "FAILURE: WebGL tests did not pass"

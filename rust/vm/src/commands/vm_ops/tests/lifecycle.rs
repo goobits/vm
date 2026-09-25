@@ -349,7 +349,7 @@ async fn shell_starts_a_stopped_environment_before_connecting() {
 }
 
 #[tokio::test]
-async fn exec_starts_a_stopped_environment_before_running() {
+async fn exec_rejects_a_stopped_environment_without_starting_it() {
     let provider = FakeProvider::new(Some(InstanceState::Stopped));
 
     handle_exec(
@@ -360,12 +360,12 @@ async fn exec_starts_a_stopped_environment_before_running() {
         GlobalConfig::default(),
     )
     .await
-    .unwrap();
+    .unwrap_err();
 
-    assert_eq!(provider.starts.load(Ordering::SeqCst), 1);
-    assert_eq!(provider.execs.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.starts.load(Ordering::SeqCst), 0);
+    assert_eq!(provider.execs.load(Ordering::SeqCst), 0);
     assert_eq!(provider.creates.load(Ordering::SeqCst), 0);
-    assert_eq!(provider.command_ready_checks.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.command_ready_checks.load(Ordering::SeqCst), 0);
     assert_eq!(provider.shell_ready_checks.load(Ordering::SeqCst), 0);
 }
 

@@ -366,7 +366,7 @@ async fn wait_for_gateway(gateway_url: &str) -> VmResult<()> {
     }
     Err(VmError::validation(
         format!("Package gateway did not become healthy at {gateway_url}"),
-        Some("Run `vm packages doctor` and inspect the appliance logs"),
+        Some("Run `vm packages service doctor` and inspect the appliance logs"),
     ))
 }
 

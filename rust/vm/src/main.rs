@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 use uuid::Uuid;
 
 // External crates
-use clap::{error::ErrorKind, CommandFactory, Parser};
+use clap::Parser;
 use tracing::info_span;
 use tracing::Instrument;
 
@@ -26,11 +26,6 @@ mod services;
 use cli::Args;
 use commands::execute_command;
 
-enum Invocation {
-    BuiltIn(Box<Args>),
-    Remote(Vec<std::ffi::OsString>),
-}
-
 /// Request ID for this execution - used for tracing logs across the entire request
 static REQUEST_ID: OnceLock<String> = OnceLock::new();
 
@@ -39,11 +34,8 @@ fn get_request_id() -> &'static str {
 }
 
 /// Executes the given command and handles top-level errors.
-async fn run_command(invocation: Invocation) {
-    let result = match invocation {
-        Invocation::BuiltIn(args) => execute_command(*args).await,
-        Invocation::Remote(arguments) => commands::remote_command::handle(arguments).await,
-    };
+async fn run_command(args: Args) {
+    let result = execute_command(args).await;
     if let Err(error) = result {
         tracing::error!(
             operation = "execute_command",
@@ -67,40 +59,6 @@ async fn run_command(invocation: Invocation) {
     }
 }
 
-fn parse_invocation() -> Invocation {
-    let arguments = std::env::args_os().collect::<Vec<_>>();
-    match Args::try_parse_from(&arguments) {
-        Ok(args) => Invocation::BuiltIn(Box::new(args)),
-        Err(error)
-            if error.kind() == ErrorKind::InvalidSubcommand
-                && top_level_namespace(&arguments).is_some_and(|namespace| {
-                    !Args::command().get_subcommands().any(|command| {
-                        command.get_name() == namespace
-                            || command.get_all_aliases().any(|alias| alias == namespace)
-                    })
-                }) =>
-        {
-            Invocation::Remote(arguments.into_iter().skip(1).collect())
-        }
-        Err(error) => error.exit(),
-    }
-}
-
-fn top_level_namespace(arguments: &[std::ffi::OsString]) -> Option<&str> {
-    let mut index = 1;
-    while let Some(argument) = arguments.get(index).and_then(|value| value.to_str()) {
-        match argument {
-            "--config" | "--profile" => index += 2,
-            value if value.starts_with("--config=") || value.starts_with("--profile=") => {
-                index += 1;
-            }
-            value if value.starts_with('-') => return None,
-            value => return Some(value),
-        }
-    }
-    None
-}
-
 #[tokio::main]
 async fn main() {
     // Auto-detect CI environment
@@ -109,7 +67,7 @@ async fn main() {
         std::env::set_var("NO_COLOR", "1");
     }
 
-    let invocation = parse_invocation();
+    let args = Args::parse();
     // The guard must be kept in scope for the lifetime of the application
     // to ensure that all buffered logs are flushed to the file.
     let _guard = init_subscriber();
@@ -120,8 +78,8 @@ async fn main() {
             component = "vm_cli",
             request_id = %get_request_id()
         );
-        run_command(invocation).instrument(span).await;
+        run_command(args).instrument(span).await;
     } else {
-        run_command(invocation).await;
+        run_command(args).await;
     }
 }

@@ -3,17 +3,20 @@
 Status: implementation in progress. This document specifies the intended product
 interface; the public reference describes the commands currently available.
 
-Implemented in the first CLI pass: snapshot command group, explicit `exec --env`,
-project-scoped `--all-envs` selection, grouped consumer commands, plural secret
-and plugin namespaces, short `db list`, secure secret input, and selected command
-spelling cleanup. The parser no longer offers a generic dry-run summary.
+Implemented so far: project initialization and explicit project selection;
+project-owned environment declarations with stopped `create` and retryable
+`start`; deterministic named targeting and repeated `exec --env`; project-scoped
+snapshots with archive checksums and mount coverage; grouped package,
+configuration, database, and tunnel commands; explicit tool targeting; safe
+Docker/Podman storage inspection; and removal of dynamic top-level tool commands.
+The public reference records the current spelling and capability limits.
 
-Still to deliver: project and environment creation semantics, named multi-target
-selection, full snapshot ownership and archive contract, package service and
-tool targeting refinements, configuration schema and profile grammar, tunnel and
-database resource models, plugin and storage administration, structured output,
-exit codes, receipt observation, and genuine per-command plans. Each needs
-implementation and acceptance before this proposal can be marked complete.
+Still to deliver: runtime drift detection, complete fleet removal and data
+ownership, provider-native snapshots beyond Compose, package/tool removal
+service APIs and Docker acceptance, per-environment database routing, general
+tunnel endpoints, plugin trust, Tart/file storage ownership, structured output,
+exit codes, receipts, generated reference, and genuine per-command plans. These
+require backend and acceptance work before this proposal can be marked complete.
 
 ## Product contract
 

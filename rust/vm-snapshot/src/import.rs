@@ -13,6 +13,7 @@ pub async fn handle_import(
     executable: &str,
     file_path: &Path,
     name_override: Option<&str>,
+    project_override: Option<&str>,
     force: bool,
 ) -> Result<()> {
     let manager = SnapshotManager::new()?;
@@ -51,6 +52,8 @@ pub async fn handle_import(
         .map_err(|e| VmError::filesystem(e, manifest_path.display().to_string(), "read"))?;
 
     let manifest = ArchiveManifest::parse(&manifest_content)?;
+    manifest.validate_files(&extract_dir)?;
+    manifest.validate_runtime(executable)?;
 
     // Get snapshot name (from manifest or override)
     let snapshot_name = name_override
@@ -58,7 +61,11 @@ pub async fn handle_import(
         .unwrap_or_else(|| manifest.snapshot_name().to_string());
 
     let is_global = manifest.is_global();
-    let project_name = manifest.project_name();
+    let project_name = if is_global {
+        "global"
+    } else {
+        project_override.unwrap_or_else(|| manifest.project_name())
+    };
 
     tracing::info!("  Snapshot name: {}", snapshot_name);
     tracing::info!("  Project: {}", project_name);
@@ -99,8 +106,16 @@ pub async fn handle_import(
         ));
     }
 
-    let metadata = SnapshotMetadata::load(&metadata_path)?;
+    let mut metadata = SnapshotMetadata::load(&metadata_path)?;
     validate_import_contents(&manifest, &metadata, &extract_dir)?;
+    metadata.name = snapshot_name.clone();
+    metadata.project_name = project_name.to_string();
+    metadata.save(&metadata_path)?;
+    tokio::fs::remove_file(&manifest_path)
+        .await
+        .map_err(|error| {
+            VmError::filesystem(error, manifest_path.display().to_string(), "remove")
+        })?;
 
     tracing::info!("  Loading Docker images...");
 
@@ -153,6 +168,9 @@ fn validate_import_contents(
         ));
     }
 
+    manifest.validate_runtime(&metadata.provider)?;
+    manifest.validate_architecture(&metadata.architecture)?;
+
     validate_snapshot_files(extract_dir, metadata)
 }
 
@@ -169,9 +187,10 @@ mod tests {
 
         let manifest = ArchiveManifest::parse(
             r#"{
-                "version": "2.0",
+                "version": "3.0",
                 "snapshot_name": "demo",
                 "is_global": true,
+                "runtime": "docker",
                 "platform": {"os": "linux", "arch": "x86_64"},
                 "project_name": "global"
             }"#,
@@ -182,6 +201,10 @@ mod tests {
             created_at: chrono::Utc::now(),
             description: None,
             project_name: "global".to_string(),
+            source_environment: None,
+            provider: "docker".to_string(),
+            architecture: "x86_64".to_string(),
+            consistency: "built".to_string(),
             project_dir: ".".to_string(),
             git_commit: None,
             git_dirty: false,
@@ -194,9 +217,11 @@ mod tests {
             }],
             volumes: vec![VolumeSnapshot {
                 name: "cache".to_string(),
+                runtime_name: "global_cache".to_string(),
                 archive_file: "cache.tar.zst".to_string(),
                 size_bytes: 1,
             }],
+            excluded_mounts: vec![],
             compose_file: String::new(),
             vm_config_file: String::new(),
             total_size_bytes: 0,

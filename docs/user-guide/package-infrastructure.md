@@ -114,7 +114,7 @@ registry and workflow storage remains behind the appliance's internal network.
 Run this once on the controller host:
 
 ```bash
-vm packages init ~/projects/packages
+vm packages service init --source-root ~/projects/packages
 ```
 
 `init` records the controller source shelf, imports an active GitHub CLI
@@ -130,7 +130,7 @@ is left untouched and reported as unresolved. The command exits successfully
 and reports `degraded` when quarantine or registration failures remain. Exact
 canonical sources are reconciled separately and are never quarantined or
 repaired.
-`vm packages doctor --fix` applies safe deterministic repairs only to managed
+`vm packages service doctor --fix` applies safe deterministic repairs only to managed
 shelves and reports manual instructions for an unhealthy canonical source.
 
 Equivalent clones with the same package identity and Git origin collapse to one
@@ -194,7 +194,7 @@ Antigravity, or another agent. Run it again to resume the same active source.
 If durable state survives but the guest copy does not, VM restores the checkout
 at the same managed path without replacing local modifications.
 
-Inside a managed guest, `vm packages status` verifies the workflow gateway and
+Inside a managed guest, `vm packages service status` verifies the workflow gateway and
 consumer-bound agent credential using read-only requests. It creates no
 checkout and does not repair, publish, or activate anything.
 
@@ -357,12 +357,12 @@ inside the guest.
 Store the canonical-source Git token as a controller secret:
 
 ```bash
-vm packages auth --github
-# Or import a Git token from another provider/file:
-vm packages auth --token-file /secure/input/git-token
+vm packages auth login
+# Or read a Git token from a file:
+vm packages auth login --token-file /secure/input/git-token
 ```
 
-`--github` reads the active `gh auth token` directly into the private
+`auth login` reads the active `gh auth token` directly into the private
 controller secret without printing it. If GitHub reports an invalid session,
 run `gh auth login --hostname github.com` once and retry. Input files are read
 once. The token is exposed only to the source and release services that need
@@ -383,7 +383,7 @@ version therefore updates the managed guest client without recreating the main
 environment container.
 Explicit cross-project environment names resolve their owning `vm.yaml` from
 managed Docker metadata before reconciliation, so running `vm tools update
---to projects-dev` from another repository updates `projects-package-edge`, not
+--env projects-dev` from another repository updates `projects-package-edge`, not
 the caller's package edge.
 
 Register exact read-only project workspaces, managed-shelf repositories, and
@@ -552,25 +552,26 @@ automatic update without approval; an already-running agent session is not
 hot-reloaded.
 
 ```bash
-vm tools status [environment]
+vm tools status [--env NAME]
 vm tools update codex
 vm tools update codex claude antigravity
 vm tools update agent-skills another-tool
-vm tools update agent-skills --to projects-dev --to typemill-dev
+vm tools update agent-skills --env projects-dev --env typemill-dev
 ```
 
 These status and targeted-update commands are diagnostic and recovery controls,
 not daily release steps. See the
 [CLI reference](cli-reference.md#managed-tools) for every option.
 
-With no names, `update` refreshes the three VM-owned vendor tools and uses every
-running managed Docker environment's effective global-plus-project package-tool
+With no names, `update` refreshes the three VM-owned vendor tools and uses the
+selected environment's effective global-plus-project package-tool
 selection. A positional vendor name selects that VM-owned tool directly. Other
 positional names filter package-tool selections and never make an unconfigured
-package tool eligible. Each `--to` accepts one exact Docker,
-Podman, or Tart environment name. Stopped environments are ignored unless
-`--include-stopped` is explicit; then VM starts selected stopped environments in
-place. A tool absent from every successfully loaded target is rejected instead
+package tool eligible. Each `--env` accepts one exact Docker,
+Podman, or Tart environment name in the current project. `--all-envs` selects
+all running environments in the project. Stopped environments are ignored unless
+`--include-stopped` is explicit; then updates are deferred until start. A tool
+absent from every successfully loaded target is rejected instead
 of being installed outside configuration.
 
 Omitted versions track the latest release. Explicit semantic versions remain
@@ -590,7 +591,7 @@ catalog, or a package-appliance connection.
 is environment-specific, and a published package is consumable through the
 gateway. `vm tools list` reports VM-owned vendor definitions plus controller
 registration/publication.
-`vm tools status [environment]` adds installed and consumable guest state and
+`vm tools status [--env NAME]` adds installed and consumable guest state and
 reports the three base-owned vendor runtimes separately. Managed-tool rows also
 show the newest active controller workflow and durable submission ID, including
 work that is queued before its first artifact exists. Its rows are the union of
@@ -601,14 +602,14 @@ at a declared activation path. Managed releases live under the guest home and
 never advance, remove, or otherwise rewrite project Git; the operator must pick
 one owner for overlapping collection content.
 
-`vm tools update [<tool>...] [--to <environment>]...` is also the idempotent
+`vm tools update [<tool>...] [--env <environment>...]` is also the idempotent
 upgrade reconciliation entry point. For Docker it regenerates current Compose
 metadata and updates only a missing or stale `package-edge` sidecar with
 `--no-deps`. For Linux Tart it reconciles only the guest edge container. Both
 paths preserve the edge cache named volume and leave the primary environment
 and base image intact. Both also repair managed client files in place so a new
 shell no longer depends on the primary container's creation-time environment.
-`vm exec` performs package-edge, client-file, and remote-command repair before
+`vm exec` performs package-edge and client-file repair before
 running the requested command. `vm shell` schedules the same shared repair engine,
 plus package-tool and vendor-tool reconciliation, without delaying the shell.
 The explicit tool update then
@@ -640,7 +641,7 @@ environments.
 Administrative package/tool commands are host-only. Checkout, show, and release
 are intentionally guest-safe. Other commands invoked inside a managed guest
 print the exact shell-safe host command, for example `Run on the host: vm tools
-update --to dev`.
+update --env dev`.
 
 ## Advanced: Consumer Dependency Updates
 
@@ -652,7 +653,7 @@ review branch. There is no host rollout or sync command.
 Use these read-only commands to inspect progress:
 
 ```bash
-vm packages status
+vm packages service status
 vm packages consumers drift
 ```
 
@@ -681,9 +682,9 @@ reconciliation after an interruption.
 Backups stay inside a private appliance named volume:
 
 ```bash
-vm packages backup
-vm packages backups
-vm packages restore <backup-id>
+vm packages service backups create
+vm packages service backups list
+vm packages service backups restore <backup-id>
 ```
 
 Backup and restore pause the registry, OCI cache, and work services, archive
@@ -719,6 +720,6 @@ your infrastructure backup system to protect against physical disk loss.
 - Receipts contain identities, commits, digests, outcomes, and timestamps—not
   secrets.
 
-On the controller host, `vm packages status` prints one result: `healthy`,
-`degraded`, or `action required`. Use `vm packages doctor --fix` for safe
+On the controller host, `vm packages service status` prints one result: `healthy`,
+`degraded`, or `action required`. Use `vm packages service doctor --fix` for safe
 repairs and a precise remaining action when deterministic repair is impossible.

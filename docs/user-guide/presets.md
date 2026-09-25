@@ -5,17 +5,19 @@ Presets are reusable configuration overlays for common project types.
 Custom presets must be installed as preset plugins.
 
 ```bash
-vm config preset --list
-vm config preset nodejs
-vm config preset python,postgres
+vm init
+vm config presets list
+vm config presets apply nodejs
+vm config presets apply python postgres
 vm run linux as app
 ```
 
 For a Linux Tart VM with Docker Engine:
 
 ```bash
-vm config preset vibe-tart
-vm config profile set tart
+vm config set provider tart
+vm config presets apply vibe-tart
+vm config profiles set-default tart
 vm shell
 ```
 
@@ -30,7 +32,9 @@ vm config unset profiles.macos
 
 Preset-backed `unset` operations first materialize the effective preset, so the
 removed field stays removed in `vm.yaml` and in subsequent `vm config show`
-output. Vibe presets do not add a named network unless one is configured.
+output. Applying a preset reports explicit settings it would change; remove
+those settings first if the preset should own them. Vibe presets do not add a
+named network unless one is configured.
 
 Provider-native base workflows live under `system base`:
 

@@ -34,18 +34,26 @@ vm config get vm.memory
 vm config set vm.memory 8192
 vm config unset vm.swappiness
 vm config ports --fix
-vm config clear
 ```
 
 `vm config validate` never edits configuration. `vm config render` renders the
 selected config and profile without contacting the provider; environment values
-and host paths are redacted.
+and host paths are redacted. Reads default to the effective configuration;
+`--scope project` reads only `vm.yaml` and `--scope user` reads user settings.
+Writes default to the current project and require a project configuration.
+`--scope user` writes user settings. Sensitive fields are redacted on reads.
+Use `--value-json` to set a complete array or object, such as
+`vm config set networking.networks --value-json '["dev"]'`.
+Writes validate the resulting configuration before replacing the file. Applying a
+preset reports conflicting explicit fields; unset those fields before applying
+the preset. `config unset` prints the resulting effective value.
 
 Profiles remain available for project variants:
 
 ```bash
-vm config profile ls
-vm config profile set docker
+vm config profiles list
+vm config profiles show docker
+vm config profiles set-default docker
 vm run linux as backend --profile docker
 ```
 
@@ -65,7 +73,8 @@ Use `vibe-tart` when you want the isolation of a full Linux VM with Docker
 Engine inside it:
 
 ```bash
-vm config preset vibe-tart
+vm config set provider tart
+vm config presets apply vibe-tart
 vm shell
 ```
 
@@ -251,7 +260,7 @@ path. Initialize the normal one-shelf workflow from the project whose environmen
 should receive managed tools:
 
 ```bash
-vm packages init /absolute/path/to/packages
+vm packages service init --source-root /absolute/path/to/packages
 ```
 
 Advanced installations can configure several absolute roots directly:
@@ -260,8 +269,8 @@ Advanced installations can configure several absolute roots directly:
 vm config set packages.source_roots \
   /absolute/path/to/packages \
   /another/absolute/source-root \
-  --global
-vm config get packages.source_roots --global
+  --scope user
+vm config get packages.source_roots --scope user
 vm packages up
 ```
 
@@ -363,9 +372,9 @@ managed tools.
 ## Presets
 
 ```bash
-vm config preset --list
-vm config preset nodejs
-vm config preset python,postgres
+vm config presets list
+vm config presets show nodejs
+vm config presets apply python postgres
 ```
 
 ## Worktrees And Workspace Paths
@@ -395,7 +404,7 @@ vm snapshots export before-refactor --env backend --output backend.tar.gz
 ## Tunnels
 
 ```bash
-vm tunnels add 8080:3000 backend
-vm tunnels list backend
-vm tunnels stop 8080
+vm tunnels open web --local 127.0.0.1:8080 --remote 127.0.0.1:3000 --env backend
+vm tunnels list --env backend
+vm tunnels close web --env backend
 ```

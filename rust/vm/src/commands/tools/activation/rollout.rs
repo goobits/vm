@@ -73,7 +73,9 @@ pub(in crate::commands) async fn activate_deferred(
                     environment,
                     failed.error.as_deref().unwrap_or("unknown error")
                 ),
-                Some("Run `vm packages doctor --fix` on the controller and retry the start"),
+                Some(
+                    "Run `vm packages service doctor --fix` on the controller and retry the start",
+                ),
             ));
         }
     }

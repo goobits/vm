@@ -3,6 +3,7 @@ use std::path::Path;
 use futures_util::stream::{self, StreamExt};
 use vm_core::error::{Result, VmError};
 
+use crate::compose_plan::NamedVolume;
 use crate::docker::{
     execute_docker, execute_docker_streaming, execute_docker_with_output,
     remove_docker_volume_if_present,
@@ -12,23 +13,21 @@ use crate::optimal_concurrency;
 
 pub(crate) async fn backup_volumes(
     executable: &str,
-    project_name: &str,
     volumes_dir: &Path,
-    volume_names: &[String],
+    volumes: &[NamedVolume],
 ) -> Result<Vec<VolumeSnapshot>> {
-    let backup_futures = volume_names.iter().map(|volume| {
+    let backup_futures = volumes.iter().map(|volume| {
         let volume = volume.clone();
         let volumes_dir = volumes_dir.to_path_buf();
         async move {
-            tracing::info!("  Backing up volume: {}", volume);
-            let archive_file = format!("{volume}.tar.zst");
+            tracing::info!("  Backing up volume: {}", volume.name);
+            let archive_file = format!("{}.tar.zst", volume.name);
             let archive_path = volumes_dir.join(&archive_file);
-            let full_volume_name = format!("{project_name}_{volume}");
             let run_args = [
                 "run",
                 "--rm",
                 "-v",
-                &format!("{full_volume_name}:/data"),
+                &format!("{}:/data", volume.runtime_name),
                 "-v",
                 &format!("{}:/backup", volumes_dir.to_string_lossy()),
                 "alpine:latest",
@@ -44,7 +43,8 @@ pub(crate) async fn backup_volumes(
                 })?
                 .len();
             Ok::<_, VmError>(VolumeSnapshot {
-                name: volume,
+                name: volume.name,
+                runtime_name: volume.runtime_name,
                 archive_file,
                 size_bytes,
             })
@@ -61,7 +61,6 @@ pub(crate) async fn backup_volumes(
 
 pub(crate) async fn restore_volumes(
     executable: &str,
-    project_name: &str,
     volumes_dir: &Path,
     volumes: &[VolumeSnapshot],
     force: bool,
@@ -71,11 +70,11 @@ pub(crate) async fn restore_volumes(
         let volumes_dir = volumes_dir.to_path_buf();
         async move {
             tracing::info!("  Restoring volume: {}", volume.name);
-            let full_volume_name = format!("{project_name}_{}", volume.name);
+            let full_volume_name = &volume.runtime_name;
             if force {
-                remove_docker_volume_if_present(executable, &full_volume_name).await?;
+                remove_docker_volume_if_present(executable, full_volume_name).await?;
             }
-            execute_docker(executable, &["volume", "create", &full_volume_name]).await?;
+            execute_docker(executable, &["volume", "create", full_volume_name]).await?;
 
             let restore_command = if volume.archive_file.ends_with(".tar.zst") {
                 "zstd -d -c \"/backup/$1\" | tar -x -C /data"

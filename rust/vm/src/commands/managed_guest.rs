@@ -1,24 +1,15 @@
 //! Controller-owned settings reconciled into managed environments.
 
-use std::collections::BTreeMap;
-use std::fs;
-use std::path::{Path, PathBuf};
-
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use vm_packages::ManagedClientSettings;
 use vm_provider::CommandProvider;
 
 use crate::error::{VmError, VmResult};
 
-pub(crate) const GUEST_REMOTE_COMMANDS_PATH: &str = "/etc/vm/remote-commands.json";
-pub(crate) const REMOTE_COMMAND_SCHEMA: u8 = 1;
-const CONTROLLER_REGISTRY: &str = ".vm/remote-commands.json";
-const MAX_REGISTRY_BYTES: u64 = 1024 * 1024;
-
 pub(crate) const INSTALL_MANAGED_SETTINGS: &str = r#"import json, os, pathlib, sys, tempfile
 
 request = json.load(sys.stdin)
-if request.get("schema") != 1 or not set(request).issubset({"schema", "package", "remote_commands", "remove_remote_commands"}):
+if request.get("schema") != 1 or not set(request).issubset({"schema", "package"}):
     raise SystemExit("invalid VM managed guest settings")
 
 uid = int(os.environ.get("SUDO_UID", "0"))
@@ -86,52 +77,12 @@ if package is not None:
         if source not in content.splitlines():
             replace(path, content.rstrip("\n") + "\n" + source + "\n")
 
-remote = request.get("remote_commands")
-remote_path = pathlib.Path("/etc/vm/remote-commands.json")
-if remote is not None:
-    if remote.get("schema") != 1 or not isinstance(remote.get("commands"), dict):
-        raise SystemExit("invalid VM remote command settings")
-    replace(remote_path, json.dumps(remote, sort_keys=True, separators=(",", ":")) + "\n", sensitive_mode, owner)
-elif request.get("remove_remote_commands", False):
-    if remote_path.is_symlink():
-        raise SystemExit(f"refusing managed file symlink: {remote_path}")
-    remote_path.unlink(missing_ok=True)
 "#;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct GuestRemoteCommands {
-    pub(crate) schema: u8,
-    pub(crate) commands: BTreeMap<String, RemoteCommandRegistration>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct RemoteCommandRegistration {
-    pub(crate) endpoint: String,
-    pub(crate) capability: String,
-    pub(crate) repair_command: String,
-}
-
-#[derive(Deserialize)]
-struct ControllerRegistry {
-    schema: u8,
-    environments: BTreeMap<String, serde_json::Value>,
-}
 
 #[derive(Serialize)]
 struct InstallRequest<'a> {
     schema: u8,
-    #[serde(skip_serializing_if = "Option::is_none")]
     package: Option<&'a ManagedClientSettings>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    remote_commands: Option<&'a GuestRemoteCommands>,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    remove_remote_commands: bool,
-}
-
-enum RemoteSettings {
-    Unconfigured,
-    Remove,
-    Install(GuestRemoteCommands),
 }
 
 pub(crate) fn install_package_settings(
@@ -143,44 +94,10 @@ pub(crate) fn install_package_settings(
         provider,
         environment,
         &InstallRequest {
-            schema: REMOTE_COMMAND_SCHEMA,
+            schema: 1,
             package: Some(settings),
-            remote_commands: None,
-            remove_remote_commands: false,
         },
     )
-}
-
-pub(crate) fn reconcile_remote_commands(
-    provider: &dyn CommandProvider,
-    environment: &str,
-) -> VmResult<()> {
-    match remote_settings(&controller_registry_path(), environment)? {
-        RemoteSettings::Unconfigured => Ok(()),
-        RemoteSettings::Remove => install(
-            provider,
-            environment,
-            &InstallRequest {
-                schema: REMOTE_COMMAND_SCHEMA,
-                package: None,
-                remote_commands: None,
-                remove_remote_commands: true,
-            },
-        ),
-        RemoteSettings::Install(settings) => {
-            crate::commands::remote_command::validate_registry(&settings)?;
-            install(
-                provider,
-                environment,
-                &InstallRequest {
-                    schema: REMOTE_COMMAND_SCHEMA,
-                    package: None,
-                    remote_commands: Some(&settings),
-                    remove_remote_commands: false,
-                },
-            )
-        }
-    }
 }
 
 fn install(
@@ -202,125 +119,15 @@ fn install(
         .map_err(VmError::from)
 }
 
-fn controller_registry_path() -> PathBuf {
-    if std::env::var_os("VM_TEST_MODE").is_some() {
-        if let Some(path) = std::env::var_os("VM_REMOTE_COMMANDS_CONTROLLER_FILE") {
-            return path.into();
-        }
-    }
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(CONTROLLER_REGISTRY)
-}
-
-fn remote_settings(path: &Path, environment: &str) -> VmResult<RemoteSettings> {
-    let metadata = match fs::symlink_metadata(path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(RemoteSettings::Unconfigured)
-        }
-        Err(error) => {
-            return Err(VmError::filesystem(
-                error,
-                path.display().to_string(),
-                "read",
-            ))
-        }
-    };
-    if !metadata.file_type().is_file() || metadata.len() > MAX_REGISTRY_BYTES {
-        return Err(VmError::validation(
-            "Controller remote command registry must be a regular file no larger than 1 MiB",
-            Some("Run: vm doctor"),
-        ));
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if metadata.permissions().mode() & 0o022 != 0 {
-            return Err(VmError::validation(
-                "Controller remote command registry is group/world writable",
-                Some("Run: chmod 600 ~/.vm/remote-commands.json"),
-            ));
-        }
-    }
-    let registry: ControllerRegistry =
-        serde_json::from_slice(&fs::read(path)?).map_err(|error| {
-            VmError::validation(
-                format!("Controller remote command registry is invalid: {error}"),
-                Some("Run: vm doctor"),
-            )
-        })?;
-    if registry.schema != REMOTE_COMMAND_SCHEMA {
-        return Err(VmError::validation(
-            format!(
-                "Unsupported remote command registry schema {}",
-                registry.schema
-            ),
-            Some("Run: vm doctor"),
-        ));
-    }
-    let Some(settings) = registry.environments.get(environment) else {
-        return Ok(RemoteSettings::Remove);
-    };
-    let settings = serde_json::from_value(settings.clone()).map_err(|error| {
-        VmError::validation(
-            format!("Remote commands for '{environment}' are invalid: {error}"),
-            Some("Run: vm doctor"),
-        )
-    })?;
-    Ok(RemoteSettings::Install(settings))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{remote_settings, RemoteSettings, INSTALL_MANAGED_SETTINGS};
-    use serde_json::json;
-    use std::fs;
+    use super::INSTALL_MANAGED_SETTINGS;
 
     #[test]
-    fn selects_only_the_requested_environment() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("remote-commands.json");
-        fs::write(
-            &path,
-            json!({
-                "schema": 1,
-                "environments": {
-                    "demo-dev": {"schema": 1, "commands": {}},
-                    "other-dev": "broken but isolated"
-                }
-            })
-            .to_string(),
-        )
-        .unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
-        }
-
-        assert!(matches!(
-            remote_settings(&path, "demo-dev").unwrap(),
-            RemoteSettings::Install(_)
-        ));
-        assert!(matches!(
-            remote_settings(&path, "missing-dev").unwrap(),
-            RemoteSettings::Remove
-        ));
-    }
-
-    #[test]
-    fn one_atomic_installer_owns_package_and_remote_settings() {
+    fn atomic_installer_preserves_package_settings_and_guest_marker() {
         assert!(INSTALL_MANAGED_SETTINGS.contains("os.replace(temporary, path)"));
         assert!(INSTALL_MANAGED_SETTINGS.contains("/etc/profile.d/vm-packages.sh"));
-        assert!(INSTALL_MANAGED_SETTINGS.contains("/etc/vm/remote-commands.json"));
         assert!(INSTALL_MANAGED_SETTINGS.contains("refusing managed file symlink"));
-        let marker = INSTALL_MANAGED_SETTINGS
-            .find("/etc/vm/managed-guest")
-            .unwrap();
-        let package = INSTALL_MANAGED_SETTINGS
-            .find("package = request.get")
-            .unwrap();
-        assert!(marker < package);
+        assert!(INSTALL_MANAGED_SETTINGS.contains("/etc/vm/managed-guest"));
     }
 }

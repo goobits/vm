@@ -27,7 +27,7 @@ pub(super) async fn handle_guest(
     if submission.checkout_id != checkout.checkout_id || submission.package != checkout.package {
         return Err(VmError::validation(
             "Submission does not belong to the active checkout",
-            Some("Inspect it with `vm packages show <checkout-id>`"),
+            Some("Inspect it with `vm packages checkout-show <checkout-id>`"),
         ));
     }
     if !matches!(

@@ -55,10 +55,11 @@ pub(in crate::commands) async fn handle(
         ToolsSubcommand::List => {
             let client = tooling::client()?;
             let definitions = client.tools().await?;
-            vm_println!("NAME\tKIND\tREGISTERED\tPUBLISHED\tINSTALLED\tCONSUMABLE\tSOURCE");
+            let selected = GlobalConfig::load().map_err(VmError::from)?.tools;
+            vm_println!("NAME\tKIND\tREGISTERED\tPUBLISHED\tSELECTED\tSOURCE");
             for definition in base::vendor_tool_info() {
                 vm_println!(
-                    "{}\tvendor\tn/a\tn/a\tn/a\tn/a\t{}",
+                    "{}\tvendor\tn/a\tn/a\tn/a\t{}",
                     definition.name,
                     definition.installer_url
                 );
@@ -69,11 +70,11 @@ pub(in crate::commands) async fn handle(
             {
                 let published = !client.tool(&definition.name).await?.artifacts.is_empty();
                 vm_println!(
-                    "{}\t{}\tyes\t{}\tn/a\t{}\t{}",
+                    "{}\t{}\tyes\t{}\t{}\t{}",
                     definition.name,
                     kind_name(definition.kind),
                     yes_no(published),
-                    "n/a",
+                    yes_no(selected.contains_key(&definition.name)),
                     definition.repository
                 );
             }
@@ -118,22 +119,24 @@ pub(in crate::commands) async fn handle(
             }
             Ok(())
         }
-        ToolsSubcommand::Status { environment } => {
-            let subject = load_runtime_subject(config_path, profile, environment)?;
+        ToolsSubcommand::Status { env } => {
+            let subject = load_runtime_subject(config_path, profile, env)?;
             status::show(&subject).await
         }
         ToolsSubcommand::Enable { tools } => {
             set_global_selection(&tools, true)?;
             activation::ensure_worker()?;
             vm_success!("Enabled globally: {}", tools.join(", "));
-            updates::run(
+            updates::run(updates::UpdateRequest {
                 config_path,
                 profile,
                 tools,
-                Vec::new(),
-                false,
-                InstallMode::Wait,
-            )
+                environments: Vec::new(),
+                all_envs: true,
+                global: true,
+                include_stopped: false,
+                mode: InstallMode::Wait,
+            })
             .await
         }
         ToolsSubcommand::ActivationWorker { once } => activation::run_worker(once).await,
@@ -150,7 +153,8 @@ pub(in crate::commands) async fn handle(
         }
         ToolsSubcommand::Update {
             tools,
-            to,
+            env,
+            all_envs,
             include_stopped,
             background,
         } => {
@@ -159,7 +163,17 @@ pub(in crate::commands) async fn handle(
             } else {
                 InstallMode::Wait
             };
-            updates::run(config_path, profile, tools, to, include_stopped, mode).await
+            updates::run(updates::UpdateRequest {
+                config_path,
+                profile,
+                tools,
+                environments: env,
+                all_envs,
+                global: false,
+                include_stopped,
+                mode,
+            })
+            .await
         }
     }
 }

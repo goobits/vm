@@ -144,7 +144,7 @@ impl ContainerEngine {
                 relay_name,
                 &format!("--network={network_name}"),
                 "-p",
-                &format!("{host_port}:{host_port}"),
+                &format!("127.0.0.1:{host_port}:{host_port}"),
                 "alpine/socat",
                 &format!("tcp-listen:{host_port},fork,reuseaddr"),
                 &format!("tcp-connect:{target_address}:{target_port}"),

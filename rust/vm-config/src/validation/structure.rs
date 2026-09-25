@@ -60,6 +60,7 @@ mod tests {
             workspace_access: Default::default(),
             backup_pattern: None,
             env_template_path: None,
+            default_environment: None,
         });
 
         assert!(validate_owned(config).is_ok());

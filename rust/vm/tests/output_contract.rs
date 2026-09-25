@@ -39,7 +39,7 @@ fn generic_dry_run_is_rejected_until_a_real_plan_exists() {
 fn managed_guest_guard_prints_the_exact_host_command() {
     let temp_dir = TempDir::new().unwrap();
     let output = Command::new(cargo_bin!("vm"))
-        .args(["tools", "update", "--to", "dev"])
+        .args(["tools", "update", "--env", "dev"])
         .current_dir(temp_dir.path())
         .env("HOME", temp_dir.path())
         .env("VM_MANAGED_GUEST", "1")
@@ -53,7 +53,7 @@ fn managed_guest_guard_prints_the_exact_host_command() {
 
     assert!(!output.status.success());
     assert!(stdout.is_empty(), "{stdout}");
-    assert!(stderr.contains("Run on the host: vm tools update --to dev"));
+    assert!(stderr.contains("Run on the host: vm tools update --env dev"));
 }
 
 #[test]

@@ -200,7 +200,7 @@ vm plugins install /path/to/{plugin_name}
 Run an environment using this preset:
 
 ```bash
-vm config preset {plugin_name}
+vm config presets apply {plugin_name}
 vm run linux as my-project
 ```
 

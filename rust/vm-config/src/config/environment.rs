@@ -49,6 +49,8 @@ pub struct ProjectConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_environment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub hostname: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace_path: Option<String>,

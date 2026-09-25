@@ -93,7 +93,28 @@ pub(super) async fn handle_catalog(
                 );
             }
         }
-        PackageConsumerSubcommand::Drift => return show_drift(&client).await,
+        PackageConsumerSubcommand::Show { name } => {
+            let consumer = client
+                .consumers()
+                .await?
+                .into_iter()
+                .find(|consumer| consumer.name == name)
+                .ok_or_else(|| {
+                    VmError::validation(
+                        format!("Consumer '{name}' is not registered"),
+                        Some("Run `vm packages consumers list` to see registered consumers"),
+                    )
+                })?;
+            vm_println!("Name: {}", consumer.name);
+            vm_println!("Repository: {}", consumer.repository);
+            vm_println!("Branch: {}", consumer.default_branch);
+            for (package, version) in consumer.dependencies {
+                vm_println!("Dependency: {package}@{version}");
+            }
+        }
+        PackageConsumerSubcommand::Drift { package } => {
+            return show_drift(&client, package.as_deref()).await
+        }
     }
     Ok(())
 }
@@ -115,9 +136,15 @@ async fn show_consumers(client: &PackageInfrastructureClient, package: &str) -> 
     Ok(())
 }
 
-async fn show_drift(client: &PackageInfrastructureClient) -> VmResult<()> {
+async fn show_drift(
+    client: &PackageInfrastructureClient,
+    requested_package: Option<&str>,
+) -> VmResult<()> {
     let rollouts = client.rollouts().await?;
     for package in client.drift().await? {
+        if requested_package.is_some_and(|name| name != package.package) {
+            continue;
+        }
         let latest = package.latest_version.as_deref().unwrap_or("unpublished");
         vm_println!("{}\tlatest {latest}", package.package);
         for consumer in package.consumers {

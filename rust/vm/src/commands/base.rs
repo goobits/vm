@@ -66,6 +66,8 @@ async fn build_container_base(executable: &str) -> VmResult<()> {
         Some("Vibe Docker base"),
         false,
         None,
+        None,
+        None,
         Some(&dockerfile),
         Some(build_context.path()),
         &[],

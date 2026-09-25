@@ -63,7 +63,7 @@ async fn execute_docker_command(args: &[&str], input: Option<&[u8]>) -> VmResult
     }
 }
 
-fn validate_backup_component(name: &str) -> VmResult<()> {
+pub(super) fn validate_backup_component(name: &str) -> VmResult<()> {
     let mut components = Path::new(name).components();
     let is_single_component =
         matches!(components.next(), Some(Component::Normal(_))) && components.next().is_none();
@@ -82,7 +82,7 @@ fn quote_pg_identifier(identifier: &str) -> String {
     format!("\"{}\"", identifier.replace('"', "\"\""))
 }
 
-fn quote_pg_literal(value: &str) -> String {
+pub(super) fn quote_pg_literal(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
@@ -202,10 +202,13 @@ pub async fn backup_db(
     backup_name: Option<&str>,
     retention_count: u32,
 ) -> VmResult<()> {
-    validate_backup_component(backup_name.unwrap_or(db_name))?;
-    let timestamp = Local::now().format("%Y%m%d_%H%M%S");
+    validate_backup_component(db_name)?;
+    if let Some(name) = backup_name {
+        validate_backup_component(name)?;
+    }
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S_%6f");
     let backup_file_name = match backup_name {
-        Some(name) => format!("{name}_{timestamp}.dump"),
+        Some(name) => format!("{db_name}_{name}_{timestamp}.dump"),
         None => format!("{db_name}_{timestamp}.dump"),
     };
     let backup_path = get_backup_dir()?.join(&backup_file_name);
@@ -232,7 +235,8 @@ pub async fn backup_db(
 }
 
 /// Restore a database
-pub async fn restore_db(backup_name: &str, db_name: &str) -> VmResult<()> {
+pub async fn restore_db(backup_name: &str, db_name: &str, yes: bool) -> VmResult<()> {
+    reject_system_database(db_name)?;
     validate_backup_component(backup_name)?;
     let backup_path = get_backup_dir()?.join(backup_name);
     if !backup_path.exists() {
@@ -240,6 +244,13 @@ pub async fn restore_db(backup_name: &str, db_name: &str) -> VmResult<()> {
             "Backup file not found",
             Some(format!("Backup file not found at: {backup_path:?}")),
         ));
+    }
+
+    if !confirm_destructive(
+        &format!("Replace database '{db_name}' with backup '{backup_name}'?"),
+        yes,
+    )? {
+        return Ok(());
     }
 
     let backup_data = tokio::fs::read(&backup_path)
@@ -280,14 +291,27 @@ pub async fn restore_db(backup_name: &str, db_name: &str) -> VmResult<()> {
 }
 
 /// Export a database to a SQL file
-pub async fn export_db(db_name: &str, file: &Path) -> VmResult<()> {
+pub async fn export_db(db_name: &str, file: &Path, overwrite: bool) -> VmResult<()> {
     let output = execute_docker_command(
         &["pg_dump", "-U", "postgres", "-d", db_name, "--clean"],
         None,
     )
     .await?;
 
-    tokio::fs::write(file, output)
+    let mut options = tokio::fs::OpenOptions::new();
+    options.write(true);
+    if overwrite {
+        options.create(true).truncate(true);
+    } else {
+        options.create_new(true);
+    }
+    let mut destination = options
+        .open(file)
+        .await
+        .map_err(|e| VmError::filesystem(e, file.to_string_lossy(), "open"))?;
+    use tokio::io::AsyncWriteExt;
+    destination
+        .write_all(&output)
         .await
         .map_err(|e| VmError::filesystem(e, file.to_string_lossy(), "write"))?;
 
@@ -296,12 +320,23 @@ pub async fn export_db(db_name: &str, file: &Path) -> VmResult<()> {
 }
 
 /// Import a database from a SQL file
-pub async fn import_db(db_name: &str, file: &Path) -> VmResult<()> {
+pub async fn import_db(db_name: &str, file: &Path, yes: bool) -> VmResult<()> {
+    reject_system_database(db_name)?;
     if !file.exists() {
         return Err(VmError::validation(
             "Import file not found",
             Some(format!("Import file not found at: {file:?}")),
         ));
+    }
+
+    if !confirm_destructive(
+        &format!(
+            "Import SQL into database '{db_name}' from '{}'?",
+            file.display()
+        ),
+        yes,
+    )? {
+        return Ok(());
     }
 
     let sql_data = tokio::fs::read(file)
@@ -315,13 +350,10 @@ pub async fn import_db(db_name: &str, file: &Path) -> VmResult<()> {
 }
 
 /// Reset a database
-pub async fn reset_db(db_name: &str, force: bool) -> VmResult<()> {
-    if !force {
-        vm_core::vm_warning!("This will permanently delete all data in the '{db_name}' database");
-        if !vm_core::prompts::confirm_select("Continue?", false)? {
-            vm_core::vm_println!("Database reset cancelled.");
-            return Ok(());
-        }
+pub async fn reset_db(db_name: &str, yes: bool) -> VmResult<()> {
+    reject_system_database(db_name)?;
+    if !confirm_destructive(&format!("Permanently reset database '{db_name}'?"), yes)? {
+        return Ok(());
     }
 
     let operation_id = Uuid::new_v4().simple().to_string();
@@ -367,6 +399,70 @@ pub async fn count_backups(db_name: &str) -> VmResult<usize> {
 /// Get the backup directory path as a string
 pub fn get_backup_path() -> VmResult<String> {
     Ok(get_backup_dir()?.to_string_lossy().to_string())
+}
+
+/// List exact retained backup file names, optionally filtering by database prefix.
+pub fn list_backups(database: Option<&str>) -> VmResult<Vec<String>> {
+    if let Some(name) = database {
+        validate_backup_component(name)?;
+    }
+    let mut backups = Vec::new();
+    for entry in std::fs::read_dir(get_backup_dir()?)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_file() {
+            continue;
+        }
+        let file_name = entry.file_name().to_string_lossy().into_owned();
+        if !file_name.ends_with(".dump") {
+            continue;
+        }
+        if database.map_or(true, |name| file_name.starts_with(&format!("{name}_"))) {
+            backups.push(file_name);
+        }
+    }
+    backups.sort();
+    Ok(backups)
+}
+
+/// Remove one retained backup by its exact file name.
+pub fn remove_backup(name: &str, yes: bool) -> VmResult<()> {
+    validate_backup_component(name)?;
+    if !name.ends_with(".dump") {
+        return Err(VmError::validation(
+            "Backup name must end in .dump",
+            None::<String>,
+        ));
+    }
+    let path = get_backup_dir()?.join(name);
+    if !path.is_file() {
+        return Err(VmError::validation(
+            format!("Backup '{name}' not found"),
+            None::<String>,
+        ));
+    }
+    if !confirm_destructive(&format!("Permanently remove backup '{name}'?"), yes)? {
+        return Ok(());
+    }
+    std::fs::remove_file(path)?;
+    vm_core::vm_success!("Removed backup '{name}'");
+    Ok(())
+}
+
+fn confirm_destructive(prompt: &str, yes: bool) -> VmResult<bool> {
+    if yes {
+        return Ok(true);
+    }
+    vm_core::prompts::confirm_select(prompt, false).map_err(Into::into)
+}
+
+fn reject_system_database(name: &str) -> VmResult<()> {
+    if matches!(name, "postgres" | "template0" | "template1") {
+        return Err(VmError::validation(
+            format!("System database '{name}' cannot be replaced"),
+            None::<String>,
+        ));
+    }
+    Ok(())
 }
 
 /// Clean up old backups, keeping only the most recent `retention_count`

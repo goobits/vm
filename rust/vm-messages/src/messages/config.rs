@@ -39,5 +39,5 @@ pub const CONFIG_MESSAGES: ConfigMessages = ConfigMessages {
     preset_applied: "✅ Applied preset '{preset}' to {path}",
     restart_hint: "\n💡 Stop and run the environment again to apply changes",
     applied_presets: "\n  Applied presets:",
-    apply_preset_hint: "💡 Apply this preset: vm config preset {name}",
+    apply_preset_hint: "💡 Apply this preset: vm config presets apply {name}",
 };

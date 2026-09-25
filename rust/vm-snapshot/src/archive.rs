@@ -1,4 +1,8 @@
+use std::collections::BTreeMap;
+use std::io::Read;
 use std::path::Path;
+
+use sha2::{Digest, Sha256};
 
 use vm_core::error::{Result, VmError};
 use walkdir::WalkDir;
@@ -8,6 +12,50 @@ use crate::metadata::SnapshotMetadata;
 
 const MAX_ARCHIVE_ENTRIES: usize = 100_000;
 const MAX_UNPACKED_BYTES: u64 = 256 * 1024 * 1024 * 1024;
+
+pub(crate) fn file_checksums(root: &Path) -> Result<BTreeMap<String, String>> {
+    let mut checksums = BTreeMap::new();
+    for entry in WalkDir::new(root) {
+        let entry =
+            entry.map_err(|error| VmError::general(error, "Failed to read snapshot files"))?;
+        if entry.file_type().is_dir() {
+            continue;
+        }
+        if !entry.file_type().is_file() {
+            return Err(VmError::validation(
+                "Snapshot contains an unsupported file type",
+                None::<String>,
+            ));
+        }
+        let relative = entry
+            .path()
+            .strip_prefix(root)
+            .map_err(|error| VmError::general(error, "Failed to resolve snapshot file"))?;
+        if relative == Path::new("manifest.json") {
+            continue;
+        }
+        let mut file = std::fs::File::open(entry.path())
+            .map_err(|error| VmError::filesystem(error, entry.path().display(), "open"))?;
+        let mut digest = Sha256::new();
+        let mut buffer = [0_u8; 64 * 1024];
+        loop {
+            let count = file
+                .read(&mut buffer)
+                .map_err(|error| VmError::filesystem(error, entry.path().display(), "read"))?;
+            if count == 0 {
+                break;
+            }
+            digest.update(&buffer[..count]);
+        }
+        let hash = digest
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        checksums.insert(relative.to_string_lossy().replace('\\', "/"), hash);
+    }
+    Ok(checksums)
+}
 
 pub(crate) fn directory_size(path: &Path) -> Result<u64> {
     let mut total = 0_u64;
@@ -98,6 +146,7 @@ pub(crate) fn create_gzip_archive(
     source: &Path,
     output: &Path,
     compression_level: u8,
+    overwrite: bool,
 ) -> Result<()> {
     let parent = output
         .parent()
@@ -132,9 +181,17 @@ pub(crate) fn create_gzip_archive(
     archive_file
         .sync_all()
         .map_err(|error| VmError::filesystem(error, output.display().to_string(), "sync_all"))?;
-    temporary_output.persist(output).map_err(|error| {
-        VmError::filesystem(error.error, output.display().to_string(), "persist")
-    })?;
+    if overwrite {
+        temporary_output.persist(output).map_err(|error| {
+            VmError::filesystem(error.error, output.display().to_string(), "persist")
+        })?;
+    } else {
+        temporary_output
+            .persist_noclobber(output)
+            .map_err(|error| {
+                VmError::filesystem(error.error, output.display().to_string(), "persist")
+            })?;
+    }
     Ok(())
 }
 
@@ -235,6 +292,15 @@ pub(crate) fn validate_snapshot_files(
 
     let volumes_dir = snapshot_dir.join("volumes");
     for volume in &metadata.volumes {
+        if !crate::compose_plan::valid_volume_name(&volume.runtime_name) {
+            return Err(VmError::validation(
+                format!(
+                    "Snapshot has an invalid volume name '{}'",
+                    volume.runtime_name
+                ),
+                None::<String>,
+            ));
+        }
         let archive_path =
             snapshot_file_path(&volumes_dir, &volume.archive_file, "volume archive")?;
         if !archive_path.is_file() {
@@ -253,7 +319,7 @@ pub(crate) fn validate_snapshot_files(
 
 #[cfg(test)]
 mod tests {
-    use super::{copy_directory, create_gzip_archive, directory_size};
+    use super::{copy_directory, create_gzip_archive, directory_size, file_checksums};
 
     #[test]
     fn directory_size_counts_every_file_and_reports_missing_roots() {
@@ -292,9 +358,33 @@ mod tests {
         std::fs::write(&victim, "owner-data").unwrap();
         std::os::unix::fs::symlink(&victim, directory.path().join("snapshot.tar.gz.tmp")).unwrap();
 
-        create_gzip_archive(&source, &output, 1).unwrap();
+        create_gzip_archive(&source, &output, 1, false).unwrap();
 
         assert_eq!(std::fs::read_to_string(victim).unwrap(), "owner-data");
         assert!(output.is_file());
+    }
+
+    #[test]
+    fn archive_export_never_replaces_an_existing_file_without_overwrite() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("source");
+        let output = directory.path().join("snapshot.tar.gz");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::write(source.join("file"), b"snapshot").unwrap();
+        std::fs::write(&output, b"owner-data").unwrap();
+
+        assert!(create_gzip_archive(&source, &output, 1, false).is_err());
+        assert_eq!(std::fs::read(&output).unwrap(), b"owner-data");
+        create_gzip_archive(&source, &output, 1, true).unwrap();
+        assert_ne!(std::fs::read(&output).unwrap(), b"owner-data");
+    }
+
+    #[test]
+    fn checksums_detect_modified_archive_contents() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("metadata.json"), b"original").unwrap();
+        let original = file_checksums(directory.path()).unwrap();
+        std::fs::write(directory.path().join("metadata.json"), b"modified").unwrap();
+        assert_ne!(original, file_checksums(directory.path()).unwrap());
     }
 }

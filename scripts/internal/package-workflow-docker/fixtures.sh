@@ -96,7 +96,7 @@ prepare_acceptance_infrastructure() {
   (
     cd "$project_root"
     gateway_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')
-    run_vm packages init "$source_shelf" \
+    run_vm packages service init --source-root "$source_shelf" \
       --engine docker \
       --port "$gateway_port" \
       --registry-image "$server_image" \
@@ -113,7 +113,7 @@ YAML
   run_vm packages up
   prepare_registered_source_conflict_fixture
   run_vm packages up
-  test "$(run_vm packages status)" = 'Package infrastructure: healthy'
+  test "$(run_vm packages service status)" = 'Package infrastructure: healthy'
   test "$(run_vm packages list | grep -c 'vm-acceptance-alias')" = 1
   test "$(run_vm packages list | grep -c 'vm-acceptance-ignored' || true)" = 0
 

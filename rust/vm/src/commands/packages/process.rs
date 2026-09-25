@@ -15,7 +15,7 @@ pub(super) fn run(command: &mut Command, context: &str) -> VmResult<()> {
     } else {
         Err(VmError::validation(
             format!("Could not {context} (exit status {status})"),
-            Some("Run `vm packages doctor` for detailed checks"),
+            Some("Run `vm packages service doctor` for detailed checks"),
         ))
     }
 }
@@ -30,7 +30,7 @@ pub(super) fn output(command: &mut Command, context: &str) -> VmResult<Output> {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         Err(VmError::validation(
             format!("Could not {context}: {stderr}"),
-            Some("Run `vm packages doctor` for detailed checks"),
+            Some("Run `vm packages service doctor` for detailed checks"),
         ))
     }
 }

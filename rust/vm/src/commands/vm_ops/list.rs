@@ -5,11 +5,77 @@
 
 use tracing::{debug, info_span};
 
+use crate::commands::vm_ops::target::canonical_instance_name;
 use crate::commands::vm_ops::target::project_instance_matches;
 use crate::commands::vm_ops::targets::{get_all_instances, get_instances_from_provider};
-use crate::error::VmResult;
+use crate::error::{VmError, VmResult};
+use vm_config::config::VmConfig;
 use vm_core::vm_println;
-use vm_provider::{InstanceInfo, InstanceProvider};
+use vm_provider::{get_provider, InstanceInfo, InstanceProvider};
+
+pub fn handle_declared_project_list(config: &VmConfig, raw: bool) -> VmResult<()> {
+    let project = config
+        .project
+        .as_ref()
+        .and_then(|project| project.name.as_deref())
+        .unwrap_or("vm-project");
+    let mut providers = std::collections::BTreeMap::new();
+    if let Some(provider) = &config.provider {
+        providers.insert(provider.as_str().to_string(), config.clone());
+    }
+    for declaration in config.environments.values() {
+        providers
+            .entry(declaration.provider.as_str().to_string())
+            .or_insert_with(|| declaration.apply_to(config));
+    }
+    let mut instances = Vec::new();
+    for selected in providers.into_values() {
+        let provider = get_provider(selected).map_err(VmError::from)?;
+        instances.extend(
+            provider
+                .list_instances()
+                .map_err(VmError::from)?
+                .into_iter()
+                .filter(|instance| project_instance_matches(instance, project)),
+        );
+    }
+    for (name, declaration) in &config.environments {
+        let runtime_name =
+            canonical_instance_name(declaration.provider.as_str(), project, Some(name));
+        if !instances.iter().any(|instance| {
+            instance.provider == declaration.provider.as_str() && instance.name == runtime_name
+        }) {
+            instances.push(InstanceInfo {
+                name: runtime_name,
+                id: String::new(),
+                status: "declared".into(),
+                provider: declaration.provider.as_str().into(),
+                project: Some(project.into()),
+                uptime: None,
+                created_at: None,
+            });
+        }
+    }
+    if instances.is_empty() {
+        vm_println!("No environments found");
+        return Ok(());
+    }
+    let default_name = config
+        .project
+        .as_ref()
+        .and_then(|project| project.default_environment.as_deref())
+        .and_then(|name| {
+            config.environments.get(name).map(|declaration| {
+                canonical_instance_name(declaration.provider.as_str(), project, Some(name))
+            })
+        });
+    if raw {
+        render_raw_instance_table(instances, default_name.as_deref());
+    } else {
+        render_instance_table(instances, default_name.as_deref());
+    }
+    Ok(())
+}
 
 /// Handle VM listing with enhanced filtering options
 pub fn handle_list_enhanced(
@@ -163,6 +229,8 @@ fn format_status(status: &str) -> String {
         "💤 Stopped".to_string()
     } else if lower_status.contains("paused") {
         "⏸️  Paused".to_string()
+    } else if lower_status == "declared" {
+        "📋 Declared".to_string()
     } else {
         format!("❓ {status}")
     }

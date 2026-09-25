@@ -1,11 +1,13 @@
 //! Snapshot restoration functionality
 
 use crate::archive::validate_snapshot_files;
-use crate::docker::execute_docker_compose_status;
+use crate::compose_plan::ComposeCapturePlan;
+use crate::docker::{execute_docker_compose, execute_docker_compose_status};
 use crate::images::load_service_images;
 use crate::manager::{snapshot_file_path, SnapshotManager, SnapshotScope};
 use crate::metadata::SnapshotMetadata;
 use crate::volumes::restore_volumes;
+use std::path::Path;
 use vm_config::AppConfig;
 use vm_core::error::{Result, VmError};
 
@@ -25,6 +27,8 @@ pub async fn handle_restore(
     executable: &str,
     name: &str,
     project_override: Option<&str>,
+    target_environment: Option<&str>,
+    project_dir_override: Option<&Path>,
     force: bool,
 ) -> Result<()> {
     let manager = SnapshotManager::new()?;
@@ -52,6 +56,36 @@ pub async fn handle_restore(
 
     let metadata = SnapshotMetadata::load(&metadata_file)?;
     validate_snapshot_files(&snapshot_dir, &metadata)?;
+    if target_environment.is_some() && metadata.source_environment.as_deref() != target_environment
+    {
+        return Err(VmError::validation(
+            format!(
+                "Snapshot '{}' belongs to environment '{}'",
+                snapshot_name,
+                metadata.source_environment.as_deref().unwrap_or("none")
+            ),
+            Some("Select the captured environment for restore"),
+        ));
+    }
+    if metadata.provider != executable {
+        return Err(VmError::validation(
+            format!("Snapshot requires provider '{}'", metadata.provider),
+            None::<String>,
+        ));
+    }
+    if metadata.compose_file.is_empty()
+        || !snapshot_file_path(
+            &snapshot_dir.join("compose"),
+            &metadata.compose_file,
+            "compose file",
+        )?
+        .is_file()
+    {
+        return Err(VmError::validation(
+            "Snapshot has no Compose configuration and cannot be restored by this provider",
+            None::<String>,
+        ));
+    }
 
     // Verify project matches (skip for global snapshots)
     if !matches!(scope, SnapshotScope::Global) && metadata.project_name != project_name && !force {
@@ -72,8 +106,29 @@ pub async fn handle_restore(
     tracing::info!("Restoring snapshot '{}' {}...", snapshot_name, scope_desc);
 
     // Get project directory
-    let project_dir =
-        std::env::current_dir().map_err(|e| VmError::filesystem(e, "current_dir", "get"))?;
+    let project_dir = match project_dir_override {
+        Some(path) => path.to_path_buf(),
+        None => {
+            std::env::current_dir().map_err(|e| VmError::filesystem(e, "current_dir", "get"))?
+        }
+    };
+
+    let normalized =
+        execute_docker_compose(executable, &["config", "--format", "json"], &project_dir).await?;
+    let current_plan = ComposeCapturePlan::parse(&normalized)?;
+    for volume in &metadata.volumes {
+        if !current_plan.volumes.iter().any(|current| {
+            current.name == volume.name && current.runtime_name == volume.runtime_name
+        }) {
+            return Err(VmError::validation(
+                format!(
+                    "Captured volume '{}' does not match the selected Compose project",
+                    volume.name
+                ),
+                Some("Restore into the project with matching named volumes"),
+            ));
+        }
+    }
 
     // Stop current compose environment
     tracing::info!("Stopping current environment...");
@@ -84,14 +139,7 @@ pub async fn handle_restore(
         tracing::info!("Restoring volumes in parallel...");
         let volumes_dir = snapshot_dir.join("volumes");
 
-        restore_volumes(
-            executable,
-            &project_name,
-            &volumes_dir,
-            &metadata.volumes,
-            force,
-        )
-        .await?;
+        restore_volumes(executable, &volumes_dir, &metadata.volumes, force).await?;
     }
 
     // Load images

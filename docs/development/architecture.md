@@ -146,7 +146,7 @@ run without Docker, Podman, or Tart.
 
 Interactive shell orchestration has a strict latency boundary: configuration,
 target readiness, and provider attachment remain foreground; mutable package,
-remote-command, vendor-tool, and managed-tool reconciliation runs through one
+vendor-tool, and managed-tool reconciliation runs through one
 detached host worker per environment. That worker calls the same reconciliation
 functions as explicit foreground commands and owns only scheduling, locking,
 cooldown receipts, and diagnostics.

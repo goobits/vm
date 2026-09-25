@@ -45,7 +45,7 @@ pub(super) async fn create_checkout(
             .await?;
         if matching.len() > 1 {
             return Err(WorkError::Conflict(format!(
-                "{} active checkouts match this consumer and source; run `vm packages doctor --fix` on the controller host",
+                "{} active checkouts match this consumer and source; run `vm packages service doctor --fix` on the controller host",
                 matching.len()
             )));
         }

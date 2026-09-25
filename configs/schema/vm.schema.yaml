@@ -35,12 +35,15 @@ properties:
     description: Project-specific settings
     required:
       - name
-      - workspace_path
     properties:
       name:
         type: string
-        pattern: ^[a-zA-Z0-9-_]+$
+        pattern: ^[A-Za-z0-9_-]+$
         description: Project name (alphanumeric, hyphens, underscores only). Used for VM/container naming.
+      default_environment:
+        type: string
+        pattern: ^[A-Za-z0-9_-]+$
+        description: Named declaration used when no environment is selected.
       hostname:
         type: string
         pattern: ^[a-zA-Z0-9.-]+$
@@ -714,6 +717,29 @@ properties:
     description: "Profile configuration merging over the base config"
     additionalProperties:
       type: object
+  environments:
+    type: object
+    description: Project-owned named runtime declarations.
+    propertyNames:
+      pattern: ^[A-Za-z0-9_-]+$
+    additionalProperties:
+      type: object
+      required:
+        - provider
+        - image
+      properties:
+        provider:
+          type: string
+          enum: [docker, podman, tart]
+        image:
+          $ref: '#/properties/vm/properties/image'
+        cpus:
+          $ref: '#/properties/vm/properties/cpus'
+        memory:
+          $ref: '#/properties/vm/properties/memory'
+        mounts:
+          $ref: '#/properties/mounts'
+      additionalProperties: false
 required:
   - project
 additionalProperties: false

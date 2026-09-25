@@ -190,7 +190,7 @@ pub(super) async fn handle_guest() -> VmResult<()> {
         state => {
             return Err(VmError::validation(
                 format!("Checkout cannot be released from {state:?}"),
-                Some("Inspect it with `vm packages show <checkout-id>`"),
+                Some("Inspect it with `vm packages checkout-show <checkout-id>`"),
             ))
         }
     };
@@ -375,7 +375,7 @@ fn activation_result(
                 "Tool activation remains incomplete: {} pending, {} failed",
                 counts.pending, counts.failed
             ),
-            Some("Rerun `vm packages release` to resume, or run `vm packages doctor --fix` on the controller"),
+            Some("Rerun `vm packages release` to resume, or run `vm packages service doctor --fix` on the controller"),
         ));
     }
     Ok(())
@@ -442,7 +442,7 @@ async fn wait_for_review(
                     release_phase_label(submission.state)
                 ),
                 Some(format!(
-                    "Inspect with `vm packages show {}`, then rerun `vm packages release` to resume",
+                    "Inspect with `vm packages checkout-show {}`, then rerun `vm packages release` to resume",
                     submission.checkout_id
                 )),
             ));
@@ -491,7 +491,7 @@ async fn wait_for_publication(
                     release_phase_label(submission.state)
                 ),
                 Some(format!(
-                    "Inspect with `vm packages show {}`, then rerun `vm packages release` to resume",
+                    "Inspect with `vm packages checkout-show {}`, then rerun `vm packages release` to resume",
                     submission.checkout_id
                 )),
             ));

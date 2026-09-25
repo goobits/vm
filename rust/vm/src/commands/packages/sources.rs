@@ -164,7 +164,7 @@ fn quarantine_repository(source_root: &Path, repository: &Path) -> VmResult<Path
                 repository.display(),
                 source_root.display()
             ),
-            Some("Run `vm packages doctor --fix`"),
+            Some("Run `vm packages service doctor --fix`"),
         )
     })?;
     if relative.as_os_str().is_empty() {
@@ -192,7 +192,7 @@ fn quarantine_repository(source_root: &Path, repository: &Path) -> VmResult<Path
                 "Quarantine destination {} already exists",
                 destination.display()
             ),
-            Some("Run `vm packages doctor --fix`"),
+            Some("Run `vm packages service doctor --fix`"),
         ));
     }
     let parent = destination
@@ -445,7 +445,7 @@ fn restore_target(source_root: &Path, repository: &Path) -> VmResult<PathBuf> {
                 "Quarantined source {} escaped its source root",
                 repository.display()
             ),
-            Some("Run `vm packages doctor --fix`"),
+            Some("Run `vm packages service doctor --fix`"),
         )
     })?;
     let target = source_root.join(relative);
@@ -456,7 +456,7 @@ fn restore_target(source_root: &Path, repository: &Path) -> VmResult<PathBuf> {
                 target.display()
             ),
             Some(format!(
-                "Move {} aside, then run `vm packages doctor --fix`",
+                "Move {} aside, then run `vm packages service doctor --fix`",
                 target.display()
             )),
         ));
@@ -473,7 +473,9 @@ fn validated_source_roots(source_roots: &[String]) -> VmResult<Vec<String>> {
             } else {
                 Err(VmError::validation(
                     format!("Package source root '{root}' is not an absolute host path"),
-                    Some("Run `vm config set packages.source_roots <absolute-path>... --global`"),
+                    Some(
+                        "Run `vm config set packages.source_roots <absolute-path>... --scope user`",
+                    ),
                 ))
             }
         })

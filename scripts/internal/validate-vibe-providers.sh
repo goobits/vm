@@ -92,7 +92,7 @@ fi
 
 echo
 echo "==> Applying provider-ready vibe preset in current project"
-(cd "${PROJECT_DIR}" && vm config preset vibe-tart)
+(cd "${PROJECT_DIR}" && vm config presets apply vibe-tart)
 
 cat <<EOF
 

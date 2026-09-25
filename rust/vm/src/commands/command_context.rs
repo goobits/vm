@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use super::environment::resolve_environment;
 use super::{packages, vm_ops};
-use crate::cli::{Command, PackagesSubcommand};
+use crate::cli::{Command, PackageServiceSubcommand, PackagesSubcommand};
 use crate::error::{VmError, VmResult};
 use vm_config::{config::VmConfig, AppConfig, GlobalConfig};
 use vm_core::vm_progress;
@@ -34,9 +34,10 @@ fn guest_allowed_command(command: &Command) -> bool {
     matches!(
         command,
         Command::Packages {
-            command: PackagesSubcommand::Status
-                | PackagesSubcommand::Checkout { .. }
-                | PackagesSubcommand::Show { .. }
+            command: PackagesSubcommand::Service {
+                command: PackageServiceSubcommand::Status
+            } | PackagesSubcommand::Checkout { .. }
+                | PackagesSubcommand::CheckoutShow { .. }
                 | PackagesSubcommand::Release
                 | PackagesSubcommand::Cancel
         }
@@ -94,6 +95,69 @@ pub(super) struct RuntimeSubject {
     pub(super) target: String,
 }
 
+pub(super) struct PreparedStart {
+    pub(super) subject: RuntimeSubject,
+    pub(super) create_name: Option<String>,
+}
+
+struct EnvironmentContext {
+    provider: Box<dyn Provider>,
+    config: VmConfig,
+    global_config: GlobalConfig,
+    selected: Option<String>,
+}
+
+pub(super) fn prepare_start(
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+    environment: Option<String>,
+) -> VmResult<PreparedStart> {
+    let resolved = resolve_environment(config_path.clone(), profile, environment)?;
+    let EnvironmentContext {
+        provider,
+        config,
+        global_config,
+        selected,
+    } = load_environment_provider_context(
+        config_path,
+        resolved.profile,
+        resolved.provider_override,
+        resolved.target.as_deref(),
+    )?;
+    let existing =
+        vm_ops::target::find_runtime_target(provider.as_ref(), &config, selected.as_deref())?;
+    let (target, create_name) = match existing {
+        Some(instance) => (instance.name, None),
+        None => {
+            let name = selected.ok_or_else(|| {
+                VmError::validation(
+                    "No declared default environment exists",
+                    Some("Declare one with `vm create NAME --provider ... --image ...`"),
+                )
+            })?;
+            if !config.environments.contains_key(&name) {
+                return Err(VmError::validation(
+                    format!("Environment '{name}' is not declared"),
+                    Some("Declare it with `vm create NAME --provider ... --image ...`"),
+                ));
+            }
+            let project = project_name(&config);
+            let target =
+                vm_ops::target::canonical_instance_name(provider.name(), project, Some(&name));
+            (target, Some(name))
+        }
+    };
+    Ok(PreparedStart {
+        subject: RuntimeSubject {
+            provider,
+            config,
+            global_config,
+            target,
+        },
+        create_name,
+    })
+}
+
 pub(super) fn load_provider_context(
     config_path: Option<PathBuf>,
     profile: Option<String>,
@@ -129,13 +193,22 @@ pub(super) async fn load_or_create_runtime_subject(
 ) -> VmResult<RuntimeSubject> {
     vm_progress!("Finding environment...");
     let resolved = resolve_environment(config_path.clone(), profile, environment)?;
-    let (provider, config, global_config) =
-        load_provider_context(config_path, resolved.profile, resolved.provider_override)?;
+    let EnvironmentContext {
+        provider,
+        config,
+        global_config,
+        selected,
+    } = load_environment_provider_context(
+        config_path,
+        resolved.profile,
+        resolved.provider_override,
+        resolved.target.as_deref(),
+    )?;
     let target = vm_ops::resolve_or_create_target(
         provider.as_ref(),
         &config,
         &global_config,
-        resolved.target.as_deref(),
+        selected.as_deref(),
     )
     .await?;
 
@@ -163,33 +236,67 @@ fn assemble_runtime_context(
     provider_override: Option<String>,
     requested_target: Option<&str>,
 ) -> VmResult<RuntimeSubject> {
-    let explicit_config = config_path.is_some();
-    let (mut provider, mut config, mut global_config) =
-        load_provider_context(config_path, profile.clone(), provider_override)?;
+    let EnvironmentContext {
+        provider,
+        config,
+        global_config,
+        selected,
+    } = load_environment_provider_context(
+        config_path,
+        profile,
+        provider_override,
+        requested_target,
+    )?;
     let instance =
-        vm_ops::target::resolve_runtime_instance(provider.as_ref(), &config, requested_target)?;
-    if requested_target.is_some() && !explicit_config {
-        let target_config = provider.instance_config_path(&instance.name)?.ok_or_else(|| {
-            VmError::validation(
-                format!(
-                    "Cannot locate the owning configuration for environment '{}'",
-                    instance.name
-                ),
-                Some("Run the command from that project's directory or pass its vm.yaml with --config"),
-            )
-        })?;
-        (provider, config, global_config) = load_provider_context(
-            Some(target_config),
-            profile,
-            Some(instance.provider.clone()),
-        )?;
-    }
+        vm_ops::target::resolve_runtime_instance(provider.as_ref(), &config, selected.as_deref())?;
     Ok(RuntimeSubject {
         provider,
         config,
         global_config,
         target: instance.name,
     })
+}
+
+fn load_environment_provider_context(
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+    provider_override: Option<String>,
+    requested_target: Option<&str>,
+) -> VmResult<EnvironmentContext> {
+    let app = AppConfig::load(config_path, profile, provider_override)?;
+    require_project_config(&app.vm)?;
+    let selected = super::declarations::selected_name(&app.vm, requested_target)?;
+    let mut config = selected
+        .as_deref()
+        .and_then(|name| app.vm.environments.get(name))
+        .map_or_else(
+            || app.vm.clone(),
+            |declaration| declaration.apply_to(&app.vm),
+        );
+    packages::apply_client_environment(&mut config)?;
+    let provider = get_provider(config.clone()).map_err(VmError::from)?;
+    Ok(EnvironmentContext {
+        provider,
+        config,
+        global_config: app.global,
+        selected,
+    })
+}
+
+pub(super) fn require_project_config(config: &VmConfig) -> VmResult<()> {
+    if config.owning_config_path().is_none()
+        || config
+            .project
+            .as_ref()
+            .and_then(|project| project.name.as_deref())
+            .is_none()
+    {
+        return Err(VmError::validation(
+            "An environment operation requires a project configuration",
+            Some("Run from a project containing vm.yaml or select one with --project"),
+        ));
+    }
+    Ok(())
 }
 
 pub(super) fn load_runtime_subject_for_instance(
@@ -246,7 +353,7 @@ pub(super) fn project_name(config: &VmConfig) -> &str {
 #[cfg(test)]
 mod tests {
     use super::{guest_allowed_command, host_command, is_managed_guest, target_config_path};
-    use crate::cli::{Command, PackagesSubcommand};
+    use crate::cli::{Command, PackageServiceSubcommand, PackagesSubcommand};
     use std::path::PathBuf;
     use vm_provider::InstanceInfo;
 
@@ -260,10 +367,12 @@ mod tests {
     #[test]
     fn guests_can_only_enter_agent_safe_package_commands() {
         assert!(guest_allowed_command(&Command::Packages {
-            command: PackagesSubcommand::Status,
+            command: PackagesSubcommand::Service {
+                command: PackageServiceSubcommand::Status
+            },
         }));
         assert!(guest_allowed_command(&Command::Packages {
-            command: PackagesSubcommand::Show {
+            command: PackagesSubcommand::CheckoutShow {
                 checkout_id: "checkout-1".into(),
             },
         }));

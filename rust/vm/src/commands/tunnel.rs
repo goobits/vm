@@ -9,9 +9,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use tracing::warn;
 use vm_config::{config::VmConfig, GlobalConfig};
-use vm_core::{vm_hint, vm_println, vm_success, vm_warning};
+use vm_core::{vm_hint, vm_println, vm_success};
 use vm_platform::platform;
 use vm_provider::{Provider, TunnelProvider};
 
@@ -23,37 +22,33 @@ pub(super) fn handle_command(
     let (provider, config, global_config) =
         super::command_context::load_provider_context(config_path, profile, None)?;
     match command {
-        TunnelSubcommand::Add {
-            mapping,
-            environment,
+        TunnelSubcommand::Open {
+            name,
+            local,
+            remote,
+            env,
         } => handle_tunnel(
             provider,
-            &mapping,
-            environment.as_deref(),
+            &name,
+            &local,
+            &remote,
+            env.as_deref(),
             config,
             global_config,
         ),
-        TunnelSubcommand::List { environment } => {
-            handle_tunnel_list(provider, environment.as_deref(), config, global_config)
+        TunnelSubcommand::List { env } => {
+            handle_tunnel_list(provider, env.as_deref(), config, global_config)
         }
-        TunnelSubcommand::Stop {
-            port,
-            environment,
-            all,
-        } => handle_tunnel_stop(
-            provider,
-            port,
-            environment.as_deref(),
-            all,
-            config,
-            global_config,
-        ),
+        TunnelSubcommand::Close { name, env } => {
+            handle_tunnel_stop(provider, &name, env.as_deref(), config, global_config)
+        }
     }
 }
 
 /// Information about an active tunnel
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TunnelInfo {
+    pub name: String,
     pub host_port: u16,
     pub container_port: u16,
     pub container_name: String,
@@ -123,11 +118,26 @@ impl<'a> TunnelManager<'a> {
     /// Create a new tunnel
     pub fn create_tunnel(
         &self,
+        name: &str,
         host_port: u16,
         container_port: u16,
         container_name: &str,
     ) -> VmResult<()> {
         let mut tunnels = self.load_tunnels()?;
+
+        if let Some(existing) = tunnels.values().find(|tunnel| tunnel.name == name) {
+            if existing.host_port == host_port
+                && existing.container_port == container_port
+                && existing.container_name == container_name
+            {
+                vm_println!("Tunnel '{name}' is already active");
+                return Ok(());
+            }
+            return Err(VmError::validation(
+                format!("Tunnel '{name}' already uses different endpoints"),
+                None::<String>,
+            ));
+        }
 
         // Check if host port is already in use
         if tunnels.contains_key(&host_port) {
@@ -148,16 +158,20 @@ impl<'a> TunnelManager<'a> {
 
         // Store tunnel info
         let tunnel_info = TunnelInfo {
+            name: name.to_string(),
             host_port,
             container_port,
             container_name: container_name.to_string(),
-            relay_container_id,
+            relay_container_id: relay_container_id.clone(),
             relay_container_name: relay_container_name.clone(),
             created_at: chrono::Utc::now().to_rfc3339(),
         };
 
         tunnels.insert(host_port, tunnel_info);
-        self.save_tunnels(&tunnels)?;
+        if let Err(error) = self.save_tunnels(&tunnels) {
+            let _ = self.provider.stop_relay(&relay_container_id);
+            return Err(error);
+        }
 
         vm_success!(
             "Tunnel active: localhost:{} -> {}:{}",
@@ -165,7 +179,7 @@ impl<'a> TunnelManager<'a> {
             container_name,
             container_port
         );
-        vm_hint!("Stop with: vm tunnels stop {host_port}");
+        vm_hint!("Close with: vm tunnels close {name}");
 
         Ok(())
     }
@@ -178,22 +192,34 @@ impl<'a> TunnelManager<'a> {
             .into_values()
             .filter(|t| {
                 if let Some(filter) = container_filter {
-                    t.container_name.contains(filter)
+                    t.container_name == filter
                 } else {
                     true
                 }
             })
             .collect();
 
+        let mut filtered = filtered;
+        filtered.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(filtered)
     }
 
     /// Stop a specific tunnel by host port
-    pub fn stop_tunnel(&self, host_port: u16) -> VmResult<()> {
+    pub fn stop_tunnel(&self, name: &str, container_filter: Option<&str>) -> VmResult<()> {
         let mut tunnels = self.load_tunnels()?;
+        let port = tunnels.iter().find_map(|(port, tunnel)| {
+            (tunnel.name == name
+                && container_filter.map_or(true, |env| env == tunnel.container_name))
+            .then_some(*port)
+        });
 
-        if let Some(tunnel) = tunnels.remove(&host_port) {
+        if let Some(host_port) = port {
+            let tunnel = tunnels
+                .get(&host_port)
+                .expect("matched tunnel exists")
+                .clone();
             self.provider.stop_relay(&tunnel.relay_container_id)?;
+            tunnels.remove(&host_port);
             self.save_tunnels(&tunnels)?;
             vm_success!(
                 "Stopped tunnel: localhost:{} -> {}:{}",
@@ -205,90 +231,69 @@ impl<'a> TunnelManager<'a> {
         } else {
             Err(VmError::general(
                 std::io::Error::new(std::io::ErrorKind::NotFound, "Tunnel not found"),
-                format!("No active tunnel on port {}", host_port),
+                format!("No active tunnel named '{name}'"),
             ))
         }
-    }
-
-    /// Stop all tunnels for a container
-    pub fn stop_all_tunnels(&self, container_filter: Option<&str>) -> VmResult<usize> {
-        let mut tunnels = self.load_tunnels()?;
-        let mut stopped_count = 0;
-
-        let to_remove: Vec<u16> = tunnels
-            .iter()
-            .filter(|(_, t)| {
-                if let Some(filter) = container_filter {
-                    t.container_name.contains(filter)
-                } else {
-                    true
-                }
-            })
-            .map(|(port, _)| *port)
-            .collect();
-
-        for port in to_remove {
-            if let Some(tunnel) = tunnels.remove(&port) {
-                if let Err(e) = self.provider.stop_relay(&tunnel.relay_container_id) {
-                    warn!(
-                        "Failed to stop relay container {}: {}",
-                        tunnel.relay_container_id, e
-                    );
-                    vm_warning!("Failed to stop tunnel on port {}: {}", tunnel.host_port, e);
-                } else {
-                    stopped_count += 1;
-                    vm_success!(
-                        "Stopped: localhost:{} -> {}:{}",
-                        tunnel.host_port,
-                        tunnel.container_name,
-                        tunnel.container_port
-                    );
-                }
-            }
-        }
-
-        self.save_tunnels(&tunnels)?;
-        Ok(stopped_count)
     }
 }
 
 /// Handle tunnel command (create a new tunnel)
 fn handle_tunnel(
     provider: Box<dyn Provider>,
-    mapping: &str,
+    name: &str,
+    local: &str,
+    remote: &str,
     container: Option<&str>,
     config: VmConfig,
     _global_config: GlobalConfig,
 ) -> VmResult<()> {
-    // Parse mapping (e.g., "8080:3000")
-    let parts: Vec<&str> = mapping.split(':').collect();
-    if parts.len() != 2 {
+    if name.is_empty()
+        || !name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+    {
         return Err(VmError::validation(
-            "Invalid port mapping format. Use: <host_port>:<container_port>".to_string(),
-            Some("Example: vm tunnels add 8080:3000".to_string()),
+            "Tunnel names must contain only letters, digits, hyphens, or underscores",
+            None::<String>,
         ));
     }
-
-    let host_port: u16 = parts[0].parse().map_err(|_| {
-        VmError::validation(
-            format!("Invalid host port: {}", parts[0]),
-            Some("Port must be a number between 1-65535".to_string()),
-        )
-    })?;
-
-    let container_port: u16 = parts[1].parse().map_err(|_| {
-        VmError::validation(
-            format!("Invalid container port: {}", parts[1]),
-            Some("Port must be a number between 1-65535".to_string()),
-        )
-    })?;
+    let host_port = parse_endpoint(local, &["127.0.0.1", "localhost"])?;
+    let container_port = parse_endpoint(remote, &["localhost", "127.0.0.1"])?;
 
     let _ = config;
     let container_name = provider.resolve_instance_name(container)?;
 
     // Create tunnel
     let manager = TunnelManager::new(tunnel_provider(provider.as_ref())?)?;
-    manager.create_tunnel(host_port, container_port, &container_name)
+    manager.create_tunnel(name, host_port, container_port, &container_name)
+}
+
+fn parse_endpoint(value: &str, supported_hosts: &[&str]) -> VmResult<u16> {
+    let (host, port) = value.rsplit_once(':').ok_or_else(|| {
+        VmError::validation(
+            format!("Invalid endpoint '{value}'"),
+            Some("Use HOST:PORT".to_string()),
+        )
+    })?;
+    if !supported_hosts.contains(&host) {
+        return Err(VmError::validation(
+            format!("Endpoint host '{host}' is unsupported by the current relay provider"),
+            Some(format!("Supported hosts: {}", supported_hosts.join(", "))),
+        ));
+    }
+    let port: u16 = port.parse().map_err(|_| {
+        VmError::validation(
+            format!("Invalid port in endpoint '{value}'"),
+            None::<String>,
+        )
+    })?;
+    if port == 0 {
+        return Err(VmError::validation(
+            "Port must be between 1 and 65535",
+            None::<String>,
+        ));
+    }
+    Ok(port)
 }
 
 /// Handle tunnel list command
@@ -310,14 +315,17 @@ fn handle_tunnel_list(
         } else {
             vm_println!("No active tunnels");
         }
-        vm_hint!("Create one with: vm tunnels add <host>:<container>");
+        vm_hint!(
+            "Create one with: vm tunnels open NAME --local localhost:8080 --remote localhost:3000"
+        );
         return Ok(());
     }
 
     vm_println!("Active tunnels");
     for tunnel in tunnels {
         vm_println!(
-            "  localhost:{} -> {}:{}",
+            "  {}: localhost:{} -> {}:{}",
+            tunnel.name,
             tunnel.host_port,
             tunnel.container_name,
             tunnel.container_port
@@ -336,9 +344,8 @@ fn handle_tunnel_list(
 /// Handle tunnel stop command
 fn handle_tunnel_stop(
     provider: Box<dyn Provider>,
-    port: Option<u16>,
+    name: &str,
     container: Option<&str>,
-    all: bool,
     _config: VmConfig,
     _global_config: GlobalConfig,
 ) -> VmResult<()> {
@@ -347,25 +354,7 @@ fn handle_tunnel_stop(
         .map(|value| provider.resolve_instance_name(Some(value)))
         .transpose()?;
 
-    if all || (port.is_none() && resolved_container.is_some()) {
-        // Stop all tunnels (optionally filtered by container)
-        let count = manager.stop_all_tunnels(resolved_container.as_deref())?;
-        if count == 0 {
-            vm_println!("No tunnels to stop");
-        } else {
-            vm_success!("Stopped {count} tunnel(s)");
-        }
-    } else if let Some(host_port) = port {
-        // Stop specific tunnel
-        manager.stop_tunnel(host_port)?;
-    } else {
-        return Err(VmError::validation(
-            "Must specify port number or use --all flag".to_string(),
-            Some("Example: vm tunnels stop 8080 or vm tunnels stop --all".to_string()),
-        ));
-    }
-
-    Ok(())
+    manager.stop_tunnel(name, resolved_container.as_deref())
 }
 
 fn tunnel_provider(provider: &dyn Provider) -> VmResult<&dyn TunnelProvider> {
@@ -389,7 +378,7 @@ fn require_tunnel_provider<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::require_tunnel_provider;
+    use super::{parse_endpoint, require_tunnel_provider};
 
     #[test]
     fn tunnels_require_an_explicit_provider_capability() {
@@ -398,5 +387,16 @@ mod tests {
             Err(error) => error,
         };
         assert!(error.to_string().contains("'tart' is not supported"));
+    }
+
+    #[test]
+    fn endpoints_reject_public_bind_and_unroutable_remote_hosts() {
+        assert_eq!(
+            parse_endpoint("localhost:8080", &["localhost", "127.0.0.1"]).unwrap(),
+            8080
+        );
+        assert!(parse_endpoint("0.0.0.0:8080", &["localhost", "127.0.0.1"]).is_err());
+        assert!(parse_endpoint("localhost:0", &["localhost", "127.0.0.1"]).is_err());
+        assert!(parse_endpoint("db.example:5432", &["localhost"]).is_err());
     }
 }

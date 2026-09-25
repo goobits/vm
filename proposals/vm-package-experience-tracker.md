@@ -1,6 +1,6 @@
 # VM Package Experience Tracker
 
-Status: implementation and local verification complete; Docker acceptance pending.
+Status: Docker acceptance pending.
 
 ## Remaining work
 
@@ -15,10 +15,24 @@ them. Tart acceptance remains outside this tracker's scope.
 ## Completed work
 
 The release implementation and 2026-09-24 package workflow audit are complete.
+The grouped package CLI parser and command routing pass the CLI unit suite.
 Repairs cover registry routing and Cargo metadata, retained publication artifacts,
 checkout/integration recovery, consumer update retries, queue fairness, and cleanup.
 The CLI now groups consumer listing, drift, registration, and retry under
 `vm packages consumers`; the release service and rollout behavior are unchanged.
+Service inspection, diagnostics, initialization, and backups live under
+`vm packages service`, while `up` and `down` remain short. Git credentials use
+`auth login/status/logout` with stdin and file input for automation. Package
+and consumer `show` read the existing catalog, and drift accepts a package
+filter. Package and consumer removal still need durable service APIs before
+they can be exposed. Docker acceptance remains pending.
+Tool status and updates use explicit `--env`, and updates default to one selected
+environment; `--all-envs` is project-scoped. Stopped targets are deferred without
+being started. The managed-guest remote-command registry and its dispatch path
+have no remaining tool owner and were removed. Managed tools remain guest
+executables. Tool removal needs a service deletion API and guest cleanup contract.
+The targeted tool unit suite (40 tests), tool parser test, managed-guest test,
+shell syntax checks, and whitespace check passed on 2026-09-25.
 Operational behavior is documented in the
 [package infrastructure guide](../docs/user-guide/package-infrastructure.md).
 

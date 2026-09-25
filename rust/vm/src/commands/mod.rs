@@ -16,6 +16,7 @@ mod command_context;
 mod completion;
 pub mod config;
 pub mod db;
+mod declarations;
 pub mod doctor;
 mod environment;
 mod maintenance;
@@ -23,7 +24,7 @@ mod managed_guest;
 mod packages;
 pub mod plugin;
 pub mod plugin_new;
-pub(crate) mod remote_command;
+mod project;
 mod run;
 pub mod secrets;
 mod state;
@@ -36,10 +37,36 @@ pub mod update;
 pub mod vm_ops;
 
 #[must_use = "command execution results should be handled"]
-pub async fn execute_command(args: Args) -> VmResult<()> {
+pub async fn execute_command(mut args: Args) -> VmResult<()> {
+    if let Some(selector) = args.project.take() {
+        args.config = Some(project::resolve(&selector)?);
+    }
     command_context::ensure_controller_host(&args.command)?;
 
     match args.command {
+        Command::Init { path } => project::init(path),
+        Command::Create {
+            name,
+            provider,
+            image,
+            snapshot,
+            cpu,
+            memory,
+            mount,
+        } => {
+            declarations::create(declarations::CreateRequest {
+                name,
+                provider,
+                image,
+                snapshot,
+                cpu,
+                memory,
+                mounts: mount,
+                config_path: args.config,
+                profile: args.profile,
+            })
+            .await
+        }
         Command::Doctor {
             fix,
             clean,
@@ -85,11 +112,21 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
         }
         Command::System { command } => system::handle(&command, args.config, args.profile).await,
         Command::InternalCompletion { shell } => completion::handle(&shell),
-        Command::List { all, raw } => {
-            if all {
+        Command::List { all_projects, raw } => {
+            let project_selected = args.config.is_some()
+                || vm_config::ConfigLoader::new()
+                    .find_config_path()
+                    .map_err(VmError::from)?
+                    .as_deref()
+                    .is_some_and(|path| path.file_name().is_some_and(|name| name == "vm.yaml"));
+            if all_projects || !project_selected {
                 vm_ops::handle_list_enhanced(None, None, None, raw, None)
             } else {
                 let (provider, config, _) = load_provider_context(args.config, args.profile, None)?;
+                command_context::require_project_config(&config)?;
+                if !config.environments.is_empty() {
+                    return vm_ops::handle_declared_project_list(&config, raw);
+                }
                 let project = project_name(&config);
                 let default_name = provider.resolve_instance_name(None).ok();
                 vm_ops::handle_list_enhanced(
@@ -102,7 +139,7 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             }
         }
         Command::Start {
-            environment,
+            environments,
             no_wait,
             fleet,
         } => {
@@ -116,15 +153,15 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
                 )
                 .await
             } else {
-                let subject = load_runtime_subject(args.config, args.profile, environment)?;
-                vm_ops::handle_start(
-                    subject.provider,
-                    Some(subject.target.as_str()),
-                    subject.config,
-                    subject.global_config,
-                    no_wait,
-                )
-                .await
+                let subjects = resolve_named_starts(args.config, args.profile, environments)?;
+                let mut failures = Vec::new();
+                for prepared in subjects {
+                    let target = prepared.subject.target.clone();
+                    if let Err(error) = start_prepared(prepared, no_wait).await {
+                        failures.push(format!("{target}: {error}"));
+                    }
+                }
+                named_outcome(failures)
             }
         }
         Command::Run {
@@ -187,29 +224,37 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
             }
         }
         Command::Exec {
-            environment,
+            environments,
             fleet,
             command,
         } => {
             if command.is_empty() {
                 return Err(VmError::validation(
                     "No command was provided",
-                    Some("Use: vm exec [--env NAME] -- <command>"),
+                    Some("Use: vm exec [--env NAME]... -- <command>"),
                 ));
             }
             if fleet.fleet {
                 let project = fleet_project(args.config, args.profile)?;
                 vm_ops::handle_fleet_exec(&fleet, &project, &command)
             } else {
-                let subject = load_runtime_subject(args.config, args.profile, environment)?;
-                vm_ops::handle_exec(
-                    subject.provider,
-                    Some(subject.target.as_str()),
-                    command,
-                    subject.config,
-                    subject.global_config,
-                )
-                .await
+                let subjects = resolve_named_subjects(args.config, args.profile, environments)?;
+                let mut failures = Vec::new();
+                for subject in subjects {
+                    let target = subject.target.clone();
+                    if let Err(error) = vm_ops::handle_exec(
+                        subject.provider,
+                        Some(subject.target.as_str()),
+                        command.clone(),
+                        subject.config,
+                        subject.global_config,
+                    )
+                    .await
+                    {
+                        failures.push(format!("{target}: {error}"));
+                    }
+                }
+                named_outcome(failures)
             }
         }
         Command::Logs {
@@ -249,32 +294,55 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
                 )
             }
         }
-        Command::Stop { environment, fleet } => {
+        Command::Stop {
+            environments,
+            fleet,
+        } => {
             if fleet.fleet {
                 let project = fleet_project(args.config, args.profile)?;
                 vm_ops::handle_fleet_lifecycle(&fleet, &project, vm_ops::FleetAction::Stop, false)
                     .await
             } else {
-                let subject = load_runtime_subject(args.config, args.profile, environment)?;
-                vm_ops::handle_stop(
-                    subject.provider,
-                    Some(subject.target.as_str()),
-                    subject.config,
-                    subject.global_config,
-                )
-                .await
+                let subjects = resolve_named_subjects(args.config, args.profile, environments)?;
+                let mut failures = Vec::new();
+                for subject in subjects {
+                    let target = subject.target.clone();
+                    if let Err(error) = vm_ops::handle_stop(
+                        subject.provider,
+                        Some(subject.target.as_str()),
+                        subject.config,
+                        subject.global_config,
+                    )
+                    .await
+                    {
+                        failures.push(format!("{target}: {error}"));
+                    }
+                }
+                named_outcome(failures)
             }
         }
-        Command::Status { environment } => {
-            let subject = load_runtime_subject(args.config, args.profile, environment)?;
-            let report = subject
-                .provider
-                .status(Some(subject.target.as_str()))
-                .map_err(VmError::from)?;
-            status::display(&report);
-            Ok(())
+        Command::Status {
+            environments,
+            fleet,
+        } => {
+            if fleet.fleet {
+                let project = fleet_project(args.config, args.profile)?;
+                vm_ops::handle_fleet_status(&fleet, &project)
+            } else {
+                for subject in resolve_named_subjects(args.config, args.profile, environments)? {
+                    let report = subject
+                        .provider
+                        .status(Some(subject.target.as_str()))
+                        .map_err(VmError::from)?;
+                    status::display(&report);
+                }
+                Ok(())
+            }
         }
-        Command::Restart { environment, fleet } => {
+        Command::Restart {
+            environments,
+            fleet,
+        } => {
             if fleet.fleet {
                 let project = fleet_project(args.config, args.profile)?;
                 vm_ops::handle_fleet_lifecycle(
@@ -285,14 +353,22 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
                 )
                 .await
             } else {
-                let subject = load_runtime_subject(args.config, args.profile, environment)?;
-                vm_ops::handle_restart(
-                    subject.provider,
-                    Some(subject.target.as_str()),
-                    subject.config,
-                    subject.global_config,
-                )
-                .await
+                let subjects = resolve_named_subjects(args.config, args.profile, environments)?;
+                let mut failures = Vec::new();
+                for subject in subjects {
+                    let target = subject.target.clone();
+                    if let Err(error) = vm_ops::handle_restart(
+                        subject.provider,
+                        Some(subject.target.as_str()),
+                        subject.config,
+                        subject.global_config,
+                    )
+                    .await
+                    {
+                        failures.push(format!("{target}: {error}"));
+                    }
+                }
+                named_outcome(failures)
             }
         }
         Command::Remove { environment, force } => {
@@ -315,5 +391,95 @@ pub async fn execute_command(args: Args) -> VmResult<()> {
 
 fn fleet_project(config_path: Option<PathBuf>, profile: Option<String>) -> VmResult<String> {
     let config = AppConfig::load(config_path, profile, None)?;
+    command_context::require_project_config(&config.vm)?;
     Ok(project_name(&config.vm).to_string())
+}
+
+fn resolve_named_subjects(
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+    environments: Vec<String>,
+) -> VmResult<Vec<command_context::RuntimeSubject>> {
+    let names = if environments.is_empty() {
+        vec![None]
+    } else {
+        environments.into_iter().map(Some).collect()
+    };
+    let mut seen = std::collections::BTreeSet::new();
+    let mut subjects = Vec::new();
+    for name in names {
+        let subject = load_runtime_subject(config_path.clone(), profile.clone(), name)?;
+        if !seen.insert(subject.target.clone()) {
+            return Err(VmError::validation(
+                format!(
+                    "Environment '{}' was selected more than once",
+                    subject.target
+                ),
+                None::<String>,
+            ));
+        }
+        subjects.push(subject);
+    }
+    Ok(subjects)
+}
+
+fn resolve_named_starts(
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
+    environments: Vec<String>,
+) -> VmResult<Vec<command_context::PreparedStart>> {
+    let names = if environments.is_empty() {
+        vec![None]
+    } else {
+        environments.into_iter().map(Some).collect()
+    };
+    let mut seen = std::collections::BTreeSet::new();
+    let mut prepared = Vec::new();
+    for name in names {
+        let start = command_context::prepare_start(config_path.clone(), profile.clone(), name)?;
+        if !seen.insert(start.subject.target.clone()) {
+            return Err(VmError::validation(
+                format!(
+                    "Environment '{}' was selected more than once",
+                    start.subject.target
+                ),
+                None::<String>,
+            ));
+        }
+        prepared.push(start);
+    }
+    Ok(prepared)
+}
+
+async fn start_prepared(prepared: command_context::PreparedStart, no_wait: bool) -> VmResult<()> {
+    let subject = prepared.subject;
+    if let Some(name) = prepared.create_name {
+        vm_ops::handle_create(
+            subject.provider.clone_box(),
+            subject.config.clone(),
+            subject.global_config.clone(),
+            false,
+            Some(name),
+        )
+        .await?;
+    }
+    vm_ops::handle_start(
+        subject.provider,
+        Some(subject.target.as_str()),
+        subject.config,
+        subject.global_config,
+        no_wait,
+    )
+    .await
+}
+
+fn named_outcome(failures: Vec<String>) -> VmResult<()> {
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(VmError::validation(
+            format!("Environment operations failed:\n{}", failures.join("\n")),
+            None::<String>,
+        ))
+    }
 }

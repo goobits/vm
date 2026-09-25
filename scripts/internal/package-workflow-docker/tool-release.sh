@@ -121,7 +121,7 @@ accept_tool_workflows() {
     rm -f /tmp/unregistered-release.log
   '
 
-  run_project_vm "$consumer_root" tools update --to "$consumer_environment"
+  run_project_vm "$consumer_root" tools update --env "$consumer_environment"
   if ! docker exec --user acceptance "$consumer_environment" sh -ec '
     test -L /home/acceptance/.codex/skills
     grep -F "Guest-owned acceptance skill" \

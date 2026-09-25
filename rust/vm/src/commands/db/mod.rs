@@ -3,18 +3,23 @@
 pub mod backup;
 pub mod utils;
 
-use crate::cli::DbSubcommand;
+use crate::cli::{DbBackupSubcommand, DbSubcommand};
 use crate::error::VmResult;
 use vm_config::GlobalConfig;
 use vm_core::{vm_println, vm_progress, vm_success, vm_warning};
 
-async fn show_credentials(service_name: &str) -> VmResult<()> {
+async fn show_credentials(service_name: &str, reveal: bool) -> VmResult<()> {
+    backup::validate_backup_component(service_name)?;
     let secrets_dir = vm_core::user_paths::secrets_dir()?;
     let secret_file = secrets_dir.join(format!("{}.env", service_name));
 
     if secret_file.exists() {
-        let password = tokio::fs::read_to_string(secret_file).await?;
-        vm_println!("Password for {}: {}", service_name, password.trim());
+        if reveal {
+            let password = tokio::fs::read_to_string(secret_file).await?;
+            vm_println!("{}", password.trim_end());
+        } else {
+            vm_println!("Credentials for '{}': available (redacted)", service_name);
+        }
     } else {
         vm_println!(
             "No credentials found for service '{}'. Has it been started yet?",
@@ -28,7 +33,14 @@ pub async fn handle_db(command: DbSubcommand) -> VmResult<()> {
     let global_config = GlobalConfig::load()?;
 
     match command {
-        DbSubcommand::Backup { db_name, name, all } => {
+        DbSubcommand::Backups {
+            command:
+                DbBackupSubcommand::Create {
+                    name,
+                    database,
+                    all,
+                },
+        } => {
             if all {
                 // Backup all databases except system ones
                 let result = utils::execute_psql_command(
@@ -52,7 +64,9 @@ pub async fn handle_db(command: DbSubcommand) -> VmResult<()> {
                 let mut failed_count = 0;
 
                 for db in databases {
-                    match backup::backup_db(&db, None, global_config.backups.keep_count).await {
+                    match backup::backup_db(&db, Some(&name), global_config.backups.keep_count)
+                        .await
+                    {
                         Ok(()) => {
                             success_count += 1;
                         }
@@ -72,8 +86,8 @@ pub async fn handle_db(command: DbSubcommand) -> VmResult<()> {
                     ));
                 }
                 vm_success!("Backed up {success_count} database(s)");
-            } else if let Some(db) = db_name {
-                backup::backup_db(&db, name.as_deref(), global_config.backups.keep_count).await?;
+            } else if let Some(db) = database {
+                backup::backup_db(&db, Some(&name), global_config.backups.keep_count).await?;
             } else {
                 return Err(crate::error::VmError::validation(
                     "Missing database name",
@@ -83,8 +97,27 @@ pub async fn handle_db(command: DbSubcommand) -> VmResult<()> {
                 ));
             }
         }
-        DbSubcommand::Restore { name, db_name } => {
-            backup::restore_db(&name, &db_name).await?;
+        DbSubcommand::Backups {
+            command:
+                DbBackupSubcommand::Restore {
+                    backup,
+                    database,
+                    yes,
+                },
+        } => {
+            backup::restore_db(&backup, &database, yes).await?;
+        }
+        DbSubcommand::Backups {
+            command: DbBackupSubcommand::List { database },
+        } => {
+            for item in backup::list_backups(database.as_deref())? {
+                vm_println!("{item}");
+            }
+        }
+        DbSubcommand::Backups {
+            command: DbBackupSubcommand::Remove { backup, yes },
+        } => {
+            backup::remove_backup(&backup, yes)?;
         }
         DbSubcommand::List => {
             let result = utils::execute_psql_command(
@@ -118,30 +151,33 @@ pub async fn handle_db(command: DbSubcommand) -> VmResult<()> {
                 vm_println!("\n💾 Backups stored in: {}", backup_path);
             }
         }
-        DbSubcommand::Export { name, file } => {
-            backup::export_db(&name, &file).await?;
-        }
-        DbSubcommand::Import { file, db_name } => {
-            backup::import_db(&db_name, &file).await?;
-        }
-        DbSubcommand::Size => {
-            let result = utils::execute_psql_command(
-                "SELECT datname, pg_size_pretty(pg_database_size(datname)) FROM pg_database WHERE datistemplate = false;",
-            )
-            .await?;
-            vm_println!("Database Sizes:");
-            for line in result.lines() {
-                let parts: Vec<&str> = line.split('|').map(|s| s.trim()).collect();
-                if parts.len() == 2 && !parts[0].is_empty() {
-                    vm_println!("  - {:<30} {}", parts[0], parts[1]);
-                }
+        DbSubcommand::Status { name } => {
+            let query = format!("SELECT datname, pg_size_pretty(pg_database_size(datname)) FROM pg_database WHERE datname = {};", backup::quote_pg_literal(&name));
+            let result = utils::execute_psql_command(&query).await?;
+            if result.trim().is_empty() {
+                return Err(crate::error::VmError::validation(
+                    format!("Database '{name}' not found"),
+                    None::<String>,
+                ));
             }
+            vm_println!("{}", result.trim());
+            vm_println!("Backups: {}", backup::count_backups(&name).await?);
         }
-        DbSubcommand::Reset { name, force } => {
-            backup::reset_db(&name, force).await?;
+        DbSubcommand::Export {
+            name,
+            output,
+            overwrite,
+        } => {
+            backup::export_db(&name, &output, overwrite).await?;
         }
-        DbSubcommand::Credentials { service } => {
-            show_credentials(&service).await?;
+        DbSubcommand::Import { name, file, yes } => {
+            backup::import_db(&name, &file, yes).await?;
+        }
+        DbSubcommand::Reset { name, yes } => {
+            backup::reset_db(&name, yes).await?;
+        }
+        DbSubcommand::Credentials { service, reveal } => {
+            show_credentials(&service, reveal).await?;
         }
     }
     Ok(())

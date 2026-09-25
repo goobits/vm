@@ -60,6 +60,14 @@ impl CliTestFixture {
         self.test_dir.join(filename).exists()
     }
 
+    fn create_project(&self) -> Result<()> {
+        fs::write(
+            self.test_dir.join("vm.yaml"),
+            "project:\n  name: test\nprovider: docker\n",
+        )?;
+        Ok(())
+    }
+
     /// Get global config path (new unified location)
     fn global_config_path(&self) -> PathBuf {
         self.test_dir
@@ -96,6 +104,7 @@ mod cli_integration_tests {
     #[test]
     fn test_config_set_and_get_local() -> Result<()> {
         let fixture = CliTestFixture::new()?;
+        fixture.create_project()?;
 
         // Test setting a local config value
         let output = fixture.run_vm_command(&["config", "set", "vm.memory", "4096"])?;
@@ -120,7 +129,7 @@ mod cli_integration_tests {
         assert_eq!(stdout.trim(), "4096");
 
         // Test getting all config
-        let output = fixture.run_vm_command(&["config", "get"])?;
+        let output = fixture.run_vm_command(&["config", "show", "--scope", "project"])?;
         assert!(output.status.success());
 
         let stdout = String::from_utf8(output.stdout)?;
@@ -135,7 +144,8 @@ mod cli_integration_tests {
         let fixture = CliTestFixture::new()?;
 
         // Test setting a global config value
-        let output = fixture.run_vm_command(&["config", "set", "--global", "provider", "tart"])?;
+        let output =
+            fixture.run_vm_command(&["config", "set", "--scope", "user", "provider", "tart"])?;
         assert!(
             output.status.success(),
             "Failed to set global config: {}",
@@ -149,18 +159,19 @@ mod cli_integration_tests {
         assert!(fixture.global_config_path().exists());
 
         // Test getting the global value back
-        let output = fixture.run_vm_command(&["config", "get", "--global", "provider"])?;
+        let output = fixture.run_vm_command(&["config", "get", "--scope", "user", "provider"])?;
         assert!(output.status.success());
 
         let stdout = String::from_utf8(output.stdout)?;
         assert_eq!(stdout.trim(), "tart");
 
         // Test setting another global value
-        let output = fixture.run_vm_command(&["config", "set", "--global", "vm.cpus", "8"])?;
+        let output =
+            fixture.run_vm_command(&["config", "set", "--scope", "user", "vm.cpus", "8"])?;
         assert!(output.status.success());
 
         // Test getting all global config
-        let output = fixture.run_vm_command(&["config", "get", "--global"])?;
+        let output = fixture.run_vm_command(&["config", "show", "--scope", "user"])?;
         assert!(output.status.success());
 
         let stdout = String::from_utf8(output.stdout)?;
@@ -174,6 +185,7 @@ mod cli_integration_tests {
     #[test]
     fn test_config_unset() -> Result<()> {
         let fixture = CliTestFixture::new()?;
+        fixture.create_project()?;
 
         // Set up some config values
         fixture.run_vm_command(&["config", "set", "vm.memory", "4096"])?;
@@ -190,9 +202,10 @@ mod cli_integration_tests {
 
         let stdout = String::from_utf8(output.stdout)?;
         assert!(stdout.contains("✅ Unset vm.memory"));
+        assert!(stdout.contains("Effective vm.memory:"));
 
         // Verify value is gone but others remain
-        let output = fixture.run_vm_command(&["config", "get"])?;
+        let output = fixture.run_vm_command(&["config", "show", "--scope", "project"])?;
         let stdout = String::from_utf8(output.stdout)?;
         assert!(!stdout.contains("memory"));
         assert!(stdout.contains("cpus: '4'") || stdout.contains("cpus: 4"));
@@ -219,7 +232,7 @@ npm_packages:
         )?;
 
         // Test listing presets
-        let output = fixture.run_vm_command(&["config", "preset", "--list"])?;
+        let output = fixture.run_vm_command(&["config", "presets", "list"])?;
         assert!(output.status.success());
 
         let stdout = String::from_utf8(output.stdout)?;
@@ -230,7 +243,7 @@ npm_packages:
         assert!(stdout.contains("test-preset"));
 
         // Test showing preset details
-        let output = fixture.run_vm_command(&["config", "preset", "--show", "test-preset"])?;
+        let output = fixture.run_vm_command(&["config", "presets", "show", "test-preset"])?;
         assert!(output.status.success());
 
         let stdout = String::from_utf8(output.stdout)?;
@@ -244,6 +257,7 @@ npm_packages:
     #[test]
     fn test_config_preset_application() -> Result<()> {
         let fixture = CliTestFixture::new()?;
+        fixture.create_project()?;
 
         // Create a test preset
         fixture.create_preset(
@@ -259,8 +273,12 @@ npm_packages:
         )?;
 
         // Apply the preset
-        let output = fixture.run_vm_command(&["config", "preset", "test-preset"])?;
-        assert!(output.status.success());
+        let output = fixture.run_vm_command(&["config", "presets", "apply", "test-preset"])?;
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
 
         let stdout = String::from_utf8(output.stdout)?;
         assert!(stdout.contains("✅ Applied preset 'test-preset' to local"));
@@ -280,6 +298,7 @@ npm_packages:
     #[test]
     fn test_config_preset_composition() -> Result<()> {
         let fixture = CliTestFixture::new()?;
+        fixture.create_project()?;
 
         // Create first preset
         fixture.create_preset(
@@ -304,8 +323,13 @@ npm_packages:
         )?;
 
         // Apply both presets with comma separation
-        let output = fixture.run_vm_command(&["config", "preset", "preset1,preset2"])?;
-        assert!(output.status.success());
+        let output =
+            fixture.run_vm_command(&["config", "presets", "apply", "preset1", "preset2"])?;
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
 
         let stdout = String::from_utf8(output.stdout)?;
         assert!(stdout.contains("✅ Applied preset 'preset1,preset2' to local"));
@@ -337,7 +361,14 @@ services:
         )?;
 
         // Apply preset globally
-        let output = fixture.run_vm_command(&["config", "preset", "--global", "global-preset"])?;
+        let output = fixture.run_vm_command(&[
+            "config",
+            "presets",
+            "apply",
+            "global-preset",
+            "--scope",
+            "user",
+        ])?;
         assert!(output.status.success());
 
         let stdout = String::from_utf8(output.stdout)?;
@@ -347,7 +378,7 @@ services:
         assert!(fixture.global_config_path().exists());
 
         // Test getting global config
-        let output = fixture.run_vm_command(&["config", "get", "--global"])?;
+        let output = fixture.run_vm_command(&["config", "show", "--scope", "user"])?;
         assert!(output.status.success());
 
         let stdout = String::from_utf8(output.stdout)?;
@@ -359,8 +390,9 @@ services:
     #[test]
     fn test_vibe_tart_preset_preserves_provider_profiles() -> Result<()> {
         let fixture = CliTestFixture::new()?;
+        fs::write(fixture.test_dir.join("vm.yaml"), "project:\n  name: test\n")?;
 
-        let output = fixture.run_vm_command(&["config", "preset", "vibe-tart"])?;
+        let output = fixture.run_vm_command(&["config", "presets", "apply", "vibe-tart"])?;
         assert!(
             output.status.success(),
             "Failed to apply vibe-tart preset: {}",
@@ -386,7 +418,7 @@ services:
     }
 
     #[test]
-    fn test_switching_vibe_to_vibe_tart_does_not_warn_about_preset_defaults() -> Result<()> {
+    fn test_preset_reports_explicit_provider_conflict_without_writing() -> Result<()> {
         let fixture = CliTestFixture::new()?;
 
         fs::write(
@@ -406,23 +438,11 @@ networking:
 "#,
         )?;
 
-        let output = fixture.run_vm_command(&["config", "preset", "vibe-tart"])?;
-        assert!(
-            output.status.success(),
-            "Failed to apply vibe-tart preset: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8(output.stdout)?;
-        assert!(!stdout.contains("contains customizations"));
-
-        let config_content = fixture.read_file("vm.yaml")?;
-        assert!(config_content.contains("preset: vibe-tart"));
-        assert!(config_content.contains("provider: tart"));
-        assert!(config_content.contains("default_profile: tart"));
-        assert!(config_content.contains("profiles:"));
-        assert!(config_content.contains("guest_os: linux"));
-        assert!(config_content.contains("macos:"));
+        let original = fixture.read_file("vm.yaml")?;
+        let output = fixture.run_vm_command(&["config", "presets", "apply", "vibe-tart"])?;
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("explicit settings: provider"));
+        assert_eq!(fixture.read_file("vm.yaml")?, original);
 
         Ok(())
     }
@@ -444,7 +464,7 @@ provider: docker
 
         let stderr = String::from_utf8(output.stderr)?;
         assert!(stderr.contains("Profile 'tart' not found"));
-        assert!(stderr.contains("vm config preset vibe-tart"));
+        assert!(stderr.contains("vm config presets apply vibe-tart"));
 
         Ok(())
     }
@@ -459,6 +479,8 @@ provider: docker
 preset: vibe-tart
 provider: docker
 default_profile: docker
+project:
+  name: test
 profiles:
   docker:
     provider: docker
@@ -467,7 +489,7 @@ profiles:
 "#,
         )?;
 
-        let output = fixture.run_vm_command(&["config", "profile", "set", "tart"])?;
+        let output = fixture.run_vm_command(&["config", "profiles", "set-default", "tart"])?;
         assert!(
             output.status.success(),
             "Failed to select profile: {}",
@@ -496,18 +518,20 @@ profiles:
         let fixture = CliTestFixture::new()?;
 
         // Test getting from non-existent local config
-        let output = fixture.run_vm_command(&["config", "get", "vm.memory"])?;
+        let output =
+            fixture.run_vm_command(&["config", "get", "vm.memory", "--scope", "project"])?;
         assert!(!output.status.success());
 
         let stderr = String::from_utf8(output.stderr)?;
-        assert!(stderr.contains("No vm.yaml configuration found"));
+        assert!(stderr.contains("No project configuration found"));
 
         // Test unsetting from non-existent config
         let output = fixture.run_vm_command(&["config", "unset", "vm.memory"])?;
         assert!(!output.status.success());
 
         // Test applying non-existent preset
-        let output = fixture.run_vm_command(&["config", "preset", "nonexistent"])?;
+        fixture.create_project()?;
+        let output = fixture.run_vm_command(&["config", "presets", "apply", "nonexistent"])?;
         assert!(!output.status.success());
 
         let stderr = String::from_utf8(output.stderr)?;
@@ -519,15 +543,17 @@ profiles:
     #[test]
     fn test_config_dot_notation() -> Result<()> {
         let fixture = CliTestFixture::new()?;
+        fixture.create_project()?;
 
         // Test setting deeply nested values
         fixture.run_vm_command(&["config", "set", "services.postgresql.version", "15"])?;
-        fixture.run_vm_command(&["config", "set", "services.postgresql.enabled", "true"])?;
         fixture.run_vm_command(&["config", "set", "services.postgresql.port", "5432"])?;
+        fixture.run_vm_command(&["config", "set", "services.postgresql.enabled", "true"])?;
+        fixture.run_vm_command(&["config", "set", "services.redis.port", "6379"])?;
         fixture.run_vm_command(&["config", "set", "services.redis.enabled", "true"])?;
 
         // Verify the nested structure
-        let output = fixture.run_vm_command(&["config", "get"])?;
+        let output = fixture.run_vm_command(&["config", "show", "--scope", "project"])?;
         let stdout = String::from_utf8(output.stdout)?;
 
         assert!(stdout.contains("services:"));
@@ -541,7 +567,7 @@ profiles:
         let output = fixture.run_vm_command(&["config", "get", "services.postgresql.version"])?;
         assert!(output.status.success());
         let stdout = String::from_utf8(output.stdout)?;
-        assert_eq!(stdout.trim(), "15");
+        assert_eq!(stdout.trim().trim_matches('\''), "15");
 
         Ok(())
     }

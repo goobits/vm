@@ -28,6 +28,25 @@ pub(super) async fn list(files: &ApplianceFiles) -> VmResult<()> {
     Ok(())
 }
 
+pub(super) async fn show_package(files: &ApplianceFiles, name: &str) -> VmResult<()> {
+    let client = configured_client(files)?;
+    let package = client.package_definition(name).await?;
+    let inventory = client.packages().await?;
+    vm_println!("Name: {}", package.name);
+    vm_println!("Ecosystem: {}", package.ecosystem);
+    vm_println!("Repository: {}", package.repository);
+    vm_println!("Branch: {}", package.default_branch);
+    vm_println!(
+        "Published: {}",
+        yes_no(package_is_published(
+            &inventory,
+            package.ecosystem,
+            &package.name
+        ))
+    );
+    Ok(())
+}
+
 fn package_is_published(
     inventory: &PackageInventory,
     ecosystem: PackageEcosystem,

@@ -60,54 +60,95 @@ fn lifecycle_commands_parse() {
     assert!(matches!(
         Args::parse_from(["vm", "start", "backend", "--no-wait"]).command,
         Command::Start {
-            environment: Some(environment),
+            environments,
             no_wait: true,
             ..
-        } if environment == "backend"
+        } if environments == ["backend"]
     ));
     assert!(matches!(
         Args::parse_from(["vm", "status", "backend"]).command,
         Command::Status {
-            environment: Some(environment)
-        } if environment == "backend"
+            environments,
+            ..
+        } if environments == ["backend"]
     ));
 }
 
 #[test]
-fn stop_parses_environment() {
+fn project_selection_and_init_parse() {
+    let args = Args::parse_from(["vm", "--project", "demo", "status", "dev", "test"]);
+    assert_eq!(args.project.as_deref(), Some(std::path::Path::new("demo")));
     assert!(matches!(
-        Args::parse_from(["vm", "stop", "backend"]).command,
-        Command::Stop {
-            environment: Some(environment),
+        args.command,
+        Command::Status { environments, .. } if environments == ["dev", "test"]
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "init", "./example"]).command,
+        Command::Init { path: Some(path) } if path == std::path::Path::new("./example")
+    ));
+    assert!(
+        Args::try_parse_from(["vm", "--project", "demo", "--config", "vm.yaml", "list"]).is_err()
+    );
+    assert!(matches!(
+        Args::parse_from(["vm", "list", "--all-projects"]).command,
+        Command::List {
+            all_projects: true,
             ..
-        } if environment == "backend"
+        }
+    ));
+    assert!(Args::try_parse_from(["vm", "list", "--all"]).is_err());
+}
+
+#[test]
+fn stop_parses_named_environments() {
+    assert!(matches!(
+        Args::parse_from(["vm", "stop", "backend", "test"]).command,
+        Command::Stop {
+            environments,
+            ..
+        } if environments == ["backend", "test"]
     ));
 }
 
 #[test]
 fn retired_lifecycle_aliases_are_rejected() {
-    for command in [
-        "create",
-        "get-sync-directory",
-        "down",
-        "halt",
-        "rm",
-        "destroy",
-    ] {
+    for command in ["get-sync-directory", "down", "halt", "rm", "destroy"] {
         assert!(Args::try_parse_from(["vm", command, "backend"]).is_err());
     }
 }
 
 #[test]
-fn exec_uses_an_explicit_or_default_environment() {
+fn create_requires_exactly_one_source() {
     assert!(matches!(
-        Args::parse_from(["vm", "exec", "--env", "backend", "--", "npm", "test"]).command,
-        Command::Exec { environment: Some(environment), command, .. }
-            if environment == "backend" && command == ["npm", "test"]
+        Args::parse_from(["vm", "create", "dev", "--provider", "docker", "--image", "debian:bookworm"]).command,
+        Command::Create { name, provider, image: Some(image), snapshot: None, .. }
+            if name == "dev" && provider == "docker" && image == "debian:bookworm"
+    ));
+    assert!(Args::try_parse_from(["vm", "create", "dev", "--provider", "docker"]).is_err());
+    assert!(Args::try_parse_from([
+        "vm",
+        "create",
+        "dev",
+        "--provider",
+        "docker",
+        "--image",
+        "one",
+        "--snapshot",
+        "two"
+    ])
+    .is_err());
+}
+
+#[test]
+fn exec_accepts_repeated_explicit_environments_or_a_default() {
+    assert!(matches!(
+        Args::parse_from(["vm", "exec", "--env", "backend", "--env", "test", "--", "npm", "test"]).command,
+        Command::Exec { environments, command, .. }
+            if environments == ["backend", "test"] && command == ["npm", "test"]
     ));
     assert!(matches!(
         Args::parse_from(["vm", "exec", "--", "npm", "test"]).command,
-        Command::Exec { environment: None, command, .. } if command == ["npm", "test"]
+        Command::Exec { environments, command, .. } if environments.is_empty() && command == ["npm", "test"]
     ));
     assert!(Args::try_parse_from(["vm", "exec", "backend", "--", "npm"]).is_err());
 }
@@ -154,12 +195,12 @@ fn snapshot_commands_are_grouped() {
 }
 
 #[test]
-fn system_base_build_parses_macos_guest_os() {
+fn system_images_build_parses_macos_guest_os() {
     assert!(matches!(
         Args::parse_from([
             "vm",
             "system",
-            "base",
+            "images",
             "build",
             "vibe",
             "--provider",
@@ -169,7 +210,7 @@ fn system_base_build_parses_macos_guest_os() {
         ])
         .command,
         Command::System {
-            command: SystemSubcommand::Base {
+            command: SystemSubcommand::Images {
                 command: BaseSubcommand::Build {
                     preset,
                     provider,
@@ -181,12 +222,12 @@ fn system_base_build_parses_macos_guest_os() {
 }
 
 #[test]
-fn system_base_build_accepts_podman() {
+fn system_images_build_accepts_podman() {
     assert!(matches!(
-        Args::parse_from(["vm", "system", "base", "build", "vibe", "--provider", "podman"])
+        Args::parse_from(["vm", "system", "images", "build", "vibe", "--provider", "podman"])
             .command,
         Command::System {
-            command: SystemSubcommand::Base {
+            command: SystemSubcommand::Images {
                 command: BaseSubcommand::Build { provider, .. }
             }
         } if provider == "podman"
@@ -194,8 +235,23 @@ fn system_base_build_accepts_podman() {
 }
 
 #[test]
-fn system_base_validate_is_not_a_public_command() {
-    assert!(Args::try_parse_from(["vm", "system", "base", "validate", "vibe"]).is_err());
+fn system_images_validate_is_not_a_public_command() {
+    assert!(Args::try_parse_from(["vm", "system", "images", "validate", "vibe"]).is_err());
+}
+
+#[test]
+fn system_storage_requires_an_exact_resource_id_for_removal() {
+    assert!(Args::try_parse_from(["vm", "system", "storage", "list"]).is_ok());
+    assert!(Args::try_parse_from(["vm", "system", "storage", "remove"]).is_err());
+    assert!(Args::try_parse_from([
+        "vm",
+        "system",
+        "storage",
+        "remove",
+        "docker:volume:demo_data",
+        "--yes"
+    ])
+    .is_ok());
 }
 
 #[test]
@@ -228,14 +284,16 @@ fn package_source_roots_parse_as_global_string_array() {
             "packages.source_roots",
             "/srv/packages",
             "/opt/shared",
-            "--global",
+            "--scope",
+            "user",
         ])
         .command,
         Command::Config {
             command: ConfigSubcommand::Set {
                 field,
                 values,
-                global: true,
+                scope: super::ConfigWriteScope::User,
+                value_json: None,
             }
         } if field == "packages.source_roots"
             && values == ["/srv/packages", "/opt/shared"]
@@ -248,18 +306,66 @@ fn package_source_roots_parse_as_global_string_array() {
             "packages.canonical_sources",
             "/srv/projects/typemill",
             "/srv/projects/codeatlas",
-            "--global",
+            "--scope",
+            "user",
         ])
         .command,
         Command::Config {
             command: ConfigSubcommand::Set {
                 field,
                 values,
-                global: true,
+                scope: super::ConfigWriteScope::User,
+                value_json: None,
             }
         } if field == "packages.canonical_sources"
             && values == ["/srv/projects/typemill", "/srv/projects/codeatlas"]
     ));
+}
+
+#[test]
+fn config_uses_canonical_scopes_and_resource_groups() {
+    assert!(matches!(
+        Args::parse_from(["vm", "config", "show", "--scope", "effective"]).command,
+        Command::Config {
+            command: ConfigSubcommand::Show {
+                scope: super::ConfigReadScope::Effective
+            }
+        }
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "config", "profiles", "set-default", "dev"]).command,
+        Command::Config { command: ConfigSubcommand::Profiles { command: super::ConfigProfileSubcommand::SetDefault { name } } } if name == "dev"
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "config", "presets", "apply", "nodejs", "python", "--scope", "user"]).command,
+        Command::Config { command: ConfigSubcommand::Presets { command: super::ConfigPresetSubcommand::Apply { names, scope: super::ConfigWriteScope::User } } } if names == ["nodejs", "python"]
+    ));
+    assert!(Args::try_parse_from([
+        "vm",
+        "config",
+        "set",
+        "provider",
+        "docker",
+        "--scope",
+        "effective"
+    ])
+    .is_err());
+    assert!(Args::try_parse_from(["vm", "config", "profile", "ls"]).is_err());
+    assert!(matches!(
+        Args::parse_from(["vm", "config", "set", "networking.networks", "--value-json", "[\"dev\"]"]).command,
+        Command::Config { command: ConfigSubcommand::Set { value_json: Some(json), values, .. } }
+        if json == "[\"dev\"]" && values.is_empty()
+    ));
+    assert!(Args::try_parse_from([
+        "vm",
+        "config",
+        "set",
+        "vm.memory",
+        "4096",
+        "--value-json",
+        "[]"
+    ])
+    .is_err());
 }
 
 #[test]
@@ -316,31 +422,59 @@ fn package_registration_parses_explicit_and_discovery_modes() {
 #[test]
 fn package_auth_can_import_the_active_github_credential() {
     assert!(matches!(
-        Args::parse_from(["vm", "packages", "auth", "--github"]).command,
+        Args::parse_from(["vm", "packages", "auth", "login"]).command,
         Command::Packages {
             command: PackagesSubcommand::Auth {
-                github: true,
-                token_file: None,
-                clear: false,
-                ..
+                command: super::PackageAuthSubcommand::Login {
+                    token_stdin: false,
+                    token_file: None
+                }
             }
         }
     ));
+    assert!(matches!(
+        Args::parse_from(["vm", "packages", "auth", "status"]).command,
+        Command::Packages {
+            command: PackagesSubcommand::Auth {
+                command: super::PackageAuthSubcommand::Status
+            }
+        }
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "packages", "auth", "logout"]).command,
+        Command::Packages {
+            command: PackagesSubcommand::Auth {
+                command: super::PackageAuthSubcommand::Logout
+            }
+        }
+    ));
+    assert!(Args::try_parse_from([
+        "vm",
+        "packages",
+        "auth",
+        "login",
+        "--token-stdin",
+        "--token-file",
+        "token.txt"
+    ])
+    .is_err());
 }
 
 #[test]
 fn package_init_parses_the_source_shelf() {
     assert!(matches!(
-        Args::parse_from(["vm", "packages", "init", "/srv/packages"]).command,
+        Args::parse_from(["vm", "packages", "service", "init", "--source-root", "/srv/packages"]).command,
         Command::Packages {
-            command: PackagesSubcommand::Init { source_root, port, .. }
+            command: PackagesSubcommand::Service { command: super::PackageServiceSubcommand::Init { source_root, port, .. } }
         } if source_root == std::path::Path::new("/srv/packages") && port == 3080
     ));
     assert!(matches!(
         Args::parse_from([
             "vm",
             "packages",
+            "service",
             "init",
+            "--source-root",
             "/srv/packages",
             "--engine",
             "docker",
@@ -353,13 +487,13 @@ fn package_init_parses_the_source_shelf() {
         ])
         .command,
         Command::Packages {
-            command: PackagesSubcommand::Init {
+            command: PackagesSubcommand::Service { command: super::PackageServiceSubcommand::Init {
                 source_root,
                 engine: PackageInfrastructureEngine::Docker,
                 port: 39081,
                 registry_image: Some(registry_image),
                 job_image: Some(job_image),
-            }
+            } }
         } if source_root == std::path::Path::new("/srv/packages")
             && registry_image == "registry:test"
             && job_image == "jobs:test"
@@ -387,9 +521,11 @@ fn package_release_accepts_an_inferred_checkout() {
 #[test]
 fn package_doctor_parses_safe_fix_mode() {
     assert!(matches!(
-        Args::parse_from(["vm", "packages", "doctor", "--fix"]).command,
+        Args::parse_from(["vm", "packages", "service", "doctor", "--fix"]).command,
         Command::Packages {
-            command: PackagesSubcommand::Doctor { fix: true, .. }
+            command: PackagesSubcommand::Service {
+                command: super::PackageServiceSubcommand::Doctor { fix: true }
+            }
         }
     ));
 }
@@ -439,10 +575,10 @@ fn package_cancel_parses_directory_inferred_workflow() {
 #[test]
 fn package_recovery_commands_parse() {
     assert!(matches!(
-        Args::parse_from(["vm", "packages", "restore", "backup-20260810"]),
+        Args::parse_from(["vm", "packages", "service", "backups", "restore", "backup-20260810"]),
         Args {
             command: Command::Packages {
-                command: PackagesSubcommand::Restore { backup_id, .. }
+                command: PackagesSubcommand::Service { command: super::PackageServiceSubcommand::Backups { command: super::PackageBackupSubcommand::Restore { name: backup_id } } }
             },
             ..
         } if backup_id == "backup-20260810"
@@ -469,6 +605,18 @@ fn package_inventory_commands_parse() {
             },
             ..
         }
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "packages", "show", "auth"]).command,
+        Command::Packages { command: PackagesSubcommand::Show { name } } if name == "auth"
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "packages", "consumers", "show", "app"]).command,
+        Command::Packages { command: PackagesSubcommand::Consumers { command: super::PackageConsumerSubcommand::Show { name } } } if name == "app"
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "packages", "consumers", "drift", "--package", "auth"]).command,
+        Command::Packages { command: PackagesSubcommand::Consumers { command: super::PackageConsumerSubcommand::Drift { package: Some(name) } } } if name == "auth"
     ));
 }
 
@@ -521,10 +669,10 @@ fn tool_refresh_status_and_batch_update_commands_parse() {
         }
     ));
     assert!(matches!(
-        Args::parse_from(["vm", "tools", "status", "backend"]).command,
+        Args::parse_from(["vm", "tools", "status", "--env", "backend"]).command,
         Command::Tools {
             command: ToolsSubcommand::Status {
-                environment: Some(environment)
+                env: Some(environment)
             }
         } if environment == "backend"
     ));
@@ -546,23 +694,23 @@ fn tool_refresh_status_and_batch_update_commands_parse() {
         Command::Tools {
             command: ToolsSubcommand::Update {
                 tools,
-                to,
+                env,
                 include_stopped: false,
                 background: true,
                 ..
             }
-        } if tools == ["agent-skills"] && to.is_empty()
+        } if tools == ["agent-skills"] && env.is_empty()
     ));
     assert!(matches!(
         Args::parse_from(["vm", "tools", "update"]).command,
         Command::Tools {
             command: ToolsSubcommand::Update {
                 tools,
-                to,
+                env,
                 include_stopped: false,
                 ..
             }
-        } if tools.is_empty() && to.is_empty()
+        } if tools.is_empty() && env.is_empty()
     ));
     assert!(matches!(
         Args::parse_from([
@@ -571,28 +719,28 @@ fn tool_refresh_status_and_batch_update_commands_parse() {
             "update",
             "agent-skills",
             "helper",
-            "--to",
+            "--env",
             "backend",
-            "--to",
+            "--env",
             "worker",
         ])
         .command,
         Command::Tools {
             command: ToolsSubcommand::Update {
                 tools,
-                to,
+                env,
                 include_stopped: false,
                 background: false,
                 ..
             }
-        } if tools == ["agent-skills", "helper"] && to == ["backend", "worker"]
+        } if tools == ["agent-skills", "helper"] && env == ["backend", "worker"]
     ));
     assert!(matches!(
-        Args::parse_from(["vm", "tools", "update", "--to", "backend", "agent-skills"])
+        Args::parse_from(["vm", "tools", "update", "--env", "backend", "agent-skills"])
             .command,
         Command::Tools {
-            command: ToolsSubcommand::Update { tools, to, .. }
-        } if tools == ["agent-skills"] && to == ["backend"]
+            command: ToolsSubcommand::Update { tools, env, .. }
+        } if tools == ["agent-skills"] && env == ["backend"]
     ));
     assert!(matches!(
         Args::parse_from([
@@ -613,6 +761,13 @@ fn tool_refresh_status_and_batch_update_commands_parse() {
     ));
     assert!(Args::try_parse_from(["vm", "tools", "update", "--fleet"]).is_err());
     assert!(Args::try_parse_from(["vm", "tools", "update", "--all"]).is_err());
+    assert!(Args::try_parse_from(["vm", "tools", "update", "--env", "dev", "--all-envs"]).is_err());
+    assert!(matches!(
+        Args::parse_from(["vm", "tools", "update", "--all-envs"]).command,
+        Command::Tools {
+            command: ToolsSubcommand::Update { all_envs: true, .. }
+        }
+    ));
 }
 
 #[test]
@@ -649,6 +804,49 @@ fn db_remains_top_level_builtin_command() {
 }
 
 #[test]
+fn db_backups_require_an_explicit_target() {
+    assert!(Args::try_parse_from(["vm", "db", "backups", "create", "daily"]).is_err());
+    assert!(Args::try_parse_from([
+        "vm",
+        "db",
+        "backups",
+        "create",
+        "daily",
+        "--database",
+        "app"
+    ])
+    .is_ok());
+    assert!(Args::try_parse_from([
+        "vm",
+        "db",
+        "backups",
+        "create",
+        "daily",
+        "--all",
+        "--database",
+        "app"
+    ])
+    .is_err());
+    assert!(Args::try_parse_from(["vm", "db", "backups", "restore", "daily.dump"]).is_err());
+}
+
+#[test]
+fn named_tunnel_requires_both_endpoints() {
+    assert!(Args::try_parse_from([
+        "vm",
+        "tunnels",
+        "open",
+        "app",
+        "--local",
+        "localhost:8080",
+        "--remote",
+        "localhost:3000"
+    ])
+    .is_ok());
+    assert!(Args::try_parse_from(["vm", "tunnels", "open", "app"]).is_err());
+}
+
+#[test]
 fn secrets_require_explicit_secure_input_or_a_prompt() {
     assert!(matches!(
         Args::parse_from(["vm", "secrets", "set", "TOKEN", "--stdin"]).command,
@@ -666,14 +864,14 @@ fn secrets_require_explicit_secure_input_or_a_prompt() {
 }
 
 #[test]
-fn config_render_parses_instance() {
+fn config_render_parses_environment() {
     assert!(matches!(
-        Args::parse_from(["vm", "config", "render", "--instance", "feature"]).command,
+        Args::parse_from(["vm", "config", "render", "--env", "feature"]).command,
         Command::Config {
             command: ConfigSubcommand::Render {
-                instance: Some(instance)
+                env: Some(env)
             }
-        } if instance == "feature"
+        } if env == "feature"
     ));
 }
 

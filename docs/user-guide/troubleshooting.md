@@ -82,7 +82,7 @@ The `vibe-tart` default is a Linux guest. Docker Engine runs directly inside
 that guest:
 
 ```bash
-vm config profile set tart
+vm config profiles set-default tart
 vm shell
 docker version
 docker run --rm busybox echo run-ok
@@ -120,8 +120,8 @@ socket.
 ```bash
 vm config ports --fix
 vm tunnels list
-vm tunnels stop 8080
-vm tunnels add 8080:3000 dev
+vm tunnels close web --env dev
+vm tunnels open web --local 127.0.0.1:8080 --remote 127.0.0.1:3000 --env dev
 ```
 
 Named instances can coexist, but complete stacks cannot share the same host
@@ -169,8 +169,8 @@ source binds.
 ## Package Registry
 
 ```bash
-vm packages status
-vm packages doctor --fix
+vm packages service status
+vm packages service doctor --fix
 ```
 
 `status` prints one classification: `healthy`, `degraded`, or `action required`.
@@ -191,7 +191,7 @@ internal name to a public registry.
 the appliance. A missing absolute root still stops before service
 reconciliation. An unhealthy child Git repository is moved intact under
 `.vm-quarantine`, healthy siblings continue, and the command reports
-`degraded`. Repair it with `vm packages doctor --fix`; an existing empty shelf
+`degraded`. Repair it with `vm packages service doctor --fix`; an existing empty shelf
 remains valid.
 
 If archived repositories reuse a current package name with a different Git
@@ -200,7 +200,7 @@ rerun `vm packages up`. The [Package Infrastructure guide](package-infrastructur
 owns the full equivalent-clone and conflicting-origin rules.
 
 Canonical project workspaces use a different, read-only policy. If bare `vm
-packages release` reports missing attestation, first run `vm packages doctor
+packages release` reports missing attestation, first run `vm packages service doctor
 --fix` on the host to repair registration drift. If the physical repository is
 not yet a trusted canonical source, enroll it with `vm packages register
 <local-path>`, then reconcile the environment. Another clone with the same
@@ -226,7 +226,7 @@ project environments, or named volumes.
 An isolated binary-build launcher or worker I/O failure is infrastructure, not
 source rework. The job stays queued with retry backoff and logs the failing
 stage, manifest program, and managed working directory. Repair the appliance
-with `vm packages doctor --fix` or `vm packages up`, then rerun `vm packages
+with `vm packages service doctor --fix` or `vm packages up`, then rerun `vm packages
 release`; the approved immutable integration resumes without reading or changing
 newer worktree edits. A build command that runs and exits unsuccessfully still
 requests source changes normally.
@@ -239,8 +239,8 @@ worker configuration.
 For an existing environment, run this on the controller host:
 
 ```bash
-vm tools status [environment]
-vm tools update --to <environment>
+vm tools status [--env NAME]
+vm tools update --env <environment>
 ```
 
 `PROJECT_COPY=yes` means a standalone project checkout shadows the managed
@@ -253,8 +253,8 @@ links without a base rebuild or persistent edge-cache removal. Select a vendor
 explicitly to fetch its latest official release:
 
 ```bash
-vm tools update codex --to <environment>
-vm tools update claude antigravity --to <environment>
+vm tools update codex --env <environment>
+vm tools update claude antigravity --env <environment>
 ```
 
 If VM refuses to overwrite an unmanaged launcher, resolve that ownership before
@@ -273,7 +273,7 @@ repair remains targeted to a broken linked worktree and stays silent. Shell
 attachment itself does not wait for package or tool maintenance.
 
 For a deterministic foreground result, run `vm tools refresh` followed by `vm
-tools update --to <environment>` on the host. The update waits for an in-flight
+tools update --env <environment>` on the host. The update waits for an in-flight
 repair and fails if a required vendor or managed package tool remains unusable.
 
 If a package/tool command was run inside a managed guest, do not try to operate
@@ -284,7 +284,7 @@ A built-in tool can be registered but not published on a fresh controller. From
 an existing managed guest, run `vm packages checkout agent-skills`, continue in
 the printed source path, commit the intended versioned change, and run bare `vm
 packages release`. A globally enabled collection activates automatically across
-running environments; use `vm tools update --to <environment>` only for targeted
+running environments; use `vm tools update --env <environment>` only for targeted
 repair. See [Package Infrastructure](package-infrastructure.md#advanced-tool-manifests-and-targeting)
 for registration, targeting, locking, and package-state behavior.
 

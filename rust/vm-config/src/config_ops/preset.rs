@@ -2,6 +2,8 @@ mod materialize;
 
 // External crates
 use serde_yaml_ng as serde_yaml;
+use std::collections::BTreeSet;
+use std::path::PathBuf;
 use tracing::instrument;
 
 // Internal imports
@@ -20,8 +22,17 @@ use materialize::materialize_minimal_preset_config;
 pub(crate) use materialize::resolve_declared_presets;
 
 /// Apply preset(s) to configuration
-pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) -> Result<()> {
-    let project_dir = std::env::current_dir()?;
+pub fn preset(
+    preset_names: &str,
+    global: bool,
+    list: bool,
+    show: Option<&str>,
+    path: Option<PathBuf>,
+) -> Result<()> {
+    let project_dir = match path.as_ref().and_then(|path| path.parent()) {
+        Some(parent) => parent.to_path_buf(),
+        None => std::env::current_dir()?,
+    };
     let detector = PresetDetector::new(project_dir);
 
     if list {
@@ -32,7 +43,7 @@ pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) 
         return show_preset(&detector, name);
     }
 
-    apply_preset_to_config(&detector, preset_names, global)
+    apply_preset_to_config(&detector, preset_names, global, path)
 }
 
 /// List all available presets
@@ -69,11 +80,12 @@ fn apply_preset_to_config(
     detector: &PresetDetector,
     preset_names: &str,
     global: bool,
+    path: Option<PathBuf>,
 ) -> Result<()> {
     let local_config_path = if global {
         None
     } else {
-        Some(std::env::current_dir()?.join("vm.yaml"))
+        Some(path.unwrap_or(std::env::current_dir()?.join("vm.yaml")))
     };
     let initializing_local = local_config_path
         .as_ref()
@@ -106,7 +118,7 @@ fn apply_preset_to_config(
             vm_println!("  • {}{}", preset, description);
         }
         vm_println!("");
-        vm_println!("💡 Apply with: vm config preset <name>");
+        vm_println!("💡 Apply with: vm config presets apply <name>");
         return Err(VmError::Config(format!(
             "Preset(s) not found: {}",
             missing_presets.join(", ")
@@ -176,6 +188,12 @@ fn apply_preset_to_config(
 
     // Clone base_config to track original user customizations
     let original_base_config = base_config.clone();
+    let explicit_value = if config_existed {
+        let content = std::fs::read_to_string(&config_path)?;
+        CoreOperations::parse_yaml_with_diagnostics(&content, &config_path.display().to_string())?
+    } else {
+        serde_yaml::Value::Null
+    };
     let mut merged_config = base_config;
     let mut last_preset_config: Option<VmConfig> = None;
 
@@ -197,6 +215,21 @@ fn apply_preset_to_config(
         last_preset_config = Some(preset_config);
     }
 
+    let mut conflicts = BTreeSet::new();
+    collect_changed_explicit_fields(
+        &explicit_value,
+        &serde_yaml::to_value(&original_base_config)?,
+        &serde_yaml::to_value(&merged_config)?,
+        "",
+        &mut conflicts,
+    );
+    if !conflicts.is_empty() {
+        return Err(VmError::Config(format!(
+            "Preset conflicts with explicit settings: {}. Unset those fields before applying it",
+            conflicts.into_iter().collect::<Vec<_>>().join(", ")
+        )));
+    }
+
     // Create minimal config with only project-specific fields
     let (minimal_config, warn_preserved_customizations) = materialize_minimal_preset_config(
         &merged_config,
@@ -215,6 +248,7 @@ fn apply_preset_to_config(
 
     let config_yaml = serde_yaml::to_string(&minimal_config)?;
     let config_value = CoreOperations::parse_yaml_with_diagnostics(&config_yaml, "merged config")?;
+    super::validate::candidate(&config_value, &config_path, global)?;
     CoreOperations::write_yaml_file(&config_path, &config_value)?;
 
     let scope = if global { "global" } else { "local" };
@@ -237,6 +271,45 @@ fn apply_preset_to_config(
 
     vm_println!("{}", MESSAGES.config.restart_hint);
     Ok(())
+}
+
+fn collect_changed_explicit_fields(
+    explicit: &serde_yaml::Value,
+    before: &serde_yaml::Value,
+    after: &serde_yaml::Value,
+    path: &str,
+    conflicts: &mut BTreeSet<String>,
+) {
+    if let serde_yaml::Value::Mapping(fields) = explicit {
+        for (key, value) in fields {
+            let Some(key) = key.as_str() else { continue };
+            let next = if path.is_empty() {
+                key.to_string()
+            } else {
+                format!("{path}.{key}")
+            };
+            if matches!(next.as_str(), "preset" | "version" | "$schema") {
+                continue;
+            }
+            let before_field = before.as_mapping().and_then(|map| map.get(key));
+            let after_field = after.as_mapping().and_then(|map| map.get(key));
+            match (before_field, after_field) {
+                (Some(before_field), Some(after_field)) => collect_changed_explicit_fields(
+                    value,
+                    before_field,
+                    after_field,
+                    &next,
+                    conflicts,
+                ),
+                (Some(_), None) => {
+                    conflicts.insert(next);
+                }
+                _ => {}
+            }
+        }
+    } else if before != after && !path.is_empty() {
+        conflicts.insert(path.to_string());
+    }
 }
 
 /// Print warning about preserved customizations

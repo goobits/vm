@@ -1,8 +1,5 @@
 //! Selection of one existing environment for a command.
 
-use dialoguer::{theme::ColorfulTheme, Select};
-use std::io::IsTerminal;
-
 use crate::error::{VmError, VmResult};
 use vm_config::config::VmConfig;
 use vm_provider::{InstanceInfo, InstanceProvider};
@@ -13,7 +10,7 @@ enum TargetChoice {
     Missing,
 }
 
-pub(super) fn canonical_instance_name(
+pub(in crate::commands) fn canonical_instance_name(
     provider: &str,
     project: &str,
     instance: Option<&str>,
@@ -79,7 +76,7 @@ pub(in crate::commands) fn resolve_runtime_instance(
     })
 }
 
-pub(super) fn find_runtime_target(
+pub(in crate::commands) fn find_runtime_target(
     provider: &dyn InstanceProvider,
     config: &VmConfig,
     requested: Option<&str>,
@@ -92,31 +89,18 @@ pub(super) fn find_runtime_target(
     let canonical = provider
         .resolve_instance_name(None)
         .map_err(VmError::from)?;
-    let all_instances = provider.list_instances().map_err(VmError::from)?;
-    if let Some(exact) = exact_requested_target(&all_instances, requested) {
-        return Ok(Some(exact));
-    }
-    let instances = all_instances
+    let instances = provider
+        .list_instances()
+        .map_err(VmError::from)?
         .into_iter()
-        .filter(|instance| project_instance_matches(instance, project))
+        .filter(|instance| instance.project.as_deref() == Some(project))
         .collect::<Vec<_>>();
 
     match choose_target(&instances, project, &canonical, requested) {
         TargetChoice::Selected(name) => Ok(Some(name)),
-        TargetChoice::Ambiguous(candidates) => select_ambiguous_target(candidates).map(Some),
+        TargetChoice::Ambiguous(candidates) => Err(ambiguous_target(candidates)),
         TargetChoice::Missing => Ok(None),
     }
-}
-
-fn exact_requested_target(
-    instances: &[InstanceInfo],
-    requested: Option<&str>,
-) -> Option<InstanceInfo> {
-    let requested = requested?;
-    instances
-        .iter()
-        .find(|instance| instance.name == requested)
-        .cloned()
 }
 
 fn choose_target(
@@ -174,30 +158,10 @@ fn requested_target_choice(
         _ => return TargetChoice::Ambiguous(alias_matches),
     }
 
-    let id_matches = instances
-        .iter()
-        .filter(|instance| instance.id.starts_with(requested))
-        .cloned()
-        .collect::<Vec<_>>();
-    match id_matches.as_slice() {
-        [instance] => return TargetChoice::Selected(instance.clone()),
-        [] => {}
-        _ => return TargetChoice::Ambiguous(id_matches),
-    }
-
-    let name_matches = instances
-        .iter()
-        .filter(|instance| instance.name.contains(requested))
-        .cloned()
-        .collect::<Vec<_>>();
-    match name_matches.as_slice() {
-        [instance] => TargetChoice::Selected(instance.clone()),
-        [] => TargetChoice::Missing,
-        _ => TargetChoice::Ambiguous(name_matches),
-    }
+    TargetChoice::Missing
 }
 
-fn select_ambiguous_target(mut candidates: Vec<InstanceInfo>) -> VmResult<InstanceInfo> {
+fn ambiguous_target(mut candidates: Vec<InstanceInfo>) -> VmError {
     candidates.sort_by(|left, right| left.name.cmp(&right.name));
     let names = candidates
         .iter()
@@ -205,29 +169,10 @@ fn select_ambiguous_target(mut candidates: Vec<InstanceInfo>) -> VmResult<Instan
         .collect::<Vec<_>>()
         .join(", ");
 
-    if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
-        return Err(VmError::validation(
-            "Multiple environments match",
-            Some(format!("Specify one of: {names}")),
-        ));
-    }
-
-    let labels = candidates
-        .iter()
-        .map(|instance| {
-            format!(
-                "{} ({}, {})",
-                instance.name, instance.status, instance.provider
-            )
-        })
-        .collect::<Vec<_>>();
-    let selected = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Which environment?")
-        .items(&labels)
-        .default(0)
-        .interact()
-        .map_err(|error| VmError::general(error, "Failed to read environment selection"))?;
-    Ok(candidates[selected].clone())
+    VmError::validation(
+        "Multiple environments match",
+        Some(format!("Specify one of: {names}")),
+    )
 }
 
 pub fn copy_target(source: &str, destination: &str) -> VmResult<Option<String>> {
@@ -253,16 +198,12 @@ fn remote_target(path: &str) -> Option<&str> {
 
 pub fn project_instance_matches(instance: &InstanceInfo, project_name: &str) -> bool {
     instance.project.as_deref() == Some(project_name)
-        || instance.name == project_name
-        || instance.name == format!("{project_name}-dev")
-        || instance.name.starts_with(&format!("{project_name}-"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        canonical_instance_name, choose_target, copy_target, creation_instance_name,
-        exact_requested_target, TargetChoice,
+        canonical_instance_name, choose_target, copy_target, creation_instance_name, TargetChoice,
     };
     use vm_provider::InstanceInfo;
 
@@ -288,15 +229,16 @@ mod tests {
     }
 
     #[test]
-    fn exact_environment_name_resolves_across_project_boundaries() {
-        let mut other = instance("projects-dev");
-        other.project = Some("projects".to_string());
-
-        assert_eq!(
-            exact_requested_target(&[other], Some("projects-dev")).map(|instance| instance.name),
-            Some("projects-dev".to_string())
-        );
-        assert!(exact_requested_target(&[], Some("projects-dev")).is_none());
+    fn substring_and_id_prefixes_do_not_select_an_environment() {
+        let instances = vec![instance("demo-feature-dev")];
+        assert!(matches!(
+            choose_target(&instances, "demo", "demo-dev", Some("feat")),
+            TargetChoice::Missing
+        ));
+        assert!(matches!(
+            choose_target(&instances, "demo", "demo-dev", Some("id-demo")),
+            TargetChoice::Missing
+        ));
     }
 
     #[test]

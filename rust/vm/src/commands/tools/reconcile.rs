@@ -50,7 +50,7 @@ pub(in crate::commands) fn reconcile_managed_guest(
     if config.package_edge.is_some() {
         packages::reconcile_client_settings(provider, environment, config)?;
     }
-    crate::commands::managed_guest::reconcile_remote_commands(provider, environment)
+    Ok(())
 }
 
 pub(super) fn apply_updates(
@@ -140,7 +140,9 @@ pub(super) fn apply_updates(
         if !broken.is_empty() {
             return Err(VmError::validation(
                 format!("Tool activation is not consumable: {}", broken.join(", ")),
-                Some(format!("Run `vm tools update --to {environment}` to retry")),
+                Some(format!(
+                    "Run `vm tools update --env {environment}` to retry"
+                )),
             ));
         }
     }

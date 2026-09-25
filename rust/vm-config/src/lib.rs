@@ -20,7 +20,7 @@
 //!
 //! ### Provision Presets
 //!
-//! Package manifests installed at runtime. Used via `vm config preset <preset>`.
+//! Package manifests installed at runtime. Used via `vm config presets apply <preset>`.
 //! Merges package lists into existing `vm.yaml`.
 //!
 //! Preset loading and discovery is handled internally by the `preset` module.

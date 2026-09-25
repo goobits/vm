@@ -24,12 +24,11 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
         )
     })?;
 
-    // Common config locations
-    let config_paths = vec![
-        home.join(".vm"),
-        home.join(".config/vm"),
-        home.join(".vm-install.log"),
-    ];
+    // Delete only configuration files. The state directory also contains
+    // secrets, service state, and other durable data.
+    let state_dir = vm_core::user_paths::vm_state_dir()
+        .map_err(|e| VmError::general(e, "Failed to locate VM state".to_string()))?;
+    let config_paths = configuration_files(&state_dir);
 
     for path in &config_paths {
         if path.exists() {
@@ -74,11 +73,7 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
     if !keep_config {
         for path in &config_files {
             vm_progress!("Removing {}...", path.display());
-            if path.is_dir() {
-                if let Err(e) = std::fs::remove_dir_all(path) {
-                    vm_warning!("Failed to remove {}: {}", path.display(), e);
-                }
-            } else if let Err(e) = std::fs::remove_file(path) {
+            if let Err(e) = std::fs::remove_file(path) {
                 vm_warning!("Failed to remove {}: {}", path.display(), e);
             }
         }
@@ -113,6 +108,10 @@ pub fn handle_uninstall(keep_config: bool, yes: bool) -> Result<(), VmError> {
     }
 
     Ok(())
+}
+
+fn configuration_files(state_dir: &std::path::Path) -> Vec<PathBuf> {
+    vec![state_dir.join("config.yaml")]
 }
 
 fn find_shell_configs(home: &std::path::Path) -> Vec<PathBuf> {
@@ -183,7 +182,16 @@ fn is_installer_marker(line: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{clean_shell_config, find_shell_configs};
+    use super::{clean_shell_config, configuration_files, find_shell_configs};
+
+    #[test]
+    fn config_deletion_never_selects_secrets_or_state() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(
+            configuration_files(dir.path()),
+            vec![dir.path().join("config.yaml")]
+        );
+    }
 
     #[test]
     fn shell_cleanup_removes_only_installer_owned_lines() {

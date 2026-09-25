@@ -1,5 +1,6 @@
 use std::{
     fs,
+    io::{self, IsTerminal, Read},
     path::PathBuf,
     process::{Command, Stdio},
 };
@@ -22,27 +23,57 @@ pub(super) fn repair_github(files: &ApplianceFiles) -> VmResult<bool> {
     Ok(true)
 }
 
-pub(super) fn configure(
+pub(super) fn login(
     files: &ApplianceFiles,
-    git_token_file: Option<PathBuf>,
-    github: bool,
-    clear_git: bool,
+    token_stdin: bool,
+    token_file: Option<PathBuf>,
 ) -> VmResult<()> {
-    if git_token_file.is_none() && !github && !clear_git {
-        return Err(VmError::validation(
-            "Provide --github, a Git token file, or --clear",
-            None::<String>,
-        ));
-    }
-    let git_token = if github {
-        Some(github_token()?)
+    let token = if token_stdin {
+        if io::stdin().is_terminal() {
+            return Err(VmError::validation(
+                "--token-stdin requires piped input",
+                Some("Pipe the token into vm packages auth login --token-stdin"),
+            ));
+        }
+        let mut token = String::new();
+        io::stdin()
+            .read_to_string(&mut token)
+            .map_err(|error| VmError::general(error, "Could not read Git token from stdin"))?;
+        token.trim().to_string()
+    } else if let Some(path) = token_file {
+        fs::read_to_string(&path)
+            .map_err(|error| {
+                VmError::filesystem(error, path.display().to_string(), "read Git token")
+            })?
+            .trim()
+            .to_string()
     } else {
-        credential(git_token_file, clear_git, "Git")?
+        github_token()?
     };
-    if let Some(token) = git_token {
-        files.set_git_token(&token)?;
-        vm_success!("Package Git credential updated");
+    if token.is_empty() {
+        return Err(VmError::validation("Git token is empty", None::<String>));
     }
+    files.set_git_token(&token)?;
+    vm_success!("Package Git credential updated");
+    vm_println!("Run `vm packages up` to apply it to the appliance");
+    Ok(())
+}
+
+pub(super) fn status(files: &ApplianceFiles) -> VmResult<()> {
+    vm_println!(
+        "Package Git credential: {}",
+        if files.has_git_token()? {
+            "configured"
+        } else {
+            "not configured"
+        }
+    );
+    Ok(())
+}
+
+pub(super) fn logout(files: &ApplianceFiles) -> VmResult<()> {
+    files.set_git_token("")?;
+    vm_success!("Package Git credential removed");
     vm_println!("Run `vm packages up` to apply it to the appliance");
     Ok(())
 }
@@ -82,24 +113,4 @@ fn invalid_github_credential() -> VmError {
         "The GitHub CLI has no valid active credential",
         Some("Run `gh auth login --hostname github.com`, then retry"),
     )
-}
-
-fn credential(path: Option<PathBuf>, clear: bool, kind: &str) -> VmResult<Option<String>> {
-    match (path, clear) {
-        (Some(path), false) => fs::read_to_string(&path)
-            .map(|token| Some(token.trim().to_string()))
-            .map_err(|error| {
-                VmError::filesystem(
-                    error,
-                    path.display().to_string(),
-                    format!("read {kind} token"),
-                )
-            }),
-        (None, true) => Ok(Some(String::new())),
-        (None, false) => Ok(None),
-        (Some(_), true) => Err(VmError::validation(
-            format!("Cannot set and clear the {kind} token together"),
-            None::<String>,
-        )),
-    }
 }

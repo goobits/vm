@@ -106,7 +106,7 @@ impl CoreOperations {
         let formatted_yaml = super::formatter::post_process_yaml(&yaml);
 
         // Write to file
-        fs::write(file, formatted_yaml)
+        vm_core::file_system::atomic_write(file, formatted_yaml.as_bytes())
             .map_err(|e| VmError::Filesystem(format!("Failed to write file: {file:?}: {e}")))
     }
 

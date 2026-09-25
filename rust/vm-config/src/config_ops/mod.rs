@@ -12,6 +12,7 @@ mod io;
 pub(crate) mod preset;
 mod set;
 mod unset;
+mod validate;
 
 // Public modules for specific functionalities
 pub mod port_placeholders;
@@ -20,6 +21,7 @@ pub mod port_placeholders;
 pub use init::init_config_file;
 
 // Internal imports
+use std::path::PathBuf;
 use vm_core::error::Result;
 
 /// Configuration operations for VM configuration management.
@@ -33,7 +35,21 @@ impl ConfigOps {
     /// Set a configuration value using dot notation with schema-aware type detection.
     /// Accepts multiple values for array fields.
     pub fn set(field: &str, values: &[String], global: bool, dry_run: bool) -> Result<()> {
-        set::set(field, values, global, dry_run)
+        Self::set_at(field, values, global, dry_run, None)
+    }
+
+    pub fn set_at(
+        field: &str,
+        values: &[String],
+        global: bool,
+        dry_run: bool,
+        path: Option<PathBuf>,
+    ) -> Result<()> {
+        set::set(field, values, global, dry_run, path, None)
+    }
+
+    pub fn set_json_at(field: &str, json: &str, global: bool, path: Option<PathBuf>) -> Result<()> {
+        set::set(field, &[], global, false, path, Some(json))
     }
 
     /// Get a configuration value or display entire configuration.
@@ -43,7 +59,11 @@ impl ConfigOps {
 
     /// Unset (remove) a configuration field.
     pub fn unset(field: &str, global: bool) -> Result<()> {
-        unset::unset(field, global)
+        Self::unset_at(field, global, None)
+    }
+
+    pub fn unset_at(field: &str, global: bool, path: Option<PathBuf>) -> Result<()> {
+        unset::unset(field, global, path)
     }
 
     /// Clear (delete) configuration file.
@@ -53,6 +73,16 @@ impl ConfigOps {
 
     /// Apply preset(s) to configuration.
     pub fn preset(preset_names: &str, global: bool, list: bool, show: Option<&str>) -> Result<()> {
-        preset::preset(preset_names, global, list, show)
+        Self::preset_at(preset_names, global, list, show, None)
+    }
+
+    pub fn preset_at(
+        preset_names: &str,
+        global: bool,
+        list: bool,
+        show: Option<&str>,
+        path: Option<PathBuf>,
+    ) -> Result<()> {
+        preset::preset(preset_names, global, list, show, path)
     }
 }

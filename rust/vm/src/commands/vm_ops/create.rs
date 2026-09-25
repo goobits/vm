@@ -110,19 +110,13 @@ pub async fn handle_create(
     }
     if let Some(existing) = existing_instance.as_ref() {
         if !force {
-            vm_warning!(
-                "Environment '{}' already exists{}",
-                target_name,
-                if existing.status.to_lowercase().contains("running")
-                    || existing.status.to_lowercase().contains("up")
-                {
-                    " and is running"
-                } else {
-                    ""
-                }
-            );
-            vm_hint!("Use `vm shell`, `vm start`, or remove it before `vm run`");
-            return Ok(());
+            return Err(VmError::validation(
+                format!(
+                    "Environment '{}' already exists ({})",
+                    target_name, existing.status
+                ),
+                Some("Use `vm start` or remove it before creating it again"),
+            ));
         }
     }
 
@@ -203,7 +197,7 @@ pub async fn handle_create(
                 "Seeding database '{db_name}' from {}...",
                 seed_file.display()
             );
-            if let Err(e) = crate::commands::db::backup::import_db(db_name, seed_file).await {
+            if let Err(e) = crate::commands::db::backup::import_db(db_name, seed_file, true).await {
                 vm_warning!("Database seeding failed: {e}");
             }
         }

@@ -12,25 +12,49 @@ use super::guest::{InstallMode, InstalledTool};
 use super::reconcile::{apply_updates, reconcile_subject};
 use crate::cli::FleetArgs;
 use crate::commands::base;
-use crate::commands::command_context::{load_runtime_subject_for_instance, RuntimeSubject};
+use crate::commands::command_context::{
+    load_runtime_subject, load_runtime_subject_for_instance, project_name, require_project_config,
+    RuntimeSubject,
+};
 use crate::commands::vm_ops::{self, FleetProgress, InstanceStateFilter};
 use crate::error::{VmError, VmResult};
 
-pub(super) async fn run(
-    config_path: Option<PathBuf>,
-    profile: Option<String>,
-    tools: Vec<String>,
-    environments: Vec<String>,
-    include_stopped: bool,
-    mode: InstallMode,
-) -> VmResult<()> {
+pub(super) struct UpdateRequest {
+    pub config_path: Option<PathBuf>,
+    pub profile: Option<String>,
+    pub tools: Vec<String>,
+    pub environments: Vec<String>,
+    pub all_envs: bool,
+    pub global: bool,
+    pub include_stopped: bool,
+    pub mode: InstallMode,
+}
+
+pub(super) async fn run(request: UpdateRequest) -> VmResult<()> {
+    let UpdateRequest {
+        config_path,
+        profile,
+        tools,
+        environments,
+        all_envs,
+        global,
+        include_stopped,
+        mode,
+    } = request;
     let update_all = tools.is_empty();
     let (vendor_tools, managed_tools) = partition_update_request(tools);
     let update_managed = update_all || !managed_tools.is_empty();
-    let (instances, requested_tools) =
-        resolve_request(&managed_tools, &environments, include_stopped)?;
+    let (instances, requested_tools) = resolve_request(
+        config_path.clone(),
+        profile.clone(),
+        &managed_tools,
+        &environments,
+        all_envs,
+        global,
+        include_stopped,
+    )?;
     if instances.is_empty() {
-        vm_println!("No managed environments found");
+        vm_println!("No running managed environments; tool selection will apply when one starts");
         return Ok(());
     }
 
@@ -40,11 +64,21 @@ pub(super) async fn run(
     let mut progress = FleetProgress::default();
     let mut load_failed = false;
     for instance in instances {
-        match load_runtime_subject_for_instance(config_path.clone(), profile.clone(), &instance) {
+        let target_config = if global { None } else { config_path.clone() };
+        let target_profile = if global { None } else { profile.clone() };
+        match load_runtime_subject_for_instance(target_config, target_profile, &instance) {
             Ok(mut subject) => {
                 remove_stale_vendor_selections(&mut subject.config);
                 if update_managed {
                     configured.extend(select_configured_tools(&mut subject.config, &requested));
+                }
+                if !vm_ops::is_running_status(&instance.status) {
+                    vm_println!(
+                        "Deferred tool update for stopped environment {}",
+                        instance.name
+                    );
+                    progress.success(&instance.name);
+                    continue;
                 }
                 subjects.push(subject);
             }
@@ -142,13 +176,38 @@ pub(super) async fn activate_tool(subject: &mut RuntimeSubject, tool: &str) -> V
 }
 
 fn resolve_request(
+    config_path: Option<PathBuf>,
+    profile: Option<String>,
     tools: &[String],
     environments: &[String],
+    all_envs: bool,
+    global: bool,
     include_stopped: bool,
 ) -> VmResult<(Vec<InstanceInfo>, Vec<String>)> {
+    if global {
+        return resolve_request_with(
+            tools,
+            environments,
+            true,
+            None,
+            None,
+            include_stopped,
+            vm_ops::resolve_fleet_targets,
+        );
+    }
+    let config = VmConfig::load(config_path.clone()).map_err(VmError::from)?;
+    require_project_config(&config)?;
+    let selected = if all_envs || !environments.is_empty() {
+        None
+    } else {
+        Some(load_runtime_subject(config_path, profile, None)?.target)
+    };
     resolve_request_with(
         tools,
         environments,
+        all_envs,
+        Some(project_name(&config)),
+        selected.as_deref(),
         include_stopped,
         vm_ops::resolve_fleet_targets,
     )
@@ -157,33 +216,56 @@ fn resolve_request(
 fn resolve_request_with(
     tools: &[String],
     environments: &[String],
+    all_envs: bool,
+    project: Option<&str>,
+    selected: Option<&str>,
     include_stopped: bool,
     mut resolve: impl FnMut(&FleetArgs, InstanceStateFilter) -> VmResult<Vec<InstanceInfo>>,
 ) -> VmResult<(Vec<InstanceInfo>, Vec<String>)> {
-    let state = if include_stopped {
-        InstanceStateFilter::Any
-    } else {
-        InstanceStateFilter::Running
-    };
-    if !environments.is_empty() {
-        let query = FleetArgs {
-            fleet: true,
-            provider: None,
-            pattern: None,
-        };
-        let instances = resolve(&query, state)?;
-        return Ok((
-            select_named_targets(instances, environments, include_stopped)?,
-            tools.to_vec(),
-        ));
-    }
-
     let query = FleetArgs {
         fleet: true,
-        provider: Some("docker".into()),
+        provider: None,
         pattern: None,
     };
-    Ok((resolve(&query, state)?, tools.to_vec()))
+    let instances = resolve(&query, InstanceStateFilter::Any)?
+        .into_iter()
+        .filter(|instance| {
+            project.map_or(true, |project| instance.project.as_deref() == Some(project))
+        })
+        .collect::<Vec<_>>();
+    let targets = if all_envs {
+        instances
+            .into_iter()
+            .filter(|instance| include_stopped || vm_ops::is_running_status(&instance.status))
+            .collect()
+    } else {
+        let names = if environments.is_empty() {
+            vec![selected
+                .ok_or_else(|| {
+                    VmError::validation(
+                        "No environment selected",
+                        Some("Use --env NAME or --all-envs"),
+                    )
+                })?
+                .to_string()]
+        } else {
+            environments.to_vec()
+        };
+        select_named_targets(instances, &names, include_stopped)?
+    };
+    if targets.is_empty() {
+        if project.is_none() {
+            return Ok((Vec::new(), tools.to_vec()));
+        }
+        return Err(VmError::validation(
+            format!(
+                "No matching running environments belong to {}",
+                project.unwrap_or("the configured scope")
+            ),
+            Some("Run `vm list` to inspect project environments"),
+        ));
+    }
+    Ok((targets, tools.to_vec()))
 }
 
 fn validate_configured_selection(
@@ -204,7 +286,7 @@ fn validate_configured_selection(
             unconfigured.join(", ")
         ),
         Some(
-            "Add each tool under `tools` in a target project's vm.yaml; select environments with `--to <environment>`",
+            "Add each tool under `tools` in the project vm.yaml; select environments with `--env NAME`",
         ),
     ))
 }
@@ -222,7 +304,10 @@ fn select_named_targets(
     let mut missing = Vec::new();
     for name in requested {
         match available.remove(name) {
-            Some(instance) => selected.push(instance),
+            Some(instance) if include_stopped || vm_ops::is_running_status(&instance.status) => {
+                selected.push(instance)
+            }
+            Some(_) => missing.push(name.clone()),
             None if !missing.contains(name) => missing.push(name.clone()),
             None => {}
         }
@@ -240,9 +325,9 @@ fn select_named_targets(
                 missing.join(", ")
             ),
             Some(if include_stopped {
-                "Use `vm list --all`"
+                "Use `vm list --all-projects`"
             } else {
-                "Use `vm list --all` or add --include-stopped"
+                "Use `vm list --all-projects` or add --include-stopped"
             }),
         ));
     }
@@ -335,7 +420,7 @@ mod tests {
             id: format!("{name}-id"),
             status: "running".into(),
             provider: provider.into(),
-            project: Some(name.into()),
+            project: Some("demo".into()),
             uptime: None,
             created_at: None,
         }
@@ -615,14 +700,17 @@ mod tests {
     }
 
     #[test]
-    fn explicit_targets_query_every_provider_and_positional_names_remain_tools() {
+    fn targets_are_project_scoped_and_default_to_one_environment() {
         let (targets, tools) = resolve_request_with(
             &["agent-skills".into()],
             &["mac".into()],
             false,
+            Some("demo"),
+            None,
+            false,
             |query, state| {
                 assert_eq!(query.provider, None);
-                assert_eq!(state, InstanceStateFilter::Running);
+                assert_eq!(state, InstanceStateFilter::Any);
                 Ok(vec![
                     instance("agent-skills-dev", "docker"),
                     instance("mac", "tart"),
@@ -637,6 +725,9 @@ mod tests {
         resolve_request_with(
             &["agent-skills".into()],
             &["mac".into()],
+            false,
+            Some("demo"),
+            None,
             true,
             |_, state| {
                 assert_eq!(state, InstanceStateFilter::Any);
@@ -645,15 +736,60 @@ mod tests {
         )
         .unwrap();
 
-        let (targets, tools) =
-            resolve_request_with(&["agent-skills".into()], &[], false, |query, state| {
-                assert_eq!(query.provider.as_deref(), Some("docker"));
-                assert_eq!(state, InstanceStateFilter::Running);
+        let (targets, tools) = resolve_request_with(
+            &["agent-skills".into()],
+            &[],
+            false,
+            Some("demo"),
+            Some("agent-skills-dev"),
+            false,
+            |query, state| {
+                assert_eq!(query.provider, None);
+                assert_eq!(state, InstanceStateFilter::Any);
                 Ok(vec![instance("agent-skills-dev", "docker")])
-            })
-            .unwrap();
+            },
+        )
+        .unwrap();
         assert_eq!(targets[0].name, "agent-skills-dev");
         assert_eq!(tools, ["agent-skills"]);
+
+        let targets = resolve_request_with(&[], &[], true, Some("demo"), None, false, |_, _| {
+            let mut unrelated = instance("other", "docker");
+            unrelated.project = Some("other".into());
+            Ok(vec![instance("mac", "tart"), unrelated])
+        })
+        .unwrap()
+        .0;
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].name, "mac");
+    }
+
+    #[test]
+    fn stopped_targets_require_explicit_deferral() {
+        let mut stopped = instance("sleeping", "docker");
+        stopped.status = "stopped".into();
+        assert!(resolve_request_with(
+            &[],
+            &["sleeping".into()],
+            false,
+            Some("demo"),
+            None,
+            false,
+            |_, _| Ok(vec![stopped.clone()])
+        )
+        .is_err());
+        let selected = resolve_request_with(
+            &[],
+            &["sleeping".into()],
+            false,
+            Some("demo"),
+            None,
+            true,
+            |_, _| Ok(vec![stopped.clone()]),
+        )
+        .unwrap()
+        .0;
+        assert_eq!(selected[0].name, "sleeping");
     }
 
     #[test]

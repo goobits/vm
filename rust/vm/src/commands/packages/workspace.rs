@@ -264,7 +264,7 @@ fn validate_checkout(
     {
         return Err(VmError::validation(
             "Workspace release state does not match the registered source and environment",
-            Some("Run `vm packages doctor --fix`"),
+            Some("Run `vm packages service doctor --fix`"),
         ));
     }
     Ok(())

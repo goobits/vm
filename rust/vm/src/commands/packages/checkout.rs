@@ -368,7 +368,7 @@ fn editable_source(
                 Some(context.pinned_version.clone().ok_or_else(|| {
                     VmError::validation(
                         "Package infrastructure did not return the consumer's pinned version",
-                        Some("Run `vm packages doctor --fix` on the controller host"),
+                        Some("Run `vm packages service doctor --fix` on the controller host"),
                     )
                 })?)
             };

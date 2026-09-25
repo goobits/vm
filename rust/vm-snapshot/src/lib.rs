@@ -5,6 +5,7 @@
 mod archive;
 mod archive_manifest;
 mod base_image;
+mod compose_plan;
 mod create;
 mod docker;
 mod export;
@@ -20,7 +21,7 @@ pub use create::handle_create;
 pub use export::handle_export;
 pub use import::handle_import;
 pub use manager::{SnapshotManager, SnapshotScope};
-pub use metadata::{ServiceSnapshot, SnapshotMetadata, VolumeSnapshot};
+pub use metadata::{ExcludedMount, ServiceSnapshot, SnapshotMetadata, VolumeSnapshot};
 pub use restore::handle_restore;
 
 /// Calculate optimal concurrency limit based on available CPU count

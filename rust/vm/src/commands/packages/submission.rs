@@ -98,7 +98,7 @@ pub(super) async fn resume_guest(
     {
         return Err(VmError::validation(
             "Checkout has no submitted generation for this consumer",
-            Some("Inspect it with `vm packages show <checkout-id>`"),
+            Some("Inspect it with `vm packages checkout-show <checkout-id>`"),
         ));
     }
     let root = checkout_root(subject, &checkout.checkout_id)?;
@@ -146,7 +146,7 @@ async fn submit(
     {
         return Err(VmError::validation(
             "Checkout is not active for this consumer",
-            Some("Inspect it with `vm packages show <checkout-id>`"),
+            Some("Inspect it with `vm packages checkout-show <checkout-id>`"),
         ));
     }
     let root = checkout_root(subject, &checkout.checkout_id)?;

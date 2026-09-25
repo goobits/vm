@@ -29,7 +29,7 @@ when it already exists but is stopped.
 vm list
 ```
 
-This lists environments for the current project. Use `vm list --all` to see every `vm` environment on the machine.
+This lists environments for the current project. Use `vm list --all-projects` to see every `vm` environment on the machine.
 
 ## Stop Or Remove It
 
@@ -83,12 +83,12 @@ vm snapshots export stable --env dev --output dev.tar.gz
 
 ```bash
 vm config show
-vm tunnels add 8080:3000 dev
+vm tunnels open web --local 127.0.0.1:8080 --remote 127.0.0.1:3000 --env dev
 vm doctor
 vm system update
 ```
 
-Plugin-backed workflows stay top-level:
+Database and secret workflows stay top-level:
 
 ```bash
 vm db list

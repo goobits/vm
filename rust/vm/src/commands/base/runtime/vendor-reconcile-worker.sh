@@ -150,12 +150,12 @@ else
 fi
 if ! sh "$root/vendor-repair.sh" \
   "$name" "$primary" "$installed_path" "$layout" "$marker" "$required" "$@"; then
-  printf "Vendor tool '%s' failed. Run on the host: vm tools update %s --to %s\n" \
+  printf "Vendor tool '%s' failed. Run on the host: vm tools update %s --env %s\n" \
     "$name" "$name" "$environment" >&2
   exit 1
 fi
 if test "$(probe_state)" != consumable; then
-  printf "Vendor tool '%s' is not consumable. Run on the host: vm tools update %s --to %s\n" \
+  printf "Vendor tool '%s' is not consumable. Run on the host: vm tools update %s --env %s\n" \
     "$name" "$name" "$environment" >&2
   exit 1
 fi

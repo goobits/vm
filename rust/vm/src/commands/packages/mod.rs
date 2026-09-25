@@ -25,7 +25,9 @@ mod workspace;
 
 use std::path::PathBuf;
 
-use crate::cli::PackagesSubcommand;
+use crate::cli::{
+    PackageAuthSubcommand, PackageBackupSubcommand, PackageServiceSubcommand, PackagesSubcommand,
+};
 use crate::commands::command_context::managed_guest_context;
 use crate::error::{VmError, VmResult};
 use vm_core::{vm_println, vm_success};
@@ -143,7 +145,7 @@ async fn up(
             outcome.quarantined.len(),
             outcome.failures.len()
         );
-        vm_core::vm_hint!("Repair with: vm packages doctor --fix");
+        vm_core::vm_hint!("Repair with: vm packages service doctor --fix");
         vm_println!("Package infrastructure: degraded");
     } else {
         vm_println!("Package infrastructure: healthy");
@@ -193,22 +195,27 @@ pub(super) async fn handle(
     }
     let files = ApplianceFiles::discover()?;
     let _operation_lock = match &command {
-        PackagesSubcommand::Backups
-        | PackagesSubcommand::Backup
-        | PackagesSubcommand::Restore { .. }
+        PackagesSubcommand::Service {
+            command: PackageServiceSubcommand::Backups { .. },
+        }
         | PackagesSubcommand::Open { .. } => None,
-        PackagesSubcommand::Init { .. }
+        PackagesSubcommand::Service {
+            command: PackageServiceSubcommand::Init { .. },
+        }
         | PackagesSubcommand::Up { .. }
         | PackagesSubcommand::Down => Some(files.acquire_lifecycle_lock()?),
         _ => Some(files.acquire_operation_lock()?),
     };
     match command {
-        PackagesSubcommand::Init {
-            source_root,
-            engine,
-            port,
-            registry_image,
-            job_image,
+        PackagesSubcommand::Service {
+            command:
+                PackageServiceSubcommand::Init {
+                    source_root,
+                    engine,
+                    port,
+                    registry_image,
+                    job_image,
+                },
         } => {
             let source_root = prepare_source_root(source_root)?;
             remember_source_root(&source_root)?;
@@ -244,11 +251,19 @@ pub(super) async fn handle(
             .await
         }
         PackagesSubcommand::Down => appliance::down(&files),
-        PackagesSubcommand::Status => status(&files).await,
-        PackagesSubcommand::Doctor { fix } => doctor(&files, fix).await,
-        PackagesSubcommand::Backups => appliance::list_backups(&files),
-        PackagesSubcommand::Backup => appliance::backup(&files),
-        PackagesSubcommand::Restore { backup_id } => appliance::restore(&files, &backup_id),
+        PackagesSubcommand::Service {
+            command: PackageServiceSubcommand::Status,
+        } => status(&files).await,
+        PackagesSubcommand::Service {
+            command: PackageServiceSubcommand::Doctor { fix },
+        } => doctor(&files, fix).await,
+        PackagesSubcommand::Service {
+            command: PackageServiceSubcommand::Backups { command },
+        } => match command {
+            PackageBackupSubcommand::List => appliance::list_backups(&files),
+            PackageBackupSubcommand::Create => appliance::backup(&files),
+            PackageBackupSubcommand::Restore { name } => appliance::restore(&files, &name),
+        },
         PackagesSubcommand::Register {
             targets,
             ecosystem,
@@ -269,6 +284,7 @@ pub(super) async fn handle(
             .await
         }
         PackagesSubcommand::List => catalog::list(&files).await,
+        PackagesSubcommand::Show { name } => catalog::show_package(&files, &name).await,
         PackagesSubcommand::Consumers { command } => {
             consumer::handle_catalog(&files, command).await
         }
@@ -279,7 +295,9 @@ pub(super) async fn handle(
                 "Run inside a managed VM: vm packages checkout {source}"
             )),
         )),
-        PackagesSubcommand::Show { checkout_id } => catalog::show(&files, &checkout_id).await,
+        PackagesSubcommand::CheckoutShow { checkout_id } => {
+            catalog::show(&files, &checkout_id).await
+        }
         PackagesSubcommand::Release => Err(crate::error::VmError::validation(
             "Managed source releases run inside the assigned environment",
             Some("Run `vm packages release` from the source directory inside that managed VM"),
@@ -288,11 +306,14 @@ pub(super) async fn handle(
             "Managed checkout cancellation runs inside the assigned environment",
             Some("Run `vm packages cancel` from the managed checkout source directory"),
         )),
-        PackagesSubcommand::Auth {
-            token_file,
-            github,
-            clear,
-        } => credentials::configure(&files, token_file, github, clear),
+        PackagesSubcommand::Auth { command } => match command {
+            PackageAuthSubcommand::Login {
+                token_stdin,
+                token_file,
+            } => credentials::login(&files, token_stdin, token_file),
+            PackageAuthSubcommand::Status => credentials::status(&files),
+            PackageAuthSubcommand::Logout => credentials::logout(&files),
+        },
     }
 }
 
@@ -302,13 +323,17 @@ async fn handle_guest(
     _profile: Option<String>,
 ) -> VmResult<()> {
     match command {
-        PackagesSubcommand::Init { .. } => Err(crate::error::VmError::validation(
+        PackagesSubcommand::Service {
+            command: PackageServiceSubcommand::Init { .. },
+        } => Err(crate::error::VmError::validation(
             "Package initialization runs on the controller host",
-            Some("Run on the host: vm packages init <source-root>"),
+            Some("Run on the host: vm packages service init --source-root <path>"),
         )),
-        PackagesSubcommand::Status => catalog::status_guest().await,
+        PackagesSubcommand::Service {
+            command: PackageServiceSubcommand::Status,
+        } => catalog::status_guest().await,
         PackagesSubcommand::Checkout { source } => checkout::handle_guest(source).await,
-        PackagesSubcommand::Show { checkout_id } => catalog::show_guest(&checkout_id).await,
+        PackagesSubcommand::CheckoutShow { checkout_id } => catalog::show_guest(&checkout_id).await,
         PackagesSubcommand::Release => release::handle_guest().await,
         PackagesSubcommand::Cancel => checkout::cancel_guest().await,
         _ => Err(crate::error::VmError::validation(

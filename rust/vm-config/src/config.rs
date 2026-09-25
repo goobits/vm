@@ -94,6 +94,8 @@ pub struct VmConfig {
     pub security: Option<SecurityConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profiles: Option<IndexMap<String, VmConfig>>,
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub environments: IndexMap<String, EnvironmentDeclaration>,
     #[serde(flatten)]
     pub extra_config: IndexMap<String, serde_json::Value>,
     #[serde(skip)]
@@ -105,6 +107,38 @@ pub struct VmConfig {
     #[cfg(feature = "test-helpers")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mock: Option<MockProviderConfig>,
+}
+
+/// Provider identity and creation settings for one named project environment.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnvironmentDeclaration {
+    pub provider: ProviderName,
+    pub image: ImageSpec,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpus: Option<CpuLimit>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory: Option<MemoryLimit>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mounts: Vec<MountConfig>,
+}
+
+impl EnvironmentDeclaration {
+    pub fn apply_to(&self, base: &VmConfig) -> VmConfig {
+        let mut selected = base.clone();
+        selected.provider = Some(self.provider.clone());
+        let vm = selected.vm.get_or_insert_with(VmSettings::default);
+        vm.image = Some(self.image.clone());
+        if let Some(cpus) = &self.cpus {
+            vm.cpus = Some(cpus.clone());
+        }
+        if let Some(memory) = &self.memory {
+            vm.memory = Some(memory.clone());
+        }
+        if !self.mounts.is_empty() {
+            selected.mounts = self.mounts.clone();
+        }
+        selected
+    }
 }
 
 impl VmConfig {

@@ -32,8 +32,67 @@ pub enum PackageConsumerSubcommand {
         #[arg(long)]
         package: Option<String>,
     },
+    /// Show a registered consumer and its declared dependencies
+    Show { name: String },
     /// Show package-version drift across registered consumers
-    Drift,
+    Drift {
+        #[arg(long)]
+        package: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum PackageBackupSubcommand {
+    /// List appliance-local backups
+    List,
+    /// Create a consistent backup in a private named volume
+    Create,
+    /// Restore a private named-volume backup while services are stopped
+    Restore { name: String },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum PackageServiceSubcommand {
+    /// Configure the controller source shelf and package appliance
+    Init {
+        #[arg(value_name = "SOURCE_ROOT", long)]
+        source_root: PathBuf,
+        #[arg(long, value_enum, default_value = "auto", hide = true)]
+        engine: PackageInfrastructureEngine,
+        #[arg(long, default_value = "3080")]
+        port: u16,
+        #[arg(long, hide = true)]
+        registry_image: Option<String>,
+        #[arg(long, hide = true)]
+        job_image: Option<String>,
+    },
+    /// Show appliance engine and gateway health
+    Status,
+    /// Validate the runtime, appliance definition, and gateway
+    Doctor {
+        #[arg(long)]
+        fix: bool,
+    },
+    /// Manage private appliance backups
+    Backups {
+        #[command(subcommand)]
+        command: PackageBackupSubcommand,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum PackageAuthSubcommand {
+    /// Import an active GitHub credential or read a token from stdin or a file
+    Login {
+        #[arg(long, conflicts_with = "token_file")]
+        token_stdin: bool,
+        #[arg(long, conflicts_with = "token_stdin")]
+        token_file: Option<PathBuf>,
+    },
+    /// Report whether a controller Git credential is configured
+    Status,
+    /// Remove the controller Git credential
+    Logout,
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -84,6 +143,9 @@ pub enum SnapshotSubcommand {
         output: PathBuf,
         #[arg(long, default_value_t = 6)]
         compression: u8,
+        /// Replace an existing archive
+        #[arg(long)]
+        overwrite: bool,
     },
     /// Import a portable snapshot archive
     Import {
@@ -95,20 +157,6 @@ pub enum SnapshotSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum PackagesSubcommand {
-    /// Configure the controller source shelf and package appliance
-    Init {
-        #[arg(value_name = "SOURCE_ROOT")]
-        source_root: PathBuf,
-        #[arg(long, value_enum, default_value = "auto", hide = true)]
-        engine: PackageInfrastructureEngine,
-        /// Override the host gateway port (useful for isolated acceptance environments)
-        #[arg(long, default_value = "3080")]
-        port: u16,
-        #[arg(long, hide = true)]
-        registry_image: Option<String>,
-        #[arg(long, hide = true)]
-        job_image: Option<String>,
-    },
     /// Prepare or reconcile the shared package-infrastructure appliance and configured sources
     Up {
         #[arg(long, value_enum, default_value = "auto")]
@@ -125,20 +173,11 @@ pub enum PackagesSubcommand {
     },
     /// Stop the appliance while preserving all named volumes
     Down,
-    /// Show the appliance engine and gateway health
-    Status,
-    /// Validate the runtime, appliance definition, and gateway
-    Doctor {
-        /// Apply safe, deterministic package-infrastructure repairs
-        #[arg(long)]
-        fix: bool,
+    /// Inspect and administer the package appliance
+    Service {
+        #[command(subcommand)]
+        command: PackageServiceSubcommand,
     },
-    /// List appliance-local infrastructure backups
-    Backups,
-    /// Create a consistent backup in a private named volume
-    Backup,
-    /// Restore a private named-volume backup while services are stopped
-    Restore { backup_id: String },
     /// Register repository URLs or remember local Git roots as read-only workspaces
     Register {
         /// One explicit package name, or local Git roots remembered after registration
@@ -158,6 +197,8 @@ pub enum PackagesSubcommand {
     },
     /// List registered packages and their publication/consumability state
     List,
+    /// Show one registered package
+    Show { name: String },
     /// Manage consumer repositories tracked by the package infrastructure
     Consumers {
         #[command(subcommand)]
@@ -175,20 +216,15 @@ pub enum PackagesSubcommand {
     },
     /// Show one managed source checkout (controller diagnostic)
     #[command(hide = true)]
-    Show { checkout_id: String },
+    CheckoutShow { checkout_id: String },
     /// Release the managed checkout or canonical workspace containing this directory
     Release,
     /// Cancel and clean up the managed checkout containing this directory
     Cancel,
-    /// Install or clear the controller's private Git token
+    /// Manage the controller's private Git token
     Auth {
-        #[arg(long, conflicts_with_all = ["clear", "github"])]
-        token_file: Option<PathBuf>,
-        /// Import the active GitHub CLI token without printing it
-        #[arg(long, conflicts_with = "clear")]
-        github: bool,
-        #[arg(long, conflicts_with = "github")]
-        clear: bool,
+        #[command(subcommand)]
+        command: PackageAuthSubcommand,
     },
 }
 
@@ -221,7 +257,10 @@ pub enum ToolsSubcommand {
         quiet: bool,
     },
     /// Show vendor, registered, published, installed, and consumable tool state
-    Status { environment: Option<String> },
+    Status {
+        #[arg(long)]
+        env: Option<String>,
+    },
     /// Select package tools globally and activate them in running managed Docker environments
     Enable {
         #[arg(required = true, value_name = "TOOL")]
@@ -237,10 +276,13 @@ pub enum ToolsSubcommand {
         /// Vendor or package tool names to filter; omit to update all eligible tools
         #[arg(value_name = "TOOL")]
         tools: Vec<String>,
-        /// Update only these managed environments
-        #[arg(long, value_name = "ENVIRONMENT", action = clap::ArgAction::Append)]
-        to: Vec<String>,
-        /// Include stopped environments and start them in place
+        /// Update only these project environments
+        #[arg(long, value_name = "ENVIRONMENT", action = clap::ArgAction::Append, conflicts_with = "all_envs")]
+        env: Vec<String>,
+        /// Update every running environment in this project
+        #[arg(long, conflicts_with = "env")]
+        all_envs: bool,
+        /// Record updates for stopped environments without starting them
         #[arg(long)]
         include_stopped: bool,
         /// Reconcile prerequisites, then return after launching tool updates
@@ -254,56 +296,50 @@ pub enum ConfigSubcommand {
     /// Validate the current configuration
     Validate,
     /// Show the loaded configuration and its source
-    Show,
+    Show {
+        #[arg(long, value_enum, default_value_t = ConfigReadScope::Effective)]
+        scope: ConfigReadScope,
+    },
     /// Render the redacted provider configuration without applying it
     Render {
-        /// Render a named instance instead of the default instance
-        #[arg(long)]
-        instance: Option<String>,
+        /// Render a named environment instead of the configured default
+        #[arg(long = "env")]
+        env: Option<String>,
     },
     /// Change a configuration value
     Set {
         /// Configuration field path (e.g., "vm.memory" or "services.docker.enabled")
         field: String,
-        /// Value(s) to set
-        #[arg(required = true, num_args = 1..)]
+        /// Scalar value(s) to set
+        #[arg(num_args = 1.., required_unless_present = "value_json", conflicts_with = "value_json")]
         values: Vec<String>,
-        /// Apply to global configuration
-        #[arg(long)]
-        global: bool,
+        /// JSON array or object value
+        #[arg(long, conflicts_with = "values")]
+        value_json: Option<String>,
+        #[arg(long, value_enum, default_value_t = ConfigWriteScope::Project)]
+        scope: ConfigWriteScope,
     },
     /// View configuration values
     Get {
         /// Configuration field path (omit to show all)
-        field: Option<String>,
-        /// Read from global configuration
-        #[arg(long)]
-        global: bool,
+        field: String,
+        #[arg(long, value_enum, default_value_t = ConfigReadScope::Effective)]
+        scope: ConfigReadScope,
     },
     /// Remove a configuration value
     Unset {
         /// Configuration field path to remove
         field: String,
-        /// Remove from global configuration
-        #[arg(long)]
-        global: bool,
+        #[arg(long, value_enum, default_value_t = ConfigWriteScope::Project)]
+        scope: ConfigWriteScope,
     },
-    /// Add preset configurations
-    Preset {
-        /// Preset names (comma-separated for multiple)
-        names: Option<String>,
-        /// Apply to global configuration
-        #[arg(long)]
-        global: bool,
-        /// List available presets
-        #[arg(long)]
-        list: bool,
-        /// Show preset details
-        #[arg(long)]
-        show: Option<String>,
+    /// Manage configuration presets
+    Presets {
+        #[command(subcommand)]
+        command: ConfigPresetSubcommand,
     },
     /// Manage configuration profiles
-    Profile {
+    Profiles {
         #[command(subcommand)]
         command: ConfigProfileSubcommand,
     },
@@ -313,20 +349,43 @@ pub enum ConfigSubcommand {
         #[arg(long)]
         fix: bool,
     },
-    /// Reset your configuration
-    Clear {
-        /// Clear global configuration instead of local
-        #[arg(long)]
-        global: bool,
-    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum ConfigProfileSubcommand {
     /// List available profiles for this project
-    Ls,
+    List,
+    /// Show a named profile
+    Show { name: String },
     /// Set the default profile for this project
-    Set { name: String },
+    SetDefault { name: String },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum ConfigPresetSubcommand {
+    List,
+    Show {
+        name: String,
+    },
+    Apply {
+        #[arg(required = true, num_args = 1..)]
+        names: Vec<String>,
+        #[arg(long, value_enum, default_value_t = ConfigWriteScope::Project)]
+        scope: ConfigWriteScope,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum ConfigReadScope {
+    Project,
+    User,
+    Effective,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum ConfigWriteScope {
+    Project,
+    User,
 }
 
 #[derive(Debug, Clone, Default, clap::Args)]
@@ -348,19 +407,26 @@ pub struct FleetArgs {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum TunnelSubcommand {
-    /// Add a tunnel (e.g., vm tunnels add 8080:3000 backend)
-    Add {
-        mapping: String,
-        environment: Option<String>,
+    /// Open a named loopback tunnel to a port in an environment
+    Open {
+        name: String,
+        #[arg(long)]
+        local: String,
+        #[arg(long)]
+        remote: String,
+        #[arg(long)]
+        env: Option<String>,
     },
     /// List active tunnels
-    List { environment: Option<String> },
-    /// Stop tunnel(s)
-    Stop {
-        port: Option<u16>,
-        environment: Option<String>,
+    List {
         #[arg(long)]
-        all: bool,
+        env: Option<String>,
+    },
+    /// Close one named tunnel
+    Close {
+        name: String,
+        #[arg(long)]
+        env: Option<String>,
     },
 }
 
@@ -398,31 +464,74 @@ pub enum SecretSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum DbSubcommand {
-    /// Backup a database
-    Backup {
-        db_name: Option<String>,
-        name: Option<String>,
-        #[arg(long)]
-        all: bool,
+    /// Manage PostgreSQL backups
+    Backups {
+        #[command(subcommand)]
+        command: DbBackupSubcommand,
     },
-    /// Restore a database from a backup
-    Restore { name: String, db_name: String },
-    /// List all databases and backups
+    /// List databases
     List,
+    /// Show the size and backup count of a database
+    Status { name: String },
     /// Export a database to a SQL file
-    Export { name: String, file: PathBuf },
+    Export {
+        name: String,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long)]
+        overwrite: bool,
+    },
     /// Import a database from a SQL file
-    Import { file: PathBuf, db_name: String },
-    /// Show disk usage per database
-    Size,
+    Import {
+        name: String,
+        #[arg(long)]
+        file: PathBuf,
+        #[arg(long)]
+        yes: bool,
+    },
     /// Drop and recreate a database
     Reset {
         name: String,
         #[arg(long)]
-        force: bool,
+        yes: bool,
     },
-    /// Show credentials for a database service
-    Credentials { service: String },
+    /// Show credentials metadata, or reveal the value explicitly
+    Credentials {
+        service: String,
+        #[arg(long)]
+        reveal: bool,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum DbBackupSubcommand {
+    /// List retained backups
+    List {
+        #[arg(long)]
+        database: Option<String>,
+    },
+    /// Create a backup for one database or all databases
+    Create {
+        name: String,
+        #[arg(long, conflicts_with = "all", required_unless_present = "all")]
+        database: Option<String>,
+        #[arg(long, conflicts_with = "database")]
+        all: bool,
+    },
+    /// Restore a backup into one database
+    Restore {
+        backup: String,
+        #[arg(long)]
+        database: String,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Remove one retained backup
+    Remove {
+        backup: String,
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -440,24 +549,41 @@ pub enum BaseSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum SystemSubcommand {
+    /// Show this installation's version and location
+    Info,
     /// Update this vm installation
     Update {
         #[arg(long)]
         version: Option<String>,
-        #[arg(long)]
-        force: bool,
     },
     /// Remove vm from this system
     Uninstall {
         #[arg(long)]
-        keep_config: bool,
+        delete_config: bool,
         #[arg(long, short = 'y')]
         yes: bool,
     },
-    /// Build provider-native base environments
-    Base {
+    /// Manage provider-native base images
+    Images {
         #[command(subcommand)]
         command: BaseSubcommand,
+    },
+    /// Inspect and remove VM-owned provider storage
+    Storage {
+        #[command(subcommand)]
+        command: SystemStorageSubcommand,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum SystemStorageSubcommand {
+    /// List VM-owned volumes and images with deletion eligibility
+    List,
+    /// Remove one exact, unreferenced disposable resource
+    Remove {
+        resource_id: String,
+        #[arg(long)]
+        yes: bool,
     },
 }
 

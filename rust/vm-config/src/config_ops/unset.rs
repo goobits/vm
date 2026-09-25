@@ -1,5 +1,6 @@
 // Standard library
 use std::fs;
+use std::path::PathBuf;
 
 // External crates
 use serde_yaml_ng::Value;
@@ -15,11 +16,11 @@ use vm_core::{vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 
 /// Unset (remove) a configuration field
-pub fn unset(field: &str, global: bool) -> Result<()> {
+pub fn unset(field: &str, global: bool, path: Option<PathBuf>) -> Result<()> {
     let config_path = if global {
         get_global_config_path()
     } else {
-        find_local_config()?
+        path.map(Ok).unwrap_or_else(find_local_config)?
     };
 
     if !global {
@@ -51,6 +52,8 @@ pub fn unset(field: &str, global: bool) -> Result<()> {
     if field != "preset" {
         unset_nested_field(&mut yaml_value, field)?;
     }
+
+    super::validate::candidate(&yaml_value, &config_path, global)?;
 
     CoreOperations::write_yaml_file(&config_path, &yaml_value)?;
 
@@ -151,4 +154,24 @@ fn unset_nested_field_recursive(value: &mut Value, parts: &[&str]) -> Result<()>
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ConfigOps;
+
+    #[test]
+    fn required_field_unset_keeps_original_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("vm.yaml");
+        let original = "project:\n  name: test\nprovider: docker\n";
+        std::fs::write(&path, original).unwrap();
+
+        let result = ConfigOps::unset_at("provider", false, Some(path.clone()));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Missing required field: provider"));
+        assert_eq!(std::fs::read_to_string(path).unwrap(), original);
+    }
 }

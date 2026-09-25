@@ -238,7 +238,7 @@ pub(super) fn resolve_registered_source(
         };
         return Err(VmError::validation(
             message,
-            Some("Run `vm packages doctor --fix` on the controller host"),
+            Some("Run `vm packages service doctor --fix` on the controller host"),
         ));
     }
     if let Some(package) = packages.first() {
@@ -252,7 +252,7 @@ pub(super) fn resolve_registered_source(
                     "Workspace package identity '{actual}' does not match registered source '{}'",
                     package.name
                 ),
-                Some("Run `vm packages doctor --fix` on the controller host"),
+                Some("Run `vm packages service doctor --fix` on the controller host"),
             ));
         }
         return Ok(RegisteredSource {
@@ -268,7 +268,7 @@ pub(super) fn resolve_registered_source(
     if manifest.kind != tool.kind {
         return Err(VmError::validation(
             "Workspace tool kind does not match its registered catalog identity",
-            Some("Run `vm packages doctor --fix` on the controller host"),
+            Some("Run `vm packages service doctor --fix` on the controller host"),
         ));
     }
     Ok(RegisteredSource {
@@ -402,7 +402,7 @@ pub(super) fn quarantined_repositories(source_root: &Path) -> VmResult<Vec<PathB
         let entry = entry.map_err(|error| {
             VmError::validation(
                 format!("Failed to scan {}: {error}", quarantine.display()),
-                Some("Run `vm packages doctor --fix`"),
+                Some("Run `vm packages service doctor --fix`"),
             )
         })?;
         if entry.file_type().is_dir() && entry.path().join(".git").exists() {

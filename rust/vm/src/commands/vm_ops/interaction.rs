@@ -7,9 +7,9 @@ use tracing::debug;
 use crate::error::{VmError, VmResult};
 use vm_config::{config::VmConfig, ConfigLoader, GlobalConfig};
 use vm_core::{vm_progress, vm_success};
-use vm_provider::Provider;
+use vm_provider::{InstanceState, Provider};
 
-use super::lifecycle::{ensure_running, ensure_running_for_shell};
+use super::lifecycle::ensure_running_for_shell;
 
 fn detected_relative_path(path: Option<PathBuf>) -> PathBuf {
     if let Some(path) = path {
@@ -71,7 +71,7 @@ pub async fn handle_ssh(
         .map_err(VmError::from)
 }
 
-/// Start an existing environment when needed, then execute a command.
+/// Execute a command in a running environment.
 pub async fn handle_exec(
     provider: Box<dyn Provider>,
     container: Option<&str>,
@@ -85,7 +85,12 @@ pub async fn handle_exec(
         "Executing command in VM"
     );
 
-    ensure_running(provider.as_ref(), container, &config, &global_config, true).await?;
+    if provider.instance_state(container).map_err(VmError::from)? != InstanceState::Running {
+        return Err(VmError::validation(
+            "Environment is not running",
+            Some("Start it with `vm start` before using `vm exec`"),
+        ));
+    }
     let vm_name = container.unwrap_or_else(|| {
         config
             .project

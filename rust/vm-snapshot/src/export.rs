@@ -14,6 +14,7 @@ pub async fn handle_export(
     output_path: Option<&Path>,
     compress_level: u8,
     project_override: Option<&str>,
+    overwrite: bool,
 ) -> Result<()> {
     let manager = SnapshotManager::new()?;
 
@@ -83,13 +84,7 @@ pub async fn handle_export(
         })?;
 
     // Create manifest.json
-    let manifest = ArchiveManifest::new(executable, clean_name, is_global, &metadata);
-
-    let manifest_path = export_build_dir.join("manifest.json");
-    let manifest_json = manifest.to_json_pretty()?;
-    tokio::fs::write(&manifest_path, manifest_json)
-        .await
-        .map_err(|e| VmError::filesystem(e, manifest_path.display().to_string(), "write"))?;
+    let mut manifest = ArchiveManifest::new(executable, clean_name, is_global, &metadata);
 
     // Export the immutable image archives recorded by snapshot creation.
     let images_dir = export_build_dir.join("images");
@@ -116,9 +111,15 @@ pub async fn handle_export(
         copy_directory(&compose_src, &compose_dest).await?;
     }
 
+    manifest.record_files(&export_build_dir)?;
+    let manifest_path = export_build_dir.join("manifest.json");
+    tokio::fs::write(&manifest_path, manifest.to_json_pretty()?)
+        .await
+        .map_err(|e| VmError::filesystem(e, manifest_path.display().to_string(), "write"))?;
+
     tracing::info!("  Compressing snapshot...");
 
-    create_gzip_archive(&export_build_dir, &output_file, compress_level)?;
+    create_gzip_archive(&export_build_dir, &output_file, compress_level, overwrite)?;
 
     // Get final file size
     let file_size = std::fs::metadata(&output_file)

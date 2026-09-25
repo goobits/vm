@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use tracing::{debug, info_span};
 
 use crate::cli::FleetArgs;
+use crate::commands::status;
 use crate::error::{VmError, VmResult};
 use vm_config::config::VmConfig;
 use vm_core::{vm_println, vm_success, vm_warning};
@@ -111,6 +112,21 @@ pub fn handle_fleet_exec(targets: &FleetArgs, project: &str, command: &[String])
         }
     }
 
+    progress.finish()
+}
+
+pub fn handle_fleet_status(targets: &FleetArgs, project: &str) -> VmResult<()> {
+    let instances = project_targets(targets, InstanceStateFilter::Any, project)?;
+    let mut progress = FleetProgress::default();
+    for (provider_name, provider_instances) in group_by_provider(instances) {
+        let provider = provider_for(&provider_name)?;
+        for instance in provider_instances {
+            match provider.status(Some(&instance.name)) {
+                Ok(report) => status::display(&report),
+                Err(error) => progress.failure(&instance.name, &error),
+            }
+        }
+    }
     progress.finish()
 }
 

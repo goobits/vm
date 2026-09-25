@@ -361,7 +361,7 @@ fn packages_up(
 
 fn packages_status(directory: &TempDir, context: &str) -> Output {
     Command::new(cargo_bin("vm"))
-        .args(["packages", "status"])
+        .args(["packages", "service", "status"])
         .env("HOME", directory.path())
         .env("VM_TEST_MODE", "1")
         .env("VM_TEST_COMMAND_CONTEXT", context)
@@ -402,6 +402,7 @@ fn packages_doctor(
             "--config",
             config.to_str().unwrap(),
             "packages",
+            "service",
             "doctor",
             "--fix",
         ])
@@ -650,7 +651,7 @@ fn guest_package_status_verifies_access_without_mutating_state() {
     let directory = TempDir::new().unwrap();
     let gateway = FakeGateway::start();
     let output = Command::new(cargo_bin!("vm"))
-        .args(["packages", "status"])
+        .args(["packages", "service", "status"])
         .current_dir(directory.path())
         .env("HOME", directory.path())
         .env("VM_TOOL_DIR", directory.path().join(".vm"))

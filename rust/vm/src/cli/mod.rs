@@ -19,8 +19,12 @@ pub struct Args {
     pub command: Command,
 
     /// Path to a custom VM configuration file
-    #[arg(long, global = true)]
+    #[arg(long, global = true, conflicts_with = "project")]
     pub config: Option<PathBuf>,
+
+    /// Select a registered project ID or a directory containing vm.yaml
+    #[arg(long, global = true, conflicts_with = "config")]
+    pub project: Option<PathBuf>,
 
     /// Select a configuration profile to apply
     #[arg(long, global = true)]
@@ -48,11 +52,33 @@ impl EnvironmentKind {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum Command {
+    /// Initialize a project in the current or selected directory
+    Init { path: Option<PathBuf> },
+    /// Declare and provision a stopped environment
+    Create {
+        name: String,
+        #[arg(long, value_parser = vm_config::config::ProviderName::SUPPORTED)]
+        provider: String,
+        #[arg(
+            long,
+            required_unless_present = "snapshot",
+            conflicts_with = "snapshot"
+        )]
+        image: Option<String>,
+        #[arg(long, required_unless_present = "image")]
+        snapshot: Option<String>,
+        #[arg(long)]
+        cpu: Option<String>,
+        #[arg(long)]
+        memory: Option<String>,
+        #[arg(long)]
+        mount: Vec<String>,
+    },
     /// Start an existing environment
     Start {
-        /// Environment name, not provider; omit to use the project default
+        /// Environment names; omit to use the project default
         #[arg(conflicts_with = "fleet")]
-        environment: Option<String>,
+        environments: Vec<String>,
         /// Return after requesting startup instead of waiting for readiness
         #[arg(long)]
         no_wait: bool,
@@ -95,7 +121,7 @@ pub enum Command {
     List {
         /// Show environments across all projects
         #[arg(long)]
-        all: bool,
+        all_projects: bool,
         /// Show provider IDs and raw provider names
         #[arg(long)]
         raw: bool,
@@ -113,9 +139,9 @@ pub enum Command {
     },
     /// Run a single command inside an environment
     Exec {
-        /// Run in this environment instead of the project default
+        /// Run in these environments instead of the project default
         #[arg(long = "env", conflicts_with = "fleet")]
-        environment: Option<String>,
+        environments: Vec<String>,
         #[command(flatten)]
         fleet: FleetArgs,
         #[arg(last = true, num_args = 1..)]
@@ -141,19 +167,22 @@ pub enum Command {
     /// Gracefully halt an environment
     Stop {
         #[arg(conflicts_with = "fleet")]
-        environment: Option<String>,
+        environments: Vec<String>,
         #[command(flatten)]
         fleet: FleetArgs,
     },
     /// Check environment status
     Status {
-        /// Environment name; defaults to this project's canonical environment
-        environment: Option<String>,
+        /// Environment names; omit to use the project default
+        #[arg(conflicts_with = "fleet")]
+        environments: Vec<String>,
+        #[command(flatten)]
+        fleet: FleetArgs,
     },
     /// Stop and start an environment
     Restart {
         #[arg(conflicts_with = "fleet")]
-        environment: Option<String>,
+        environments: Vec<String>,
         #[command(flatten)]
         fleet: FleetArgs,
     },

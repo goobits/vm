@@ -12,8 +12,8 @@ vm db list
 vm secrets set NAME
 ```
 
-A plugin does not claim an arbitrary command namespace. Managed guests receive
-remote command namespaces through the separate controller-approved registry.
+A plugin does not claim an arbitrary command namespace. Installed tools run as
+guest executables on `PATH`, or through `vm exec -- TOOL ...` from the host.
 Use `vm plugins --help`, `vm db --help`, or `vm secrets --help` for
 installed-version help. The
 [CLI Reference](cli-reference.md#plugins-databases-and-secrets) owns the

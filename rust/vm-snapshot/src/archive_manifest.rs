@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use vm_core::error::{Result, VmError};
 
 use crate::metadata::SnapshotMetadata;
 
-const CURRENT_VERSION: &str = "2.0";
+const CURRENT_VERSION: &str = "3.0";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 struct ArchivePlatform {
@@ -30,6 +31,8 @@ pub(crate) struct ArchiveManifest {
     services: usize,
     #[serde(default)]
     volumes: usize,
+    #[serde(default)]
+    files_sha256: BTreeMap<String, String>,
 }
 
 impl ArchiveManifest {
@@ -54,6 +57,7 @@ impl ArchiveManifest {
             total_size_bytes: metadata.total_size_bytes,
             services: metadata.services.len(),
             volumes: metadata.volumes.len(),
+            files_sha256: BTreeMap::new(),
         }
     }
 
@@ -83,6 +87,47 @@ impl ArchiveManifest {
         } else {
             &self.project_name
         }
+    }
+
+    pub(crate) fn record_files(&mut self, root: &std::path::Path) -> Result<()> {
+        self.files_sha256 = crate::archive::file_checksums(root)?;
+        Ok(())
+    }
+
+    pub(crate) fn validate_files(&self, root: &std::path::Path) -> Result<()> {
+        if self.files_sha256.is_empty() {
+            return Err(VmError::validation(
+                "Snapshot archive has no file checksums",
+                None::<String>,
+            ));
+        }
+        if crate::archive::file_checksums(root)? != self.files_sha256 {
+            return Err(VmError::validation(
+                "Snapshot archive checksum mismatch",
+                None::<String>,
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn validate_runtime(&self, executable: &str) -> Result<()> {
+        if self.runtime.as_deref() != Some(executable) {
+            return Err(VmError::validation(
+                format!("Snapshot requires provider '{}'", self.runtime.as_deref().unwrap_or("unknown")),
+                Some(format!("Select the recorded provider before importing or restoring (selected: {executable})")),
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn validate_architecture(&self, architecture: &str) -> Result<()> {
+        if self.platform.arch != architecture {
+            return Err(VmError::validation(
+                "Snapshot metadata architecture does not match the archive manifest",
+                None::<String>,
+            ));
+        }
+        Ok(())
     }
 
     pub(crate) fn validate_current_platform(&self) -> Result<()> {
@@ -145,11 +190,12 @@ mod tests {
             total_size_bytes: 0,
             services: 0,
             volumes: 0,
+            files_sha256: BTreeMap::new(),
         }
     }
 
     #[test]
-    fn v2_manifest_round_trips_with_required_platform() {
+    fn v3_manifest_round_trips_with_required_platform() {
         let manifest = manifest();
 
         let parsed = ArchiveManifest::parse(&manifest.to_json_pretty().unwrap()).unwrap();
@@ -157,7 +203,7 @@ mod tests {
     }
 
     #[test]
-    fn v2_manifest_requires_platform() {
+    fn v3_manifest_requires_platform() {
         let content = serde_json::to_string(&manifest())
             .unwrap()
             .replace(r#","platform":{"os":"linux","arch":"x86_64"}"#, "");
@@ -165,10 +211,10 @@ mod tests {
     }
 
     #[test]
-    fn v1_manifest_is_rejected() {
+    fn older_manifest_is_rejected() {
         let content = serde_json::to_string(&manifest())
             .unwrap()
-            .replace(r#""version":"2.0""#, r#""version":"1.0""#);
+            .replace(r#""version":"3.0""#, r#""version":"2.0""#);
         assert!(ArchiveManifest::parse(&content).is_err());
     }
 
@@ -177,5 +223,19 @@ mod tests {
         let manifest = manifest();
 
         assert!(manifest.validate_platform("macos", "aarch64").is_err());
+    }
+
+    #[test]
+    fn rejects_modified_payload_and_wrong_provider() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("metadata.json"), b"original").unwrap();
+        let mut manifest = manifest();
+        manifest.runtime = Some("docker".to_string());
+        manifest.record_files(directory.path()).unwrap();
+        assert!(manifest.validate_files(directory.path()).is_ok());
+        assert!(manifest.validate_runtime("podman").is_err());
+
+        std::fs::write(directory.path().join("metadata.json"), b"tampered").unwrap();
+        assert!(manifest.validate_files(directory.path()).is_err());
     }
 }

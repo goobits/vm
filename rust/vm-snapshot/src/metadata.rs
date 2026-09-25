@@ -16,6 +16,14 @@ pub struct SnapshotMetadata {
     pub description: Option<String>,
     /// Project name from config
     pub project_name: String,
+    /// Environment captured by this snapshot, when created from a runtime
+    pub source_environment: Option<String>,
+    /// Provider used to capture this snapshot
+    pub provider: String,
+    /// CPU architecture of the captured images
+    pub architecture: String,
+    /// Whether services remained active or were paused during capture
+    pub consistency: String,
     /// Project directory path at snapshot time
     pub project_dir: String,
     /// Git commit hash at snapshot time
@@ -28,6 +36,8 @@ pub struct SnapshotMetadata {
     pub services: Vec<ServiceSnapshot>,
     /// Volumes captured in snapshot
     pub volumes: Vec<VolumeSnapshot>,
+    /// Mounts omitted from the snapshot after inspecting normalized Compose configuration
+    pub excluded_mounts: Vec<ExcludedMount>,
     /// Relative path to compose file
     pub compose_file: String,
     /// Relative path to vm config file
@@ -54,10 +64,20 @@ pub struct ServiceSnapshot {
 pub struct VolumeSnapshot {
     /// Volume name
     pub name: String,
+    /// Exact provider volume name
+    pub runtime_name: String,
     /// Filename of volume archive
     pub archive_file: String,
     /// Archive size in bytes
     pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExcludedMount {
+    pub service: String,
+    pub kind: String,
+    pub source: Option<String>,
+    pub target: String,
 }
 
 impl SnapshotMetadata {
@@ -101,6 +121,10 @@ mod tests {
             created_at: Utc::now(),
             description: Some("Test snapshot for verification".to_string()),
             project_name: "myproject".to_string(),
+            source_environment: Some("myproject-dev".to_string()),
+            provider: "docker".to_string(),
+            architecture: "x86_64".to_string(),
+            consistency: "quiesced".to_string(),
             project_dir: "/workspace/myproject".to_string(),
             git_commit: Some("abc123def456".to_string()),
             git_dirty: true,
@@ -113,8 +137,15 @@ mod tests {
             }],
             volumes: vec![VolumeSnapshot {
                 name: "postgres_data".to_string(),
+                runtime_name: "myproject_postgres_data".to_string(),
                 archive_file: "postgres_data.tar.gz".to_string(),
                 size_bytes: 1048576,
+            }],
+            excluded_mounts: vec![ExcludedMount {
+                service: "web".to_string(),
+                kind: "bind".to_string(),
+                source: Some("/host/code".to_string()),
+                target: "/app".to_string(),
             }],
             compose_file: "docker-compose.yml".to_string(),
             vm_config_file: "vm.yaml".to_string(),
@@ -130,6 +161,10 @@ mod tests {
         // Verify critical fields survived the roundtrip
         assert_eq!(metadata.name, restored.name);
         assert_eq!(metadata.project_name, restored.project_name);
+        assert_eq!(metadata.source_environment, restored.source_environment);
+        assert_eq!(metadata.provider, restored.provider);
+        assert_eq!(metadata.architecture, restored.architecture);
+        assert_eq!(metadata.consistency, restored.consistency);
         assert_eq!(metadata.project_dir, restored.project_dir);
         assert_eq!(metadata.git_commit, restored.git_commit);
         assert_eq!(metadata.git_dirty, restored.git_dirty);
@@ -139,6 +174,7 @@ mod tests {
         assert_eq!(metadata.total_size_bytes, restored.total_size_bytes);
         assert_eq!(metadata.services.len(), restored.services.len());
         assert_eq!(metadata.volumes.len(), restored.volumes.len());
+        assert_eq!(metadata.excluded_mounts, restored.excluded_mounts);
 
         // Verify nested structures
         assert_eq!(metadata.services[0].name, restored.services[0].name);

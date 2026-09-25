@@ -19,7 +19,7 @@ pub(in crate::commands::packages) fn source_identity(
     if is_tool_repository(root)? {
         let name = repository_name(
             root,
-            Some("Rename the repository directory, then rerun `vm packages doctor --fix`"),
+            Some("Rename the repository directory, then rerun `vm packages service doctor --fix`"),
         )?;
         let kind = match tool_manifest(root)?.kind {
             vm_packages::ToolKind::Binary => SourceKind::ToolBinary,

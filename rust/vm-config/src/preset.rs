@@ -137,6 +137,13 @@ impl PresetDetector {
                     service_name.clone(),
                     ServiceConfig {
                         enabled: true,
+                        port: match service_name.as_str() {
+                            "postgresql" => Some(5432),
+                            "redis" => Some(6379),
+                            "mysql" => Some(3306),
+                            "mongodb" => Some(27017),
+                            _ => None,
+                        },
                         ..Default::default()
                     },
                 );
@@ -202,7 +209,7 @@ impl PresetDetector {
 
     /// Lists available provision presets (excludes image presets)
     ///
-    /// This is used by `vm config preset` to show presets that can be merged
+    /// This is used by `vm config presets list` to show presets that can be merged
     /// into existing configurations. Image presets are excluded because they
     /// are only used during project initialization.
     ///
