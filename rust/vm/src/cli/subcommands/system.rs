@@ -15,7 +15,7 @@ pub enum BaseSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum SystemSubcommand {
-    /// Show this installation's version and location
+    /// Show client, controller, provider, and schema versions
     Info {
         /// Emit one versioned JSON result
         #[arg(long)]
@@ -50,22 +50,36 @@ pub enum SystemSubcommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum SystemStorageSubcommand {
-    /// List VM-owned volumes and images with deletion eligibility
-    List,
+    /// List VM-owned provider storage with deletion eligibility
+    List {
+        /// Emit one versioned JSON result
+        #[arg(long)]
+        json: bool,
+    },
     /// Remove one exact, unreferenced disposable resource
     Remove {
         resource_id: String,
         #[arg(long)]
         yes: bool,
+        /// Emit one versioned JSON result
+        #[arg(long)]
+        json: bool,
     },
 }
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum PluginSubcommand {
     /// See installed plugins
-    List,
+    List {
+        #[arg(long)]
+        json: bool,
+    },
     /// Get plugin details
-    Show { plugin_name: String },
+    Show {
+        plugin_name: String,
+        #[arg(long)]
+        json: bool,
+    },
     /// Add a plugin
     Install { source_path: String },
     /// Remove a plugin

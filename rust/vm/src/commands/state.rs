@@ -1,6 +1,6 @@
+use serde::Serialize;
 use std::path::PathBuf;
 
-use dialoguer::Confirm;
 use vm_config::AppConfig;
 use vm_core::{vm_println, vm_progress, vm_success};
 use vm_snapshot::{SnapshotManager, SnapshotMetadata, SnapshotScope};
@@ -15,14 +15,26 @@ pub(super) async fn handle(
     profile: Option<String>,
 ) -> VmResult<()> {
     match command {
-        SnapshotSubcommand::List { env } => {
+        SnapshotSubcommand::List { env, json } => {
             let project = snapshot_project(config_path, profile)?;
-            let snapshots = SnapshotManager::new()?.list_snapshots_in_scope(project.scope())?;
-            for snapshot in snapshots.into_iter().filter(|snapshot| {
-                env.as_deref().map_or(true, |selected| {
-                    snapshot.source_environment.as_deref() == Some(selected)
+            let manager = SnapshotManager::new()?;
+            let snapshots = manager.list_snapshots_in_scope(project.scope())?;
+            let selected = snapshots
+                .iter()
+                .filter(|snapshot| {
+                    env.as_deref().map_or(true, |selected| {
+                        snapshot.source_environment.as_deref() == Some(selected)
+                    })
                 })
-            }) {
+                .collect::<Vec<_>>();
+            if json {
+                let views = selected
+                    .iter()
+                    .map(|snapshot| snapshot_view(&manager, &project, snapshot))
+                    .collect::<VmResult<Vec<_>>>()?;
+                return crate::presentation::success("snapshots list", views);
+            }
+            for snapshot in selected {
                 vm_println!(
                     "{}\t{}\t{} bytes",
                     snapshot.name,
@@ -32,10 +44,17 @@ pub(super) async fn handle(
             }
             Ok(())
         }
-        SnapshotSubcommand::Show { name, env } => {
+        SnapshotSubcommand::Show { name, env, json } => {
             let project = snapshot_project(config_path, profile)?;
             let metadata = metadata(&project, &name)?;
             verify_environment_filter(&metadata, env.as_deref())?;
+            if json {
+                let manager = SnapshotManager::new()?;
+                return crate::presentation::success(
+                    "snapshots show",
+                    snapshot_view(&manager, &project, &metadata)?,
+                );
+            }
             vm_println!("Name: {}", metadata.name);
             vm_println!("Project: {}", metadata.project_name);
             if let Some(environment) = &metadata.source_environment {
@@ -67,6 +86,7 @@ pub(super) async fn handle(
         }
         SnapshotSubcommand::Create {
             name,
+            json,
             env,
             description,
             quiesce,
@@ -113,10 +133,29 @@ pub(super) async fn handle(
                 )
                 .await?;
             }
-            vm_success!("Created snapshot '{name}'");
-            Ok(())
+            report_change(
+                "snapshots create",
+                SnapshotScope::OwnedProject {
+                    name: &project,
+                    config_path: config.vm.owning_config_path().ok_or_else(|| {
+                        VmError::validation(
+                            "Snapshot creation requires a project configuration",
+                            None::<String>,
+                        )
+                    })?,
+                },
+                &name,
+                Some(&target),
+                json,
+                &format!("Created snapshot '{name}'"),
+            )
         }
-        SnapshotSubcommand::Restore { name, env, yes } => {
+        SnapshotSubcommand::Restore {
+            name,
+            env,
+            yes,
+            json,
+        } => {
             let subject = load_runtime_subject(config_path.clone(), profile, env)?;
             let provider = subject.provider.name().to_string();
             ensure_snapshot_provider(&provider)?;
@@ -142,15 +181,10 @@ pub(super) async fn handle(
                 &name,
             )?;
             verify_environment_filter(&snapshot, Some(&target))?;
-            if !yes
-                && !Confirm::new()
-                    .with_prompt(format!("Restore snapshot '{name}' into '{target}'?"))
-                    .default(false)
-                    .interact()
-                    .map_err(|error| {
-                        VmError::general(error, "Failed to confirm snapshot restore")
-                    })?
-            {
+            if !crate::confirmation::destructive(
+                &format!("Restore snapshot '{name}' into '{target}'?"),
+                yes,
+            )? {
                 return Err(VmError::validation(
                     "Snapshot restore cancelled",
                     None::<String>,
@@ -176,36 +210,49 @@ pub(super) async fn handle(
                 )
                 .await?;
             }
-            vm_success!("Restored snapshot '{name}' into '{target}'");
-            Ok(())
+            report_change(
+                "snapshots restore",
+                SnapshotScope::OwnedProject {
+                    name: &project,
+                    config_path: &owner,
+                },
+                &name,
+                Some(&target),
+                json,
+                &format!("Restored snapshot '{name}' into '{target}'"),
+            )
         }
-        SnapshotSubcommand::Remove { name, env, yes } => {
+        SnapshotSubcommand::Remove {
+            name,
+            env,
+            yes,
+            json,
+        } => {
             let project = snapshot_project(config_path, profile)?;
             let snapshot = metadata(&project, &name)?;
             verify_environment_filter(&snapshot, env.as_deref())?;
-            if !yes
-                && !Confirm::new()
-                    .with_prompt(format!(
-                        "Remove snapshot '{name}' from project '{}'?",
-                        project.name
-                    ))
-                    .default(false)
-                    .interact()
-                    .map_err(|error| {
-                        VmError::general(error, "Failed to confirm snapshot removal")
-                    })?
-            {
+            if !crate::confirmation::destructive(
+                &format!("Remove snapshot '{name}' from project '{}'?", project.name),
+                yes,
+            )? {
                 return Err(VmError::validation(
                     "Snapshot removal cancelled",
                     None::<String>,
                 ));
             }
             SnapshotManager::new()?.delete_snapshot(project.scope(), &name)?;
-            vm_success!("Removed snapshot '{name}'");
-            Ok(())
+            report_change(
+                "snapshots remove",
+                project.scope(),
+                &name,
+                snapshot.source_environment.as_deref(),
+                json,
+                &format!("Removed snapshot '{name}'"),
+            )
         }
         SnapshotSubcommand::Export {
             name,
+            json,
             env,
             output,
             compression,
@@ -225,16 +272,29 @@ pub(super) async fn handle(
                 &provider,
                 &name,
                 Some(&output),
-                compression,
+                match compression {
+                    crate::cli::SnapshotCompression::Gzip => vm_snapshot::ArchiveCompression::Gzip,
+                    crate::cli::SnapshotCompression::None => vm_snapshot::ArchiveCompression::None,
+                },
                 Some(&project.name),
                 Some(&project.config_path),
                 overwrite,
             )
             .await?;
-            vm_success!("Exported snapshot '{name}' to {}", output.display());
-            Ok(())
+            report_change(
+                "snapshots export",
+                project.scope(),
+                &name,
+                snapshot.source_environment.as_deref(),
+                json,
+                &format!("Exported snapshot '{name}' to {}", output.display()),
+            )
         }
-        SnapshotSubcommand::Import { archive, name } => {
+        SnapshotSubcommand::Import {
+            archive,
+            name,
+            json,
+        } => {
             let config = AppConfig::load(config_path, profile, None)?;
             require_project_config(&config.vm)?;
             let project = project_name(&config.vm);
@@ -246,8 +306,22 @@ pub(super) async fn handle(
                 false,
             )
             .await?;
-            vm_success!("Imported snapshot '{name}'");
-            Ok(())
+            report_change(
+                "snapshots import",
+                SnapshotScope::OwnedProject {
+                    name: project,
+                    config_path: config.vm.owning_config_path().ok_or_else(|| {
+                        VmError::validation(
+                            "Snapshot import requires a project configuration",
+                            None::<String>,
+                        )
+                    })?,
+                },
+                &name,
+                None,
+                json,
+                &format!("Imported snapshot '{name}'"),
+            )
         }
     }
 }
@@ -303,6 +377,71 @@ struct ProjectSnapshotScope {
     config_path: PathBuf,
 }
 
+#[derive(Serialize)]
+struct SnapshotView<'a> {
+    id: String,
+    name: &'a str,
+    project: &'a str,
+    environment: Option<&'a str>,
+    provider: &'a str,
+    architecture: &'a str,
+    consistency: &'a str,
+    created_at: &'a chrono::DateTime<chrono::Utc>,
+    size_bytes: u64,
+    service_count: usize,
+    volume_count: usize,
+    native_image_digest: Option<&'a str>,
+}
+
+#[derive(Serialize)]
+struct SnapshotChange<'a> {
+    id: String,
+    environment: Option<&'a str>,
+}
+
+fn report_change(
+    command: &'static str,
+    scope: SnapshotScope<'_>,
+    name: &str,
+    environment: Option<&str>,
+    json: bool,
+    message: &str,
+) -> VmResult<()> {
+    if json {
+        crate::presentation::success(
+            command,
+            SnapshotChange {
+                id: SnapshotManager::new()?.snapshot_id(scope, name)?,
+                environment,
+            },
+        )
+    } else {
+        vm_success!("{message}");
+        Ok(())
+    }
+}
+
+fn snapshot_view<'a>(
+    manager: &SnapshotManager,
+    project: &ProjectSnapshotScope,
+    metadata: &'a SnapshotMetadata,
+) -> VmResult<SnapshotView<'a>> {
+    Ok(SnapshotView {
+        id: manager.snapshot_id(project.scope(), &metadata.name)?,
+        name: &metadata.name,
+        project: &metadata.project_name,
+        environment: metadata.source_environment.as_deref(),
+        provider: &metadata.provider,
+        architecture: &metadata.architecture,
+        consistency: &metadata.consistency,
+        created_at: &metadata.created_at,
+        size_bytes: metadata.total_size_bytes,
+        service_count: metadata.services.len(),
+        volume_count: metadata.volumes.len(),
+        native_image_digest: metadata.native_image_digest.as_deref(),
+    })
+}
+
 impl ProjectSnapshotScope {
     fn scope(&self) -> SnapshotScope<'_> {
         SnapshotScope::OwnedProject {
@@ -342,7 +481,8 @@ fn verify_environment_filter(metadata: &SnapshotMetadata, selected: Option<&str>
                 selected.unwrap_or_default()
             ),
             Some("Select the snapshot's source environment or omit --env"),
-        ));
+        )
+        .with_target(metadata.name.clone()));
     }
     Ok(())
 }
@@ -358,7 +498,8 @@ fn metadata(project: &ProjectSnapshotScope, name: &str) -> VmResult<SnapshotMeta
                 project.name
             ),
             None::<String>,
-        ));
+        )
+        .with_target(name));
     }
     let metadata = SnapshotMetadata::load(&path)?;
     if metadata.project_name != project.name

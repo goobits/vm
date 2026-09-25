@@ -2,54 +2,20 @@ use std::path::{Component, Path};
 use std::{fs::File, path::PathBuf, process::Stdio};
 
 use tracing::{info, warn};
-use vm_config::config::{ImageSpec, VmConfig};
+use vm_config::config::VmConfig;
 use vm_core::error::Result;
 use vm_messages::messages::MESSAGES;
 
 use super::{
     host_sync::collect_host_sync_mounts,
+    image::{configured_source, TartImageSource},
     mounts::TartDirShare,
+    preview::run_args,
     provider::{tart_run_log_path, TartProvider},
     provisioner::TartProvisioner,
 };
 use crate::{instance::extract_project_name, project_plan::ProjectPlan, tart_base, VmError};
 use vm_snapshot::{SnapshotManager, SnapshotMetadata, SnapshotScope};
-
-const DEFAULT_TART_IMAGE: &str = "ghcr.io/cirruslabs/macos-sequoia-base:latest";
-
-#[derive(Debug)]
-enum TartImageSource {
-    Image(String),
-    Snapshot(String),
-}
-
-impl TartImageSource {
-    fn parse(spec: &ImageSpec) -> Result<Self> {
-        match spec {
-            ImageSpec::String(value) => {
-                if let Some(name) = value.strip_prefix('@') {
-                    return Ok(Self::Snapshot(name.to_string()));
-                }
-                let lower = value.to_ascii_lowercase();
-                if value.starts_with("./")
-                    || value.starts_with("../")
-                    || std::path::Path::new(value).is_absolute()
-                    || lower == "dockerfile"
-                    || lower.ends_with("/dockerfile")
-                    || lower.ends_with(".dockerfile")
-                {
-                    return Err(VmError::Config(format!(
-                        "'{value}' looks like a Dockerfile path, but the Tart provider cannot build Dockerfiles. Use provider: docker or choose a Tart OCI image."
-                    )));
-                }
-                Ok(Self::Image(value.clone()))
-            }
-            ImageSpec::Build { .. } => Err(VmError::Config(
-                "Tart provider does not support Dockerfile builds".to_string(),
-            )),
-        }
-    }
-}
 
 impl TartProvider {
     pub(super) fn start_vm_background(&self, name: &str) -> Result<()> {
@@ -107,41 +73,16 @@ impl TartProvider {
     }
 
     pub(super) fn build_run_args(&self, name: &str, directories: &[String]) -> Vec<String> {
-        let tart = self.config.tart.as_ref();
-        let nested = tart.and_then(|config| config.nested).unwrap_or(false)
-            && tart.and_then(|config| config.guest_os.as_deref()) != Some("macos");
-        let mut args = vec![
-            "tart".to_string(),
-            "run".to_string(),
-            "--no-graphics".to_string(),
-        ];
-        if nested {
-            args.push("--nested".to_string());
-        }
-        for directory in directories {
-            args.extend(["--dir".to_string(), directory.clone()]);
-        }
-        args.push(name.to_string());
-        args
+        run_args(&self.config, name, directories)
     }
 
     pub(super) fn get_tart_image(&self, config: &VmConfig) -> Result<String> {
-        if let Some(image_spec) = config
-            .vm
-            .as_ref()
-            .and_then(|settings| settings.image.clone())
-        {
-            return match TartImageSource::parse(&image_spec)? {
-                TartImageSource::Image(image) if image == tart_base::LINUX_NAME => {
-                    Ok(tart_base::versioned_cache_name())
-                }
-                TartImageSource::Image(image) => Ok(image),
-                TartImageSource::Snapshot(name) => Err(VmError::Config(format!(
-                    "Use 'vm snapshots restore {name}' for snapshots"
-                ))),
-            };
+        match configured_source(config)? {
+            TartImageSource::Image(image) => Ok(image),
+            TartImageSource::Snapshot(name) => Err(VmError::Config(format!(
+                "Use 'vm snapshots restore {name}' for snapshots"
+            ))),
         }
-        Ok(DEFAULT_TART_IMAGE.to_string())
     }
 
     pub(super) fn create_vm_internal(
@@ -186,16 +127,10 @@ impl TartProvider {
                 orphans.join(", ")
             );
         }
-        let snapshot_name = config
-            .vm
-            .as_ref()
-            .and_then(|settings| settings.image.as_ref())
-            .map(TartImageSource::parse)
-            .transpose()?
-            .and_then(|source| match source {
-                TartImageSource::Snapshot(name) => Some(name),
-                TartImageSource::Image(_) => None,
-            });
+        let snapshot_name = match configured_source(config)? {
+            TartImageSource::Snapshot(name) => Some(name),
+            TartImageSource::Image(_) => None,
+        };
         if let Some(snapshot_name) = snapshot_name.as_deref() {
             let archive = native_snapshot_archive(config, snapshot_name)?;
             info!("Importing Tart snapshot '{snapshot_name}'");
@@ -308,42 +243,4 @@ fn native_snapshot_archive(config: &VmConfig, name: &str) -> Result<PathBuf> {
         )));
     }
     Ok(archive)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::TartImageSource;
-    use vm_config::config::ImageSpec;
-
-    #[test]
-    fn parses_tart_images_and_snapshots() {
-        assert!(matches!(
-            TartImageSource::parse(&ImageSpec::String("ghcr.io/example/tart:latest".into()))
-                .unwrap(),
-            TartImageSource::Image(image) if image == "ghcr.io/example/tart:latest"
-        ));
-        assert!(matches!(
-            TartImageSource::parse(&ImageSpec::String("@release".into())).unwrap(),
-            TartImageSource::Snapshot(name) if name == "release"
-        ));
-    }
-
-    #[test]
-    fn rejects_dockerfile_sources() {
-        for value in [
-            "Dockerfile",
-            "./Dockerfile",
-            "../Dockerfile",
-            "build.dev.dockerfile",
-        ] {
-            let error = TartImageSource::parse(&ImageSpec::String(value.into())).unwrap_err();
-            assert!(error.to_string().contains("looks like a Dockerfile path"));
-        }
-        assert!(TartImageSource::parse(&ImageSpec::Build {
-            dockerfile: "Dockerfile".into(),
-            context: None,
-            args: None,
-        })
-        .is_err());
-    }
 }

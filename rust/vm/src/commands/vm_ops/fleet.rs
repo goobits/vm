@@ -5,14 +5,15 @@ use std::path::PathBuf;
 
 use tracing::{debug, info_span};
 
-use crate::cli::FleetArgs;
+use crate::cli::{ExecOutput, FleetArgs};
 use crate::commands::command_context::{project_name, require_project_config};
 use crate::commands::status;
 use crate::error::{VmError, VmResult};
 use vm_config::config::VmConfig;
 use vm_core::{vm_println, vm_success, vm_warning};
 use vm_provider::{
-    get_provider, InstanceInfo, InstanceProvider, InstanceState, Provider, ProviderContext,
+    get_provider, ExecOptions, InstanceInfo, InstanceProvider, InstanceState, Provider,
+    ProviderContext,
 };
 
 use super::{
@@ -145,35 +146,30 @@ pub fn handle_fleet_exec(
     targets: &FleetArgs,
     project: &FleetProject,
     command: &[String],
+    options: &ExecOptions,
+    output: ExecOutput,
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "fleet_exec");
     let _enter = span.enter();
 
     let instances = project_targets(targets, InstanceStateFilter::Running, project)?;
 
-    let mut progress = FleetProgress::default();
-
-    for (provider_name, provider_instances) in group_by_provider(instances) {
-        let provider = configured_provider(&project.config, &provider_name)?;
-        for instance in provider_instances {
+    let targets = instances
+        .into_iter()
+        .map(|instance| {
             debug!(
-                provider = %provider_name,
+                provider = %instance.provider,
                 instance = %instance.name,
                 argument_count = command.len(),
                 "Executing fleet command"
             );
-            match provider.exec(Some(&instance.name), command) {
-                Ok(()) => {
-                    progress.success(&instance.name);
-                }
-                Err(e) => {
-                    progress.failure(&instance.name, &e);
-                }
+            super::fleet_exec::ExecTarget {
+                provider: configured_provider_for_instance(project, &instance),
+                name: instance.name,
             }
-        }
-    }
-
-    progress.finish()
+        })
+        .collect();
+    super::fleet_exec::run(targets, command, options, output)
 }
 
 pub fn handle_fleet_status(targets: &FleetArgs, project: &FleetProject) -> VmResult<()> {

@@ -158,18 +158,9 @@ volumes:
 environment:
   REDIS_PASSWORD: changeme
 
-# Command to run (optional, overrides image CMD)
-# command:
-#   - redis-server
-#   - --appendonly
-#   - "yes"
-
 # Service dependencies (start order)
 depends_on:
   []
-
-# Health check endpoint (optional, for service registry)
-health_check: /health
 "#
     .to_string()
 }
@@ -252,7 +243,7 @@ A custom service plugin for VM Tool.
 
 ## Description
 
-This plugin packages a containerized service definition for inspection and validation.
+This plugin packages a declarative container service.
 
 ## Installation
 
@@ -262,11 +253,19 @@ vm plugins install /path/to/{plugin_name}
 
 ## Usage
 
-Inspect and validate the installed definition:
+Validate the installed definition and activate it in a Docker or Podman project:
 
 ```bash
 vm plugins show {plugin_name}
 vm plugins validate {plugin_name}
+```
+
+```yaml
+provider: docker
+services:
+  {plugin_name}:
+    enabled: true
+    plugin: {plugin_name}
 ```
 
 ## Configuration
@@ -286,12 +285,7 @@ Edit `service.yaml` to customize:
 - Port mappings
 - Volume mounts
 - Environment variables
-- Command to run
 - Service dependencies
-
-## Health Check
-
-The service provides a health check endpoint at `/health` for monitoring.
 
 ## License
 

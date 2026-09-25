@@ -1,12 +1,16 @@
 //! User interaction with containers (SSH/exec/logs)
 use std::io::IsTerminal;
 use std::path::Path;
+use std::process::Command;
 use std::time::Instant;
 use tracing::{debug, info};
 
 use super::LifecycleOperations;
 use crate::{container::UserConfig, security::SecurityValidator, shell_session};
-use crate::{guest_exit::run_guest_command, GuestExit};
+use crate::{
+    guest_exit::{capture_guest_command, run_guest_command},
+    ExecOptions, GuestExit, GuestOutput, LogRecord,
+};
 use vm_core::msg;
 use vm_core::{
     command_stream::stream_command_visible,
@@ -231,18 +235,29 @@ impl<'a> LifecycleOperations<'a> {
 
     #[must_use = "command execution results should be handled"]
     pub fn exec_in_container(&self, container: Option<&str>, cmd: &[String]) -> Result<()> {
-        let args = self.container_exec_args(container, cmd, false)?;
+        let args = self.container_exec_args(container, cmd, false, &ExecOptions::default())?;
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
         stream_command_visible(self.runtime.executable(), &arg_refs)
     }
 
-    pub fn exec_status_in_container(
+    pub fn exec_status_in_container_with_options(
         &self,
         container: Option<&str>,
         cmd: &[String],
+        options: &ExecOptions,
     ) -> Result<GuestExit> {
-        let args = self.container_exec_args(container, cmd, false)?;
+        let args = self.container_exec_args(container, cmd, false, options)?;
         run_guest_command(std::process::Command::new(self.runtime.executable()).args(args))
+    }
+
+    pub fn exec_capture_in_container_with_options(
+        &self,
+        container: Option<&str>,
+        cmd: &[String],
+        options: &ExecOptions,
+    ) -> Result<GuestOutput> {
+        let args = self.container_exec_args(container, cmd, false, options)?;
+        capture_guest_command(std::process::Command::new(self.runtime.executable()).args(args))
     }
 
     #[must_use = "command execution results should be handled"]
@@ -252,7 +267,7 @@ impl<'a> LifecycleOperations<'a> {
         cmd: &[String],
         input: &[u8],
     ) -> Result<()> {
-        let args = self.container_exec_args(container, cmd, true)?;
+        let args = self.container_exec_args(container, cmd, true, &ExecOptions::default())?;
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
         duct::cmd(self.runtime.executable(), &arg_refs)
             .stdin_bytes(input.to_vec())
@@ -266,7 +281,7 @@ impl<'a> LifecycleOperations<'a> {
         container: Option<&str>,
         cmd: &[String],
     ) -> Result<String> {
-        let args = self.container_exec_args(container, cmd, false)?;
+        let args = self.container_exec_args(container, cmd, false, &ExecOptions::default())?;
         let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
         duct::cmd(self.runtime.executable(), &arg_refs)
             .stderr_capture()
@@ -279,6 +294,7 @@ impl<'a> LifecycleOperations<'a> {
         container: Option<&str>,
         cmd: &[String],
         attach_stdin: bool,
+        options: &ExecOptions,
     ) -> Result<Vec<String>> {
         let target_container = self.resolve_target_container(container)?;
         let workspace_path = self
@@ -288,15 +304,21 @@ impl<'a> LifecycleOperations<'a> {
             .and_then(|p| p.workspace_path.as_deref())
             .unwrap_or(super::helpers::DEFAULT_WORKSPACE_PATH);
         let user_config = UserConfig::from_vm_config(self.config);
-        let project_user = &user_config.username;
-        let project_home = format!("/home/{project_user}");
+        options.validate_user()?;
+        let project_user = options.user.as_deref().unwrap_or(&user_config.username);
+        let project_home = if project_user == "root" {
+            "/root".to_string()
+        } else {
+            format!("/home/{project_user}")
+        };
         let shell = self
             .config
             .terminal
             .as_ref()
             .and_then(|t| t.shell.as_deref())
             .unwrap_or(DEFAULT_SHELL);
-        let workspace_quoted = shell_session::quote_posix_argument(workspace_path);
+        let working_dir = options.guest_cwd(workspace_path);
+        let workspace_quoted = shell_session::quote_posix_argument(&working_dir.to_string_lossy());
         let worktree_repair = shell_session::worktree_repair_script(workspace_path);
 
         Self::repair_home_state(self.runtime.executable(), &target_container, &user_config)?;
@@ -308,7 +330,7 @@ impl<'a> LifecycleOperations<'a> {
         args.extend([
             target_container,
             "sudo".to_string(),
-            "-Hu".to_string(),
+            "-nHu".to_string(),
             project_user.to_string(),
             "env".to_string(),
             format!("HOME={project_home}"),
@@ -376,6 +398,29 @@ impl<'a> LifecycleOperations<'a> {
 
         stream_command_visible(self.runtime.executable(), &args)
             .map_err(|e| VmError::Internal(format!("Failed to show logs: {e}")))
+    }
+
+    /// Stream raw log records for JSON Lines output.
+    pub fn stream_log_records(
+        &self,
+        container: Option<&str>,
+        follow: bool,
+        tail: usize,
+        service: Option<&str>,
+        sink: &mut dyn FnMut(LogRecord) -> Result<()>,
+    ) -> Result<()> {
+        let target = if let Some(service) = service {
+            self.map_service_to_container(service)?
+        } else {
+            self.resolve_target_container(container)?
+        };
+        let mut command = Command::new(self.runtime.executable());
+        command.arg("logs");
+        if follow {
+            command.arg("--follow");
+        }
+        command.args(["--tail", &tail.to_string(), "--timestamps", &target]);
+        crate::log_stream::stream_log_command(&mut command, true, sink)
     }
 
     /// Map service names to global container names

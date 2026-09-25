@@ -18,6 +18,7 @@ pub(crate) struct ErrorRecord {
     code: &'static str,
     message: String,
     next_action: Option<String>,
+    target: Option<String>,
 }
 
 impl ErrorRecord {
@@ -26,6 +27,7 @@ impl ErrorRecord {
             code: error.code(),
             message: error.to_string(),
             next_action: error.hint().map(str::to_string),
+            target: error.target().map(str::to_string),
         }
     }
 }

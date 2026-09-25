@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-pub const SECRET_STORAGE_VERSION: u32 = 2;
+pub const SECRET_STORAGE_VERSION: u32 = 3;
 
 /// Scope of secret access
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -18,9 +18,30 @@ pub enum SecretScope {
     Instance(String),
 }
 
+impl SecretScope {
+    pub fn parse(value: &str) -> Option<Self> {
+        if value == "global" {
+            return Some(Self::Global);
+        }
+        if let Some(project) = value
+            .strip_prefix("project:")
+            .filter(|name| !name.is_empty())
+        {
+            return Some(Self::Project(project.to_string()));
+        }
+        value
+            .strip_prefix("instance:")
+            .filter(|name| !name.is_empty())
+            .map(|instance| Self::Instance(instance.to_string()))
+    }
+}
+
 /// A stored secret with metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Secret {
+    /// The name within its access scope
+    #[serde(default)]
+    pub name: String,
     /// Encrypted secret value
     pub encrypted_value: String,
     /// When the secret was created
@@ -35,9 +56,15 @@ pub struct Secret {
 
 impl Secret {
     /// Create a new secret with encrypted value
-    pub fn new(encrypted_value: String, scope: SecretScope, description: Option<String>) -> Self {
+    pub fn new(
+        name: String,
+        encrypted_value: String,
+        scope: SecretScope,
+        description: Option<String>,
+    ) -> Self {
         let now = Utc::now();
         Self {
+            name,
             encrypted_value,
             created_at: now,
             updated_at: now,
@@ -54,7 +81,7 @@ pub struct SecretStorage {
     pub version: u32,
     /// Salt for key derivation
     pub salt: String,
-    /// Stored secrets by name
+    /// Stored secrets by scoped identity
     pub secrets: HashMap<String, Secret>,
     /// Authentication token for API access
     pub auth_token: Option<String>,

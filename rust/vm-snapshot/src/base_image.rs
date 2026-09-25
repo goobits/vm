@@ -115,6 +115,7 @@ pub(crate) async fn create_from_dockerfile(
         }],
         volumes: vec![],
         native_vm_file: None,
+        native_image_digest: None,
         excluded_mounts: vec![],
         compose_file: String::new(),
         vm_config_file: String::new(),

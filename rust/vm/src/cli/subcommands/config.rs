@@ -30,6 +30,12 @@ pub enum ConfigSubcommand {
         value_json: Option<String>,
         #[arg(long, value_enum, default_value_t = ConfigWriteScope::Project)]
         scope: ConfigWriteScope,
+        /// Validate and show the configuration change without writing it
+        #[arg(long)]
+        dry_run: bool,
+        /// Emit one versioned JSON result
+        #[arg(long)]
+        json: bool,
     },
     /// View configuration values
     Get {
@@ -47,6 +53,12 @@ pub enum ConfigSubcommand {
         field: String,
         #[arg(long, value_enum, default_value_t = ConfigWriteScope::Project)]
         scope: ConfigWriteScope,
+        /// Validate and show the configuration change without writing it
+        #[arg(long)]
+        dry_run: bool,
+        /// Emit one versioned JSON result
+        #[arg(long)]
+        json: bool,
     },
     /// Manage configuration presets
     Presets {
@@ -88,6 +100,12 @@ pub enum ConfigPresetSubcommand {
         names: Vec<String>,
         #[arg(long, value_enum, default_value_t = ConfigWriteScope::Project)]
         scope: ConfigWriteScope,
+        /// Validate and show the configuration change without writing it
+        #[arg(long)]
+        dry_run: bool,
+        /// Emit one versioned JSON result
+        #[arg(long)]
+        json: bool,
     },
 }
 

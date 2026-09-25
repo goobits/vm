@@ -7,11 +7,14 @@ use vm_config::{config::VmConfig, AppConfig};
 
 use crate::error::{VmError, VmResult};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(crate) struct DbRoute {
     pub database: String,
     pub environment: String,
     pub engine: String,
+    pub container: String,
+    pub user: String,
+    pub configured_password: Option<String>,
     pub backup_namespace: String,
 }
 
@@ -73,21 +76,24 @@ impl DbRoute {
                 )
             })?;
         let database = service
-            .database
-            .clone()
-            .unwrap_or_else(|| format!("{project}_dev"));
-        let database = database
-            .replace("{{ project.name }}", project)
-            .replace("{{project.name}}", project)
-            .replace("{{ environment.name }}", environment.unwrap_or("default"))
-            .replace("{{environment.name}}", environment.unwrap_or("default"));
-        if database.contains("{{") || database.contains("}}") {
+            .resolved_database(project, environment)
+            .map_err(|error| {
+                VmError::validation(
+                    error,
+                    Some("Use project.name or environment.name placeholders"),
+                )
+            })?;
+        super::backup::validate_backup_component(&database)?;
+        let engine = config
+            .provider
+            .as_ref()
+            .map_or(engine, |provider| provider.as_str());
+        if !matches!(engine, "docker" | "podman") {
             return Err(VmError::validation(
-                format!("Unsupported template in PostgreSQL database name '{database}'"),
-                Some("Use project.name or environment.name placeholders"),
+                format!("PostgreSQL database commands require a Docker or Podman environment; '{engine}' is unsupported"),
+                None::<String>,
             ));
         }
-        super::backup::validate_backup_component(&database)?;
         let owning_path = config
             .owning_config_path()
             .ok_or_else(|| {
@@ -102,30 +108,28 @@ impl DbRoute {
             .iter()
             .map(|byte| format!("{byte:02x}"))
             .collect::<String>();
+        let container = environment.map_or_else(
+            || format!("{project}-postgres"),
+            |name| format!("{project}-{name}-postgres"),
+        );
         let environment = environment.unwrap_or("default").to_string();
         super::backup::validate_backup_component(&environment)?;
         Ok(Self {
             database,
             environment: environment.clone(),
             engine: engine.to_string(),
+            container,
+            user: service
+                .user
+                .clone()
+                .unwrap_or_else(|| "postgres".to_string()),
+            configured_password: service.password.clone(),
             backup_namespace: format!("{project_key}/{environment}"),
         })
     }
 
-    pub fn require_database(&self, name: &str) -> VmResult<()> {
-        if name != self.database {
-            return Err(VmError::validation(
-                format!(
-                    "Database '{name}' is not configured for environment '{}'",
-                    self.environment
-                ),
-                Some(format!(
-                    "Use configured database '{}' or select a different --env",
-                    self.database
-                )),
-            ));
-        }
-        Ok(())
+    pub fn validate_database_name(name: &str) -> VmResult<()> {
+        super::backup::validate_backup_component(name)
     }
 }
 
@@ -155,6 +159,8 @@ environments:
       postgresql:
         enabled: true
         database: '{{project.name}}_dev'
+        user: dev_admin
+        password: dev_secret
   test:
     provider: docker
     image: postgres:17
@@ -172,8 +178,20 @@ environments:
         let test = DbRoute::for_config(&test, Some("test"), "docker").unwrap();
         assert_eq!(dev.database, "demo_dev");
         assert_eq!(test.database, "test_db");
+        assert_eq!(dev.container, "demo-dev-postgres");
+        assert_eq!(test.container, "demo-test-postgres");
+        assert_eq!(dev.engine, "docker");
+        assert_eq!(dev.user, "dev_admin");
+        assert_eq!(dev.configured_password.as_deref(), Some("dev_secret"));
+        assert_eq!(
+            DbRoute::for_config(&config, None, "docker")
+                .unwrap()
+                .container,
+            "demo-postgres"
+        );
         assert_ne!(dev.backup_namespace, test.backup_namespace);
-        assert!(dev.require_database("demo_test").is_err());
+        assert!(DbRoute::validate_database_name("demo_test").is_ok());
+        assert!(DbRoute::validate_database_name("../other").is_err());
 
         let other_directory = tempfile::tempdir().unwrap();
         let other_path = other_directory.path().join("vm.yaml");

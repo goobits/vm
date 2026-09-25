@@ -34,6 +34,7 @@ Generated from the CLI parser. Run `vm help <command>` for options and examples.
 | `vm packages service backups` | Manage private appliance backups |
 | `vm packages service backups list` | List appliance-local backups |
 | `vm packages service backups create` | Create a consistent backup in a private named volume |
+| `vm packages service backups remove` | Remove one exact appliance-local backup |
 | `vm packages service backups restore` | Restore a private named-volume backup while services are stopped |
 | `vm packages register` | Register repository URLs or remember local Git roots as read-only workspaces |
 | `vm packages list` | List registered packages and their publication/consumability state |
@@ -81,8 +82,8 @@ Generated from the CLI parser. Run `vm help <command>` for options and examples.
 | `vm config profiles set-default` | Set the default profile for this project |
 | `vm config ports` | Fix port conflicts |
 | `vm tunnels` | Manage active port forwards |
-| `vm tunnels open` | Open a named loopback tunnel to a port in an environment |
-| `vm tunnels list` | List active tunnels |
+| `vm tunnels open` | Open a named TCP tunnel through an environment |
+| `vm tunnels list` | List project-owned tunnel relays, including orphaned environments |
 | `vm tunnels close` | Close one named tunnel |
 | `vm doctor` | Diagnose and repair engine issues |
 | `vm plugins` | Extend with plugins |
@@ -93,13 +94,13 @@ Generated from the CLI parser. Run `vm help <command>` for options and examples.
 | `vm plugins create` | Create a new plugin |
 | `vm plugins validate` | Check plugin configuration |
 | `vm system` | Self-management and lower-level system tools |
-| `vm system info` | Show this installation's version and location |
+| `vm system info` | Show client, controller, provider, and schema versions |
 | `vm system update` | Update this vm installation |
 | `vm system uninstall` | Remove vm from this system |
 | `vm system images` | Manage provider-native base images |
 | `vm system images build` | Build a provider-native base artifact for a preset |
 | `vm system storage` | Inspect and remove VM-owned provider storage |
-| `vm system storage list` | List VM-owned volumes and images with deletion eligibility |
+| `vm system storage list` | List VM-owned provider storage with deletion eligibility |
 | `vm system storage remove` | Remove one exact, unreferenced disposable resource |
 | `vm db` | Database workflows |
 | `vm db backups` | Manage PostgreSQL backups |

@@ -18,19 +18,48 @@ pub(super) async fn handle_command(
     config_path: Option<std::path::PathBuf>,
     profile: Option<String>,
 ) -> VmResult<()> {
-    let config = AppConfig::load(config_path, profile, None)?;
-    let default_scope = format!(
-        "project:{}",
-        super::command_context::project_name(&config.vm)
-    );
-    handle_secrets_command(command, config.global, &default_scope).await
+    if let SecretSubcommand::Set { stdin, file, .. } = command {
+        require_secret_input_source(*stdin, file.as_deref())?;
+    }
+    let scope = match command {
+        SecretSubcommand::Status => None,
+        SecretSubcommand::Set { scope, .. }
+        | SecretSubcommand::List { scope }
+        | SecretSubcommand::Show { scope, .. }
+        | SecretSubcommand::Remove { scope, .. } => {
+            Some(resolve_scope(scope.as_deref(), config_path, profile)?)
+        }
+    };
+    handle_secrets_command(command, GlobalConfig::load()?, scope.as_deref()).await
+}
+
+fn resolve_scope(
+    requested: Option<&str>,
+    config_path: Option<std::path::PathBuf>,
+    profile: Option<String>,
+) -> VmResult<String> {
+    match requested.unwrap_or("project") {
+        "user" => Ok("global".to_string()),
+        "project" => {
+            let app = AppConfig::load(config_path, profile, None)?;
+            super::command_context::require_project_config(&app.vm)?;
+            Ok(format!(
+                "project:{}",
+                super::command_context::project_name(&app.vm)
+            ))
+        }
+        other => Err(VmError::validation(
+            format!("Invalid secret scope '{other}'"),
+            Some("Use project or user"),
+        )),
+    }
 }
 
 /// Handle secrets commands
 async fn handle_secrets_command(
     command: &SecretSubcommand,
     global_config: GlobalConfig,
-    default_scope: &str,
+    scope: Option<&str>,
 ) -> VmResult<()> {
     match command {
         SecretSubcommand::Status => handle_status(&global_config).await,
@@ -38,22 +67,21 @@ async fn handle_secrets_command(
             name,
             stdin,
             file,
-            scope,
+            scope: _,
             description,
         } => {
             let value = read_secret_value(*stdin, file.as_deref())?;
-            handle_add(
-                name,
-                &value,
-                Some(scope.as_deref().unwrap_or(default_scope)),
-                description.as_deref(),
-                &global_config,
-            )
-            .await
+            handle_add(name, &value, scope, description.as_deref(), &global_config).await
         }
-        SecretSubcommand::List => handle_list(&global_config).await,
-        SecretSubcommand::Show { name, reveal: _ } => handle_show(name, &global_config).await,
-        SecretSubcommand::Remove { name, yes } => handle_remove(name, *yes, &global_config).await,
+        SecretSubcommand::List { .. } => {
+            handle_list(scope.expect("scope resolved"), &global_config).await
+        }
+        SecretSubcommand::Show { name, .. } => {
+            handle_show(name, scope.expect("scope resolved"), &global_config).await
+        }
+        SecretSubcommand::Remove { name, yes, .. } => {
+            handle_remove(name, *yes, scope.expect("scope resolved"), &global_config).await
+        }
     }
 }
 
@@ -144,10 +172,10 @@ async fn handle_add(
 }
 
 /// List secrets
-async fn handle_list(global_config: &GlobalConfig) -> VmResult<()> {
+async fn handle_list(scope: &str, global_config: &GlobalConfig) -> VmResult<()> {
     let server_url = server_url(global_config);
     ensure_server(global_config).await?;
-    let list = vm_auth_proxy::list_secrets(&server_url)
+    let list = vm_auth_proxy::list_secrets(&server_url, scope)
         .await
         .map_err(VmError::from)?;
 
@@ -157,7 +185,9 @@ async fn handle_list(global_config: &GlobalConfig) -> VmResult<()> {
     }
 
     vm_println!("Secrets ({})", list.total);
-    for secret in list.secrets {
+    let mut secrets = list.secrets;
+    secrets.sort_by(|left, right| left.name.cmp(&right.name));
+    for secret in secrets {
         let scope = match secret.scope {
             SecretScope::Global => "global".to_string(),
             SecretScope::Project(project) => format!("project:{project}"),
@@ -174,6 +204,7 @@ async fn handle_list(global_config: &GlobalConfig) -> VmResult<()> {
 }
 
 fn read_secret_value(stdin: bool, file: Option<&std::path::Path>) -> VmResult<String> {
+    require_secret_input_source(stdin, file)?;
     let value = if let Some(path) = file {
         std::fs::read_to_string(path)
             .map_err(|error| VmError::general(error, "Failed to read secret file"))?
@@ -184,12 +215,6 @@ fn read_secret_value(stdin: bool, file: Option<&std::path::Path>) -> VmResult<St
             .map_err(|error| VmError::general(error, "Failed to read secret from stdin"))?;
         value
     } else {
-        if !std::io::stdin().is_terminal() {
-            return Err(VmError::validation(
-                "Secret input requires a terminal",
-                Some("Use --stdin or --file in scripts"),
-            ));
-        }
         Password::new()
             .with_prompt("Secret value")
             .interact()
@@ -201,36 +226,58 @@ fn read_secret_value(stdin: bool, file: Option<&std::path::Path>) -> VmResult<St
     Ok(value)
 }
 
-async fn handle_show(name: &str, global_config: &GlobalConfig) -> VmResult<()> {
+fn require_secret_input_source(stdin: bool, file: Option<&std::path::Path>) -> VmResult<()> {
+    if !stdin && file.is_none() && !std::io::stdin().is_terminal() {
+        return Err(VmError::validation(
+            "Secret input requires a terminal",
+            Some("Use --stdin or --file in scripts"),
+        ));
+    }
+    Ok(())
+}
+
+async fn handle_show(name: &str, scope: &str, global_config: &GlobalConfig) -> VmResult<()> {
     ensure_server(global_config).await?;
-    let value = vm_auth_proxy::get_secret_value(&server_url(global_config), name).await?;
+    let value = vm_auth_proxy::get_secret_value(&server_url(global_config), name, scope).await?;
     vm_print!("{value}");
     Ok(())
 }
 
 /// Remove a secret
-async fn handle_remove(name: &str, yes: bool, global_config: &GlobalConfig) -> VmResult<()> {
-    if !yes {
-        if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
-            return Err(VmError::validation(
-                format!("Removing secret '{name}' requires confirmation"),
-                Some("Review the secret name, then repeat with --yes"),
-            ));
-        }
-        if !vm_core::prompts::confirm_select(&format!("Remove secret '{name}'?"), false)? {
-            vm_println!("Secret removal cancelled.");
-            return Ok(());
-        }
+async fn handle_remove(
+    name: &str,
+    yes: bool,
+    scope: &str,
+    global_config: &GlobalConfig,
+) -> VmResult<()> {
+    if !crate::confirmation::destructive(&format!("Remove secret '{name}' from {scope}?"), yes)? {
+        vm_println!("Secret removal cancelled.");
+        return Ok(());
     }
 
     let server_url = server_url(global_config);
     ensure_server(global_config).await?;
     vm_progress!("Removing secret '{name}'...");
 
-    vm_auth_proxy::remove_secret(&server_url, name)
+    vm_auth_proxy::remove_secret(&server_url, name, scope)
         .await
         .map_err(VmError::from)?;
 
     vm_success!("Removed secret '{name}'");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_scope;
+
+    #[test]
+    fn user_scope_works_without_a_project_and_project_scope_requires_one() {
+        let missing = Some(std::path::PathBuf::from("/nonexistent/project/vm.yaml"));
+        assert_eq!(
+            resolve_scope(Some("user"), missing.clone(), None).unwrap(),
+            "global"
+        );
+        assert!(resolve_scope(None, missing, None).is_err());
+    }
 }

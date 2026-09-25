@@ -18,6 +18,7 @@ mod tart;
 mod volumes;
 
 // Re-export key types
+pub use archive::ArchiveCompression;
 pub use create::handle_create;
 pub use export::handle_export;
 pub use import::handle_import;

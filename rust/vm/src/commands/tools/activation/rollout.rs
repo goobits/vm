@@ -16,7 +16,7 @@ use crate::commands::packages::tooling;
 use crate::commands::vm_ops::{self, InstanceStateFilter};
 use crate::error::{VmError, VmResult};
 
-use super::super::{guest, reconcile::reconcile_subject, updates};
+use super::super::{background, guest, reconcile::reconcile_subject, updates};
 use super::worker::worker_id;
 
 const TARGET_RETRY_INTERVAL: Duration = Duration::from_secs(2);
@@ -79,7 +79,7 @@ pub(in crate::commands) async fn activate_deferred(
             ));
         }
     }
-    Ok(())
+    background::apply_deferred_after_start(provider, environment).await
 }
 
 fn latest_deferred_activations(
@@ -241,6 +241,9 @@ async fn activate_target(
         .iter()
         .find(|target| target.target_id == target_id)
         .ok_or_else(|| VmError::validation("Tool activation target is missing", None::<String>))?;
+    if !environment_running(&target.provider, &target.environment)? {
+        return defer_target(client, activation, target_id, worker).await;
+    }
     let deadline = tokio::time::Instant::now() + TARGET_RETRY_TIMEOUT;
     let mut last_error = None;
     while tokio::time::Instant::now() < deadline {
@@ -267,7 +270,12 @@ async fn activate_target(
                     .await?;
                 return Ok(());
             }
-            Err(error) => last_error = Some(error),
+            Err(error) => {
+                last_error = Some(error);
+                if !environment_running(&target.provider, &target.environment)? {
+                    return defer_target(client, activation, target_id, worker).await;
+                }
+            }
         }
         tokio::time::sleep(TARGET_RETRY_INTERVAL).await;
     }
@@ -289,12 +297,40 @@ async fn activate_target(
     Ok(())
 }
 
-async fn activate_environment(
-    tool: &str,
-    version: &str,
+async fn defer_target(
+    client: &vm_packages::PackageInfrastructureClient,
+    activation: &ToolActivationRecord,
+    target_id: &str,
+    worker: &str,
+) -> VmResult<()> {
+    client
+        .update_tool_activation_target(
+            &activation.activation_id,
+            target_id,
+            &UpdateToolActivationTargetRequest {
+                worker: worker.to_string(),
+                state: ToolActivationTargetState::Deferred,
+                error: None,
+                idempotency_key: target_update_key(activation, target_id, "deferred"),
+            },
+        )
+        .await?;
+    Ok(())
+}
+
+fn environment_running(provider: &str, environment: &str) -> VmResult<bool> {
+    let subject = load_activation_subject(provider, environment)?;
+    Ok(subject
+        .provider
+        .instance_state(Some(environment))
+        .map_err(VmError::from)?
+        .is_running())
+}
+
+fn load_activation_subject(
     provider: &str,
     environment: &str,
-) -> VmResult<()> {
+) -> VmResult<crate::commands::command_context::RuntimeSubject> {
     let instance = InstanceInfo {
         name: environment.to_string(),
         id: String::new(),
@@ -304,7 +340,16 @@ async fn activate_environment(
         uptime: None,
         created_at: None,
     };
-    let mut subject = load_runtime_subject_for_instance(None, None, &instance)?;
+    load_runtime_subject_for_instance(None, None, &instance)
+}
+
+async fn activate_environment(
+    tool: &str,
+    version: &str,
+    provider: &str,
+    environment: &str,
+) -> VmResult<()> {
+    let mut subject = load_activation_subject(provider, environment)?;
     pin_activation_version(&mut subject.config, tool, version)?;
     updates::activate_tool(&mut subject, tool).await?;
     let installed = guest::installed(subject.provider.as_ref(), &subject.target)?;

@@ -4,7 +4,7 @@ use vm_config::config::{ImageSpec, VmConfig};
 use vm_core::error::Result;
 
 use super::provider::TartProvider;
-use crate::{shell_session, tart_base, VmError};
+use crate::{shell_session, tart_base, ExecOptions, VmError};
 
 impl TartProvider {
     pub(super) fn host_workspace_path(&self) -> Result<PathBuf> {
@@ -49,22 +49,7 @@ impl TartProvider {
     }
 
     pub(super) fn effective_sync_directory(&self) -> String {
-        let configured = self
-            .config
-            .project
-            .as_ref()
-            .and_then(|project| project.workspace_path.as_deref())
-            .unwrap_or("/workspace");
-        if configured == "/workspace" && Self::is_macos_guest_config(&self.config) {
-            let user = self
-                .config
-                .tart
-                .as_ref()
-                .and_then(|tart| tart.ssh_user.as_deref())
-                .unwrap_or("admin");
-            return format!("/Users/{user}/workspace");
-        }
-        configured.to_string()
+        effective_sync_directory_for_config(&self.config)
     }
 
     pub(super) fn is_macos_guest_config(config: &VmConfig) -> bool {
@@ -100,6 +85,16 @@ impl TartProvider {
         container: Option<&str>,
         command: &[String],
     ) -> Result<Vec<String>> {
+        self.guest_exec_args_with_options(container, command, &ExecOptions::default())
+    }
+
+    pub(super) fn guest_exec_args_with_options(
+        &self,
+        container: Option<&str>,
+        command: &[String],
+        options: &ExecOptions,
+    ) -> Result<Vec<String>> {
+        options.validate_user()?;
         let vm_name = self.vm_name_with_instance(container)?;
         let shell = self
             .config
@@ -108,22 +103,42 @@ impl TartProvider {
             .and_then(|terminal| terminal.shell.as_deref())
             .unwrap_or("zsh");
         let sync_dir = self.effective_sync_directory();
+        let working_dir = options.guest_cwd(&sync_dir);
         self.ensure_workspace_mount_ready(&vm_name, &sync_dir)?;
         self.ensure_configured_mounts_ready(&vm_name)?;
         self.ensure_shell_config_ready(&vm_name, &sync_dir)?;
         let worktree_repair = shell_session::worktree_repair_script(&sync_dir);
-        let mut args = vec![
-            "exec".to_string(),
-            vm_name,
+        let mut args = vec!["exec".to_string(), vm_name];
+        if let Some(user) = options.user.as_deref() {
+            args.extend(["sudo".to_string(), "-nHu".to_string(), user.to_string()]);
+        }
+        args.extend([
             shell.to_string(),
             "-ilc".to_string(),
             format!(
                 "{worktree_repair}\ncd {} && exec \"$@\"",
-                shell_session::quote_posix_argument(&sync_dir)
+                shell_session::quote_posix_argument(&working_dir.to_string_lossy())
             ),
             "vm-exec".to_string(),
-        ];
+        ]);
         args.extend(command.iter().cloned());
         Ok(args)
     }
+}
+
+pub(super) fn effective_sync_directory_for_config(config: &VmConfig) -> String {
+    let configured = config
+        .project
+        .as_ref()
+        .and_then(|project| project.workspace_path.as_deref())
+        .unwrap_or("/workspace");
+    if configured == "/workspace" && TartProvider::is_macos_guest_config(config) {
+        let user = config
+            .tart
+            .as_ref()
+            .and_then(|tart| tart.ssh_user.as_deref())
+            .unwrap_or("admin");
+        return format!("/Users/{user}/workspace");
+    }
+    configured.to_string()
 }

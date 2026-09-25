@@ -36,6 +36,7 @@ mod merge;
 pub mod ports;
 mod preset;
 mod schema;
+mod user_defaults;
 pub mod validation;
 mod yaml;
 
@@ -150,6 +151,7 @@ impl AppConfig {
         // Load VM configuration with all merging logic
         let mut vm = config::VmConfig::load(config_path.clone())?;
         let source_path = vm.source_path.clone();
+        user_defaults::apply(&mut vm, &global.defaults);
 
         // Apply profile if specified
         let profile_name =

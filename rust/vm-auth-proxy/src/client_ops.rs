@@ -7,26 +7,10 @@ use reqwest::{Client, Response};
 use std::collections::HashMap;
 
 fn parse_secret_scope(scope: Option<&str>) -> Result<SecretScope> {
-    match scope {
-        Some("global") | None => Ok(SecretScope::Global),
-        Some(value) => {
-            if let Some(name) = value
-                .strip_prefix("project:")
-                .filter(|name| !name.is_empty())
-            {
-                return Ok(SecretScope::Project(name.to_string()));
-            }
-            if let Some(name) = value
-                .strip_prefix("instance:")
-                .filter(|name| !name.is_empty())
-            {
-                return Ok(SecretScope::Instance(name.to_string()));
-            }
-            Err(anyhow!(
-                "Invalid scope '{value}'. Use 'global', 'project:NAME', or 'instance:NAME'"
-            ))
-        }
-    }
+    let value = scope.unwrap_or("global");
+    SecretScope::parse(value).ok_or_else(|| {
+        anyhow!("Invalid scope '{value}'. Use 'global', 'project:NAME', or 'instance:NAME'")
+    })
 }
 
 fn endpoint_url(server_url: &str, segments: &[&str]) -> Result<reqwest::Url> {
@@ -35,6 +19,13 @@ fn endpoint_url(server_url: &str, segments: &[&str]) -> Result<reqwest::Url> {
         .map_err(|_| anyhow!("Auth proxy URL cannot be used as a base"))?
         .pop_if_empty()
         .extend(segments);
+    Ok(url)
+}
+
+fn scoped_url(server_url: &str, segments: &[&str], scope: &str) -> Result<reqwest::Url> {
+    parse_secret_scope(Some(scope))?;
+    let mut url = endpoint_url(server_url, segments)?;
+    url.query_pairs_mut().append_pair("scope", scope);
     Ok(url)
 }
 
@@ -76,9 +67,9 @@ pub async fn add_secret(
 }
 
 /// Return secret metadata without values.
-pub async fn list_secrets(server_url: &str) -> Result<SecretListResponse> {
+pub async fn list_secrets(server_url: &str, scope: &str) -> Result<SecretListResponse> {
     let response = Client::new()
-        .get(endpoint_url(server_url, &["secrets"])?)
+        .get(scoped_url(server_url, &["secrets"], scope)?)
         .bearer_auth(auth_token().await?)
         .send()
         .await
@@ -91,9 +82,9 @@ pub async fn list_secrets(server_url: &str) -> Result<SecretListResponse> {
 }
 
 /// Remove one secret.
-pub async fn remove_secret(server_url: &str, name: &str) -> Result<()> {
+pub async fn remove_secret(server_url: &str, name: &str, scope: &str) -> Result<()> {
     let response = Client::new()
-        .delete(endpoint_url(server_url, &["secrets", name])?)
+        .delete(scoped_url(server_url, &["secrets", name], scope)?)
         .bearer_auth(auth_token().await?)
         .send()
         .await
@@ -103,9 +94,9 @@ pub async fn remove_secret(server_url: &str, name: &str) -> Result<()> {
 }
 
 /// Return the plaintext value for one secret.
-pub async fn get_secret_value(server_url: &str, name: &str) -> Result<String> {
+pub async fn get_secret_value(server_url: &str, name: &str, scope: &str) -> Result<String> {
     let response = Client::new()
-        .get(endpoint_url(server_url, &["secrets", name])?)
+        .get(scoped_url(server_url, &["secrets", name], scope)?)
         .bearer_auth(auth_token().await?)
         .send()
         .await

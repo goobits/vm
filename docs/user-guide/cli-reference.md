@@ -28,6 +28,9 @@ executables, either inside the environment or through `vm exec -- TOOL ...`.
 
 Snapshot names are unique in the selected project. Read, export, and remove
 commands use project configuration, so they work after an environment is removed.
+`vm snapshots list --json` and `vm snapshots show NAME --json` emit structured
+read results. Snapshot create, restore, remove, export, and import also accept
+`--json` for structured outcomes.
 `--env` filters by the environment recorded at capture. Restore requires the
 recorded source environment. Docker and Podman also require a matching Compose volume plan.
 
@@ -77,6 +80,13 @@ a running environment; `status`,
 `logs`, `copy`, `stop`, `restart`, `remove`, and snapshot operations require an
 existing environment. Host-to-guest copy paths use `environment:/path`.
 
+`vm logs [ENV] --json-lines` emits one JSON object per log record and a final
+`result` event, including failures. Each record identifies its environment,
+service, output stream, and provider timestamp when available. Application
+bytes, including invalid UTF-8 or JSON-like text, are carried as base64 in
+`data_base64`; decode that field to recover the original bytes. `--follow` and
+`--tail` work with this format.
+
 ## Configuration
 
 Configuration fields and examples belong in the
@@ -84,7 +94,11 @@ Configuration fields and examples belong in the
 
 ## Tunnels
 
-The relay supports Docker or Podman environments. `localhost` binds to `127.0.0.1`; use an explicit IPv4 address to expose a listener. The remote host must be reachable from the selected environment's container network. Tunnel names, listings, and closures are scoped to the selected project, provider, and environment.
+The relay supports Docker or Podman environments. `localhost` binds to `127.0.0.1`; use an explicit IPv4 address to expose a listener. Remote endpoints accept IPv4 or DNS names reachable from the environment's container network. IPv6 endpoints are rejected. `tunnels list` and `tunnels close` read the selected project's recorded relays and still work after the source environment is removed. If a tunnel name matches multiple relays, select one with `--env` and `--provider docker|podman`.
+
+`vm tunnels list --json` returns typed project-owned relay views. It omits
+configuration paths and relay container identifiers while retaining the
+endpoints and an opaque tunnel ID.
 
 ## Package Infrastructure
 
@@ -135,8 +149,10 @@ environment. Active agent sessions do not hot-reload updated skills.
 paths. Ordinary cleanup and repair preserve managed data unless a command
 explicitly states otherwise.
 
-Saved snapshots appear in `system storage list` with their project owner. Use
-`vm snapshots remove` from that project to reclaim one; the generic storage
+Saved snapshots appear in `system storage list` with their project owner;
+`vm system storage list --json` emits a structured read result. Use
+`vm system storage remove ID --json --yes` for a structured removal outcome.
+Use `vm snapshots remove` from that project to reclaim a snapshot; the generic storage
 removal command does not delete saved snapshots. Recorded Tart VM disks are
 removable only when the owning project configuration is gone and Tart reports
 a stopped local VM.
@@ -148,3 +164,7 @@ Database commands require an enabled `services.postgresql` definition. A named e
 Secret reads and listings show metadata by default. `vm secrets show NAME
 --reveal` is the explicit path for writing a value to stdout. Installed plugins
 extend presets and service definitions; they do not add built-in command names.
+`vm plugins list --json` returns installed plugin metadata. `vm plugins show
+NAME --json` adds a content summary, omitting file paths, environment values,
+commands, and volume mappings. Both use the standard versioned JSON result
+envelope, including failures.

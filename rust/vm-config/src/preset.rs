@@ -37,6 +37,15 @@ pub struct PresetDetector {
 }
 
 impl PresetDetector {
+    /// Load a preset with project port placeholders resolved for inspection.
+    pub fn load_preset_resolved(&self, name: &str, port_range: Option<&str>) -> Result<VmConfig> {
+        crate::config_ops::port_placeholders::load_preset_with_placeholders(
+            self,
+            name,
+            &port_range.map(str::to_string),
+        )
+    }
+
     /// Creates a new preset detector
     ///
     /// # Arguments

@@ -136,10 +136,16 @@ pub(in crate::commands) async fn handle(
             vm_success!("Removed tool registration {name}");
             Ok(())
         }
-        ToolsSubcommand::Refresh { quiet } => {
+        ToolsSubcommand::Refresh { names, quiet } => {
             let config = vm_config::AppConfig::load(config_path, profile, None)?.vm;
-            match tooling::refresh(&config).await? {
-                RefreshOutcome::Refreshed if !quiet => vm_success!("Tool catalog refreshed"),
+            match tooling::refresh_named(&config, &names).await? {
+                RefreshOutcome::Refreshed if !quiet => {
+                    if !names.is_empty() {
+                        vm_success!("Tool catalog refreshed for {}", names.join(", "));
+                    } else {
+                        vm_success!("Tool catalog refreshed");
+                    }
+                }
                 RefreshOutcome::AlreadyRunning if !quiet => {
                     vm_println!("A tool catalog refresh is already running")
                 }
@@ -177,7 +183,7 @@ pub(in crate::commands) async fn handle(
             vm_hint!(
                 "Existing managed installations are retained but no longer receive global updates"
             );
-            Ok(())
+            updates::reconcile_global_selection().await
         }
         ToolsSubcommand::Update {
             tools,

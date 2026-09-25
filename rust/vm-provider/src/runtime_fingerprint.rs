@@ -22,6 +22,7 @@ pub(crate) fn runtime_fingerprint(config: &VmConfig) -> Result<String> {
         "ports": config.ports,
         "networking": config.networking,
         "services": config.services,
+        "service_plugins": vm_config::config::resolve_service_plugins(config)?,
         "security": config.security,
         "environment": user_environment,
         "host_sync": config.host_sync,

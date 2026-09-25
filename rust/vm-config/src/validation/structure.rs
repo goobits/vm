@@ -22,6 +22,7 @@ impl<'a> StructuralValidator<'a> {
         project::validate_project(self.config)?;
         network::validate_ports(self.config)?;
         network::validate_services(self.config)?;
+        crate::config::resolve_service_plugins(self.config)?;
         runtime::validate_versions(self.config)?;
         network::validate_networking(self.config)?;
         runtime::validate_runtime(self.config)?;

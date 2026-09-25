@@ -4,8 +4,42 @@ use vm_config::config::VmConfig;
 use vm_core::error::Result;
 
 use crate::{
-    GuestExit, InstanceInfo, InstanceState, ProviderContext, TempVmState, VmError, VmStatusReport,
+    GuestExit, GuestOutput, InstanceInfo, InstanceState, LogRecord, ProviderContext, TempVmState,
+    VmError, VmStatusReport,
 };
+
+/// Per-invocation guest process settings.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ExecOptions {
+    pub cwd: Option<PathBuf>,
+    pub user: Option<String>,
+}
+
+impl ExecOptions {
+    pub fn guest_cwd(&self, workspace: &str) -> PathBuf {
+        match self.cwd.as_deref() {
+            Some(path) if path.is_absolute() => path.to_path_buf(),
+            Some(path) => Path::new(workspace).join(path),
+            None => PathBuf::from(workspace),
+        }
+    }
+
+    pub fn validate_user(&self) -> Result<()> {
+        if let Some(user) = self.user.as_deref() {
+            if !user
+                .chars()
+                .next()
+                .is_some_and(|character| character.is_ascii_alphabetic() || character == '_')
+                || !user
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || "_-.".contains(character))
+            {
+                return Err(VmError::Provider("Invalid guest user name".into()));
+            }
+        }
+        Ok(())
+    }
+}
 
 /// Non-interactive and interactive command forms supported by a provider.
 pub trait CommandProvider {
@@ -17,6 +51,31 @@ pub trait CommandProvider {
 
     /// Execute a guest command with inherited output and return its exact exit status.
     fn exec_status(&self, container: Option<&str>, cmd: &[String]) -> Result<GuestExit>;
+
+    fn exec_status_with_options(
+        &self,
+        container: Option<&str>,
+        cmd: &[String],
+        options: &ExecOptions,
+    ) -> Result<GuestExit> {
+        if options != &ExecOptions::default() {
+            return Err(VmError::Provider(
+                "This provider does not support exec --cwd or --user".into(),
+            ));
+        }
+        self.exec_status(container, cmd)
+    }
+
+    fn exec_capture_with_options(
+        &self,
+        _container: Option<&str>,
+        _cmd: &[String],
+        _options: &ExecOptions,
+    ) -> Result<GuestOutput> {
+        Err(VmError::Provider(
+            "This provider does not support captured fleet execution".into(),
+        ))
+    }
 
     fn exec_interactive(
         &self,
@@ -60,6 +119,21 @@ pub trait CommandProvider {
     ) -> Result<()> {
         let _ = (follow, tail, service);
         self.logs(container)
+    }
+
+    /// Stream typed, byte-preserving log records to a structured-output client.
+    fn logs_records(
+        &self,
+        _container: Option<&str>,
+        _follow: bool,
+        _tail: usize,
+        _service: Option<&str>,
+        _config: &VmConfig,
+        _sink: &mut dyn FnMut(LogRecord) -> Result<()>,
+    ) -> Result<()> {
+        Err(VmError::Provider(
+            "This provider does not support structured log output".into(),
+        ))
     }
 
     /// Copy files to or from an environment.
@@ -163,4 +237,31 @@ pub trait TunnelProvider {
     fn relay_is_running(&self, relay_id: &str) -> bool;
 
     fn stop_relay(&self, relay_id: &str) -> Result<()>;
+}
+
+#[cfg(test)]
+mod exec_options_tests {
+    use super::ExecOptions;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn guest_working_directory_uses_workspace_for_relative_paths() {
+        let mut options = ExecOptions::default();
+        assert_eq!(options.guest_cwd("/workspace"), Path::new("/workspace"));
+        options.cwd = Some(PathBuf::from("src"));
+        assert_eq!(options.guest_cwd("/workspace"), Path::new("/workspace/src"));
+        options.cwd = Some(PathBuf::from("/tmp"));
+        assert_eq!(options.guest_cwd("/workspace"), Path::new("/tmp"));
+    }
+
+    #[test]
+    fn guest_user_cannot_be_an_option_or_empty() {
+        let mut options = ExecOptions::default();
+        for user in ["", "--help", "name with space"] {
+            options.user = Some(user.into());
+            assert!(options.validate_user().is_err());
+        }
+        options.user = Some("build_user".into());
+        assert!(options.validate_user().is_ok());
+    }
 }

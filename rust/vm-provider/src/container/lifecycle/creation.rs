@@ -26,6 +26,7 @@ impl<'a> LifecycleOperations<'a> {
         instance_name: Option<&str>,
         context: &ProviderContext,
     ) -> Result<()> {
+        vm_config::config::resolve_service_plugins(self.config)?;
         if let Some(vm_config) = &self.config.vm {
             self.check_memory_allocation(vm_config);
         }

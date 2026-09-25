@@ -35,6 +35,12 @@ use vm_core::{vm_println, vm_success};
 pub(super) use client_settings::{apply_client_environment, reconcile_client_settings};
 use files::ApplianceFiles;
 
+pub(super) fn installed_controller_version() -> VmResult<Option<String>> {
+    Ok(ApplianceFiles::discover()?
+        .read_state()?
+        .map(|state| state.controller_version))
+}
+
 pub(in crate::commands) fn git_auth_configured() -> VmResult<bool> {
     ApplianceFiles::discover()?.has_git_token()
 }
@@ -261,8 +267,13 @@ pub(super) async fn handle(
             command: PackageServiceSubcommand::Backups { command },
         } => match command {
             PackageBackupSubcommand::List => appliance::list_backups(&files),
-            PackageBackupSubcommand::Create => appliance::backup(&files),
-            PackageBackupSubcommand::Restore { name } => appliance::restore(&files, &name),
+            PackageBackupSubcommand::Create { name } => appliance::backup(&files, name.as_deref()),
+            PackageBackupSubcommand::Remove { name, yes } => {
+                appliance::remove_backup(&files, &name, yes)
+            }
+            PackageBackupSubcommand::Restore { name, yes } => {
+                appliance::restore(&files, &name, yes)
+            }
         },
         PackagesSubcommand::Register {
             targets,
@@ -299,7 +310,7 @@ pub(super) async fn handle(
         PackagesSubcommand::CheckoutShow { checkout_id } => {
             catalog::show(&files, &checkout_id).await
         }
-        PackagesSubcommand::Release => Err(crate::error::VmError::validation(
+        PackagesSubcommand::Release { .. } => Err(crate::error::VmError::validation(
             "Managed source releases run inside the assigned environment",
             Some("Run `vm packages release` from the source directory inside that managed VM"),
         )),
@@ -335,7 +346,10 @@ async fn handle_guest(
         } => catalog::status_guest().await,
         PackagesSubcommand::Checkout { source } => checkout::handle_guest(source).await,
         PackagesSubcommand::CheckoutShow { checkout_id } => catalog::show_guest(&checkout_id).await,
-        PackagesSubcommand::Release => release::handle_guest().await,
+        PackagesSubcommand::Release {
+            receipt,
+            background,
+        } => release::handle_guest(receipt.as_deref(), background).await,
         PackagesSubcommand::Cancel => checkout::cancel_guest().await,
         _ => Err(crate::error::VmError::validation(
             "This package command is restricted to the controller host",

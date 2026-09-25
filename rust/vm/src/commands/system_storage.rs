@@ -2,11 +2,11 @@
 
 use crate::cli::SystemStorageSubcommand;
 use crate::error::{VmError, VmResult};
+use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::process::Command;
-use vm_config::GlobalConfig;
-use vm_core::{vm_println, vm_success};
+use vm_core::{vm_println, vm_success, vm_warning};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Resource {
@@ -15,13 +15,32 @@ struct Resource {
     reason: Option<String>,
 }
 
+#[derive(Serialize)]
+struct StorageView<'a> {
+    id: &'a str,
+    removable: bool,
+}
+
+#[derive(Serialize)]
+struct StorageRemoval<'a> {
+    id: &'a str,
+    removed: bool,
+}
+
 pub(super) fn handle(command: &SystemStorageSubcommand) -> VmResult<()> {
-    let config = GlobalConfig::load()?;
-    let provider = config.container_provider();
-    let engine = provider.as_str();
     match command {
-        SystemStorageSubcommand::List => {
-            let resources = inventory(engine)?;
+        SystemStorageSubcommand::List { json } => {
+            let resources = inventory_all()?;
+            if *json {
+                let views = resources
+                    .iter()
+                    .map(|resource| StorageView {
+                        id: &resource.id,
+                        removable: resource.reason.is_none(),
+                    })
+                    .collect::<Vec<_>>();
+                return crate::presentation::success("system storage list", views);
+            }
             if resources.is_empty() {
                 vm_println!("No verified VM-owned storage");
             }
@@ -31,40 +50,53 @@ pub(super) fn handle(command: &SystemStorageSubcommand) -> VmResult<()> {
             }
             Ok(())
         }
-        SystemStorageSubcommand::Remove { resource_id, yes } => {
-            let resource = inventory(engine)?
+        SystemStorageSubcommand::Remove {
+            resource_id,
+            yes,
+            json,
+        } => {
+            let resource = inventory_all()?
                 .into_iter()
                 .find(|item| item.id == *resource_id)
                 .ok_or_else(|| {
                     VmError::validation(
                         format!(
-                            "Resource '{resource_id}' is not in the verified {engine} inventory"
+                            "Resource '{resource_id}' is not in the verified storage inventory"
                         ),
                         Some("Run `vm system storage list` to see exact resource IDs".to_string()),
                     )
+                    .with_target(resource_id)
                 })?;
             if let Some(reason) = resource.reason {
                 return Err(VmError::validation(
                     format!("Cannot remove '{}': {reason}", resource.id),
                     None::<String>,
-                ));
+                )
+                .with_target(resource_id));
             }
-            if !yes
-                && !vm_core::prompts::confirm_select(
-                    &format!(
-                        "Permanently remove '{}' owned by {}?",
-                        resource.id, resource.owner
-                    ),
-                    false,
-                )?
-            {
+            if !crate::confirmation::destructive(
+                &format!(
+                    "Permanently remove '{}' owned by {}?",
+                    resource.id, resource.owner
+                ),
+                *yes,
+            )? {
+                if *json {
+                    return crate::presentation::success(
+                        "system storage remove",
+                        StorageRemoval {
+                            id: resource_id,
+                            removed: false,
+                        },
+                    );
+                }
                 vm_println!("Storage removal cancelled");
                 return Ok(());
             }
 
             // Reinspect after confirmation. The provider's non-force removal is
             // the final reference check if state changes after this inspection.
-            let current = inventory(engine)?
+            let current = inventory_all()?
                 .into_iter()
                 .find(|item| item.id == *resource_id)
                 .ok_or_else(|| {
@@ -76,16 +108,29 @@ pub(super) fn handle(command: &SystemStorageSubcommand) -> VmResult<()> {
                     None::<String>,
                 ));
             }
-            let volume_prefix = format!("{engine}:volume:");
-            let image_prefix = format!("{engine}:image:");
-            if let Some(name) = resource_id.strip_prefix(&volume_prefix) {
-                run(engine, &["volume", "rm", name])?;
-            } else if let Some(id) = resource_id.strip_prefix(&image_prefix) {
-                run(engine, &["image", "rm", id])?;
-            } else if resource_id.starts_with("tart:vm:") {
-                remove_tart_storage(resource_id)?;
-            } else {
-                return Err(VmError::validation("Invalid resource ID", None::<String>));
+            match resource_id.split_once(':') {
+                Some((engine @ ("docker" | "podman"), rest)) => {
+                    if let Some(name) = rest.strip_prefix("volume:") {
+                        run(engine, &["volume", "rm", name])?;
+                    } else if let Some(id) = rest.strip_prefix("image:") {
+                        run(engine, &["image", "rm", id])?;
+                    } else {
+                        return Err(VmError::validation("Invalid resource ID", None::<String>));
+                    }
+                }
+                Some(("tart", _)) if resource_id.starts_with("tart:vm:") => {
+                    remove_tart_storage(resource_id)?;
+                }
+                _ => return Err(VmError::validation("Invalid resource ID", None::<String>)),
+            }
+            if *json {
+                return crate::presentation::success(
+                    "system storage remove",
+                    StorageRemoval {
+                        id: resource_id,
+                        removed: true,
+                    },
+                );
             }
             vm_success!("Removed {}", resource_id);
             Ok(())
@@ -93,12 +138,20 @@ pub(super) fn handle(command: &SystemStorageSubcommand) -> VmResult<()> {
     }
 }
 
-fn inventory(engine: &str) -> VmResult<Vec<Resource>> {
-    let mut resources = if Command::new(engine).arg("--version").output().is_ok() {
-        container_inventory(engine)?
-    } else {
-        Vec::new()
-    };
+fn inventory_all() -> VmResult<Vec<Resource>> {
+    let mut resources = Vec::new();
+    for engine in ["docker", "podman"] {
+        if Command::new(engine)
+            .arg("--version")
+            .output()
+            .is_ok_and(|output| output.status.success())
+        {
+            match container_inventory(engine) {
+                Ok(found) => resources.extend(found),
+                Err(error) => vm_warning!("Could not inspect {engine} storage: {error}"),
+            }
+        }
+    }
     resources.extend(tart_resources()?);
     resources.extend(snapshot_resources()?);
     resources.sort_by(|a, b| a.id.cmp(&b.id));

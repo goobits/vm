@@ -3,9 +3,11 @@
 use crate::cli::{Args, Command};
 use crate::error::{VmError, VmResult};
 use command_context::{load_provider_context, load_runtime_context, load_runtime_subject};
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use vm_config::validation::{validate_config, ValidationMode};
 use vm_config::AppConfig;
+use vm_provider::ExecOptions;
 
 pub mod base;
 pub mod clean;
@@ -64,10 +66,10 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
             .await
         }
         Command::Doctor {
+            environment,
             fix,
             clean,
             prune_pnpm_store,
-            container,
         } => {
             if clean {
                 clean::handle_clean().await?;
@@ -77,11 +79,23 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
                     args.config.clone(),
                     args.profile.clone(),
                     None,
-                    container.as_deref(),
+                    environment.as_deref(),
                 )?;
                 maintenance::prune_pnpm_store(subject.provider, Some(subject.target.as_str()))?;
             }
-            let loaded = AppConfig::load(args.config, args.profile, None);
+            let loaded = AppConfig::load(args.config, args.profile, None).map_err(VmError::from);
+            let loaded = loaded.and_then(|mut app| {
+                if let Some(name) = environment.as_deref() {
+                    let declaration = app.vm.environments.get(name).ok_or_else(|| {
+                        VmError::validation(
+                            format!("Environment '{name}' is not declared"),
+                            Some("Run `vm list` to inspect declared environments"),
+                        )
+                    })?;
+                    app.vm = declaration.apply_to(&app.vm);
+                }
+                Ok(app)
+            });
             let provider = loaded
                 .as_ref()
                 .ok()
@@ -184,12 +198,18 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
                 named_outcome(failures)
             }
         }
-        Command::Shell { environment, path } => {
+        Command::Shell { environment, cwd } => {
+            if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+                return Err(VmError::validation(
+                    "Interactive shell requires a terminal",
+                    Some("Use `vm exec -- PROGRAM` for noninteractive commands"),
+                ));
+            }
             let subject = load_runtime_subject(args.config, args.profile, environment)?;
             vm_ops::handle_ssh(
                 subject.provider,
                 Some(subject.target.as_str()),
-                path,
+                cwd,
                 subject.config,
             )
             .await
@@ -197,6 +217,9 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
         Command::Exec {
             environments,
             fleet,
+            cwd,
+            user,
+            output,
             command,
         } => {
             if command.is_empty() {
@@ -205,19 +228,52 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
                     Some("Use: vm exec [--env NAME]... -- <command>"),
                 ));
             }
+            let options = ExecOptions { cwd, user };
             if fleet.fleet {
+                let output = output.ok_or_else(|| {
+                    VmError::validation(
+                        "Fleet exec requires --output grouped or --output json-lines",
+                        None::<String>,
+                    )
+                })?;
                 let project = fleet_project(args.config, args.profile)?;
-                vm_ops::handle_fleet_exec(&fleet, &project, &command)
+                vm_ops::handle_fleet_exec(&fleet, &project, &command, &options, output)
             } else {
+                if output.is_some() && environments.len() <= 1 {
+                    return Err(VmError::validation(
+                        "--output is only available for multi-environment exec",
+                        None::<String>,
+                    ));
+                }
+                if environments.len() > 1 && output.is_none() {
+                    return Err(VmError::validation(
+                        "Multi-environment exec requires --output grouped or --output json-lines",
+                        None::<String>,
+                    ));
+                }
                 let subjects = resolve_named_subjects(args.config, args.profile, environments)?;
+                if subjects.len() > 1 {
+                    let output = output.ok_or_else(|| {
+                        VmError::validation(
+                            "Multi-environment exec requires --output grouped or --output json-lines",
+                            None::<String>,
+                        )
+                    })?;
+                    let targets = subjects
+                        .into_iter()
+                        .map(|subject| vm_ops::ExecTarget::ready(subject.target, subject.provider))
+                        .collect();
+                    return vm_ops::run_fleet_exec(targets, &command, &options, output);
+                }
                 if subjects.len() == 1 {
                     let subject = subjects.into_iter().next().expect("one subject");
-                    let exit = vm_ops::handle_exec(
+                    let exit = vm_ops::handle_exec_with_options(
                         subject.provider,
                         Some(subject.target.as_str()),
                         command,
                         subject.config,
                         subject.global_config,
+                        options,
                     )
                     .await?;
                     return if exit.success() {
@@ -226,38 +282,29 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
                         Err(VmError::guest_exit(exit.code()))
                     };
                 }
-                let mut failures = Vec::new();
-                for subject in subjects {
-                    let target = subject.target.clone();
-                    match vm_ops::handle_exec(
-                        subject.provider,
-                        Some(subject.target.as_str()),
-                        command.clone(),
-                        subject.config,
-                        subject.global_config,
-                    )
-                    .await
-                    {
-                        Ok(exit) if !exit.success() => {
-                            failures.push(format!(
-                                "{target}: guest command exited with status {}",
-                                exit.code()
-                            ));
-                        }
-                        Err(error) => failures.push(format!("{target}: {error}")),
-                        Ok(_) => {}
-                    }
-                }
-                named_outcome(failures)
+                Err(VmError::validation(
+                    "No environments were selected",
+                    Some("Select one or more declared environments"),
+                ))
             }
         }
         Command::Logs {
             environment,
+            json_lines,
             follow,
             tail,
             service,
         } => {
-            let subject = load_runtime_subject(args.config, args.profile, environment)?;
+            let subject = match load_runtime_subject(args.config, args.profile, environment.clone())
+            {
+                Ok(subject) => subject,
+                Err(error) => {
+                    if json_lines {
+                        vm_ops::emit_logs_prelaunch_failure(environment.as_deref(), &error)?;
+                    }
+                    return Err(error);
+                }
+            };
             vm_ops::handle_logs(
                 subject.provider,
                 Some(subject.target.as_str()),
@@ -265,21 +312,22 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
                 follow,
                 tail,
                 service.as_deref(),
+                json_lines,
             )
         }
         Command::Copy {
+            env,
+            overwrite,
             source,
             destination,
         } => {
-            let requested = vm_ops::target::copy_target(&source, &destination)?;
-            let subject =
-                load_runtime_context(args.config, args.profile, None, requested.as_deref())?;
+            let subject = load_runtime_subject(args.config, args.profile, env)?;
             vm_ops::handle_copy(
                 subject.provider,
+                &subject.target,
                 &source,
                 &destination,
-                Some(subject.target.as_str()),
-                subject.config,
+                overwrite,
             )
         }
         Command::Stop {

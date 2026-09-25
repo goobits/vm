@@ -15,6 +15,7 @@ mod limits;
 pub mod mounts;
 mod provider;
 mod runtime;
+mod service_plugins;
 mod storage;
 pub mod tools;
 
@@ -32,6 +33,7 @@ pub use runtime::{
     BootstrapConfig, ContainerLoggingConfig, ImageSpec, PlaywrightBootstrapConfig, VersionsConfig,
     VmSettings,
 };
+pub use service_plugins::{resolve_service_plugins, ResolvedServicePlugin};
 pub use storage::{
     StorageConfig, TmpfsMountConfig, VolumeMountConfig, VolumeRetention, VolumeScope,
 };
@@ -257,6 +259,7 @@ impl VmConfig {
             .filter(|(name, service)| {
                 service.enabled
                     && service.port.is_none()
+                    && service.plugin.is_none()
                     && !PRIORITY.contains(&name.as_str())
                     && !WITHOUT_PORTS.contains(&name.as_str())
             })

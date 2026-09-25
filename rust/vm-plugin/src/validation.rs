@@ -81,16 +81,10 @@ pub fn validate_plugin(plugin: &Plugin) -> Result<ValidationResult> {
     Ok(result)
 }
 
-/// Validate plugin with semantic checks (port conflicts, etc.)
+/// Validate plugin content. Port conflicts are checked among activated services
+/// when a project configuration is resolved.
 pub fn validate_plugin_with_context(plugin: &Plugin) -> Result<ValidationResult> {
-    let mut result = validate_plugin(plugin)?;
-
-    // Add semantic validation for services
-    if plugin.info.plugin_type == PluginType::Service {
-        service::validate_port_conflicts(plugin, &mut result)?;
-    }
-
-    Ok(result)
+    validate_plugin(plugin)
 }
 
 fn validate_environment(environment: &HashMap<String, String>, result: &mut ValidationResult) {

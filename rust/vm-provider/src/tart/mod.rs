@@ -19,11 +19,15 @@ mod creation;
 #[cfg(feature = "tart")]
 mod host_sync;
 #[cfg(feature = "tart")]
+mod image;
+#[cfg(feature = "tart")]
 pub mod instance;
 #[cfg(feature = "tart")]
 mod metrics;
 #[cfg(feature = "tart")]
 mod mounts;
+#[cfg(feature = "tart")]
+mod preview;
 #[cfg(feature = "tart")]
 mod provider;
 #[cfg(feature = "tart")]
@@ -41,5 +45,7 @@ mod temp;
 #[cfg(feature = "tart")]
 mod workspace;
 
+#[cfg(feature = "tart")]
+pub use preview::render_tart_preview;
 #[cfg(feature = "tart")]
 pub use provider::TartProvider;

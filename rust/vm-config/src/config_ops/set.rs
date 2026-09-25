@@ -1,5 +1,4 @@
 // Standard library
-use std::fs;
 use std::path::PathBuf;
 
 // External crates
@@ -9,10 +8,11 @@ use serde_yaml_ng::{Mapping, Value};
 // Internal imports
 use crate::config::VmConfig;
 use crate::config_ops::io::{
-    find_or_create_local_config, get_or_create_global_config_path, read_config_or_init,
+    find_or_create_local_config, get_global_config_path, get_or_create_global_config_path,
+    read_config_or_init,
 };
+use crate::config_ops::plan::{read_document, ConfigEditPlan, ConfigMutationReport};
 use crate::schema;
-use crate::yaml::core::CoreOperations;
 use vm_core::error::Result;
 use vm_core::msg;
 use vm_core::{vm_println, vm_success};
@@ -26,24 +26,31 @@ pub fn set(
     dry_run: bool,
     path: Option<PathBuf>,
     value_json: Option<&str>,
-) -> Result<()> {
+    structured: bool,
+) -> Result<ConfigMutationReport> {
     let config_path = if global {
-        get_or_create_global_config_path()?
+        get_global_config_path()
     } else {
         path.map(Ok).unwrap_or_else(find_or_create_local_config)?
     };
 
-    if !global {
+    if !global && !dry_run {
         let _ = read_config_or_init(&config_path, true)?;
     }
 
+    if dry_run && !global && !config_path.is_file() {
+        return Err(vm_core::error::VmError::Config(format!(
+            "Cannot preview a missing project configuration: {}. Run `vm init` first",
+            config_path.display()
+        )));
+    }
+
     let mut yaml_value = if config_path.exists() {
-        let content = fs::read_to_string(&config_path)?;
-        let source_desc = format!("{}", config_path.display());
-        CoreOperations::parse_yaml_with_diagnostics(&content, &source_desc)?
+        read_document(&config_path)?
     } else {
         Value::Mapping(Mapping::new())
     };
+    let before = yaml_value.clone();
 
     // Use schema-aware parsing to handle arrays and other types correctly
     let parsed_value = if let Some(json) = value_json {
@@ -89,6 +96,7 @@ pub fn set(
     }
 
     super::validate::candidate(&yaml_value, &config_path, global)?;
+    let plan = ConfigEditPlan::new(config_path.clone(), before, yaml_value, global);
 
     // Format the value for display (show as array if multiple values)
     let sensitive_field = [
@@ -112,27 +120,28 @@ pub fn set(
     };
 
     if dry_run {
-        vm_println!(
-            "🔍 DRY RUN - Would set {} = {} in {}",
-            field,
-            value_display,
-            config_path.display()
-        );
-        vm_println!("{}", MESSAGES.config.no_changes);
+        if !structured {
+            plan.preview();
+        }
     } else {
-        CoreOperations::write_yaml_file(&config_path, &yaml_value)?;
-        vm_success!(
-            "{}",
-            msg!(
-                MESSAGES.config.set_success,
-                field = field,
-                value = value_display,
-                path = config_path.display().to_string()
-            )
-        );
-        vm_println!("{}", MESSAGES.config.apply_changes_hint);
+        if global {
+            let _ = get_or_create_global_config_path()?;
+        }
+        plan.write()?;
+        if !structured {
+            vm_success!(
+                "{}",
+                msg!(
+                    MESSAGES.config.set_success,
+                    field = field,
+                    value = value_display,
+                    path = config_path.display().to_string()
+                )
+            );
+            vm_println!("{}", MESSAGES.config.apply_changes_hint);
+        }
     }
-    Ok(())
+    Ok(plan.report(dry_run, None))
 }
 
 fn validate_default_profile(value: &Value, profile_name: Option<&str>) -> Result<()> {
@@ -282,6 +291,43 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Unknown configuration field: vm.memroy"));
+        assert_eq!(std::fs::read_to_string(path).unwrap(), original);
+    }
+
+    #[test]
+    fn dry_run_validates_without_writing() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("vm.yaml");
+        let original = "project:\n  name: test\nprovider: docker\n";
+        std::fs::write(&path, original).unwrap();
+
+        ConfigOps::set_at(
+            "vm.memory",
+            &["4096".to_string()],
+            false,
+            true,
+            Some(path.clone()),
+        )
+        .unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+
+        let error = ConfigOps::set_at(
+            "vm.memroy",
+            &["4096".to_string()],
+            false,
+            true,
+            Some(path.clone()),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("Unknown configuration field"));
+        ConfigOps::set_json_preview_at(
+            "networking.networks",
+            "[\"dev\"]",
+            false,
+            true,
+            Some(path.clone()),
+        )
+        .unwrap();
         assert_eq!(std::fs::read_to_string(path).unwrap(), original);
     }
 }

@@ -33,6 +33,8 @@ vm config render
 vm config get vm.memory
 vm config set vm.memory 8192
 vm config unset vm.swappiness
+vm config set vm.memory 8192 --dry-run
+vm config presets apply nodejs --dry-run
 vm config ports --fix
 ```
 
@@ -44,13 +46,25 @@ Writes default to the current project and require a project configuration.
 `--scope user` writes user settings. Sensitive fields are redacted on reads.
 `config show` lists the source for each field; `config get` prints the selected
 field's source after its value.
+User `defaults.provider`, `defaults.memory`, `defaults.cpus`, `defaults.user`,
+and `defaults.terminal` fill fields absent from the project and selected preset.
+The selected profile takes precedence. Sources identify explicit profile and
+project fields, generated preset fields, user defaults, and built-in defaults.
 Use `--value-json` to set a complete array or object, such as
 `vm config set networking.networks --value-json '["dev"]'`.
 `config validate` and writes reject misspelled fields inside schema-owned
 objects. Root extension fields remain available. Writes validate the resulting
 configuration before replacing the file. Applying a
 preset reports conflicting explicit fields; unset those fields before applying
-the preset. `config unset` prints the resulting effective value.
+the preset. `config unset` prints the resulting effective value. `--dry-run` on
+`config set`, `config unset`, and `config presets apply` validates the candidate
+configuration and lists the fields that would change without writing files.
+Plans show field paths rather than values to avoid exposing secrets. Execution
+revalidates the current file. A project configuration must already exist for a
+preview; run `vm init` first if needed. These three commands also accept
+`--json`; their versioned result includes the logical target (`project` or
+`user`), planned/applied state, file field changes, and effective preset field
+changes. JSON omits configuration values and host file paths.
 
 Profiles remain available for project variants:
 
@@ -63,6 +77,10 @@ vm start backend --profile docker
 
 An explicit profile wins for one command. The project default profile wins when
 no profile is specified; provider-matched and sole-profile selection are fallbacks.
+`vm config render --env NAME` selects a declared environment; without `--env`,
+it renders the project default environment. For Tart, render prints a read-only
+plan with the selected image or snapshot, resolved resources, run arguments,
+guest workspace, and redacted share paths. It works without contacting Tart.
 
 ## Provider Routing
 
@@ -401,7 +419,7 @@ Shared services can be configured in `vm.yaml` and are managed with the
 environment lifecycle. See the [Shared Services Guide](shared-services.md) for
 the supported workflow.
 
-An environment can select its own PostgreSQL database identity:
+An environment can declare its own PostgreSQL service:
 
 ```yaml
 environments:
@@ -414,7 +432,33 @@ environments:
         database: myapp_test
 ```
 
-`vm db list --env test` and backup commands then target only `myapp_test`.
+`vm db list --env test` and other database commands target that environment's
+PostgreSQL container. `myapp_test` is its default database; other databases
+created in the same service also appear in `vm db list --env test`. Use
+`vm db backups create daily --all --env test` to back up each non-system
+database independently. `vm db credentials postgresql --env test` reports the
+selected service user and redacts its password unless `--reveal` is set.
+
+For a containerized service supplied by an installed plugin, set
+`services.<name>.enabled: true` and `services.<name>.plugin` to its installed
+name. See the [Plugins Guide](plugins.md) for manifest capabilities and
+ownership rules.
+
+## Secrets
+
+Secrets default to the current project. Use `--scope user` to make a secret
+available to all environments owned by the same user. The same name may exist
+in both scopes; the project value takes precedence inside that project.
+
+```bash
+vm secrets set API_TOKEN --stdin
+vm secrets list --scope project
+vm secrets show API_TOKEN --scope project --reveal
+vm secrets remove API_TOKEN --scope project --yes
+```
+
+Use `--scope user` with set, list, show, or remove when operating on the user
+value. Secret values never appear in listings.
 
 ## State
 
@@ -431,3 +475,9 @@ vm tunnels open web --local 127.0.0.1:8080 --remote 127.0.0.1:3000 --env backend
 vm tunnels list --env backend
 vm tunnels close web --env backend
 ```
+
+`tunnels list` and `tunnels close` use the selected project's recorded relays, so
+they still work after the source environment is removed. If a name occurs more
+than once, use `--env` and `--provider docker|podman` to select its relay.
+Local binds support IPv4; remote endpoints support IPv4 or DNS. IPv6 endpoints
+are rejected.

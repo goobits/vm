@@ -282,17 +282,11 @@ pub(super) fn report_unset_effective(
 pub(super) fn handle_render_command(
     config_path: Option<PathBuf>,
     profile: Option<String>,
-    instance: Option<&str>,
+    environment: Option<&str>,
 ) -> VmResult<()> {
     let app_config = load_selected_config(config_path, profile)?;
-    let config = app_config.vm;
+    let (config, instance) = select_render_environment(app_config.vm, environment)?;
     let provider = config.provider.as_deref().unwrap_or("docker");
-    if !matches!(provider, "docker" | "podman") {
-        return Err(VmError::validation(
-            format!("Provider '{provider}' does not generate Docker Compose"),
-            None::<String>,
-        ));
-    }
 
     let report = validate_config(&config, ValidationMode::Static).map_err(|error| {
         VmError::validation(
@@ -306,9 +300,59 @@ pub(super) fn handle_render_command(
 
     let project_dir = config.project_dir()?;
     let context = vm_provider::ProviderContext::default().with_config(app_config.global);
-    let rendered = vm_provider::render_compose_preview(&config, &project_dir, instance, &context)?;
+    let rendered = match provider {
+        "docker" | "podman" => vm_provider::render_compose_preview(
+            &config,
+            &project_dir,
+            instance.as_deref(),
+            &context,
+        )?,
+        "tart" => {
+            #[cfg(any(target_os = "macos", feature = "tart"))]
+            {
+                vm_provider::render_tart_preview(&config, instance.as_deref())?
+            }
+            #[cfg(not(any(target_os = "macos", feature = "tart")))]
+            {
+                return Err(VmError::validation(
+                    "This binary was built without Tart support",
+                    None::<String>,
+                ));
+            }
+        }
+        _ => {
+            return Err(VmError::validation(
+                format!("Provider '{provider}' cannot render configuration"),
+                None::<String>,
+            ))
+        }
+    };
     vm_print!("{rendered}");
     Ok(())
+}
+
+fn select_render_environment(
+    config: VmConfig,
+    requested: Option<&str>,
+) -> VmResult<(VmConfig, Option<String>)> {
+    if config.environments.is_empty() {
+        if let Some(requested) = requested {
+            return Err(VmError::validation(
+                format!("Environment '{requested}' is not declared"),
+                None::<String>,
+            ));
+        }
+        return Ok((config, None));
+    }
+    let selected = crate::commands::declarations::selected_name(&config, requested)?
+        .expect("declared environment selection has a name");
+    let declaration = config.environments.get(&selected).ok_or_else(|| {
+        VmError::validation(
+            format!("Environment '{selected}' is not declared"),
+            None::<String>,
+        )
+    })?;
+    Ok((declaration.apply_to(&config), Some(selected)))
 }
 
 pub(super) fn handle_profile_list(config_path: Option<PathBuf>) -> VmResult<()> {

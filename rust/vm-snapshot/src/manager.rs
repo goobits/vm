@@ -108,6 +108,12 @@ pub struct SnapshotStorageEntry {
 }
 
 impl SnapshotManager {
+    /// Stable, owner-scoped identifier used by structured CLI inventory.
+    pub fn snapshot_id(&self, scope: SnapshotScope<'_>, name: &str) -> Result<String> {
+        validate_storage_component(name, "snapshot name")?;
+        Ok(format!("snapshot:{}/{}", scope.storage_key()?, name))
+    }
+
     /// Create a new snapshot manager
     pub fn new() -> Result<Self> {
         let snapshots_dir = vm_core::user_paths::user_config_dir()?.join("snapshots");

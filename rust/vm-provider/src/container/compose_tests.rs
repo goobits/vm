@@ -502,6 +502,54 @@ services:
 }
 
 #[test]
+fn postgres_database_template_and_credentials_match_named_environment() {
+    let (_temp_dir, project_dir, generated_dir) = setup_test_env();
+    let config: VmConfig = serde_yaml_ng::from_str(
+        r#"
+provider: docker
+project:
+  name: demo
+host_sync:
+  worktrees:
+    enabled: false
+services:
+  postgresql:
+    enabled: true
+    database: '{{ project.name }}_{{ environment.name }}'
+    user: app_admin
+    password: app_secret
+"#,
+    )
+    .unwrap();
+    let compose = ComposeOperations::new(&config, &generated_dir, &project_dir, "docker");
+
+    let rendered = compose
+        .render_docker_compose_with_instance(&project_dir, "test", &ProviderContext::default())
+        .unwrap();
+    let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(&rendered).unwrap();
+    let postgres = &yaml["services"]["postgres"];
+    assert_eq!(
+        postgres["container_name"].as_str(),
+        Some("demo-test-postgres")
+    );
+    let environment = postgres["environment"].as_sequence().unwrap();
+    for expected in [
+        "POSTGRES_DB=demo_test",
+        "POSTGRES_USER=app_admin",
+        "POSTGRES_PASSWORD=app_secret",
+    ] {
+        assert!(environment
+            .iter()
+            .any(|value| value.as_str() == Some(expected)));
+    }
+
+    let preview = compose
+        .render_docker_compose_preview(&project_dir, Some("test"), &ProviderContext::default())
+        .unwrap();
+    assert!(!preview.contains("app_secret"));
+}
+
+#[test]
 fn renders_configured_mounts_and_read_only_workspace_at_the_real_target() {
     let (_temp_dir, project_dir, generated_dir) = setup_test_env();
     std::fs::create_dir(project_dir.join("shared")).unwrap();

@@ -42,6 +42,9 @@ pub struct SnapshotMetadata {
     /// Provider-native VM archive, when no Compose services are involved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_vm_file: Option<String>,
+    /// Digest of the provider-native VM archive, verified before restore/import.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_image_digest: Option<String>,
     /// Mounts omitted from the snapshot after inspecting normalized Compose configuration
     pub excluded_mounts: Vec<ExcludedMount>,
     /// Relative path to compose file
@@ -149,6 +152,7 @@ mod tests {
                 size_bytes: 1048576,
             }],
             native_vm_file: None,
+            native_image_digest: None,
             excluded_mounts: vec![ExcludedMount {
                 service: "web".to_string(),
                 kind: "bind".to_string(),

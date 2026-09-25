@@ -5,9 +5,14 @@ use vm_messages::messages::MESSAGES;
 use vm_plugin::{discover_plugins, get_preset_plugins, get_service_plugins, PluginType};
 
 use super::validation::{plugin_from_source, validate_all};
+use super::view;
 
-pub(super) fn handle_plugin_list() -> Result<()> {
+pub(super) fn handle_plugin_list(json: bool) -> Result<()> {
     let plugins = discover_plugins()?;
+    if json {
+        return crate::presentation::success("plugins list", view::list(&plugins))
+            .map_err(Into::into);
+    }
 
     if plugins.is_empty() {
         vm_println!("{}", MESSAGES.plugin.list_empty);
@@ -76,13 +81,14 @@ pub(super) fn handle_plugin_list() -> Result<()> {
     Ok(())
 }
 
-pub(super) fn handle_plugin_info(plugin_name: &str) -> Result<()> {
+pub(super) fn handle_plugin_info(plugin_name: &str, json: bool) -> Result<()> {
     let plugins = discover_plugins()?;
 
-    let plugin = plugins
-        .iter()
-        .find(|p| p.info.name == plugin_name)
-        .ok_or_else(|| anyhow::anyhow!("Plugin '{plugin_name}' not found"))?;
+    let plugin = find_plugin(&plugins, plugin_name)?;
+    if json {
+        return crate::presentation::success("plugins show", view::show(plugin)?)
+            .map_err(Into::into);
+    }
 
     vm_println!(
         "{}",
@@ -199,6 +205,19 @@ pub(super) fn handle_plugin_info(plugin_name: &str) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn find_plugin<'a>(plugins: &'a [vm_plugin::Plugin], name: &str) -> Result<&'a vm_plugin::Plugin> {
+    let mut matches = plugins.iter().filter(|plugin| plugin.info.name == name);
+    let first = matches
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("Plugin '{name}' not found"))?;
+    if matches.next().is_some() {
+        anyhow::bail!(
+            "Plugin '{name}' exists as more than one type; remove the ambiguity before showing it"
+        );
+    }
+    Ok(first)
 }
 
 pub(super) fn handle_plugin_validate(plugin_name: &str) -> Result<()> {

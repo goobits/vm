@@ -20,11 +20,15 @@ use vm_logging::init_subscriber;
 // Local modules
 mod cli;
 mod commands;
+mod confirmation;
 mod error;
 mod presentation;
 mod services;
 
-use cli::{Args, Command, ConfigSubcommand, SystemSubcommand};
+use cli::{
+    Args, Command, ConfigPresetSubcommand, ConfigSubcommand, PluginSubcommand, SnapshotSubcommand,
+    SystemStorageSubcommand, SystemSubcommand, TunnelSubcommand,
+};
 use commands::execute_command;
 
 /// Request ID for this execution - used for tracing logs across the entire request
@@ -41,15 +45,69 @@ async fn run_command(args: Args) {
         Command::Exec { environments, fleet, .. } if !fleet.fleet && environments.len() <= 1
     );
     let json_command = match &args.command {
+        Command::Tunnels {
+            command: TunnelSubcommand::List { json: true, .. },
+        } => Some("tunnels list"),
+        Command::Plugins {
+            command: PluginSubcommand::List { json: true },
+        } => Some("plugins list"),
+        Command::Plugins {
+            command: PluginSubcommand::Show { json: true, .. },
+        } => Some("plugins show"),
         Command::System {
             command: SystemSubcommand::Info { json: true },
         } => Some("system info"),
+        Command::System {
+            command:
+                SystemSubcommand::Storage {
+                    command: SystemStorageSubcommand::List { json: true },
+                },
+        } => Some("system storage list"),
+        Command::System {
+            command:
+                SystemSubcommand::Storage {
+                    command: SystemStorageSubcommand::Remove { json: true, .. },
+                },
+        } => Some("system storage remove"),
+        Command::Snapshots {
+            command: SnapshotSubcommand::List { json: true, .. },
+        } => Some("snapshots list"),
+        Command::Snapshots {
+            command: SnapshotSubcommand::Show { json: true, .. },
+        } => Some("snapshots show"),
+        Command::Snapshots {
+            command: SnapshotSubcommand::Create { json: true, .. },
+        } => Some("snapshots create"),
+        Command::Snapshots {
+            command: SnapshotSubcommand::Restore { json: true, .. },
+        } => Some("snapshots restore"),
+        Command::Snapshots {
+            command: SnapshotSubcommand::Remove { json: true, .. },
+        } => Some("snapshots remove"),
+        Command::Snapshots {
+            command: SnapshotSubcommand::Export { json: true, .. },
+        } => Some("snapshots export"),
+        Command::Snapshots {
+            command: SnapshotSubcommand::Import { json: true, .. },
+        } => Some("snapshots import"),
         Command::Config {
             command: ConfigSubcommand::Show { json: true, .. },
         } => Some("config show"),
         Command::Config {
             command: ConfigSubcommand::Get { json: true, .. },
         } => Some("config get"),
+        Command::Config {
+            command: ConfigSubcommand::Set { json: true, .. },
+        } => Some("config set"),
+        Command::Config {
+            command: ConfigSubcommand::Unset { json: true, .. },
+        } => Some("config unset"),
+        Command::Config {
+            command:
+                ConfigSubcommand::Presets {
+                    command: ConfigPresetSubcommand::Apply { json: true, .. },
+                },
+        } => Some("config presets apply"),
         Command::List { json: true, .. } => Some("list"),
         Command::Status { json: true, .. } => Some("status"),
         _ => None,
@@ -65,7 +123,7 @@ async fn run_command(args: Args) {
         if error.is_reported() {
             std::process::exit(error.exit_code());
         }
-        let error = if single_exec {
+        let error = if single_exec && error.exit_code() != 2 {
             error.exec_prelaunch()
         } else {
             error

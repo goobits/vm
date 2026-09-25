@@ -412,6 +412,15 @@ properties:
   services:
     type: object
     description: Optional service configurations
+    additionalProperties:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        plugin:
+          type: string
+          description: Installed declarative service plugin to activate
+      additionalProperties: false
     properties:
       postgresql:
         type: object

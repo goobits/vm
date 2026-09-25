@@ -8,22 +8,28 @@ use serde_yaml_ng::Value;
 // Internal imports
 use crate::config::VmConfig;
 use crate::config_ops::io::{find_local_config, get_global_config_path, read_config_or_init};
+use crate::config_ops::plan::{read_document, ConfigEditPlan, ConfigMutationReport};
 use crate::config_ops::preset::resolve_declared_presets;
-use crate::yaml::core::CoreOperations;
 use vm_core::error::Result;
 use vm_core::msg;
 use vm_core::{vm_println, vm_success};
 use vm_messages::messages::MESSAGES;
 
 /// Unset (remove) a configuration field
-pub fn unset(field: &str, global: bool, path: Option<PathBuf>) -> Result<()> {
+pub fn unset(
+    field: &str,
+    global: bool,
+    dry_run: bool,
+    path: Option<PathBuf>,
+    structured: bool,
+) -> Result<ConfigMutationReport> {
     let config_path = if global {
         get_global_config_path()
     } else {
         path.map(Ok).unwrap_or_else(find_local_config)?
     };
 
-    if !global {
+    if !global && !dry_run {
         let _ = read_config_or_init(&config_path, true)?;
     } else if !config_path.exists() {
         return Err(vm_core::error::VmError::Config(format!(
@@ -32,10 +38,8 @@ pub fn unset(field: &str, global: bool, path: Option<PathBuf>) -> Result<()> {
         )));
     }
 
-    let content = fs::read_to_string(&config_path)?;
-    let source_desc = format!("{}", config_path.display());
-    let mut yaml_value: Value =
-        CoreOperations::parse_yaml_with_diagnostics(&content, &source_desc)?;
+    let mut yaml_value = read_document(&config_path)?;
+    let before = yaml_value.clone();
 
     let config: VmConfig = serde_yaml_ng::from_value(yaml_value.clone())?;
     if config.preset.is_some() {
@@ -54,18 +58,27 @@ pub fn unset(field: &str, global: bool, path: Option<PathBuf>) -> Result<()> {
     }
 
     super::validate::candidate(&yaml_value, &config_path, global)?;
+    let plan = ConfigEditPlan::new(config_path.clone(), before, yaml_value, global);
+    if dry_run {
+        if !structured {
+            plan.preview();
+        }
+        return Ok(plan.report(true, None));
+    }
 
-    CoreOperations::write_yaml_file(&config_path, &yaml_value)?;
+    plan.write()?;
 
-    vm_success!(
-        "{}",
-        msg!(
-            MESSAGES.config.unset_success,
-            field = field,
-            path = config_path.display().to_string()
-        )
-    );
-    Ok(())
+    if !structured {
+        vm_success!(
+            "{}",
+            msg!(
+                MESSAGES.config.unset_success,
+                field = field,
+                path = config_path.display().to_string()
+            )
+        );
+    }
+    Ok(plan.report(false, None))
 }
 
 /// Clear (delete) configuration file
@@ -172,6 +185,19 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Missing required field: provider"));
+        assert_eq!(std::fs::read_to_string(path).unwrap(), original);
+    }
+
+    #[test]
+    fn dry_run_unset_preserves_file_and_checks_required_fields() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("vm.yaml");
+        let original = "project:\n  name: test\nprovider: docker\nvm:\n  memory: '4096'\n";
+        std::fs::write(&path, original).unwrap();
+
+        ConfigOps::unset_preview_at("vm.memory", false, true, Some(path.clone())).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        assert!(ConfigOps::unset_preview_at("provider", false, true, Some(path.clone())).is_err());
         assert_eq!(std::fs::read_to_string(path).unwrap(), original);
     }
 }

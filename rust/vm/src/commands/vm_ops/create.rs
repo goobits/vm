@@ -159,8 +159,8 @@ pub async fn handle_create(
         if let Some(seed_file) = &service_config.seed_file {
             let route = crate::commands::db::route::DbRoute::for_config(
                 &config,
-                None,
-                global_config.container_provider().as_str(),
+                instance.as_deref(),
+                provider.name(),
             )?;
             let db_name = &route.database;
             vm_progress!(

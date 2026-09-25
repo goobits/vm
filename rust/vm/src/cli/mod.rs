@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
 mod subcommands;
 pub use subcommands::*;
@@ -37,6 +37,12 @@ pub struct Args {
     /// Suppress progress messages
     #[arg(long, global = true)]
     pub quiet: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ExecOutput {
+    Grouped,
+    JsonLines,
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -92,7 +98,7 @@ pub enum Command {
         environment: Option<String>,
         /// Directory path to start shell in
         #[arg(long)]
-        path: Option<PathBuf>,
+        cwd: Option<PathBuf>,
     },
     /// Run a single command inside an environment
     Exec {
@@ -101,12 +107,24 @@ pub enum Command {
         environments: Vec<String>,
         #[command(flatten)]
         fleet: FleetArgs,
+        /// Guest working directory
+        #[arg(long)]
+        cwd: Option<PathBuf>,
+        /// Guest user name
+        #[arg(long)]
+        user: Option<String>,
+        /// Required when executing in multiple environments
+        #[arg(long, value_enum)]
+        output: Option<ExecOutput>,
         #[arg(last = true, num_args = 1..)]
         command: Vec<String>,
     },
     /// Stream output logs from an environment
     Logs {
         environment: Option<String>,
+        /// Emit typed JSON Lines records and a final result event
+        #[arg(long)]
+        json_lines: bool,
         #[arg(short = 'f', long)]
         follow: bool,
         #[arg(short = 'n', long, default_value = "50")]
@@ -115,7 +133,14 @@ pub enum Command {
         service: Option<String>,
     },
     /// Move files between host and environment
-    Copy { source: String, destination: String },
+    Copy {
+        #[arg(long)]
+        env: Option<String>,
+        #[arg(long)]
+        overwrite: bool,
+        source: String,
+        destination: String,
+    },
     /// Gracefully halt an environment
     Stop {
         #[arg(conflicts_with = "fleet")]
@@ -181,6 +206,8 @@ pub enum Command {
     },
     /// Diagnose and repair engine issues
     Doctor {
+        /// Environment to diagnose
+        environment: Option<String>,
         #[arg(long)]
         fix: bool,
         #[arg(long)]
@@ -188,9 +215,6 @@ pub enum Command {
         /// Prune unreferenced packages from an environment's pnpm store
         #[arg(long)]
         prune_pnpm_store: bool,
-        /// Environment to maintain
-        #[arg(long, requires = "prune_pnpm_store")]
-        container: Option<String>,
     },
     /// Extend with plugins
     Plugins {

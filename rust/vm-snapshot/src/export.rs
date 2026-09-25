@@ -1,6 +1,6 @@
 //! Snapshot export functionality
 
-use crate::archive::{copy_directory, create_gzip_archive, validate_snapshot_files};
+use crate::archive::{copy_directory, create_archive, validate_snapshot_files, ArchiveCompression};
 use crate::archive_manifest::ArchiveManifest;
 use crate::manager::{SnapshotManager, SnapshotScope};
 use crate::metadata::SnapshotMetadata;
@@ -12,7 +12,7 @@ pub async fn handle_export(
     executable: &str,
     name: &str,
     output_path: Option<&Path>,
-    compress_level: u8,
+    compression: ArchiveCompression,
     project_override: Option<&str>,
     owner_config_path: Option<&Path>,
     overwrite: bool,
@@ -93,7 +93,11 @@ pub async fn handle_export(
     let output_file = output_path.map(|p| p.to_path_buf()).unwrap_or_else(|| {
         std::env::current_dir()
             .unwrap_or_else(|_| std::path::PathBuf::from("."))
-            .join(format!("{}.snapshot.tar.gz", clean_name))
+            .join(format!(
+                "{}.snapshot.{}",
+                clean_name,
+                compression.extension()
+            ))
     });
 
     tracing::info!("  Creating export tarball...");
@@ -147,7 +151,7 @@ pub async fn handle_export(
 
     tracing::info!("  Compressing snapshot...");
 
-    create_gzip_archive(&export_build_dir, &output_file, compress_level, overwrite)?;
+    create_archive(&export_build_dir, &output_file, compression, overwrite)?;
 
     // Get final file size
     let file_size = std::fs::metadata(&output_file)

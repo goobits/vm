@@ -328,9 +328,31 @@ services:
           test "$${#BACKUP_ID}" -le 160 &&
           case "$${BACKUP_ID}" in *[!A-Za-z0-9_-]*) false;; *) true;; esac
         }
+        check_backup() {
+          valid_id || { echo "invalid backup identifier" >&2; exit 2; }
+          source="/backups/$${BACKUP_ID}"
+          test -d "$${source}" || { echo "backup not found: $${BACKUP_ID}" >&2; exit 4; }
+          test -f "$${source}/receipt.txt" && test -f "$${source}/manifest.sha256" || {
+            echo "backup receipt or manifest missing: $${BACKUP_ID}" >&2; exit 4
+          }
+          grep -Fxq 'format_version=1' "$${source}/receipt.txt" &&
+          grep -Fxq "backup_id=$${BACKUP_ID}" "$${source}/receipt.txt" &&
+          grep -Fxq "datasets=$${datasets}" "$${source}/receipt.txt" || {
+            echo "backup format or dataset list is incompatible: $${BACKUP_ID}" >&2; exit 4
+          }
+          (cd "$${source}" && sha256sum --check --status manifest.sha256) || {
+            echo "backup integrity check failed: $${BACKUP_ID}" >&2; exit 4
+          }
+          for dataset in $${datasets}; do
+            test -f "$${source}/$${dataset}.tar.gz" &&
+            tar -tzf "$${source}/$${dataset}.tar.gz" >/dev/null || {
+              echo "backup archive is invalid: $${dataset}" >&2; exit 4
+            }
+          done
+        }
         case "$${BACKUP_ACTION}" in
           list)
-            find /backups -mindepth 1 -maxdepth 1 -type d -name 'backup-*' -printf '%f\n' | sort
+            find /backups -mindepth 1 -maxdepth 1 -type d ! -name '.*' -printf '%f\n' | sort
             ;;
           backup)
             valid_id || { echo "invalid backup identifier" >&2; exit 2; }
@@ -345,6 +367,7 @@ services:
               tar --numeric-owner -C "/volumes/$${dataset}" -czf "$${temporary}/$${dataset}.tar.gz" .
             done
             {
+              echo "format_version=1"
               echo "backup_id=$${BACKUP_ID}"
               echo "created_at=$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
               echo "controller_version=$${VM_PACKAGES_VERSION}"
@@ -354,11 +377,13 @@ services:
             mv "$${temporary}" "$${final}"
             echo "$${BACKUP_ID}"
             ;;
+          check)
+            check_backup
+            echo "$${BACKUP_ID}"
+            ;;
           restore)
-            valid_id || { echo "invalid backup identifier" >&2; exit 2; }
+            check_backup
             source="/backups/$${BACKUP_ID}"
-            test -d "$${source}" || { echo "backup not found: $${BACKUP_ID}" >&2; exit 4; }
-            (cd "$${source}" && sha256sum --check manifest.sha256)
             touch "$${source}/restore-in-progress"
             for dataset in $${datasets}; do
               target="/volumes/$${dataset}"
@@ -367,6 +392,13 @@ services:
             done
             rm -f "$${source}/restore-in-progress"
             date -u +%Y-%m-%dT%H:%M:%SZ > "$${source}/restored-at.txt"
+            echo "$${BACKUP_ID}"
+            ;;
+          remove)
+            valid_id || { echo "invalid backup identifier" >&2; exit 2; }
+            source="/backups/$${BACKUP_ID}"
+            test -d "$${source}" || { echo "backup not found: $${BACKUP_ID}" >&2; exit 4; }
+            rm -rf -- "$${source}"
             echo "$${BACKUP_ID}"
             ;;
           *)

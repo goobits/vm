@@ -9,31 +9,42 @@ use crate::error::VmResult;
 use route::DbRoute;
 use std::path::PathBuf;
 use vm_config::GlobalConfig;
-use vm_core::{vm_println, vm_progress, vm_success};
+use vm_core::{vm_println, vm_progress, vm_success, vm_warning};
 
-async fn show_credentials(service_name: &str, reveal: bool) -> VmResult<()> {
+async fn show_credentials(route: &DbRoute, service_name: &str, reveal: bool) -> VmResult<()> {
     if service_name != "postgresql" {
         return Err(crate::error::VmError::validation(
             format!("Service '{service_name}' is not the configured PostgreSQL service"),
             Some("Use `vm db credentials postgresql`"),
         ));
     }
-    backup::validate_backup_component(service_name)?;
     let secrets_dir = vm_core::user_paths::secrets_dir()?;
     let secret_file = secrets_dir.join(format!("{}.env", service_name));
 
-    if secret_file.exists() {
-        if reveal {
-            let password = tokio::fs::read_to_string(secret_file).await?;
-            vm_println!("{}", password.trim_end());
+    vm_println!("Service: {} ({})", service_name, route.environment);
+    vm_println!("Container: {}", route.container);
+    vm_println!("User: {}", route.user);
+    vm_println!("Default database: {}", route.database);
+    if reveal {
+        let password = if let Some(configured) = &route.configured_password {
+            configured.as_str().to_string()
         } else {
-            vm_println!("Credentials for '{}': available (redacted)", service_name);
-        }
+            tokio::fs::read_to_string(&secret_file)
+                .await
+                .map_err(|error| {
+                    crate::error::VmError::general(
+                        error,
+                        "Selected PostgreSQL credential is unavailable",
+                    )
+                })?
+                .trim()
+                .to_string()
+        };
+        vm_println!("Password: {}", password);
+    } else if route.configured_password.is_some() || secret_file.exists() {
+        vm_println!("Password: available (redacted)");
     } else {
-        vm_println!(
-            "No credentials found for service '{}'. Has it been started yet?",
-            service_name
-        );
+        vm_println!("Password: unavailable");
     }
     Ok(())
 }
@@ -71,17 +82,46 @@ pub async fn handle_db(
                 },
         } => {
             if all {
-                vm_progress!("Backing up configured database '{}'...", route.database);
-                backup::backup_db(
-                    &route,
-                    &route.database,
-                    Some(&name),
-                    global_config.backups.keep_count,
-                )
-                .await?;
-                vm_success!("Backed up database '{}'", route.database);
+                let databases = utils::list_databases(&route).await?;
+                if databases.is_empty() {
+                    vm_println!("No user databases found in '{}'.", route.container);
+                    return Ok(());
+                }
+                vm_progress!(
+                    "Backing up {} database(s) in '{}'...",
+                    databases.len(),
+                    route.container
+                );
+                let mut succeeded = 0;
+                let mut failed = 0;
+                for db in databases {
+                    match backup::backup_db(
+                        &route,
+                        &db,
+                        Some(&name),
+                        global_config.backups.keep_count,
+                    )
+                    .await
+                    {
+                        Ok(()) => {
+                            vm_success!("Backup member '{db}': succeeded");
+                            succeeded += 1;
+                        }
+                        Err(error) => {
+                            vm_warning!("Backup member '{db}': failed: {error}");
+                            failed += 1;
+                        }
+                    }
+                }
+                vm_println!("Backup members: {succeeded} succeeded, {failed} failed; databases are backed up independently");
+                if failed > 0 {
+                    return Err(crate::error::VmError::validation(
+                        format!("Database backup had {failed} failed member(s)"),
+                        Some("Inspect the member errors above, then retry the backup"),
+                    ));
+                }
             } else if let Some(db) = database {
-                route.require_database(&db)?;
+                DbRoute::validate_database_name(&db)?;
                 backup::backup_db(&route, &db, Some(&name), global_config.backups.keep_count)
                     .await?;
             } else {
@@ -102,16 +142,16 @@ pub async fn handle_db(
                     ..
                 },
         } => {
-            route.require_database(&database)?;
+            DbRoute::validate_database_name(&database)?;
             backup::restore_db(&route, &backup, &database, yes).await?;
         }
         DbSubcommand::Backups {
             command: DbBackupSubcommand::List { database, .. },
         } => {
             if let Some(name) = &database {
-                route.require_database(name)?;
+                DbRoute::validate_database_name(name)?;
             }
-            for item in backup::list_backups(&route, Some(&route.database))? {
+            for item in backup::list_backups(&route, database.as_deref())? {
                 vm_println!("{item}");
             }
         }
@@ -121,16 +161,20 @@ pub async fn handle_db(
             backup::remove_backup(&route, &backup, yes)?;
         }
         DbSubcommand::List { .. } => {
-            let query = format!("SELECT datname, pg_size_pretty(pg_database_size(datname)) FROM pg_database WHERE datname = {};", backup::quote_pg_literal(&route.database));
-            let result = utils::execute_psql_command(&route, &query).await?;
+            let query = "SELECT datname, pg_size_pretty(pg_database_size(datname)) FROM pg_database WHERE datistemplate = false AND datname <> 'postgres' ORDER BY datname;";
+            let result = utils::execute_psql_command(&route, query).await?;
 
-            vm_println!("Database for environment '{}':", route.environment);
+            vm_println!(
+                "Databases in '{}' for environment '{}':",
+                route.container,
+                route.environment
+            );
             for line in result.lines() {
                 let parts: Vec<&str> = line.split('|').map(|s| s.trim()).collect();
                 if parts.len() == 2 && !parts[0].is_empty() {
                     let db_name = parts[0];
                     let db_size = parts[1];
-                    let backup_count = backup::count_backups(&route, db_name).await.unwrap_or(0);
+                    let backup_count = backup::count_backups(&route, db_name).await?;
 
                     if backup_count > 0 {
                         vm_println!(
@@ -151,7 +195,7 @@ pub async fn handle_db(
             }
         }
         DbSubcommand::Status { name, .. } => {
-            route.require_database(&name)?;
+            DbRoute::validate_database_name(&name)?;
             let query = format!("SELECT datname, pg_size_pretty(pg_database_size(datname)) FROM pg_database WHERE datname = {};", backup::quote_pg_literal(&name));
             let result = utils::execute_psql_command(&route, &query).await?;
             if result.trim().is_empty() {
@@ -169,23 +213,23 @@ pub async fn handle_db(
             overwrite,
             ..
         } => {
-            route.require_database(&name)?;
+            DbRoute::validate_database_name(&name)?;
             backup::export_db(&route, &name, &output, overwrite).await?;
         }
         DbSubcommand::Import {
             name, file, yes, ..
         } => {
-            route.require_database(&name)?;
+            DbRoute::validate_database_name(&name)?;
             backup::import_db(&route, &name, &file, yes).await?;
         }
         DbSubcommand::Reset { name, yes, .. } => {
-            route.require_database(&name)?;
+            DbRoute::validate_database_name(&name)?;
             backup::reset_db(&route, &name, yes).await?;
         }
         DbSubcommand::Credentials {
             service, reveal, ..
         } => {
-            show_credentials(&service, reveal).await?;
+            show_credentials(&route, &service, reveal).await?;
         }
     }
     Ok(())

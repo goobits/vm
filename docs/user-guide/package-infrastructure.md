@@ -232,9 +232,14 @@ not part of normal work.
 
 Release prints its durable submission ID and current phase before waiting, then
 prints a heartbeat every 10 seconds while the phase is unchanged. `Ctrl-C`
-detaches the CLI without cancelling controller work; rerun the same command to
-resume. From a managed checkout, `vm packages cancel` is the explicit durable
-cancellation path.
+exits 130 without cancelling accepted work and reports the receipt to resume.
+A wait deadline exits 5 with the same receipt; the controller may keep working.
+`vm packages release --background` returns a persisted submission
+receipt after the controller accepts work. Use `vm packages release --receipt ID`
+from the assigned environment to observe or resume it, even outside its checkout
+directory. A background release can still need that guest command to complete
+integration after controller review. From a managed checkout,
+`vm packages cancel` is the explicit durable cancellation path.
 
 For a language package the workflow records whether the requesting project
 actually consumes it. Source-only maintenance runs package checks without
@@ -585,6 +590,11 @@ all running environments in the project. Stopped environments are ignored unless
 `--include-stopped` is explicit; then updates are deferred until start. A tool
 absent from every successfully loaded target is rejected instead
 of being installed outside configuration.
+Deferred requests are saved for each stopped environment and retried when it
+starts or next reconciles; they do not start the environment. Current project
+and global selection is checked again before applying a saved request, so a
+later disable does not reactivate it. `vm tools disable NAME` reconciles running
+environments against the new selection; managed guest files remain in place.
 
 Omitted versions track the latest release. Explicit semantic versions remain
 pinned. An explicit `update` installs every eligible selected change without a
@@ -606,13 +616,18 @@ registration/publication.
 `vm tools status [--env NAME]` adds installed and consumable guest state and
 reports the three base-owned vendor runtimes separately. Managed-tool rows also
 show the newest active controller workflow and durable submission ID, including
-work that is queued before its first artifact exists. Its rows are the union of
+work that is queued before its first artifact exists. They also show the newest
+activation ID and its state for the selected environment, so pending, deferred,
+and failed activation remains inspectable after a release command times out or
+is interrupted. Its rows are the union of
 configured tools, controller registrations, and guest state, so a stale installed
 tool remains visible after it is removed from project configuration.
 For collections, `PROJECT_COPY` also identifies a standalone project checkout
 at a declared activation path. Managed releases live under the guest home and
 never advance, remove, or otherwise rewrite project Git; the operator must pick
 one owner for overlapping collection content.
+`vm tools refresh [NAME...]` refreshes the catalog and the selected tools' pinned
+release resolutions; a named refresh reports names without a published release.
 
 `vm tools update [<tool>...] [--env <environment>...]` is also the idempotent
 upgrade reconciliation entry point. For Docker it regenerates current Compose
@@ -695,12 +710,17 @@ Backups stay inside a private appliance named volume:
 
 ```bash
 vm packages service backups create
+vm packages service backups create nightly
 vm packages service backups list
-vm packages service backups restore <backup-id>
+vm packages service backups restore nightly --yes
+vm packages service backups remove nightly --yes
 ```
 
-Backup and restore pause the registry, OCI cache, and work services, archive
-every data volume separately, and verify SHA-256 manifests before restore.
+Backup and restore pause the registry, OCI cache, and work services. Creation
+archives every data volume separately. Restore checks the receipt, dataset list,
+SHA-256 manifest, and every archive before pausing services, then checks again
+before replacing data. Backup removal accepts one exact name and requires
+confirmation.
 Restores are retryable after interruption. `vm packages down` preserves every
 volume.
 

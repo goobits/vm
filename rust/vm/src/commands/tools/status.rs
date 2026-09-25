@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use vm_config::config::VmConfig;
 use vm_core::{vm_hint, vm_println};
-use vm_packages::WorkflowState;
+use vm_packages::{ToolActivationRecord, ToolActivationTargetState, WorkflowState};
 
 use crate::error::VmResult;
 
@@ -19,6 +19,7 @@ struct ControllerToolState {
     registered: bool,
     published: bool,
     workflow: Option<ControllerWorkflow>,
+    activation: Option<ToolActivationRecord>,
 }
 
 #[derive(Debug, Clone)]
@@ -40,6 +41,7 @@ async fn controller_tool_states() -> VmResult<BTreeMap<String, ControllerToolSta
                 registered: true,
                 published,
                 workflow: None,
+                activation: None,
             },
         );
     }
@@ -60,6 +62,17 @@ async fn controller_tool_states() -> VmResult<BTreeMap<String, ControllerToolSta
                 submission_id: submission.submission_id,
                 updated_at: submission.updated_at,
             });
+        }
+    }
+    for activation in client.tool_activations().await? {
+        let Some(state) = states.get_mut(&activation.tool) else {
+            continue;
+        };
+        if state.activation.as_ref().map_or(true, |current| {
+            (activation.created_at, &activation.activation_id)
+                > (current.created_at, &current.activation_id)
+        }) {
+            state.activation = Some(activation);
         }
     }
     Ok(states)
@@ -89,7 +102,7 @@ pub(super) async fn show(subject: &RuntimeSubject) -> VmResult<()> {
     let vendor_tools = base::vendor_tool_statuses(subject.provider.as_ref(), &subject.target)?;
 
     vm_println!("Guest tools ({target})");
-    vm_println!("NAME\tOWNER\tREGISTERED\tPUBLISHED\tINSTALLED\tCONSUMABLE\tPROJECT_COPY\tVERSION\tWORKFLOW\tJOB");
+    vm_println!("NAME\tOWNER\tREGISTERED\tPUBLISHED\tINSTALLED\tCONSUMABLE\tPROJECT_COPY\tVERSION\tWORKFLOW\tJOB\tACTIVATION\tACTIVATION_ID");
     for info in base::vendor_tool_info() {
         let state = &vendor_tools[info.name];
         if !base::vendor_tools_expected(&subject.config)
@@ -98,7 +111,7 @@ pub(super) async fn show(subject: &RuntimeSubject) -> VmResult<()> {
             continue;
         }
         vm_println!(
-            "{}\tbase\tn/a\tn/a\t{}\t{}\tn/a\t{}\tn/a\tn/a",
+            "{}\tbase\tn/a\tn/a\t{}\t{}\tn/a\t{}\tn/a\tn/a\tn/a\tn/a",
             info.name,
             yes_no(state.state != base::VendorToolState::Absent),
             yes_no(state.state == base::VendorToolState::Consumable),
@@ -114,8 +127,14 @@ pub(super) async fn show(subject: &RuntimeSubject) -> VmResult<()> {
         let controller_state = controller.as_ref().and_then(|states| states.get(&name));
         let installed_tool = installed.get(&name);
         let workflow = controller_state.and_then(|state| state.workflow.as_ref());
+        let activation = controller_state.and_then(|state| state.activation.as_ref());
+        let target_state = activation.and_then(|activation| {
+            activation.targets.iter().find(|target| {
+                target.provider == subject.provider.name() && target.environment == subject.target
+            })
+        });
         vm_println!(
-            "{}\tmanaged\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\tmanaged\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             name,
             controller_state.map_or("unknown", |state| yes_no(state.registered)),
             controller_state.map_or("unknown", |state| yes_no(state.published)),
@@ -128,11 +147,22 @@ pub(super) async fn show(subject: &RuntimeSubject) -> VmResult<()> {
             },
             installed_tool.map_or("-", |tool| tool.version.as_str()),
             workflow.map_or("-", |workflow| workflow_state_name(workflow.state)),
-            workflow.map_or("-", |workflow| workflow.submission_id.as_str())
+            workflow.map_or("-", |workflow| workflow.submission_id.as_str()),
+            target_state.map_or("-", |target| activation_target_state(target.state)),
+            activation.map_or("-", |activation| activation.activation_id.as_str())
         );
     }
     report_project_overrides(&project_overrides);
     Ok(())
+}
+
+fn activation_target_state(state: ToolActivationTargetState) -> &'static str {
+    match state {
+        ToolActivationTargetState::Pending => "pending",
+        ToolActivationTargetState::Deferred => "deferred",
+        ToolActivationTargetState::Active => "active",
+        ToolActivationTargetState::Failed => "failed",
+    }
 }
 
 fn visible_workflow_state(state: WorkflowState) -> bool {
@@ -202,6 +232,7 @@ mod tests {
                 registered: true,
                 published: false,
                 workflow: None,
+                activation: None,
             },
         )]);
         let installed = BTreeMap::from([(
@@ -237,5 +268,25 @@ mod tests {
         );
         assert!(!visible_workflow_state(WorkflowState::Published));
         assert!(!visible_workflow_state(WorkflowState::Closed));
+    }
+
+    #[test]
+    fn activation_status_names_distinguish_deferred_and_failed_work() {
+        assert_eq!(
+            activation_target_state(ToolActivationTargetState::Pending),
+            "pending"
+        );
+        assert_eq!(
+            activation_target_state(ToolActivationTargetState::Deferred),
+            "deferred"
+        );
+        assert_eq!(
+            activation_target_state(ToolActivationTargetState::Failed),
+            "failed"
+        );
+        assert_eq!(
+            activation_target_state(ToolActivationTargetState::Active),
+            "active"
+        );
     }
 }

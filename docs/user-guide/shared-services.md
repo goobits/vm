@@ -20,4 +20,4 @@ vm config show
 vm start app
 ```
 
-Database commands operate on the selected project's configured PostgreSQL database. For named environments, add a complete `services.postgresql` definition under each `environments.<name>` declaration when they need separate database identities. Select one with `--env <name>`; its backups live in a separate project and environment directory.
+Database commands operate on the selected environment's PostgreSQL service. For named environments, add a complete `services.postgresql` definition under each `environments.<name>` declaration when they need separate service settings. Select one with `--env <name>`; its backups live in a separate project and environment directory. `--all` backs up each non-system database in that service independently and reports each member's result.

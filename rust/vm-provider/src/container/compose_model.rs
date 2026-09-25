@@ -1,5 +1,7 @@
 use serde::Serialize;
-use vm_config::config::{MountAccess, VmConfig, VolumeRetention, VolumeScope};
+use vm_config::config::{
+    MountAccess, ResolvedServicePlugin, VmConfig, VolumeRetention, VolumeScope,
+};
 use vm_core::error::Result;
 
 use crate::resource_limits::ResolvedResources;
@@ -9,6 +11,35 @@ use crate::stable_name::stable_name_component;
 pub(super) struct RenderedResources {
     pub memory: Option<String>,
     pub cpus: Option<u32>,
+}
+
+#[derive(Serialize)]
+pub(super) struct RenderedPluginService<'a> {
+    #[serde(flatten)]
+    pub plugin: &'a ResolvedServicePlugin,
+    pub container_name: String,
+    pub published_ports: Vec<String>,
+}
+
+impl<'a> RenderedPluginService<'a> {
+    pub fn from_plugins(
+        plugins: &'a [ResolvedServicePlugin],
+        project: &str,
+        binding: &str,
+    ) -> Vec<Self> {
+        plugins
+            .iter()
+            .map(|plugin| Self {
+                container_name: format!("{project}-plugin-{}", plugin.name),
+                published_ports: plugin
+                    .ports
+                    .iter()
+                    .map(|port| format!("{binding}:{}:{}", port.host, port.container))
+                    .collect(),
+                plugin,
+            })
+            .collect()
+    }
 }
 
 impl RenderedResources {
@@ -49,6 +80,15 @@ pub(super) struct RenderedStorage {
 }
 
 impl RenderedStorage {
+    pub fn add_plugin_volumes(&mut self, project: &str, plugins: &[ResolvedServicePlugin]) {
+        for plugin in plugins {
+            for volume in &plugin.volumes {
+                self.named_volumes
+                    .push(builtin_volume(project, &volume.name, "instance"));
+            }
+        }
+    }
+
     pub fn new(
         config: &VmConfig,
         base_project: &str,

@@ -37,7 +37,13 @@ pub async fn backup_db(
     let output = execute_docker_command(
         route,
         &[
-            "pg_dump", "-U", "postgres", "-d", db_name, "-F", "c", // Custom format, compressed
+            "pg_dump",
+            "-U",
+            &route.user,
+            "-d",
+            db_name,
+            "-F",
+            "c", // Custom format, compressed
         ],
         None,
     )
@@ -78,7 +84,7 @@ pub async fn restore_db(
         ));
     }
 
-    if !confirm_destructive(
+    if !crate::confirmation::destructive(
         &format!("Replace database '{db_name}' with backup '{backup_name}'?"),
         yes,
     )? {
@@ -104,7 +110,7 @@ pub async fn restore_db(
         &[
             "pg_restore",
             "-U",
-            "postgres",
+            &route.user,
             "-d",
             &staging_name,
             "--exit-on-error",
@@ -132,7 +138,7 @@ pub async fn export_db(
 ) -> VmResult<()> {
     let output = execute_docker_command(
         route,
-        &["pg_dump", "-U", "postgres", "-d", db_name, "--clean"],
+        &["pg_dump", "-U", &route.user, "-d", db_name, "--clean"],
         None,
     )
     .await?;
@@ -168,7 +174,7 @@ pub async fn import_db(route: &DbRoute, db_name: &str, file: &Path, yes: bool) -
         ));
     }
 
-    if !confirm_destructive(
+    if !crate::confirmation::destructive(
         &format!(
             "Import SQL into database '{db_name}' from '{}'?",
             file.display()
@@ -184,7 +190,7 @@ pub async fn import_db(route: &DbRoute, db_name: &str, file: &Path, yes: bool) -
 
     execute_docker_command(
         route,
-        &["psql", "-U", "postgres", "-d", db_name],
+        &["psql", "-U", &route.user, "-d", db_name],
         Some(&sql_data),
     )
     .await?;
@@ -196,7 +202,8 @@ pub async fn import_db(route: &DbRoute, db_name: &str, file: &Path, yes: bool) -
 /// Reset a database
 pub async fn reset_db(route: &DbRoute, db_name: &str, yes: bool) -> VmResult<()> {
     reject_system_database(db_name)?;
-    if !confirm_destructive(&format!("Permanently reset database '{db_name}'?"), yes)? {
+    if !crate::confirmation::destructive(&format!("Permanently reset database '{db_name}'?"), yes)?
+    {
         return Ok(());
     }
 
@@ -208,13 +215,6 @@ pub async fn reset_db(route: &DbRoute, db_name: &str, yes: bool) -> VmResult<()>
 
     vm_core::vm_success!("Database '{}' has been reset.", db_name);
     Ok(())
-}
-
-fn confirm_destructive(prompt: &str, yes: bool) -> VmResult<bool> {
-    if yes {
-        return Ok(true);
-    }
-    vm_core::prompts::confirm_select(prompt, false).map_err(Into::into)
 }
 
 fn reject_system_database(name: &str) -> VmResult<()> {

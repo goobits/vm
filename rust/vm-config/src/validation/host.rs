@@ -244,12 +244,17 @@ impl HostValidator {
         });
 
         // Collect already-used ports
-        let mut used_ports: Vec<u16> = config.services.values().filter_map(|s| s.port).collect();
+        let mut used_ports: Vec<u16> = config
+            .services
+            .values()
+            .filter(|s| s.enabled)
+            .filter_map(|s| s.port)
+            .collect();
         used_ports.sort_unstable();
 
         // Check for enabled services without assigned ports
         for (service_name, service) in &config.services {
-            if !service.enabled || service.port.is_some() {
+            if !service.enabled || service.port.is_some() || service.plugin.is_some() {
                 continue;
             }
 
@@ -307,12 +312,23 @@ impl HostValidator {
             }
         }
 
-        for service in config.services.values() {
+        for service in config.services.values().filter(|service| service.enabled) {
             if let Some(port) = service.port {
                 let addr = format!("{binding_ip}:{port}");
                 if !reusable_host_ports.contains(&port) && TcpListener::bind(&addr).is_err() {
                     report.add_error(format!(
                         "Port {port} is already in use on the host. Please change the port for this service in your vm.yaml or free it."
+                    ));
+                }
+            }
+        }
+        for plugin in crate::config::resolve_service_plugins(config)? {
+            for port in plugin.ports {
+                let addr = format!("{binding_ip}:{}", port.host);
+                if !reusable_host_ports.contains(&port.host) && TcpListener::bind(&addr).is_err() {
+                    report.add_error(format!(
+                        "Service plugin '{}' host port {} is already in use",
+                        plugin.name, port.host
                     ));
                 }
             }

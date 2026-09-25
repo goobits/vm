@@ -58,7 +58,8 @@ pub(super) fn validate_ports(config: &VmConfig) -> Result<()> {
 
 pub(super) fn validate_services(config: &VmConfig) -> Result<()> {
     for (name, service) in &config.services {
-        if service.enabled && service.port.is_none() && name != "docker" {
+        if service.enabled && service.port.is_none() && name != "docker" && service.plugin.is_none()
+        {
             return Err(VmError::Config(format!(
                 "Service '{name}' is enabled but has no port specified"
             )));

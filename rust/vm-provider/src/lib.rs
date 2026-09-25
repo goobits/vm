@@ -13,18 +13,22 @@ use vm_config::config::VmConfig;
 
 // Re-export common types for convenience
 pub use capabilities::{
-    CommandProvider, InstanceProvider, ProvisioningProvider, TempProvider, TunnelProvider,
+    CommandProvider, ExecOptions, InstanceProvider, ProvisioningProvider, TempProvider,
+    TunnelProvider,
 };
 #[cfg(feature = "docker")]
 pub use container::{render_compose_preview, ContainerEngine};
 pub use context::ProviderContext;
-pub use guest_exit::GuestExit;
+pub use guest_exit::{GuestExit, GuestOutput};
 pub use instance::InstanceInfo;
+pub use log_stream::LogRecord;
 #[cfg(feature = "test-helpers")]
 pub use mock::MockProvider;
 pub use status::{
     InstanceState, MountUsage, ResourceUsage, RuntimeDiagnostics, ServiceStatus, VmStatusReport,
 };
+#[cfg(feature = "tart")]
+pub use tart::render_tart_preview;
 #[cfg(feature = "tart")]
 pub use tart::tart_project_home;
 #[cfg(feature = "tart")]
@@ -43,6 +47,7 @@ mod context;
 mod guest_cache;
 mod guest_exit;
 mod instance;
+mod log_stream;
 #[cfg(any(feature = "docker", feature = "tart"))]
 mod project_plan;
 #[cfg(any(feature = "docker", feature = "tart"))]

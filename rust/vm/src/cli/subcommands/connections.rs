@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum TunnelSubcommand {
-    /// Open a named loopback tunnel to a port in an environment
+    /// Open a named TCP tunnel through an environment
     Open {
         name: String,
         #[arg(long)]
@@ -13,16 +13,22 @@ pub enum TunnelSubcommand {
         #[arg(long)]
         env: Option<String>,
     },
-    /// List active tunnels
+    /// List project-owned tunnel relays, including orphaned environments
     List {
         #[arg(long)]
+        json: bool,
+        #[arg(long)]
         env: Option<String>,
+        #[arg(long, value_parser = ["docker", "podman"])]
+        provider: Option<String>,
     },
     /// Close one named tunnel
     Close {
         name: String,
         #[arg(long)]
         env: Option<String>,
+        #[arg(long, value_parser = ["docker", "podman"])]
+        provider: Option<String>,
     },
 }
 
@@ -37,18 +43,23 @@ pub enum SecretSubcommand {
         stdin: bool,
         #[arg(long, conflicts_with = "stdin")]
         file: Option<PathBuf>,
-        #[arg(long)]
+        #[arg(long, value_parser = ["project", "user"])]
         scope: Option<String>,
         #[arg(long)]
         description: Option<String>,
     },
     /// See all secrets
-    List,
+    List {
+        #[arg(long, value_parser = ["project", "user"])]
+        scope: Option<String>,
+    },
     /// Reveal one secret value
     Show {
         name: String,
         #[arg(long, required = true)]
         reveal: bool,
+        #[arg(long, value_parser = ["project", "user"])]
+        scope: Option<String>,
     },
     /// Delete a secret
     Remove {
@@ -56,6 +67,8 @@ pub enum SecretSubcommand {
         /// Confirm removal without prompting
         #[arg(long)]
         yes: bool,
+        #[arg(long, value_parser = ["project", "user"])]
+        scope: Option<String>,
     },
 }
 

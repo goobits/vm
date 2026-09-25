@@ -1,18 +1,19 @@
 # VM Package Experience Tracker
 
-Status: CLI completion and Docker acceptance pending.
+Status: CLI implementation complete; Docker acceptance pending.
 
 ## Remaining work
 
-- [ ] Add `packages release --receipt ID` to observe/resume the existing durable
+- [x] Add `packages release --receipt ID` to observe/resume the existing durable
       release, plus `--background` only after an acceptance receipt is persisted.
-- [ ] Complete package-service backup commands: optional name on create,
+- [x] Complete package-service backup commands: optional name on create,
       exact-name removal, and restore preflight/format checks.
-- [ ] Add named filtering to `tools refresh`; make disable reconcile eligible
-      running environments and persist desired updates for stopped targets.
+- [x] Add named filtering to `tools refresh`.
+- [x] Make `tools disable` reconcile eligible running environments and persist
+      desired updates for stopped targets.
 - [ ] Verify publication, consumer review, activation, deferred targets, and
       idempotent retries produce typed receipts and truthful partial outcomes.
-- [ ] Split oversized package discovery, release, tool activation/build, and
+- [x] Split oversized package discovery, release, tool activation/build, and
       registry-adapter modules into focused owners without adding another pipeline.
 - [ ] Run [the Docker acceptance workflow](../scripts/internal/test-package-workflow-docker.sh)
       against the updated code on a host with Docker available.
@@ -21,6 +22,9 @@ Status: CLI completion and Docker acceptance pending.
 Docker is unavailable in the audit environment. The previous Docker acceptance
 passed on 2026-08-28; that result predates the latest changes and does not validate
 them. Tart acceptance remains outside this tracker's scope.
+The current all-features workspace suite covers receipt lookup, resumed release,
+deferred activation, and a failed target after initial deferral. The open receipt
+verification item requires the live publication and consumer workflow.
 
 ## Completed work
 

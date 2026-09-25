@@ -1,6 +1,6 @@
 //! Provider-native Tart VM snapshots. Tart exports a stopped VM as one .tvm image.
 
-use crate::archive::{directory_size, validate_snapshot_files};
+use crate::archive::{directory_size, file_digest, validate_snapshot_files};
 use crate::manager::{snapshot_file_path, SnapshotManager, SnapshotScope};
 use crate::metadata::{ExcludedMount, SnapshotMetadata};
 use chrono::Utc;
@@ -201,6 +201,7 @@ pub async fn create(
         services: vec![],
         volumes: vec![],
         native_vm_file: Some(NATIVE_FILE.to_string()),
+        native_image_digest: Some(format!("sha256:{}", file_digest(&archive)?)),
         excluded_mounts,
         compose_file: String::new(),
         vm_config_file: String::new(),

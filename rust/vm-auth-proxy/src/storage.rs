@@ -19,6 +19,10 @@ const DIR_PERMISSIONS: u32 = 0o700;
 /// File permissions for secrets file
 const FILE_PERMISSIONS: u32 = 0o600;
 
+fn scoped_key(scope: &SecretScope, name: &str) -> String {
+    serde_json::to_string(&(scope, name)).expect("secret scope and name are serializable")
+}
+
 /// Secret storage manager
 pub struct SecretStore {
     storage_file: PathBuf,
@@ -51,11 +55,27 @@ impl SecretStore {
             }
             Err(error) => return Err(error).context("Failed to inspect secrets file"),
         };
-        if storage.version != SECRET_STORAGE_VERSION {
-            bail!(
-                "Unsupported secret storage version {} (expected {SECRET_STORAGE_VERSION})",
-                storage.version
-            );
+        let migrated = match storage.version {
+            2 => {
+                storage.secrets = std::mem::take(&mut storage.secrets)
+                    .into_iter()
+                    .map(|(name, mut secret)| {
+                        secret.name = name;
+                        (scoped_key(&secret.scope, &secret.name), secret)
+                    })
+                    .collect();
+                storage.version = SECRET_STORAGE_VERSION;
+                true
+            }
+            SECRET_STORAGE_VERSION => false,
+            version => bail!(
+                "Unsupported secret storage version {version} (expected {SECRET_STORAGE_VERSION})"
+            ),
+        };
+        if storage.secrets.iter().any(|(key, secret)| {
+            secret.name.is_empty() || *key != scoped_key(&secret.scope, &secret.name)
+        }) {
+            bail!("Secrets storage contains an invalid scoped identity");
         }
 
         // Get master password and create encryption key
@@ -77,7 +97,7 @@ impl SecretStore {
             storage,
         };
 
-        if created || missing_token {
+        if created || missing_token || migrated {
             store.save()?;
         }
 
@@ -99,15 +119,19 @@ impl SecretStore {
             .context("Failed to encrypt secret")?;
 
         // Create or update secret
-        let secret = Secret::new(encrypted_value, scope, description);
-        let previous = self.storage.secrets.insert(name.to_string(), secret);
+        let key = scoped_key(&scope, name);
+        let mut secret = Secret::new(name.to_string(), encrypted_value, scope, description);
+        if let Some(existing) = self.storage.secrets.get(&key) {
+            secret.created_at = existing.created_at;
+        }
+        let previous = self.storage.secrets.insert(key.clone(), secret);
         if let Err(error) = self.save() {
             match previous {
                 Some(previous) => {
-                    self.storage.secrets.insert(name.to_string(), previous);
+                    self.storage.secrets.insert(key.clone(), previous);
                 }
                 None => {
-                    self.storage.secrets.remove(name);
+                    self.storage.secrets.remove(&key);
                 }
             }
             return Err(error).context("Failed to save secrets");
@@ -116,8 +140,8 @@ impl SecretStore {
     }
 
     /// Get a secret value (decrypted)
-    pub fn get_secret(&self, name: &str) -> Result<Option<String>> {
-        if let Some(secret) = self.storage.secrets.get(name) {
+    pub fn get_secret(&self, name: &str, scope: &SecretScope) -> Result<Option<String>> {
+        if let Some(secret) = self.storage.secrets.get(&scoped_key(scope, name)) {
             let decrypted = self
                 .encryption_key
                 .decrypt(&secret.encrypted_value)
@@ -129,16 +153,17 @@ impl SecretStore {
     }
 
     /// List all secret names and metadata
-    pub fn list_secrets(&self) -> &HashMap<String, Secret> {
-        &self.storage.secrets
+    pub fn list_secrets(&self) -> impl Iterator<Item = &Secret> {
+        self.storage.secrets.values()
     }
 
     /// Remove a secret
-    pub fn remove_secret(&mut self, name: &str) -> Result<bool> {
-        let previous = self.storage.secrets.remove(name);
+    pub fn remove_secret(&mut self, name: &str, scope: &SecretScope) -> Result<bool> {
+        let key = scoped_key(scope, name);
+        let previous = self.storage.secrets.remove(&key);
         if let Some(secret) = previous {
             if let Err(error) = self.save() {
-                self.storage.secrets.insert(name.to_string(), secret);
+                self.storage.secrets.insert(key, secret);
                 return Err(error).context("Failed to save secrets after removal");
             }
             return Ok(true);
@@ -154,19 +179,22 @@ impl SecretStore {
     ) -> Result<HashMap<String, String>> {
         let mut env_vars = HashMap::new();
 
-        for (name, secret) in &self.storage.secrets {
-            let should_include = match &secret.scope {
-                SecretScope::Global => true,
-                SecretScope::Project(project) => project_name.is_some_and(|p| p == project),
-                SecretScope::Instance(instance) => instance == vm_name,
-            };
-
-            if should_include {
-                let value = self
-                    .encryption_key
-                    .decrypt(&secret.encrypted_value)
-                    .context("Failed to decrypt secret for environment")?;
-                env_vars.insert(name.to_uppercase(), value);
+        // More specific scopes override broader scopes with the same name.
+        for layer in 0..3 {
+            for secret in self.storage.secrets.values() {
+                let should_include = match (&secret.scope, layer) {
+                    (SecretScope::Global, 0) => true,
+                    (SecretScope::Project(project), 1) => project_name == Some(project.as_str()),
+                    (SecretScope::Instance(instance), 2) => instance == vm_name,
+                    _ => false,
+                };
+                if should_include {
+                    let value = self
+                        .encryption_key
+                        .decrypt(&secret.encrypted_value)
+                        .context("Failed to decrypt secret for environment")?;
+                    env_vars.insert(secret.name.to_uppercase(), value);
+                }
             }
         }
 
@@ -330,7 +358,7 @@ mod tests {
 
         // Retrieve it
         let value = store
-            .get_secret("test_key")
+            .get_secret("test_key", &SecretScope::Global)
             .expect("should get secret")
             .expect("secret should have a value");
         assert_eq!(value, "secret_value");
@@ -338,10 +366,86 @@ mod tests {
         // Check metadata
         let metadata = store
             .list_secrets()
-            .get("test_key")
+            .find(|secret| secret.name == "test_key")
             .expect("should get secret metadata");
         assert_eq!(metadata.scope, SecretScope::Global);
         assert_eq!(metadata.description, Some("Test secret".to_string()));
+    }
+
+    #[test]
+    fn same_name_in_user_and_project_scopes_stays_independent() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut store = SecretStore::new(temp_dir.path().to_path_buf()).unwrap();
+        let project = SecretScope::Project("demo".into());
+        store
+            .add_secret("TOKEN", "user-value", SecretScope::Global, None)
+            .unwrap();
+        store
+            .add_secret("TOKEN", "project-value", project.clone(), None)
+            .unwrap();
+
+        assert_eq!(
+            store
+                .get_secret("TOKEN", &SecretScope::Global)
+                .unwrap()
+                .as_deref(),
+            Some("user-value")
+        );
+        assert_eq!(
+            store.get_secret("TOKEN", &project).unwrap().as_deref(),
+            Some("project-value")
+        );
+        assert_eq!(
+            store.get_env_vars_for_vm("demo-dev", Some("demo")).unwrap()["TOKEN"],
+            "project-value"
+        );
+        assert_eq!(
+            store
+                .get_env_vars_for_vm("other-dev", Some("other"))
+                .unwrap()["TOKEN"],
+            "user-value"
+        );
+
+        store.remove_secret("TOKEN", &project).unwrap();
+        assert!(store.get_secret("TOKEN", &project).unwrap().is_none());
+        assert_eq!(
+            store
+                .get_secret("TOKEN", &SecretScope::Global)
+                .unwrap()
+                .as_deref(),
+            Some("user-value")
+        );
+        assert_eq!(store.secret_count(), 1);
+    }
+
+    #[test]
+    fn existing_secret_data_is_migrated_to_scoped_storage() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join(SECRETS_FILE);
+        let mut store = SecretStore::new(temp_dir.path().to_path_buf()).unwrap();
+        let scope = SecretScope::Project("demo".into());
+        store
+            .add_secret("TOKEN", "kept-value", scope.clone(), None)
+            .unwrap();
+        drop(store);
+
+        let mut data: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        data["version"] = serde_json::json!(2);
+        let secrets = data["secrets"].as_object_mut().unwrap();
+        let mut secret = secrets.remove(&scoped_key(&scope, "TOKEN")).unwrap();
+        secret.as_object_mut().unwrap().remove("name");
+        secrets.insert("TOKEN".into(), secret);
+        fs::write(&path, serde_json::to_vec(&data).unwrap()).unwrap();
+
+        let reopened = SecretStore::new(temp_dir.path().to_path_buf()).unwrap();
+        assert_eq!(
+            reopened.get_secret("TOKEN", &scope).unwrap().as_deref(),
+            Some("kept-value")
+        );
+        assert_eq!(reopened.secret_count(), 1);
+        let saved: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        assert_eq!(saved["version"], 3);
     }
 
     #[test]
@@ -359,10 +463,18 @@ mod tests {
         assert!(store
             .add_secret("new", "second", SecretScope::Global, None)
             .is_err());
-        assert!(store.get_secret("new").unwrap().is_none());
-        assert!(store.remove_secret("existing").is_err());
+        assert!(store
+            .get_secret("new", &SecretScope::Global)
+            .unwrap()
+            .is_none());
+        assert!(store
+            .remove_secret("existing", &SecretScope::Global)
+            .is_err());
         assert_eq!(
-            store.get_secret("existing").unwrap().as_deref(),
+            store
+                .get_secret("existing", &SecretScope::Global)
+                .unwrap()
+                .as_deref(),
             Some("first")
         );
     }
@@ -392,11 +504,17 @@ mod tests {
         );
         let reopened = SecretStore::new(data_dir).unwrap();
         assert_eq!(
-            reopened.get_secret("first").unwrap().as_deref(),
+            reopened
+                .get_secret("first", &SecretScope::Global)
+                .unwrap()
+                .as_deref(),
             Some("one")
         );
         assert_eq!(
-            reopened.get_secret("second").unwrap().as_deref(),
+            reopened
+                .get_secret("second", &SecretScope::Global)
+                .unwrap()
+                .as_deref(),
             Some("two")
         );
     }
@@ -455,14 +573,14 @@ mod tests {
         assert_eq!(store.secret_count(), 1);
 
         let removed = store
-            .remove_secret("test_key")
+            .remove_secret("test_key", &SecretScope::Global)
             .expect("should remove secret");
         assert!(removed);
         assert_eq!(store.secret_count(), 0);
 
         // Try to remove non-existent secret
         let removed = store
-            .remove_secret("nonexistent")
+            .remove_secret("nonexistent", &SecretScope::Global)
             .expect("should handle non-existent secret");
         assert!(!removed);
     }
@@ -551,7 +669,7 @@ mod tests {
         {
             let store = SecretStore::new(data_dir).expect("should load store");
             let value = store
-                .get_secret("persistent_key")
+                .get_secret("persistent_key", &SecretScope::Global)
                 .expect("should get persistent secret")
                 .expect("secret should have a value");
             assert_eq!(value, "persistent_value");

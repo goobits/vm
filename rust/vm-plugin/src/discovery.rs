@@ -15,6 +15,18 @@ pub fn discover_plugins() -> Result<Vec<Plugin>> {
     discover_plugins_in_directory(&plugins_dir)
 }
 
+/// Load one installed service plugin without silently skipping a malformed manifest.
+pub fn load_installed_service(name: &str) -> Result<Plugin> {
+    if !crate::validation::is_valid_plugin_name(name) {
+        anyhow::bail!("Invalid service plugin name: {name}");
+    }
+    let directory = vm_platform::platform::vm_state_dir()?
+        .join("plugins/services")
+        .join(name);
+    load_plugin(&directory, PluginType::Service)
+        .with_context(|| format!("Service plugin '{name}' is not installed or is invalid"))
+}
+
 /// Discovers plugins in a specific directory (for testing)
 #[instrument(fields(plugins_dir = %plugins_dir.display()))]
 pub fn discover_plugins_in_directory(plugins_dir: &Path) -> Result<Vec<Plugin>> {

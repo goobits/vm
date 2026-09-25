@@ -1,217 +1,171 @@
-use std::collections::HashSet;
-
 use anyhow::Result;
+use std::collections::HashSet;
 
 use crate::types::{Plugin, ServiceContent};
 
 use super::{ValidationError, ValidationResult};
 
-pub(super) fn validate_port_conflicts(
-    plugin: &Plugin,
-    result: &mut ValidationResult,
-) -> Result<()> {
-    let content = match crate::discovery::load_service_content(plugin) {
-        Ok(c) => c,
-        Err(_) => return Ok(()), // Already reported in basic validation
-    };
-
-    // Get all installed plugins
-    let plugins = match crate::discovery::discover_plugins() {
-        Ok(p) => p,
-        Err(_) => return Ok(()), // Can't check conflicts if discovery fails
-    };
-
-    let service_plugins = crate::discovery::get_service_plugins(&plugins);
-
-    // Extract ports from this plugin
-    let mut this_ports = HashSet::new();
-    for port_mapping in &content.ports {
-        if let Some(host_port) = extract_host_port(port_mapping) {
-            this_ports.insert(host_port);
-        }
-    }
-
-    // Check against other plugins
-    for other_plugin in service_plugins {
-        // Skip self
-        if other_plugin.info.name == plugin.info.name {
-            continue;
-        }
-
-        check_plugin_port_conflict(other_plugin, &this_ports, result);
-    }
-
-    Ok(())
-}
-
-/// Check for port conflicts with a specific plugin
-fn check_plugin_port_conflict(
-    other_plugin: &Plugin,
-    this_ports: &HashSet<u16>,
-    result: &mut ValidationResult,
-) {
-    let Ok(other_content) = crate::discovery::load_service_content(other_plugin) else {
-        return;
-    };
-
-    for port_mapping in &other_content.ports {
-        let Some(host_port) = extract_host_port(port_mapping) else {
-            continue;
-        };
-
-        if this_ports.contains(&host_port) {
-            result.add_error(
-                ValidationError::new(
-                    "ports",
-                    format!(
-                        "Port {} conflicts with existing plugin '{}'",
-                        host_port, other_plugin.info.name
-                    ),
-                )
-                .with_suggestion(format!(
-                    "Change the host port to an unused port (e.g., {})",
-                    find_available_port(host_port, this_ports)
-                )),
-            );
-        }
-    }
-}
-
-/// Extract host port from port mapping string
-fn extract_host_port(port_mapping: &str) -> Option<u16> {
-    let parts: Vec<&str> = port_mapping.split(':').collect();
-
-    match parts.len() {
-        1 => parts[0].parse::<u16>().ok(),
-        2 => parts[0].parse::<u16>().ok(),
-        _ => None,
-    }
-}
-
-/// Find an available port near the requested port
-fn find_available_port(base_port: u16, used_ports: &HashSet<u16>) -> u16 {
-    for offset in 1..100 {
-        let candidate = base_port.saturating_add(offset);
-        if !used_ports.contains(&candidate) && candidate < 65535 {
-            return candidate;
-        }
-    }
-    base_port.saturating_add(100)
-}
-
 pub(super) fn validate(plugin: &Plugin, result: &mut ValidationResult) -> Result<()> {
     let content = match crate::discovery::load_service_content(plugin) {
-        Ok(c) => c,
-        Err(e) => {
-            result.add_error(
-                ValidationError::new(
-                    "service_content",
-                    format!("Failed to parse service.yaml: {e}"),
-                )
-                .with_suggestion("Check YAML syntax and structure"),
-            );
+        Ok(content) => content,
+        Err(error) => {
+            result.add_error(ValidationError::new("service_content", error.to_string()));
             return Ok(());
         }
     };
-
-    validate_service_image(&content, result);
-    validate_service_ports(&content, result);
-    validate_service_volumes(&content, result);
-    super::validate_environment(&content.environment, result);
-
+    validate_content(&content, result);
     Ok(())
 }
 
-fn validate_service_image(content: &ServiceContent, result: &mut ValidationResult) {
-    if content.image.is_empty() {
-        result.add_error(
-            ValidationError::new("image", "Docker image cannot be empty")
-                .with_suggestion("Specify a Docker image like 'postgres:15' or 'redis:7-alpine'"),
-        );
-        return;
+fn validate_content(content: &ServiceContent, result: &mut ValidationResult) {
+    if content.image.trim().is_empty()
+        || content.image.chars().any(char::is_whitespace)
+        || content.image.contains('$')
+    {
+        result.add_error(ValidationError::new(
+            "image",
+            "Specify one container image reference",
+        ));
     }
-
-    // Check for image format (registry/image:tag or image:tag)
     if !content.image.contains(':') {
-        result.add_warning(
-            "Docker image does not specify a tag. Consider using a specific version tag."
-                .to_string(),
-        );
+        result.add_warning("Pin the service image to a specific tag or digest".to_string());
     }
-
-    // Warn about 'latest' tag
-    if content.image.ends_with(":latest") {
-        result.add_warning(
-            "Using 'latest' tag is not recommended. Pin to a specific version for reproducibility."
-                .to_string(),
-        );
+    if content.command.is_some() {
+        result.add_error(ValidationError::new(
+            "command",
+            "Command overrides are unsupported for service plugins",
+        ));
     }
-}
-
-/// Validate service ports
-fn validate_service_ports(content: &ServiceContent, result: &mut ValidationResult) {
-    for port in &content.ports {
-        validate_port_mapping(port, result);
+    if content.health_check.is_some() {
+        result.add_error(ValidationError::new(
+            "health_check",
+            "Executable health checks are unsupported for service plugins",
+        ));
     }
-}
-
-/// Validate service volumes
-fn validate_service_volumes(content: &ServiceContent, result: &mut ValidationResult) {
+    let mut ports = HashSet::new();
+    for mapping in &content.ports {
+        validate_port_mapping(mapping, result);
+        if !ports.insert(mapping.split(':').next().unwrap_or_default()) {
+            result.add_error(ValidationError::new(
+                "ports",
+                format!("Duplicate host port in '{mapping}'"),
+            ));
+        }
+    }
+    let mut targets = HashSet::new();
     for volume in &content.volumes {
-        // Check volume format (source:target or named_volume:target)
-        if !volume.contains(':') {
-            result.add_error(
-                ValidationError::new("volumes", format!("Invalid volume format: '{volume}'"))
-                    .with_suggestion("Use format 'source:target' or 'volume_name:target'"),
-            );
+        let Some((source, target)) = volume.split_once(':') else {
+            result.add_error(ValidationError::new(
+                "volumes",
+                format!("Invalid named volume mapping '{volume}'"),
+            ));
+            continue;
+        };
+        if volume.matches(':').count() != 1
+            || !is_safe_name(source)
+            || !target.starts_with('/')
+            || target == "/"
+            || target.contains('$')
+            || target
+                .split('/')
+                .any(|component| component == ".." || component == ".")
+        {
+            result.add_error(ValidationError::new(
+                "volumes",
+                format!("Only named volumes with absolute targets are supported: '{volume}'"),
+            ));
+        }
+        if !targets.insert(target) {
+            result.add_error(ValidationError::new(
+                "volumes",
+                format!("Duplicate volume target '{target}'"),
+            ));
+        }
+    }
+    let mut dependencies = HashSet::new();
+    for dependency in &content.depends_on {
+        if !is_safe_name(dependency) || !dependencies.insert(dependency) {
+            result.add_error(ValidationError::new(
+                "depends_on",
+                format!("Invalid or duplicate dependency '{dependency}'"),
+            ));
+        }
+    }
+    super::validate_environment(&content.environment, result);
+    for (key, value) in &content.environment {
+        if !key
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_alphabetic() || character == '_')
+            || !key
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '_')
+        {
+            result.add_error(ValidationError::new(
+                "environment",
+                format!("Invalid container environment name '{key}'"),
+            ));
+        }
+        if value.contains('$') {
+            result.add_error(ValidationError::new(
+                "environment",
+                format!("Environment value '{key}' cannot contain Compose interpolation ('$')"),
+            ));
         }
     }
 }
 
-/// Validate service environment variables
-/// Validate port mapping format
-pub(super) fn validate_port_mapping(port: &str, result: &mut ValidationResult) {
-    let parts: Vec<&str> = port.split(':').collect();
+fn is_safe_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 63
+        && value
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_alphanumeric())
+        && value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
+}
 
-    match parts.len() {
-        1 => {
-            // Container port only
-            if let Err(e) = parts[0].parse::<u16>() {
-                result.add_error(
-                    ValidationError::new(
-                        "ports",
-                        format!("Invalid port number: '{}' - {}", parts[0], e),
-                    )
-                    .with_suggestion("Use a valid port number (1-65535)"),
-                );
-            }
-        }
-        2 => {
-            // Host:container port mapping
-            if let Err(e) = parts[0].parse::<u16>() {
-                result.add_error(
-                    ValidationError::new(
-                        "ports",
-                        format!("Invalid host port: '{}' - {}", parts[0], e),
-                    )
-                    .with_suggestion("Use a valid port number (1-65535)"),
-                );
-            }
-            if let Err(e) = parts[1].parse::<u16>() {
-                result.add_error(
-                    ValidationError::new(
-                        "ports",
-                        format!("Invalid container port: '{}' - {}", parts[1], e),
-                    )
-                    .with_suggestion("Use a valid port number (1-65535)"),
-                );
-            }
-        }
-        _ => {
-            result.add_error(
-                ValidationError::new("ports", format!("Invalid port mapping format: '{port}'"))
-                    .with_suggestion("Use format 'port' or 'host_port:container_port'"),
-            );
+pub(super) fn validate_port_mapping(port: &str, result: &mut ValidationResult) {
+    let parts = port.split(':').collect::<Vec<_>>();
+    if !matches!(parts.len(), 1 | 2)
+        || parts
+            .iter()
+            .any(|part| part.parse::<u16>().map_or(true, |number| number == 0))
+    {
+        result.add_error(ValidationError::new(
+            "ports",
+            format!("Invalid port mapping '{port}'; use port or host:container, 1-65535"),
+        ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn service_manifest_accepts_only_declarative_container_fields() {
+        let content: ServiceContent = serde_yaml_ng::from_str(
+            "image: redis:7-alpine\nports: ['6380:6379']\nvolumes: ['data:/data']\n",
+        )
+        .unwrap();
+        let mut result = ValidationResult::new();
+        validate_content(&content, &mut result);
+        assert!(result.is_valid, "{:?}", result.errors);
+
+        for manifest in [
+            "image: redis:7\ncommand: [sh, -c, echo hi]\n",
+            "image: redis:7\nhealth_check: 'curl localhost'\n",
+            "image: redis:7\nvolumes: ['/host:/data']\n",
+            "image: redis:7\nports: ['0:6379']\n",
+            "image: redis:7\nenvironment:\n  TOKEN: '${HOST_TOKEN}'\n",
+        ] {
+            let content: ServiceContent = serde_yaml_ng::from_str(manifest).unwrap();
+            let mut result = ValidationResult::new();
+            validate_content(&content, &mut result);
+            assert!(!result.is_valid, "{manifest}");
         }
     }
 }

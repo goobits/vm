@@ -27,6 +27,9 @@ pub enum ToolsSubcommand {
     Remove { name: String },
     /// Refresh the appliance-generated tool catalog cache
     Refresh {
+        /// Refresh these tools' selected releases (omit to refresh all selected tools)
+        #[arg(value_name = "NAME")]
+        names: Vec<String>,
         #[arg(long, hide = true)]
         quiet: bool,
     },

@@ -9,10 +9,13 @@
 mod get;
 mod init;
 mod io;
+mod plan;
 pub(crate) mod preset;
 mod set;
 mod unset;
 mod validate;
+
+pub use plan::ConfigMutationReport;
 
 // Public modules for specific functionalities
 pub mod port_placeholders;
@@ -55,11 +58,41 @@ impl ConfigOps {
         dry_run: bool,
         path: Option<PathBuf>,
     ) -> Result<()> {
-        set::set(field, values, global, dry_run, path, None)
+        set::set(field, values, global, dry_run, path, None, false).map(|_| ())
+    }
+
+    pub fn set_report_at(
+        field: &str,
+        values: &[String],
+        global: bool,
+        dry_run: bool,
+        path: Option<PathBuf>,
+    ) -> Result<ConfigMutationReport> {
+        set::set(field, values, global, dry_run, path, None, true)
     }
 
     pub fn set_json_at(field: &str, json: &str, global: bool, path: Option<PathBuf>) -> Result<()> {
-        set::set(field, &[], global, false, path, Some(json))
+        Self::set_json_preview_at(field, json, global, false, path)
+    }
+
+    pub fn set_json_preview_at(
+        field: &str,
+        json: &str,
+        global: bool,
+        dry_run: bool,
+        path: Option<PathBuf>,
+    ) -> Result<()> {
+        set::set(field, &[], global, dry_run, path, Some(json), false).map(|_| ())
+    }
+
+    pub fn set_json_report_at(
+        field: &str,
+        json: &str,
+        global: bool,
+        dry_run: bool,
+        path: Option<PathBuf>,
+    ) -> Result<ConfigMutationReport> {
+        set::set(field, &[], global, dry_run, path, Some(json), true)
     }
 
     /// Get a configuration value or display entire configuration.
@@ -73,7 +106,25 @@ impl ConfigOps {
     }
 
     pub fn unset_at(field: &str, global: bool, path: Option<PathBuf>) -> Result<()> {
-        unset::unset(field, global, path)
+        Self::unset_preview_at(field, global, false, path)
+    }
+
+    pub fn unset_preview_at(
+        field: &str,
+        global: bool,
+        dry_run: bool,
+        path: Option<PathBuf>,
+    ) -> Result<()> {
+        unset::unset(field, global, dry_run, path, false).map(|_| ())
+    }
+
+    pub fn unset_report_at(
+        field: &str,
+        global: bool,
+        dry_run: bool,
+        path: Option<PathBuf>,
+    ) -> Result<ConfigMutationReport> {
+        unset::unset(field, global, dry_run, path, true)
     }
 
     /// Clear (delete) configuration file.
@@ -93,6 +144,26 @@ impl ConfigOps {
         show: Option<&str>,
         path: Option<PathBuf>,
     ) -> Result<()> {
-        preset::preset(preset_names, global, list, show, path)
+        Self::preset_preview_at(preset_names, global, list, show, false, path)
+    }
+
+    pub fn preset_preview_at(
+        preset_names: &str,
+        global: bool,
+        list: bool,
+        show: Option<&str>,
+        dry_run: bool,
+        path: Option<PathBuf>,
+    ) -> Result<()> {
+        preset::preset(preset_names, global, list, show, dry_run, path, false).map(|_| ())
+    }
+
+    pub fn preset_apply_report_at(
+        preset_names: &str,
+        global: bool,
+        dry_run: bool,
+        path: Option<PathBuf>,
+    ) -> Result<ConfigMutationReport> {
+        preset::apply_report(preset_names, global, dry_run, path)
     }
 }

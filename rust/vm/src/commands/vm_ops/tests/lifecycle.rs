@@ -6,7 +6,7 @@ use std::sync::{
 };
 
 use super::{ensure_running, wait_until_ready_for, StartOutcome};
-use crate::commands::vm_ops::interaction::{handle_exec, handle_ssh};
+use crate::commands::vm_ops::interaction::{handle_exec_with_options, handle_ssh};
 use vm_config::{config::VmConfig, GlobalConfig};
 use vm_provider::{
     CommandProvider, InstanceInfo, InstanceProvider, InstanceState, Provider, ProviderContext,
@@ -339,12 +339,13 @@ async fn shell_rejects_stopped_environment_without_starting() {
 async fn exec_rejects_a_stopped_environment_without_starting_it() {
     let provider = FakeProvider::new(Some(InstanceState::Stopped));
 
-    handle_exec(
+    handle_exec_with_options(
         Box::new(provider.clone()),
         Some("demo-dev"),
         vec!["true".to_string()],
         VmConfig::default(),
         GlobalConfig::default(),
+        vm_provider::ExecOptions::default(),
     )
     .await
     .unwrap_err();
@@ -359,12 +360,13 @@ async fn exec_rejects_a_stopped_environment_without_starting_it() {
 #[tokio::test]
 async fn exec_returns_guest_status_without_rewriting_it() {
     let provider = FakeProvider::new(Some(InstanceState::Running)).with_exec_code(42);
-    let exit = handle_exec(
+    let exit = handle_exec_with_options(
         Box::new(provider.clone()),
         Some("demo-dev"),
         vec!["false".to_string()],
         project_config(),
         GlobalConfig::default(),
+        vm_provider::ExecOptions::default(),
     )
     .await
     .unwrap();
@@ -393,12 +395,13 @@ async fn shell_defers_maintenance_while_exec_reconciles_managed_package_access()
     )
     .await
     .unwrap();
-    handle_exec(
+    handle_exec_with_options(
         Box::new(provider.clone()),
         Some("demo-dev"),
         vec!["true".to_string()],
         config,
         GlobalConfig::default(),
+        vm_provider::ExecOptions::default(),
     )
     .await
     .unwrap();

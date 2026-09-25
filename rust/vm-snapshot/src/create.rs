@@ -268,6 +268,7 @@ pub async fn handle_create(
         services,
         volumes,
         native_vm_file: None,
+        native_image_digest: None,
         excluded_mounts: capture_plan.excluded_mounts,
         compose_file: compose_file.to_string(),
         vm_config_file: vm_config_file.to_string(),

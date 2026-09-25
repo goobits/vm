@@ -8,7 +8,8 @@ use tracing::instrument;
 
 // Internal imports
 use crate::config::VmConfig;
-use crate::config_ops::io::get_or_create_global_config_path;
+use crate::config_ops::io::{get_global_config_path, get_or_create_global_config_path};
+use crate::config_ops::plan::{ConfigEditPlan, ConfigMutationReport};
 use crate::config_ops::port_placeholders::load_preset_with_placeholders;
 use crate::merge::ConfigMerger;
 use crate::preset::PresetDetector;
@@ -27,8 +28,10 @@ pub fn preset(
     global: bool,
     list: bool,
     show: Option<&str>,
+    dry_run: bool,
     path: Option<PathBuf>,
-) -> Result<()> {
+    structured: bool,
+) -> Result<Option<ConfigMutationReport>> {
     let project_dir = match path.as_ref().and_then(|path| path.parent()) {
         Some(parent) => parent.to_path_buf(),
         None => std::env::current_dir()?,
@@ -36,14 +39,35 @@ pub fn preset(
     let detector = PresetDetector::new(project_dir);
 
     if list {
-        return list_presets(&detector);
+        return list_presets(&detector).map(|_| None);
     }
 
     if let Some(name) = show {
-        return show_preset(&detector, name);
+        return show_preset(&detector, name).map(|_| None);
     }
 
-    apply_preset_to_config(&detector, preset_names, global, path)
+    apply_preset_to_config(&detector, preset_names, global, dry_run, path, structured)
+}
+
+pub(super) fn apply_report(
+    preset_names: &str,
+    global: bool,
+    dry_run: bool,
+    path: Option<PathBuf>,
+) -> Result<ConfigMutationReport> {
+    if !global && !path.as_ref().is_some_and(|path| path.is_file()) {
+        return Err(VmError::Config(
+            "A project configuration must exist for structured preset application".to_string(),
+        ));
+    }
+    let project_dir = match path.as_ref().and_then(|path| path.parent()) {
+        Some(parent) => parent.to_path_buf(),
+        None => std::env::current_dir()?,
+    };
+    let detector = PresetDetector::new(project_dir);
+    apply_preset_to_config(&detector, preset_names, global, dry_run, path, true)?.ok_or_else(|| {
+        VmError::Config("Preset application did not produce a configuration plan".to_string())
+    })
 }
 
 /// List all available presets
@@ -80,8 +104,10 @@ fn apply_preset_to_config(
     detector: &PresetDetector,
     preset_names: &str,
     global: bool,
+    dry_run: bool,
     path: Option<PathBuf>,
-) -> Result<()> {
+    structured: bool,
+) -> Result<Option<ConfigMutationReport>> {
     let local_config_path = if global {
         None
     } else {
@@ -128,6 +154,12 @@ fn apply_preset_to_config(
     // A new project should use the canonical initialization path. In particular,
     // image presets replace base provisioning fields instead of being merged over
     // them as though they were ordinary provision presets.
+    if initializing_local && dry_run {
+        return Err(VmError::Config(
+            "Cannot preview preset application without an existing vm.yaml. Run `vm init` first"
+                .to_string(),
+        ));
+    }
     if initializing_local && preset_list.len() == 1 {
         let config_path = local_config_path.expect("new local config path should exist");
         vm_println!("⚠️  No vm.yaml found. Initializing project first...");
@@ -148,11 +180,11 @@ fn apply_preset_to_config(
             )
         );
         vm_println!("{}", MESSAGES.config.restart_hint);
-        return Ok(());
+        return Ok(None);
     }
 
     let config_path = if global {
-        get_or_create_global_config_path()?
+        get_global_config_path()
     } else {
         // For preset command, only look in current directory, not parent directories
         // This ensures we create vm.yaml in the current project, not modify a parent config
@@ -242,35 +274,54 @@ fn apply_preset_to_config(
         },
         called_init,
     );
-    if warn_preserved_customizations {
+    if warn_preserved_customizations && !dry_run && !structured {
         print_customization_warning(&original_base_config);
     }
 
     let config_yaml = serde_yaml::to_string(&minimal_config)?;
     let config_value = CoreOperations::parse_yaml_with_diagnostics(&config_yaml, "merged config")?;
     super::validate::candidate(&config_value, &config_path, global)?;
-    CoreOperations::write_yaml_file(&config_path, &config_value)?;
-
-    let scope = if global { "global" } else { "local" };
-    vm_success!(
-        "{}",
-        msg!(
-            MESSAGES.config.preset_applied,
-            preset = preset_names,
-            path = scope
-        )
-    );
-
-    let preset_list: Vec<&str> = preset_names.split(',').map(|s| s.trim()).collect();
-    if preset_list.len() > 1 {
-        vm_println!("{}", MESSAGES.config.applied_presets);
-        for preset in preset_list {
-            vm_println!("    • {}", preset);
+    let before = if config_existed {
+        explicit_value
+    } else {
+        serde_yaml::Value::Mapping(serde_yaml::Mapping::new())
+    };
+    let plan = ConfigEditPlan::new(config_path.clone(), before, config_value, global);
+    let original_effective = serde_yaml::to_value(&original_base_config)?;
+    let merged_effective = serde_yaml::to_value(&merged_config)?;
+    let effective = Some((&original_effective, &merged_effective));
+    if dry_run {
+        if !structured {
+            plan.preview_with_effective(&original_effective, &merged_effective);
         }
+        return Ok(Some(plan.report(true, effective)));
     }
+    if global {
+        let _ = get_or_create_global_config_path()?;
+    }
+    plan.write()?;
 
-    vm_println!("{}", MESSAGES.config.restart_hint);
-    Ok(())
+    if !structured {
+        let scope = if global { "global" } else { "local" };
+        vm_success!(
+            "{}",
+            msg!(
+                MESSAGES.config.preset_applied,
+                preset = preset_names,
+                path = scope
+            )
+        );
+
+        let preset_list: Vec<&str> = preset_names.split(',').map(|s| s.trim()).collect();
+        if preset_list.len() > 1 {
+            vm_println!("{}", MESSAGES.config.applied_presets);
+            for preset in preset_list {
+                vm_println!("    • {}", preset);
+            }
+        }
+        vm_println!("{}", MESSAGES.config.restart_hint);
+    }
+    Ok(Some(plan.report(false, effective)))
 }
 
 fn collect_changed_explicit_fields(

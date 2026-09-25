@@ -127,6 +127,20 @@ environment:
         Ok(())
     }
 
+    fn create_alias_preset_plugin(&self) -> Result<()> {
+        let preset_dir = self.plugins_dir.join("presets").join("aliases");
+        fs::create_dir_all(&preset_dir)?;
+        fs::write(
+            preset_dir.join("plugin.yaml"),
+            "name: aliases\nversion: 1.0.0\nplugin_type: preset\npreset_category: provision\n",
+        )?;
+        fs::write(
+            preset_dir.join("preset.yaml"),
+            "category: provision\naliases:\n  ll: ls -la\n",
+        )?;
+        Ok(())
+    }
+
     fn create_python_preset_plugin(&self) -> Result<()> {
         let python_dir = self.plugins_dir.join("presets").join("python");
         fs::create_dir_all(&python_dir)?;
@@ -341,6 +355,47 @@ fn test_init_with_image_preset() -> Result<()> {
 // ============================================================================
 // Test 2: Provision Preset Merge
 // ============================================================================
+
+#[test]
+fn preset_conflict_leaves_real_project_configuration_unchanged() -> Result<()> {
+    let _guard = TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let fixture = PresetTestFixture::new()?;
+    fixture.create_nodejs_preset_plugin()?;
+    let path = fixture.project_dir.join("vm.yaml");
+    let original =
+        "provider: docker\nproject:\n  name: test-project\nnpm_packages: [custom-package]\n";
+    fs::write(&path, original)?;
+
+    let error = ConfigOps::preset("nodejs", false, false, None).unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("Preset conflicts with explicit settings"));
+    assert!(error.to_string().contains("npm_packages"));
+    assert_eq!(fs::read_to_string(path)?, original);
+    Ok(())
+}
+
+#[test]
+fn preset_dry_run_uses_validated_candidate_without_writing() -> Result<()> {
+    let _guard = TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let fixture = PresetTestFixture::new()?;
+    fixture.create_alias_preset_plugin()?;
+    let path = fixture.project_dir.join("vm.yaml");
+    let original = "provider: docker\nproject:\n  name: test-project\n";
+    fs::write(&path, original)?;
+
+    ConfigOps::preset_preview_at("aliases", false, false, None, true, Some(path.clone()))?;
+    assert_eq!(fs::read_to_string(&path)?, original);
+
+    ConfigOps::preset_preview_at("aliases", false, false, None, false, Some(path.clone()))?;
+    let updated = fs::read_to_string(&path)?;
+    assert!(updated.contains("preset: aliases"));
+    Ok(())
+}
 
 #[test]
 fn test_config_preset_provision() -> Result<()> {

@@ -1,4 +1,4 @@
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Subcommand)]
@@ -7,16 +7,24 @@ pub enum SnapshotSubcommand {
     List {
         #[arg(long)]
         env: Option<String>,
+        /// Emit one versioned JSON result
+        #[arg(long)]
+        json: bool,
     },
     /// Show snapshot metadata
     Show {
         name: String,
         #[arg(long)]
         env: Option<String>,
+        /// Emit one versioned JSON result
+        #[arg(long)]
+        json: bool,
     },
     /// Capture an environment
     Create {
         name: String,
+        #[arg(long)]
+        json: bool,
         #[arg(long)]
         env: Option<String>,
         #[arg(long)]
@@ -28,6 +36,8 @@ pub enum SnapshotSubcommand {
     Restore {
         name: String,
         #[arg(long)]
+        json: bool,
+        #[arg(long)]
         env: Option<String>,
         #[arg(long)]
         yes: bool,
@@ -35,6 +45,8 @@ pub enum SnapshotSubcommand {
     /// Delete a snapshot
     Remove {
         name: String,
+        #[arg(long)]
+        json: bool,
         #[arg(long)]
         env: Option<String>,
         #[arg(long)]
@@ -44,11 +56,14 @@ pub enum SnapshotSubcommand {
     Export {
         name: String,
         #[arg(long)]
+        json: bool,
+        #[arg(long)]
         env: Option<String>,
         #[arg(long)]
         output: PathBuf,
-        #[arg(long, default_value_t = 6)]
-        compression: u8,
+        /// Archive compression format
+        #[arg(long, value_enum, default_value_t = SnapshotCompression::Gzip)]
+        compression: SnapshotCompression,
         /// Replace an existing archive
         #[arg(long)]
         overwrite: bool,
@@ -58,5 +73,13 @@ pub enum SnapshotSubcommand {
         archive: PathBuf,
         #[arg(long)]
         name: String,
+        #[arg(long)]
+        json: bool,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum SnapshotCompression {
+    Gzip,
+    None,
 }

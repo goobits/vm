@@ -3,7 +3,7 @@
 use crate::storage::SecretStore;
 use crate::types::{
     EnvironmentResponse, HealthResponse, SecretListResponse, SecretRequest, SecretResponse,
-    SecretSummary,
+    SecretScope, SecretSummary,
 };
 use anyhow::{Context, Result};
 use axum::{
@@ -65,6 +65,15 @@ fn lock_store<'a>(
 #[derive(Debug, Deserialize)]
 struct EnvQuery {
     project: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ScopeQuery {
+    scope: String,
+}
+
+fn query_scope(query: &ScopeQuery) -> Result<SecretScope, StatusCode> {
+    SecretScope::parse(&query.scope).ok_or(StatusCode::BAD_REQUEST)
 }
 
 /// Run the auth proxy server with optional graceful shutdown
@@ -146,6 +155,7 @@ async fn health_check(State(state): State<AppState>) -> Result<Json<HealthRespon
 /// List all secrets (metadata only)
 async fn list_secrets(
     State(state): State<AppState>,
+    Query(query): Query<ScopeQuery>,
     headers: HeaderMap,
 ) -> Result<Json<SecretListResponse>, StatusCode> {
     // Verify auth token
@@ -153,12 +163,14 @@ async fn list_secrets(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
+    let scope = query_scope(&query)?;
+
     let store = lock_store(&state, "list_secrets")?;
     let secrets: Vec<SecretSummary> = store
         .list_secrets()
-        .iter()
-        .map(|(name, secret)| SecretSummary {
-            name: name.clone(),
+        .filter(|secret| secret.scope == scope)
+        .map(|secret| SecretSummary {
+            name: secret.name.clone(),
             created_at: secret.created_at,
             updated_at: secret.updated_at,
             scope: secret.scope.clone(),
@@ -207,6 +219,7 @@ async fn add_secret(
 async fn get_secret(
     State(state): State<AppState>,
     Path(name): Path<String>,
+    Query(query): Query<ScopeQuery>,
     headers: HeaderMap,
 ) -> Result<String, StatusCode> {
     // Verify auth token
@@ -214,8 +227,10 @@ async fn get_secret(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
+    let scope = query_scope(&query)?;
+
     let store = lock_store(&state, "get_secret")?;
-    match store.get_secret(&name) {
+    match store.get_secret(&name, &scope) {
         Ok(Some(value)) => Ok(value),
         Ok(None) => Err(StatusCode::NOT_FOUND),
         Err(error) => {
@@ -229,6 +244,7 @@ async fn get_secret(
 async fn remove_secret(
     State(state): State<AppState>,
     Path(name): Path<String>,
+    Query(query): Query<ScopeQuery>,
     headers: HeaderMap,
 ) -> Result<Json<SecretResponse>, StatusCode> {
     // Verify auth token
@@ -236,8 +252,10 @@ async fn remove_secret(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
+    let scope = query_scope(&query)?;
+
     let mut store = lock_store(&state, "remove_secret")?;
-    match store.remove_secret(&name) {
+    match store.remove_secret(&name, &scope) {
         Ok(true) => {
             let response = SecretResponse {
                 name,
@@ -419,13 +437,16 @@ mod tests {
 
         let reopened = SecretStore::new(storage.path().to_path_buf()).unwrap();
         assert_eq!(
-            reopened.get_secret("test_key").unwrap().as_deref(),
+            reopened
+                .get_secret("test_key", &SecretScope::Global)
+                .unwrap()
+                .as_deref(),
             Some("test-secret-value")
         );
 
         // Get the secret
         let response = server
-            .get("/secrets/test_key")
+            .get("/secrets/test_key?scope=global")
             .add_header("Authorization", format!("Bearer {}", token))
             .await;
         response.assert_status_ok();
@@ -437,12 +458,12 @@ mod tests {
         let (server, _, _storage) = create_test_server().await;
 
         // Try to access without token
-        let response = server.get("/secrets").await;
+        let response = server.get("/secrets?scope=global").await;
         response.assert_status(StatusCode::UNAUTHORIZED);
 
         // Try with wrong token
         let response = server
-            .get("/secrets")
+            .get("/secrets?scope=global")
             .add_header("Authorization", "Bearer wrong-token")
             .await;
         response.assert_status(StatusCode::UNAUTHORIZED);
@@ -466,7 +487,7 @@ mod tests {
         response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
 
         let response = server
-            .get("/secrets/key")
+            .get("/secrets/key?scope=global")
             .add_header("Authorization", format!("Bearer {token}"))
             .await;
         response.assert_status(StatusCode::NOT_FOUND);
@@ -489,13 +510,13 @@ mod tests {
         std::fs::remove_dir_all(storage.path()).unwrap();
 
         let response = server
-            .delete("/secrets/key")
+            .delete("/secrets/key?scope=global")
             .add_header("Authorization", format!("Bearer {token}"))
             .await;
         response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
 
         let response = server
-            .get("/secrets/key")
+            .get("/secrets/key?scope=global")
             .add_header("Authorization", format!("Bearer {token}"))
             .await;
         response.assert_status_ok();
@@ -531,13 +552,68 @@ mod tests {
 
         // List secrets
         let response = server
-            .get("/secrets")
+            .get("/secrets?scope=global")
             .add_header("Authorization", format!("Bearer {}", token))
             .await;
         response.assert_status_ok();
 
         let list: SecretListResponse = response.json();
-        assert_eq!(list.total, 2);
-        assert_eq!(list.secrets.len(), 2);
+        assert_eq!(list.total, 1);
+        assert_eq!(list.secrets.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn scoped_http_operations_do_not_cross_secret_namespaces() {
+        let (server, token, _storage) = create_test_server().await;
+        for (scope, value) in [
+            (SecretScope::Global, "user-value"),
+            (SecretScope::Project("demo".into()), "project-value"),
+        ] {
+            server
+                .post("/secrets/TOKEN")
+                .add_header("Authorization", format!("Bearer {token}"))
+                .json(&SecretRequest {
+                    value: value.into(),
+                    scope,
+                    description: None,
+                })
+                .await
+                .assert_status_ok();
+        }
+        let user = server
+            .get("/secrets/TOKEN?scope=global")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await;
+        user.assert_text("user-value");
+        let project = server
+            .get("/secrets/TOKEN?scope=project%3Ademo")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await;
+        project.assert_text("project-value");
+
+        let project_list = server
+            .get("/secrets?scope=project%3Ademo")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await;
+        assert!(!project_list.text().contains("project-value"));
+        let list: SecretListResponse = project_list.json();
+        assert_eq!(list.total, 1);
+        assert_eq!(list.secrets[0].name, "TOKEN");
+
+        server
+            .delete("/secrets/TOKEN?scope=project%3Ademo")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .assert_status_ok();
+        server
+            .get("/secrets/TOKEN?scope=project%3Ademo")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .assert_status(StatusCode::NOT_FOUND);
+        server
+            .get("/secrets/TOKEN?scope=global")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .assert_text("user-value");
     }
 }

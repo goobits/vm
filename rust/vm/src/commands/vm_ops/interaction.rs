@@ -6,8 +6,8 @@ use tracing::debug;
 
 use crate::error::{VmError, VmResult};
 use vm_config::{config::VmConfig, ConfigLoader, GlobalConfig};
-use vm_core::{vm_progress, vm_success};
-use vm_provider::{GuestExit, InstanceState, Provider};
+use vm_core::vm_progress;
+use vm_provider::{ExecOptions, GuestExit, InstanceState, Provider};
 
 fn detected_relative_path(path: Option<PathBuf>) -> PathBuf {
     if let Some(path) = path {
@@ -68,12 +68,13 @@ pub async fn handle_ssh(
 }
 
 /// Execute a command in a running environment.
-pub async fn handle_exec(
+pub async fn handle_exec_with_options(
     provider: Box<dyn Provider>,
     container: Option<&str>,
     command: Vec<String>,
     config: VmConfig,
     global_config: GlobalConfig,
+    options: ExecOptions,
 ) -> VmResult<GuestExit> {
     debug!(
         argument_count = command.len(),
@@ -102,50 +103,6 @@ pub async fn handle_exec(
         &global_config,
     )?;
     provider
-        .exec_status(container, &command)
+        .exec_status_with_options(container, &command, &options)
         .map_err(VmError::from)
-}
-
-/// View environment logs.
-pub fn handle_logs(
-    provider: Box<dyn Provider>,
-    container: Option<&str>,
-    config: VmConfig,
-    follow: bool,
-    tail: usize,
-    service: Option<&str>,
-) -> VmResult<()> {
-    debug!(
-        provider = provider.name(),
-        follow, tail, service, "Viewing VM logs"
-    );
-
-    provider
-        .logs_extended(container, follow, tail, service, &config)
-        .map_err(VmError::from)
-}
-
-/// Copy a file to or from one environment.
-pub fn handle_copy(
-    provider: Box<dyn Provider>,
-    source: &str,
-    destination: &str,
-    container: Option<&str>,
-    config: VmConfig,
-) -> VmResult<()> {
-    let direction = if source.contains(':') { "from" } else { "to" };
-    debug!(provider = provider.name(), direction, "Copying files");
-
-    let vm_name = config
-        .project
-        .as_ref()
-        .and_then(|project| project.name.as_deref())
-        .unwrap_or("vm-project");
-    vm_progress!("Copying file {direction} environment '{vm_name}'...");
-
-    provider
-        .copy(source, destination, container)
-        .map_err(VmError::from)?;
-    vm_success!("File copied");
-    Ok(())
 }

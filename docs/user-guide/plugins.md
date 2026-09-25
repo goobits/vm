@@ -1,8 +1,7 @@
 # Plugins
 
-Plugins extend configuration through reusable preset definitions. Service
-manifests can also be installed, inspected, and validated without adding new
-top-level commands.
+Plugins extend configuration through reusable presets and declarative container
+services. They do not add top-level commands.
 
 `vm plugins validate PATH` checks a local source before installation.
 `vm plugins install PATH` accepts a directory containing `plugin.yaml` and
@@ -12,8 +11,29 @@ fields, invalid names, and conflicting installed names. It validates a staged
 copy before making the plugin visible. Install only manifests you trust: a
 preset can select images, packages, services, mounts, host sync, and tools when
 applied. Plugin `provision` scripts and arbitrary command extensions are not
-supported. Service manifests can be inspected and validated; they do not launch
-services through the plugin interface yet.
+supported. Service plugins cannot override the image command, run health-check
+commands, or mount host paths.
+
+Activate an installed service plugin in a Docker or Podman project:
+
+```yaml
+provider: docker
+services:
+  cache:
+    enabled: true
+    plugin: redis-cache
+```
+
+The service key (`cache`) identifies the service in the project; Compose names
+it `plugin_cache` and provides the `cache` network alias. Its installed
+`service.yaml` supplies the image, optional `host:container` TCP ports, named
+volumes, environment values, and dependencies on other active plugin service
+keys (or `postgres` when built-in PostgreSQL is enabled). Service plugins are
+isolated from host paths; their named volumes use instance-scoped VM ownership
+labels and survive normal environment removal. The project must use distinct
+host ports across service plugins, built-in services, and application mappings.
+All manifests, dependencies, ports, and provider capabilities are checked
+before creation. Installed but inactive plugins do not reserve ports.
 
 Database and secret workflows are built-in command groups rather than plugin
 commands:

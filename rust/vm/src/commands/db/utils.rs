@@ -2,40 +2,22 @@
 
 use super::route::DbRoute;
 use crate::error::{VmError, VmResult};
-use crate::services::service_lifecycle;
 
 pub async fn execute_psql_command(route: &DbRoute, command: &str) -> VmResult<String> {
-    let lifecycle = service_lifecycle().map_err(|e| {
-        VmError::general(
-            std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
-            "Service lifecycle not initialized",
-        )
-    })?;
-    let pg_state = lifecycle.service_status("postgresql");
-
-    if !pg_state.is_some_and(|s| s.is_running) {
-        return Err(VmError::general(
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "PostgreSQL service is not running.",
-            ),
-            "Start an environment that uses the PostgreSQL service before running this command.",
-        ));
-    }
-
     let output = tokio::process::Command::new(&route.engine)
         .arg("exec")
         .arg("-i")
-        .arg("vm-postgres-global")
+        .arg(&route.container)
         .arg("psql")
         .arg("-U")
-        .arg("postgres")
+        .arg(&route.user)
         .arg("-t") // Tuples only, no headers/footers
+        .arg("-A")
         .arg("-c")
         .arg(command)
         .output()
         .await
-        .map_err(|e| VmError::general(e, "Failed to execute docker command"))?;
+        .map_err(|e| VmError::general(e, "Failed to execute PostgreSQL command"))?;
 
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -46,4 +28,18 @@ pub async fn execute_psql_command(route: &DbRoute, command: &str) -> VmResult<St
             stderr,
         ))
     }
+}
+
+pub async fn list_databases(route: &DbRoute) -> VmResult<Vec<String>> {
+    let result = execute_psql_command(
+        route,
+        "SELECT datname FROM pg_database WHERE datistemplate = false AND datname <> 'postgres' ORDER BY datname;",
+    )
+    .await?;
+    Ok(result
+        .lines()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .collect())
 }

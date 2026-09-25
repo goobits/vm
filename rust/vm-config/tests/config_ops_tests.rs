@@ -159,6 +159,20 @@ mod config_ops_tests {
     }
 
     #[test]
+    fn global_set_dry_run_does_not_create_config_directory() -> Result<()> {
+        let _guard = TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let fixture = SimpleTestFixture::new()?;
+        let config_dir = fixture.test_dir.join(".vm");
+
+        ConfigOps::set("provider", &["tart".to_string()], true, true)?;
+
+        assert!(!config_dir.exists());
+        Ok(())
+    }
+
+    #[test]
     fn test_global_config_operations() -> Result<()> {
         let _guard = TEST_MUTEX
             .lock()

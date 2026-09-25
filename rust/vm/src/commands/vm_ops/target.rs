@@ -41,7 +41,7 @@ pub(in crate::commands) fn resolve_runtime_instance(
                 .unwrap_or("vm-project");
             VmError::validation(
                 format!("No environment exists for project '{project}'"),
-                Some("Create it from vm.yaml with `vm shell`"),
+                Some("Start a declared environment with `vm start`"),
             )
         }
     })
@@ -194,30 +194,9 @@ fn ambiguous_target(mut candidates: Vec<InstanceInfo>) -> VmError {
     )
 }
 
-pub fn copy_target(source: &str, destination: &str) -> VmResult<Option<String>> {
-    let source_target = remote_target(source);
-    let destination_target = remote_target(destination);
-    match (source_target, destination_target) {
-        (Some(source), Some(destination)) if source != destination => Err(VmError::validation(
-            "Source and destination reference different environments",
-            Some("Copy through the host or use the same environment name"),
-        )),
-        (Some(target), _) | (_, Some(target)) => Ok(Some(target.to_string())),
-        (None, None) => Ok(None),
-    }
-}
-
-fn remote_target(path: &str) -> Option<&str> {
-    let (prefix, remainder) = path.split_once(':')?;
-    if prefix.len() == 1 && (remainder.starts_with('/') || remainder.starts_with('\\')) {
-        return None;
-    }
-    (!prefix.is_empty() && !prefix.contains('/') && !prefix.contains('\\')).then_some(prefix)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{canonical_instance_name, choose_target, copy_target, TargetChoice};
+    use super::{canonical_instance_name, choose_target, TargetChoice};
     use vm_provider::InstanceInfo;
 
     fn instance(name: &str) -> InstanceInfo {
@@ -279,15 +258,6 @@ mod tests {
             choose_target(&instances, "demo", "demo-dev", None),
             TargetChoice::Ambiguous(_)
         ));
-    }
-
-    #[test]
-    fn copy_target_reads_remote_prefix() {
-        assert_eq!(
-            copy_target("./local.txt", "feature:/tmp/remote.txt").unwrap(),
-            Some("feature".to_string())
-        );
-        assert!(copy_target("one:/tmp/a", "two:/tmp/b").is_err());
     }
 
     #[test]

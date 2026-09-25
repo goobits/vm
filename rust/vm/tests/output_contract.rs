@@ -17,6 +17,32 @@ fn run(temp_dir: &TempDir, args: &[&str]) -> Output {
 }
 
 #[test]
+fn shell_requires_a_terminal_before_resolving_an_environment() {
+    let temp_dir = TempDir::new().unwrap();
+    let output = run(&temp_dir, &["shell"]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("requires a terminal"));
+}
+
+#[test]
+fn fleet_exec_requires_an_explicit_framing_mode() {
+    let temp_dir = TempDir::new().unwrap();
+    let output = run(&temp_dir, &["exec", "--all-envs", "--", "true"]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("requires --output"));
+}
+
+#[test]
+fn single_exec_rejects_fleet_output_mode() {
+    let temp_dir = TempDir::new().unwrap();
+    let output = run(&temp_dir, &["exec", "--output", "grouped", "--", "true"]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("only available for multi-environment")
+    );
+}
+
+#[test]
 fn secret_set_requires_a_secure_input_source_without_starting_services() {
     let temp_dir = TempDir::new().unwrap();
     let output = run(&temp_dir, &["secrets", "set", "API_TOKEN"]);
@@ -119,10 +145,226 @@ fn system_info_json_is_one_versioned_envelope() {
     assert_eq!(value["command"], "system info");
     assert_eq!(value["ok"], true);
     assert!(value["data"]["version"].is_string());
+    assert_eq!(value["data"]["client_version"], value["data"]["version"]);
+    assert!(value["data"]["controller_version"].is_null());
+    assert!(value["data"]["providers"].is_object());
+    assert_eq!(value["data"]["config_schema_version"], "2.0");
+    assert_eq!(value["data"]["output_schema_version"], 1);
     assert!(value["data"]["executable"].is_string());
     assert_eq!(value["data"]["managed_installation"], false);
     assert!(value["data"]["installed_version"].is_null());
     assert_eq!(value["errors"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        output.stdout.iter().filter(|byte| **byte == b'\n').count(),
+        1
+    );
+}
+
+#[test]
+fn snapshot_json_reads_are_scoped_and_redacted() {
+    let temp_dir = TempDir::new().unwrap();
+    let config = temp_dir.path().join("vm.yaml");
+    fs::write(&config, "project:\n  name: demo\nprovider: docker\n").unwrap();
+    let output = run(
+        &temp_dir,
+        &[
+            "--config",
+            config.to_str().unwrap(),
+            "snapshots",
+            "list",
+            "--json",
+        ],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["command"], "snapshots list");
+    assert_eq!(value["data"], serde_json::json!([]));
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/snapshots-list-empty.json")).unwrap();
+    assert_eq!(value, fixture);
+
+    let output = run(
+        &temp_dir,
+        &[
+            "--config",
+            config.to_str().unwrap(),
+            "snapshots",
+            "show",
+            "missing",
+            "--json",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stderr.is_empty());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["command"], "snapshots show");
+    assert_eq!(value["ok"], false);
+    assert_eq!(value["errors"][0]["code"], "invalid_request");
+    assert_eq!(value["errors"][0]["target"], "missing");
+
+    let output = run(
+        &temp_dir,
+        &[
+            "--config",
+            config.to_str().unwrap(),
+            "snapshots",
+            "remove",
+            "missing",
+            "--json",
+            "--yes",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stderr.is_empty());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["command"], "snapshots remove");
+    assert_eq!(value["ok"], false);
+}
+
+#[test]
+fn storage_json_omits_owner_paths() {
+    let temp_dir = TempDir::new().unwrap();
+    let output = run(&temp_dir, &["system", "storage", "list", "--json"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["command"], "system storage list");
+    assert!(value["data"].is_array());
+    assert!(!String::from_utf8_lossy(&output.stdout).contains(temp_dir.path().to_str().unwrap()));
+}
+
+#[test]
+fn storage_remove_json_errors_have_one_targeted_envelope() {
+    let temp_dir = TempDir::new().unwrap();
+    let output = run(
+        &temp_dir,
+        &["system", "storage", "remove", "missing", "--json", "--yes"],
+    );
+    assert!(!output.status.success());
+    assert!(output.stderr.is_empty());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["schema_version"], 1);
+    assert_eq!(value["command"], "system storage remove");
+    assert_eq!(value["ok"], false);
+    assert_eq!(value["errors"][0]["target"], "missing");
+    assert_eq!(
+        output.stdout.iter().filter(|byte| **byte == b'\n').count(),
+        1
+    );
+}
+
+#[test]
+fn tunnel_list_json_is_scoped_and_uses_one_redacted_envelope() {
+    let temp_dir = TempDir::new().unwrap();
+    let config = temp_dir.path().join("vm.yaml");
+    fs::write(&config, "project:\n  name: demo\nprovider: docker\n").unwrap();
+    let output = run(
+        &temp_dir,
+        &[
+            "--config",
+            config.to_str().unwrap(),
+            "tunnels",
+            "list",
+            "--json",
+        ],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["schema_version"], 1);
+    assert_eq!(value["command"], "tunnels list");
+    assert_eq!(value["data"]["project"], "demo");
+    assert_eq!(value["data"]["tunnels"], serde_json::json!([]));
+    assert!(!String::from_utf8_lossy(&output.stdout).contains(config.to_str().unwrap()));
+    assert_eq!(
+        output.stdout.iter().filter(|byte| **byte == b'\n').count(),
+        1
+    );
+
+    fs::write(&config, "project: [").unwrap();
+    let output = run(
+        &temp_dir,
+        &[
+            "--config",
+            config.to_str().unwrap(),
+            "tunnels",
+            "list",
+            "--json",
+        ],
+    );
+    assert!(!output.status.success());
+    assert!(output.stderr.is_empty());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["command"], "tunnels list");
+    assert_eq!(value["ok"], false);
+    assert_eq!(value["errors"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn plugin_json_reads_redact_content_and_route_errors() {
+    let temp_dir = TempDir::new().unwrap();
+    let plugin_dir = temp_dir.path().join(".vm/plugins/services/demo");
+    fs::create_dir_all(&plugin_dir).unwrap();
+    fs::write(
+        plugin_dir.join("plugin.yaml"),
+        "name: demo\nversion: 1.0.0\nplugin_type: service\n",
+    )
+    .unwrap();
+    fs::write(plugin_dir.join("service.yaml"), "image: example/api:1\nports: ['8080:80']\nvolumes: ['/private/data:/data']\nenvironment: {TOKEN: supersecret}\ncommand: ['--password=secret']\n").unwrap();
+
+    let output = run(&temp_dir, &["plugins", "list", "--json"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["schema_version"], 1);
+    assert_eq!(value["command"], "plugins list");
+    assert_eq!(value["data"]["plugins"][0]["name"], "demo");
+    assert!(!String::from_utf8_lossy(&output.stdout).contains(plugin_dir.to_str().unwrap()));
+
+    let output = run(&temp_dir, &["plugins", "show", "demo", "--json"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["command"], "plugins show");
+    assert_eq!(value["data"]["details"]["kind"], "service");
+    assert_eq!(value["data"]["details"]["environment_variable_count"], 1);
+    for secret in [
+        "supersecret",
+        "--password=secret",
+        "/private/data",
+        plugin_dir.to_str().unwrap(),
+    ] {
+        assert!(!String::from_utf8_lossy(&output.stdout).contains(secret));
+    }
+
+    let output = run(&temp_dir, &["plugins", "show", "missing", "--json"]);
+    assert!(!output.status.success());
+    assert!(output.stderr.is_empty());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["command"], "plugins show");
+    assert_eq!(value["ok"], false);
+    assert_eq!(value["errors"][0]["target"], "missing");
     assert_eq!(
         output.stdout.iter().filter(|byte| **byte == b'\n').count(),
         1

@@ -35,7 +35,9 @@ impl PackageHealth {
 pub(super) enum MaintenanceTask<'a> {
     List,
     Backup(&'a str),
+    Check(&'a str),
     Restore(&'a str),
+    Remove(&'a str),
 }
 
 impl<'a> MaintenanceTask<'a> {
@@ -43,19 +45,21 @@ impl<'a> MaintenanceTask<'a> {
         match self {
             Self::List => "list",
             Self::Backup(_) => "backup",
+            Self::Check(_) => "check",
             Self::Restore(_) => "restore",
+            Self::Remove(_) => "remove",
         }
     }
 
     pub(super) fn backup_id(self) -> Option<&'a str> {
         match self {
             Self::List => None,
-            Self::Backup(id) | Self::Restore(id) => Some(id),
+            Self::Backup(id) | Self::Check(id) | Self::Restore(id) | Self::Remove(id) => Some(id),
         }
     }
 
     pub(super) fn requires_pause(self) -> bool {
-        !matches!(self, Self::List)
+        matches!(self, Self::Backup(_) | Self::Restore(_))
     }
 }
 
@@ -259,21 +263,45 @@ pub(super) fn list_backups(files: &ApplianceFiles) -> VmResult<()> {
     maintenance(files, MaintenanceTask::List)
 }
 
-pub(super) fn backup(files: &ApplianceFiles) -> VmResult<()> {
-    let backup_id = format!(
-        "backup-{}-{}",
-        chrono::Utc::now().format("%Y%m%dT%H%M%SZ"),
-        vm_core::secrets::generate_random_password(8)
-    );
+pub(super) fn backup(files: &ApplianceFiles, name: Option<&str>) -> VmResult<()> {
+    let backup_id = name.map(str::to_owned).unwrap_or_else(|| {
+        format!(
+            "backup-{}-{}",
+            chrono::Utc::now().format("%Y%m%dT%H%M%SZ"),
+            vm_core::secrets::generate_random_password(8)
+        )
+    });
     maintenance(files, MaintenanceTask::Backup(&backup_id))?;
     vm_success!("Package infrastructure backup created");
     vm_println!("Backup: {backup_id}");
     Ok(())
 }
 
-pub(super) fn restore(files: &ApplianceFiles, backup_id: &str) -> VmResult<()> {
+pub(super) fn restore(files: &ApplianceFiles, backup_id: &str, yes: bool) -> VmResult<()> {
+    process::validate_job_id(backup_id)?;
+    if !crate::confirmation::destructive(
+        &format!("Replace package infrastructure data from backup '{backup_id}'?"),
+        yes,
+    )? {
+        vm_println!("Backup restore cancelled");
+        return Ok(());
+    }
     maintenance(files, MaintenanceTask::Restore(backup_id))?;
     vm_success!("Package infrastructure restored from {backup_id}");
+    Ok(())
+}
+
+pub(super) fn remove_backup(files: &ApplianceFiles, backup_id: &str, yes: bool) -> VmResult<()> {
+    process::validate_job_id(backup_id)?;
+    if !crate::confirmation::destructive(
+        &format!("Permanently remove package backup '{backup_id}'?"),
+        yes,
+    )? {
+        vm_println!("Backup removal cancelled");
+        return Ok(());
+    }
+    maintenance(files, MaintenanceTask::Remove(backup_id))?;
+    vm_success!("Removed package infrastructure backup {backup_id}");
     Ok(())
 }
 
@@ -287,6 +315,14 @@ fn maintenance(files: &ApplianceFiles, task: MaintenanceTask<'_>) -> VmResult<()
     })?;
     if let Some(backup_id) = task.backup_id() {
         process::validate_job_id(backup_id)?;
+    }
+    if let MaintenanceTask::Restore(backup_id) = task {
+        // Check the complete archive while services are still available.
+        container::maintenance(
+            state.container_engine()?,
+            files,
+            MaintenanceTask::Check(backup_id),
+        )?;
     }
     let output = container::maintenance(state.container_engine()?, files, task)?;
     if matches!(task, MaintenanceTask::List) {

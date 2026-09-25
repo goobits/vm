@@ -1,6 +1,5 @@
 //! Verified single-environment removal and its confirmation contract.
 
-use std::io::IsTerminal;
 use tracing::debug;
 
 use crate::commands::db::route::DbRoute;
@@ -155,14 +154,5 @@ pub fn confirm_removal(targets: &[String], delete_data: bool, yes: bool) -> VmRe
         "Persistent data and snapshots will be preserved."
     };
     vm_println!("{data_policy}");
-    if yes {
-        return Ok(true);
-    }
-    if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
-        return Err(VmError::validation(
-            "Removal requires confirmation in an interactive terminal",
-            Some("Review the target set, then repeat with --yes"),
-        ));
-    }
-    vm_core::prompts::confirm_select("Proceed with removal?", false).map_err(Into::into)
+    crate::confirmation::destructive("Proceed with removal?", yes)
 }

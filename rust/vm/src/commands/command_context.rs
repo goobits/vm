@@ -38,7 +38,7 @@ fn guest_allowed_command(command: &Command) -> bool {
                 command: PackageServiceSubcommand::Status
             } | PackagesSubcommand::Checkout { .. }
                 | PackagesSubcommand::CheckoutShow { .. }
-                | PackagesSubcommand::Release
+                | PackagesSubcommand::Release { .. }
                 | PackagesSubcommand::Cancel
         }
     )
@@ -276,17 +276,36 @@ pub(super) fn load_runtime_subject_for_instance(
             .instance_config_path(&instance.name)
             .map_err(Into::into)
     })?;
-    let (provider, config, global_config) = load_provider_context(
+    let app = AppConfig::load(
         Some(target_config),
         profile,
         Some(instance.provider.clone()),
     )?;
+    let mut config = config_for_named_instance(&app.vm, instance);
+    packages::apply_client_environment(&mut config)?;
+    let provider = get_provider(config.clone()).map_err(VmError::from)?;
     Ok(RuntimeSubject {
         provider,
         config,
-        global_config,
+        global_config: app.global,
         target: instance.name.clone(),
     })
+}
+
+fn config_for_named_instance(config: &VmConfig, instance: &InstanceInfo) -> VmConfig {
+    let project = project_name(config);
+    config
+        .environments
+        .iter()
+        .find(|(name, declaration)| {
+            declaration.provider.as_str() == instance.provider
+                && vm_ops::target::canonical_instance_name(&instance.provider, project, Some(name))
+                    == instance.name
+        })
+        .map_or_else(
+            || config.clone(),
+            |(_, declaration)| declaration.apply_to(config),
+        )
 }
 
 fn target_config_path(
@@ -318,10 +337,56 @@ pub(super) fn project_name(config: &VmConfig) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::{guest_allowed_command, host_command, is_managed_guest, target_config_path};
+    use super::{
+        config_for_named_instance, guest_allowed_command, host_command, is_managed_guest,
+        target_config_path,
+    };
     use crate::cli::{Command, PackageServiceSubcommand, PackagesSubcommand};
     use std::path::PathBuf;
     use vm_provider::InstanceInfo;
+
+    #[test]
+    fn fleet_subject_uses_the_named_environment_declaration() {
+        let config: vm_config::config::VmConfig = serde_yaml_ng::from_str(
+            r#"
+project:
+  name: demo
+provider: docker
+environments:
+  test:
+    provider: podman
+    image: postgres:17
+    services:
+      postgresql:
+        enabled: true
+        user: test_admin
+"#,
+        )
+        .unwrap();
+        let instance = InstanceInfo {
+            name: "demo-test-dev".into(),
+            id: "instance".into(),
+            status: "running".into(),
+            provider: "podman".into(),
+            project: Some("demo".into()),
+            uptime: None,
+            created_at: None,
+        };
+        let selected = config_for_named_instance(&config, &instance);
+        assert_eq!(selected.provider.unwrap().as_str(), "podman");
+        assert_eq!(
+            selected.services["postgresql"].user.as_deref(),
+            Some("test_admin")
+        );
+
+        let unrelated = InstanceInfo {
+            name: "demo-other-dev".into(),
+            ..instance
+        };
+        assert!(config_for_named_instance(&config, &unrelated)
+            .services
+            .is_empty());
+    }
 
     #[test]
     fn detects_only_canonical_managed_guest_markers() {
@@ -343,7 +408,10 @@ mod tests {
             },
         }));
         assert!(guest_allowed_command(&Command::Packages {
-            command: PackagesSubcommand::Release,
+            command: PackagesSubcommand::Release {
+                receipt: None,
+                background: false,
+            },
         }));
         assert!(guest_allowed_command(&Command::Packages {
             command: PackagesSubcommand::Cancel,

@@ -143,7 +143,7 @@ Use pnpm store pruning only when measured growth warrants it and no install is
 using a shared store:
 
 ```bash
-vm doctor --prune-pnpm-store --container dev
+vm doctor dev --prune-pnpm-store
 ```
 
 Pruning is never part of startup.

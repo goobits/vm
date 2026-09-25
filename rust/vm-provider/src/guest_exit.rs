@@ -10,6 +10,14 @@ pub struct GuestExit {
     code: i32,
 }
 
+/// Captured guest streams and exact child status for framed fleet execution.
+#[derive(Debug)]
+pub struct GuestOutput {
+    pub status: GuestExit,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+}
+
 impl GuestExit {
     pub fn new(code: i32) -> Self {
         Self { code }
@@ -43,9 +51,20 @@ pub(crate) fn run_guest_command(command: &mut Command) -> Result<GuestExit> {
     Ok(GuestExit::from_status(status))
 }
 
+pub(crate) fn capture_guest_command(command: &mut Command) -> Result<GuestOutput> {
+    let output = command
+        .output()
+        .map_err(|error| VmError::Provider(format!("Failed to launch guest command: {error}")))?;
+    Ok(GuestOutput {
+        status: GuestExit::from_status(output.status),
+        stdout: output.stdout,
+        stderr: output.stderr,
+    })
+}
+
 #[cfg(all(test, unix))]
 mod tests {
-    use super::{run_guest_command, GuestExit};
+    use super::{capture_guest_command, run_guest_command, GuestExit};
     use std::fs::File;
     use std::process::{Command, Stdio};
 
@@ -79,5 +98,16 @@ mod tests {
     fn missing_transport_is_a_launch_error() {
         let mut command = Command::new("/missing/vm-exec-transport");
         assert!(run_guest_command(&mut command).is_err());
+    }
+
+    #[test]
+    fn capture_preserves_binary_streams_and_status() {
+        let output = capture_guest_command(
+            Command::new("sh").args(["-c", "printf '\\377out'; printf '\\376err' >&2; exit 42"]),
+        )
+        .unwrap();
+        assert_eq!(output.status, GuestExit::new(42));
+        assert_eq!(output.stdout, b"\xffout");
+        assert_eq!(output.stderr, b"\xfeerr");
     }
 }

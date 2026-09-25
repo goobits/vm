@@ -11,14 +11,14 @@ use super::compose_context::{
     build_service_environment, configure_ssh_agent, configure_worktrees, ensure_ai_sync_dirs,
     process_dotfiles,
 };
-use super::compose_model::{RenderedResources, RenderedStorage};
+use super::compose_model::{RenderedPluginService, RenderedResources, RenderedStorage};
 use super::engine::ContainerRuntime;
 use super::preview::redact_compose;
 use super::UserConfig;
 use crate::guest_cache::GuestCachePolicy;
 use crate::user_home::resolve_home_dir;
 use crate::{Mount, ProviderContext, TempVmState};
-use vm_config::config::VmConfig;
+use vm_config::config::{resolve_service_plugins, VmConfig};
 
 pub struct ComposeOperations<'a> {
     pub config: &'a VmConfig,
@@ -135,6 +135,16 @@ impl<'a> ComposeOperations<'a> {
             Some(instance) => self.create_instance_config(base_project_name, instance)?,
             None => (self.config.clone(), base_project_name.to_string()),
         };
+        if let Some(service) = final_config
+            .services
+            .get_mut("postgresql")
+            .filter(|service| service.enabled)
+        {
+            let database = service
+                .resolved_database(base_project_name, instance_name)
+                .map_err(|error| VmError::validation(error, None::<String>))?;
+            service.database = Some(database);
+        }
         let port_binding = final_config
             .vm
             .as_ref()
@@ -151,13 +161,20 @@ impl<'a> ComposeOperations<'a> {
         let guest_cache_env = cache_policy.container_environment(&guest_home_dir, &final_config);
         let tool_cache_target = format!("{guest_home_dir}/.cache");
         let package_checkout_target = format!("{guest_home_dir}/.local/share/vm/package-checkouts");
-        let storage = RenderedStorage::new(
+        let plugin_services = resolve_service_plugins(&final_config)?;
+        let rendered_plugins = RenderedPluginService::from_plugins(
+            &plugin_services,
+            &final_project_name,
+            port_binding,
+        );
+        let mut storage = RenderedStorage::new(
             &final_config,
             base_project_name,
             &final_project_name,
             &tool_cache_target,
             &package_checkout_target,
         );
+        storage.add_plugin_volumes(&final_project_name, &plugin_services);
         let resources = RenderedResources::resolve(&final_config)?;
         let workspace_path = final_config
             .project
@@ -203,6 +220,7 @@ impl<'a> ComposeOperations<'a> {
         );
         tera_context.insert("storage_volumes", &storage.mounts);
         tera_context.insert("named_volumes", &storage.named_volumes);
+        tera_context.insert("plugin_services", &rendered_plugins);
         tera_context.insert("tmpfs_mounts", &storage.tmpfs);
         tera_context.insert("tool_cache_target", &storage.tool_cache_target);
         tera_context.insert("package_checkout_target", &storage.package_checkout_target);
@@ -294,13 +312,15 @@ impl<'a> ComposeOperations<'a> {
 
         // Get or generate passwords for database services
         // Note: Using sync version since we're in a non-async context
-        if final_config
+        if let Some(service) = final_config
             .services
             .get("postgresql")
-            .is_some_and(|s| s.enabled)
+            .filter(|s| s.enabled)
         {
             if mode == RenderMode::Preview {
                 tera_context.insert("postgresql_password", "<redacted>");
+            } else if let Some(password) = service.password.as_deref() {
+                tera_context.insert("postgresql_password", password);
             } else {
                 match vm_core::secrets::get_or_generate_password_sync("postgresql") {
                     Ok(password) => {

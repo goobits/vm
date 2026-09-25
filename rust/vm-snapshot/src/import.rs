@@ -1,6 +1,6 @@
 //! Snapshot import functionality
 
-use crate::archive::{copy_directory, extract_gzip_archive, validate_snapshot_files};
+use crate::archive::{copy_directory, extract_archive, validate_snapshot_files};
 use crate::archive_manifest::ArchiveManifest;
 use crate::images::load_service_images;
 use crate::manager::{SnapshotManager, SnapshotScope};
@@ -36,7 +36,7 @@ pub async fn handle_import(
 
     tracing::info!("  Extracting archive...");
 
-    extract_gzip_archive(file_path, &extract_dir)?;
+    extract_archive(file_path, &extract_dir)?;
 
     // Load manifest
     let manifest_path = extract_dir.join("manifest.json");
@@ -246,6 +246,7 @@ mod tests {
                 size_bytes: 1,
             }],
             native_vm_file: None,
+            native_image_digest: None,
             excluded_mounts: vec![],
             compose_file: String::new(),
             vm_config_file: String::new(),

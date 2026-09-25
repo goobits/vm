@@ -36,32 +36,77 @@ pub fn handle_config_command(
             values,
             value_json,
             scope,
+            dry_run,
+            json,
         } => {
             let path = project_write_path(*scope, config_path)?;
-            if let Some(json) = value_json {
-                Ok(ConfigOps::set_json_at(
+            if let Some(json_value) = value_json {
+                if *json {
+                    let report = ConfigOps::set_json_report_at(
+                        field,
+                        json_value,
+                        *scope == ConfigWriteScope::User,
+                        *dry_run,
+                        path,
+                    )
+                    .map_err(|error| VmError::from(error).with_target(field.clone()))?;
+                    crate::presentation::success("config set", report)
+                } else {
+                    Ok(ConfigOps::set_json_preview_at(
+                        field,
+                        json_value,
+                        *scope == ConfigWriteScope::User,
+                        *dry_run,
+                        path,
+                    )
+                    .map_err(|error| VmError::from(error).with_target(field.clone()))?)
+                }
+            } else if *json {
+                let report = ConfigOps::set_report_at(
                     field,
-                    json,
+                    values,
                     *scope == ConfigWriteScope::User,
+                    *dry_run,
                     path,
-                )?)
+                )
+                .map_err(|error| VmError::from(error).with_target(field.clone()))?;
+                crate::presentation::success("config set", report)
             } else {
                 Ok(ConfigOps::set_at(
                     field,
                     values,
                     *scope == ConfigWriteScope::User,
-                    false,
+                    *dry_run,
                     path,
-                )?)
+                )
+                .map_err(|error| VmError::from(error).with_target(field.clone()))?)
             }
         }
         ConfigSubcommand::Get { field, scope, json } => {
             handle_get_command(field, *scope, config_path, profile, *json)
         }
-        ConfigSubcommand::Unset { field, scope } => {
+        ConfigSubcommand::Unset {
+            field,
+            scope,
+            dry_run,
+            json,
+        } => {
             let path = project_write_path(*scope, config_path.clone())?;
-            ConfigOps::unset_at(field, *scope == ConfigWriteScope::User, path)?;
-            report_unset_effective(field, *scope, config_path, profile);
+            if *json {
+                let report = ConfigOps::unset_report_at(
+                    field,
+                    *scope == ConfigWriteScope::User,
+                    *dry_run,
+                    path,
+                )
+                .map_err(|error| VmError::from(error).with_target(field.clone()))?;
+                return crate::presentation::success("config unset", report);
+            }
+            ConfigOps::unset_preview_at(field, *scope == ConfigWriteScope::User, *dry_run, path)
+                .map_err(|error| VmError::from(error).with_target(field.clone()))?;
+            if !dry_run {
+                report_unset_effective(field, *scope, config_path, profile);
+            }
             Ok(())
         }
         ConfigSubcommand::Presets { command } => match command {
@@ -75,15 +120,33 @@ pub fn handle_config_command(
                 Some(name),
                 config_path,
             )?),
-            ConfigPresetSubcommand::Apply { names, scope } => {
+            ConfigPresetSubcommand::Apply {
+                names,
+                scope,
+                dry_run,
+                json,
+            } => {
                 let path = project_write_path(*scope, config_path)?;
-                Ok(ConfigOps::preset_at(
-                    &names.join(","),
-                    *scope == ConfigWriteScope::User,
-                    false,
-                    None,
-                    path,
-                )?)
+                if *json {
+                    let report = ConfigOps::preset_apply_report_at(
+                        &names.join(","),
+                        *scope == ConfigWriteScope::User,
+                        *dry_run,
+                        path,
+                    )
+                    .map_err(|error| VmError::from(error).with_target(names.join(",")))?;
+                    crate::presentation::success("config presets apply", report)
+                } else {
+                    Ok(ConfigOps::preset_preview_at(
+                        &names.join(","),
+                        *scope == ConfigWriteScope::User,
+                        false,
+                        None,
+                        *dry_run,
+                        path,
+                    )
+                    .map_err(|error| VmError::from(error).with_target(names.join(",")))?)
+                }
             }
         },
         ConfigSubcommand::Profiles { command } => match command {
@@ -206,6 +269,8 @@ profiles:
                 values: vec!["4096".to_string()],
                 value_json: None,
                 scope: ConfigWriteScope::Project,
+                dry_run: false,
+                json: false,
             },
             None,
             Some(config_path.clone()),
@@ -226,6 +291,8 @@ profiles:
                 values: vec!["4096".to_string()],
                 value_json: None,
                 scope: ConfigWriteScope::Project,
+                dry_run: false,
+                json: false,
             },
             None,
             Some(config_path.clone()),

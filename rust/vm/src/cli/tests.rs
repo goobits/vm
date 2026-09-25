@@ -50,6 +50,12 @@ fn shell_accepts_an_explicit_or_default_environment() {
     assert!(Args::try_parse_from(["vm", "ls"]).is_err());
     assert!(Args::try_parse_from(["vm", "shell", "--command", "true"]).is_err());
     assert!(Args::try_parse_from(["vm", "shell", "-e", "true"]).is_err());
+    assert!(matches!(
+        Args::parse_from(["vm", "shell", "backend", "--cwd", "src"]).command,
+        Command::Shell { environment: Some(environment), cwd: Some(cwd) }
+            if environment == "backend" && cwd == std::path::Path::new("src")
+    ));
+    assert!(Args::try_parse_from(["vm", "shell", "--path", "src"]).is_err());
 }
 
 #[test]
@@ -165,6 +171,25 @@ fn exec_accepts_repeated_explicit_environments_or_a_default() {
         Command::Exec { environments, command, .. } if environments.is_empty() && command == ["npm", "test"]
     ));
     assert!(Args::try_parse_from(["vm", "exec", "backend", "--", "npm"]).is_err());
+    assert!(matches!(
+        Args::parse_from(["vm", "exec", "--env", "backend", "--cwd", "src", "--user", "root", "--", "id"]).command,
+        Command::Exec { cwd: Some(cwd), user: Some(user), .. }
+            if cwd == std::path::Path::new("src") && user == "root"
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "exec", "--all-envs", "--output", "json-lines", "--", "id"]).command,
+        Command::Exec { fleet, output: Some(super::ExecOutput::JsonLines), .. } if fleet.fleet
+    ));
+    assert!(Args::try_parse_from(["vm", "exec", "--output", "raw", "--", "id"]).is_err());
+}
+
+#[test]
+fn copy_requires_one_explicit_environment_selector() {
+    assert!(matches!(
+        Args::parse_from(["vm", "copy", "--env", "backend", "--overwrite", "host:./a", "env:/tmp/a"]).command,
+        Command::Copy { env: Some(env), overwrite: true, source, destination }
+            if env == "backend" && source == "host:./a" && destination == "env:/tmp/a"
+    ));
 }
 
 #[test]
@@ -205,9 +230,39 @@ fn snapshot_commands_are_grouped() {
     ));
     assert!(matches!(
         Args::parse_from(["vm", "snapshots", "import", "stable.tar.gz", "--name", "stable"]).command,
-        Command::Snapshots { command: super::SnapshotSubcommand::Import { archive, name } }
+        Command::Snapshots { command: super::SnapshotSubcommand::Import { archive, name, .. } }
             if archive == std::path::Path::new("stable.tar.gz") && name == "stable"
     ));
+    assert!(matches!(
+        Args::parse_from([
+            "vm",
+            "snapshots",
+            "export",
+            "stable",
+            "--output",
+            "stable.tar",
+            "--compression",
+            "none"
+        ])
+        .command,
+        Command::Snapshots {
+            command: super::SnapshotSubcommand::Export {
+                compression: super::SnapshotCompression::None,
+                ..
+            }
+        }
+    ));
+    assert!(Args::try_parse_from([
+        "vm",
+        "snapshots",
+        "export",
+        "stable",
+        "--output",
+        "stable.tar.gz",
+        "--compression",
+        "9"
+    ])
+    .is_err());
     assert!(Args::try_parse_from(["vm", "save", "as", "stable"]).is_err());
 }
 
@@ -311,6 +366,8 @@ fn package_source_roots_parse_as_global_string_array() {
                 values,
                 scope: super::ConfigWriteScope::User,
                 value_json: None,
+                dry_run: false,
+                json: false,
             }
         } if field == "packages.source_roots"
             && values == ["/srv/packages", "/opt/shared"]
@@ -333,6 +390,8 @@ fn package_source_roots_parse_as_global_string_array() {
                 values,
                 scope: super::ConfigWriteScope::User,
                 value_json: None,
+                dry_run: false,
+                json: false,
             }
         } if field == "packages.canonical_sources"
             && values == ["/srv/projects/typemill", "/srv/projects/codeatlas"]
@@ -356,7 +415,7 @@ fn config_uses_canonical_scopes_and_resource_groups() {
     ));
     assert!(matches!(
         Args::parse_from(["vm", "config", "presets", "apply", "nodejs", "python", "--scope", "user"]).command,
-        Command::Config { command: ConfigSubcommand::Presets { command: super::ConfigPresetSubcommand::Apply { names, scope: super::ConfigWriteScope::User } } } if names == ["nodejs", "python"]
+        Command::Config { command: ConfigSubcommand::Presets { command: super::ConfigPresetSubcommand::Apply { names, scope: super::ConfigWriteScope::User, dry_run: false, json: false } } } if names == ["nodejs", "python"]
     ));
     assert!(Args::try_parse_from([
         "vm",
@@ -382,6 +441,39 @@ fn config_uses_canonical_scopes_and_resource_groups() {
         "4096",
         "--value-json",
         "[]"
+    ])
+    .is_err());
+}
+
+#[test]
+fn dry_run_is_available_on_config_mutations() {
+    assert!(matches!(
+        Args::parse_from(["vm", "config", "set", "vm.memory", "4096", "--dry-run"]).command,
+        Command::Config {
+            command: ConfigSubcommand::Set { dry_run: true, .. }
+        }
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "config", "unset", "vm.memory", "--dry-run"]).command,
+        Command::Config {
+            command: ConfigSubcommand::Unset { dry_run: true, .. }
+        }
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "config", "presets", "apply", "nodejs", "--dry-run"]).command,
+        Command::Config {
+            command: ConfigSubcommand::Presets {
+                command: super::ConfigPresetSubcommand::Apply { dry_run: true, .. }
+            }
+        }
+    ));
+    assert!(Args::try_parse_from([
+        "vm",
+        "config",
+        "profiles",
+        "set-default",
+        "dev",
+        "--dry-run"
     ])
     .is_err());
 }
@@ -531,8 +623,21 @@ fn package_release_accepts_an_inferred_checkout() {
     assert!(matches!(
         Args::parse_from(["vm", "packages", "release"]).command,
         Command::Packages {
-            command: PackagesSubcommand::Release
+            command: PackagesSubcommand::Release {
+                receipt: None,
+                background: false
+            }
         }
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "packages", "release", "--receipt", "receipt-1", "--background"])
+            .command,
+        Command::Packages {
+            command: PackagesSubcommand::Release {
+                receipt: Some(id),
+                background: true
+            }
+        } if id == "receipt-1"
     ));
 }
 
@@ -596,10 +701,36 @@ fn package_recovery_commands_parse() {
         Args::parse_from(["vm", "packages", "service", "backups", "restore", "backup-20260810"]),
         Args {
             command: Command::Packages {
-                command: PackagesSubcommand::Service { command: super::PackageServiceSubcommand::Backups { command: super::PackageBackupSubcommand::Restore { name: backup_id } } }
+                command: PackagesSubcommand::Service { command: super::PackageServiceSubcommand::Backups { command: super::PackageBackupSubcommand::Restore { name: backup_id, yes: false } } }
             },
             ..
         } if backup_id == "backup-20260810"
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "packages", "service", "backups", "create", "nightly"]),
+        Args {
+            command: Command::Packages {
+                command: PackagesSubcommand::Service {
+                    command: super::PackageServiceSubcommand::Backups {
+                        command: super::PackageBackupSubcommand::Create { name: Some(name) }
+                    }
+                }
+            },
+            ..
+        } if name == "nightly"
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "packages", "service", "backups", "remove", "nightly", "--yes"]),
+        Args {
+            command: Command::Packages {
+                command: PackagesSubcommand::Service {
+                    command: super::PackageServiceSubcommand::Backups {
+                        command: super::PackageBackupSubcommand::Remove { name, yes: true }
+                    }
+                }
+            },
+            ..
+        } if name == "nightly"
     ));
 }
 
@@ -695,8 +826,15 @@ fn tool_refresh_status_and_batch_update_commands_parse() {
     assert!(matches!(
         Args::parse_from(["vm", "tools", "refresh"]).command,
         Command::Tools {
-            command: ToolsSubcommand::Refresh { quiet: false }
+            command: ToolsSubcommand::Refresh { names, quiet: false }
         }
+        if names.is_empty()
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "tools", "refresh", "agent-skills", "codeatlas"]).command,
+        Command::Tools {
+            command: ToolsSubcommand::Refresh { names, quiet: false }
+        } if names == ["agent-skills", "codeatlas"]
     ));
     assert!(matches!(
         Args::parse_from(["vm", "tools", "status", "--env", "backend"]).command,
@@ -811,6 +949,22 @@ fn plugin_install_parses() {
 }
 
 #[test]
+fn plugin_read_commands_accept_json_only_on_reads() {
+    assert!(matches!(
+        Args::parse_from(["vm", "plugins", "list", "--json"]).command,
+        Command::Plugins {
+            command: PluginSubcommand::List { json: true }
+        }
+    ));
+    assert!(matches!(
+        Args::parse_from(["vm", "plugins", "show", "demo", "--json"]).command,
+        Command::Plugins { command: PluginSubcommand::Show { plugin_name, json: true } }
+            if plugin_name == "demo"
+    ));
+    assert!(Args::try_parse_from(["vm", "plugins", "install", "/tmp/plugin", "--json"]).is_err());
+}
+
+#[test]
 fn plugin_new_accepts_only_supported_definition_types() {
     assert!(matches!(
         Args::parse_from(["vm", "plugins", "create", "demo", "--kind", "preset"]).command,
@@ -890,6 +1044,34 @@ fn named_tunnel_requires_both_endpoints() {
     ])
     .is_ok());
     assert!(Args::try_parse_from(["vm", "tunnels", "open", "app"]).is_err());
+    assert!(Args::try_parse_from(["vm", "tunnels", "list", "--provider", "docker"]).is_ok());
+    assert!(Args::try_parse_from([
+        "vm",
+        "tunnels",
+        "close",
+        "app",
+        "--env",
+        "backend",
+        "--provider",
+        "podman"
+    ])
+    .is_ok());
+    assert!(Args::try_parse_from(["vm", "tunnels", "close", "app", "--provider", "tart"]).is_err());
+    assert!(matches!(
+        Args::parse_from(["vm", "tunnels", "list", "--json", "--env", "backend", "--provider", "docker"]).command,
+        Command::Tunnels { command: super::TunnelSubcommand::List { json: true, env: Some(env), provider: Some(provider) } }
+            if env == "backend" && provider == "docker"
+    ));
+    assert!(Args::try_parse_from(["vm", "tunnels", "close", "app", "--json"]).is_err());
+}
+
+#[test]
+fn logs_json_lines_keeps_environment_and_stream_options() {
+    assert!(matches!(
+        Args::parse_from(["vm", "logs", "backend", "--json-lines", "--follow", "--tail", "12", "--service", "api"]).command,
+        Command::Logs { environment: Some(environment), json_lines: true, follow: true, tail: 12, service: Some(service) }
+            if environment == "backend" && service == "api"
+    ));
 }
 
 #[test]
@@ -907,6 +1089,15 @@ fn secrets_require_explicit_secure_input_or_a_prompt() {
     ));
     assert!(Args::try_parse_from(["vm", "secrets", "set", "TOKEN", "value"]).is_err());
     assert!(Args::try_parse_from(["vm", "secrets", "show", "TOKEN"]).is_err());
+    assert!(matches!(
+        Args::parse_from(["vm", "secrets", "list", "--scope", "user"]).command,
+        Command::Secrets {
+            command: super::SecretSubcommand::List { scope: Some(value) }
+        } if value == "user"
+    ));
+    assert!(
+        Args::try_parse_from(["vm", "secrets", "remove", "TOKEN", "--scope", "global"]).is_err()
+    );
 }
 
 #[test]
@@ -922,22 +1113,22 @@ fn config_render_parses_environment() {
 }
 
 #[test]
-fn doctor_parses_pnpm_store_maintenance_target() {
+fn doctor_parses_environment_target() {
     assert!(matches!(
         Args::parse_from([
             "vm",
             "doctor",
-            "--prune-pnpm-store",
-            "--container",
             "feature",
+            "--prune-pnpm-store",
         ])
         .command,
         Command::Doctor {
             prune_pnpm_store: true,
-            container: Some(container),
+            environment: Some(environment),
             ..
-        } if container == "feature"
+        } if environment == "feature"
     ));
+    assert!(Args::try_parse_from(["vm", "doctor", "--container", "feature"]).is_err());
 }
 
 #[test]

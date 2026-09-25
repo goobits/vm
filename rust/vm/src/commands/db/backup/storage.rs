@@ -3,7 +3,7 @@
 use std::path::{Component, Path, PathBuf};
 use vm_config::GlobalConfig;
 
-use super::{confirm_destructive, DbRoute};
+use super::DbRoute;
 use crate::error::{VmError, VmResult};
 
 /// Get the base directory for backups
@@ -104,15 +104,6 @@ pub fn remove_backup(route: &DbRoute, name: &str, yes: bool) -> VmResult<()> {
             None::<String>,
         ));
     }
-    if !belongs_to_database(name, &route.database) {
-        return Err(VmError::validation(
-            format!(
-                "Backup '{name}' does not belong to database '{}'",
-                route.database
-            ),
-            None::<String>,
-        ));
-    }
     let path = get_backup_dir(route)?.join(name);
     if !path.is_file() {
         return Err(VmError::validation(
@@ -120,7 +111,7 @@ pub fn remove_backup(route: &DbRoute, name: &str, yes: bool) -> VmResult<()> {
             None::<String>,
         ));
     }
-    if !confirm_destructive(&format!("Permanently remove backup '{name}'?"), yes)? {
+    if !crate::confirmation::destructive(&format!("Permanently remove backup '{name}'?"), yes)? {
         return Ok(());
     }
     std::fs::remove_file(path)?;

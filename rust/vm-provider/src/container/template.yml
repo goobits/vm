@@ -377,6 +377,63 @@ services:
     {%- endif %}
   {% endif %}
 
+  {% for plugin in plugin_services %}
+  plugin_{{ plugin.name }}:
+    image: {{ plugin.image | json_encode }}
+    container_name: {{ plugin.container_name | json_encode }}
+    labels:
+      com.vm.managed: "true"
+      com.vm.role: "service-plugin"
+      com.vm.project: {{ base_project_name | json_encode }}
+      com.vm.instance: {{ project_name | json_encode }}
+      com.vm.runtime-fingerprint: {{ runtime_fingerprint | json_encode }}
+      {% if config_path_label %}
+      com.vm.config-path: {{ config_path_label }}
+      {% endif %}
+    {% if plugin.environment %}
+    environment:
+      {% for entry in plugin.environment %}
+      {{ entry.0 | json_encode }}: {{ entry.1 | json_encode }}
+      {% endfor %}
+    {% endif %}
+    {% if plugin.published_ports %}
+    ports:
+      {% for port in plugin.published_ports %}
+      - {{ port | json_encode }}
+      {% endfor %}
+    {% endif %}
+    {% if plugin.volumes %}
+    volumes:
+      {% for volume in plugin.volumes %}
+      - type: volume
+        source: {{ volume.name | json_encode }}
+        target: {{ volume.target | json_encode }}
+        volume:
+          nocopy: true
+      {% endfor %}
+    {% endif %}
+    {% if plugin.depends_on %}
+    depends_on:
+      {% for dependency in plugin.depends_on %}
+      - {% if dependency == "postgres" %}postgres{% else %}plugin_{{ dependency }}{% endif %}
+      {% endfor %}
+    {% endif %}
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    {% if config.networking and config.networking.networks and config.networking.networks | length > 0 -%}
+    networks:
+      {% for network in config.networking.networks -%}
+      {{ network }}:
+        aliases: [{{ plugin.name | json_encode }}]
+      {% endfor -%}
+    {% else %}
+    networks:
+      default:
+        aliases: [{{ plugin.name | json_encode }}]
+    {%- endif %}
+  {% endfor %}
+
 volumes:
   {% if package_edge %}
   package_edge_cache:

@@ -1,6 +1,5 @@
 use crate::error::VmError;
 use std::fs;
-use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use vm_core::{vm_println, vm_success};
 
@@ -35,16 +34,8 @@ pub fn handle_uninstall(delete_config: bool, delete_data: bool, yes: bool) -> Re
             paths.data.display()
         );
     }
-    if !yes {
-        if !std::io::stdin().is_terminal() {
-            return Err(VmError::validation(
-                "Uninstall requires confirmation on a terminal",
-                Some("Pass --yes after reviewing the paths above"),
-            ));
-        }
-        if !vm_core::prompts::confirm_select("Uninstall vm?", false)? {
-            return Ok(());
-        }
+    if !crate::confirmation::destructive("Uninstall vm?", yes)? {
+        return Ok(());
     }
 
     crate::commands::tools::activation::remove_worker()?;

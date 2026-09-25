@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
 use sha2::{Digest, Sha256};
@@ -12,6 +12,21 @@ use crate::metadata::SnapshotMetadata;
 
 const MAX_ARCHIVE_ENTRIES: usize = 100_000;
 const MAX_UNPACKED_BYTES: u64 = 256 * 1024 * 1024 * 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArchiveCompression {
+    Gzip,
+    None,
+}
+
+impl ArchiveCompression {
+    pub const fn extension(self) -> &'static str {
+        match self {
+            Self::Gzip => "tar.gz",
+            Self::None => "tar",
+        }
+    }
+}
 
 pub(crate) fn file_checksums(root: &Path) -> Result<BTreeMap<String, String>> {
     let mut checksums = BTreeMap::new();
@@ -34,27 +49,33 @@ pub(crate) fn file_checksums(root: &Path) -> Result<BTreeMap<String, String>> {
         if relative == Path::new("manifest.json") {
             continue;
         }
-        let mut file = std::fs::File::open(entry.path())
-            .map_err(|error| VmError::filesystem(error, entry.path().display(), "open"))?;
-        let mut digest = Sha256::new();
-        let mut buffer = [0_u8; 64 * 1024];
-        loop {
-            let count = file
-                .read(&mut buffer)
-                .map_err(|error| VmError::filesystem(error, entry.path().display(), "read"))?;
-            if count == 0 {
-                break;
-            }
-            digest.update(&buffer[..count]);
-        }
-        let hash = digest
-            .finalize()
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect();
-        checksums.insert(relative.to_string_lossy().replace('\\', "/"), hash);
+        checksums.insert(
+            relative.to_string_lossy().replace('\\', "/"),
+            file_digest(entry.path())?,
+        );
     }
     Ok(checksums)
+}
+
+pub(crate) fn file_digest(path: &Path) -> Result<String> {
+    let mut file = std::fs::File::open(path)
+        .map_err(|error| VmError::filesystem(error, path.display(), "open"))?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let count = file
+            .read(&mut buffer)
+            .map_err(|error| VmError::filesystem(error, path.display(), "read"))?;
+        if count == 0 {
+            break;
+        }
+        digest.update(&buffer[..count]);
+    }
+    Ok(digest
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 pub(crate) fn directory_size(path: &Path) -> Result<u64> {
@@ -142,10 +163,10 @@ pub(crate) async fn copy_directory(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn create_gzip_archive(
+pub(crate) fn create_archive(
     source: &Path,
     output: &Path,
-    compression_level: u8,
+    compression: ArchiveCompression,
     overwrite: bool,
 ) -> Result<()> {
     let parent = output
@@ -163,22 +184,20 @@ pub(crate) fn create_gzip_archive(
             "reopen",
         )
     })?;
-    let encoder = flate2::write::GzEncoder::new(
-        archive_file,
-        flate2::Compression::new(compression_level as u32),
-    );
-    let mut archive = tar::Builder::new(encoder);
-
-    archive
-        .append_dir_all(".", source)
-        .map_err(|error| VmError::general(error, "Failed to create tar archive"))?;
-    let encoder = archive
-        .into_inner()
-        .map_err(|error| VmError::general(error, "Failed to finish tar archive"))?;
-    let archive_file = encoder
-        .finish()
-        .map_err(|error| VmError::general(error, "Failed to finish gzip archive"))?;
-    archive_file
+    match compression {
+        ArchiveCompression::Gzip => {
+            let encoder =
+                flate2::write::GzEncoder::new(archive_file, flate2::Compression::default());
+            write_tar(source, encoder)?
+                .finish()
+                .map_err(|error| VmError::general(error, "Failed to finish gzip archive"))?;
+        }
+        ArchiveCompression::None => {
+            write_tar(source, archive_file)?;
+        }
+    }
+    temporary_output
+        .as_file()
         .sync_all()
         .map_err(|error| VmError::filesystem(error, output.display().to_string(), "sync_all"))?;
     if overwrite {
@@ -195,11 +214,32 @@ pub(crate) fn create_gzip_archive(
     Ok(())
 }
 
-pub(crate) fn extract_gzip_archive(file_path: &Path, destination: &Path) -> Result<()> {
-    let archive_file = std::fs::File::open(file_path)
+fn write_tar<W: Write>(source: &Path, writer: W) -> Result<W> {
+    let mut archive = tar::Builder::new(writer);
+    archive
+        .append_dir_all(".", source)
+        .map_err(|error| VmError::general(error, "Failed to create tar archive"))?;
+    archive
+        .into_inner()
+        .map_err(|error| VmError::general(error, "Failed to finish tar archive"))
+}
+
+pub(crate) fn extract_archive(file_path: &Path, destination: &Path) -> Result<()> {
+    let mut archive_file = std::fs::File::open(file_path)
         .map_err(|error| VmError::filesystem(error, file_path.display().to_string(), "open"))?;
-    let decoder = flate2::read::GzDecoder::new(archive_file);
-    let mut archive = tar::Archive::new(decoder);
+    let mut magic = [0_u8; 2];
+    archive_file
+        .read_exact(&mut magic)
+        .map_err(|error| VmError::general(error, "Failed to read snapshot archive header"))?;
+    archive_file
+        .seek(SeekFrom::Start(0))
+        .map_err(|error| VmError::general(error, "Failed to rewind snapshot archive"))?;
+    let reader: Box<dyn Read> = if magic == [0x1f, 0x8b] {
+        Box::new(flate2::read::GzDecoder::new(archive_file))
+    } else {
+        Box::new(archive_file)
+    };
+    let mut archive = tar::Archive::new(reader);
     archive.set_overwrite(false);
     archive.set_preserve_permissions(false);
 
@@ -290,6 +330,18 @@ pub(crate) fn validate_snapshot_files(
                 None::<String>,
             ));
         }
+        let actual = format!("sha256:{}", file_digest(&native)?);
+        if metadata.native_image_digest.as_deref() != Some(actual.as_str()) {
+            return Err(VmError::validation(
+                "Snapshot native VM image digest does not match its archive",
+                None::<String>,
+            ));
+        }
+    } else if metadata.native_image_digest.is_some() {
+        return Err(VmError::validation(
+            "Snapshot has a native image digest without a native VM archive",
+            None::<String>,
+        ));
     }
     let images_dir = snapshot_dir.join("images");
     for service in &metadata.services {
@@ -331,7 +383,10 @@ pub(crate) fn validate_snapshot_files(
 
 #[cfg(test)]
 mod tests {
-    use super::{copy_directory, create_gzip_archive, directory_size, file_checksums};
+    use super::{
+        copy_directory, create_archive, directory_size, extract_archive, file_checksums,
+        validate_snapshot_files, ArchiveCompression,
+    };
 
     #[test]
     fn directory_size_counts_every_file_and_reports_missing_roots() {
@@ -370,7 +425,7 @@ mod tests {
         std::fs::write(&victim, "owner-data").unwrap();
         std::os::unix::fs::symlink(&victim, directory.path().join("snapshot.tar.gz.tmp")).unwrap();
 
-        create_gzip_archive(&source, &output, 1, false).unwrap();
+        create_archive(&source, &output, ArchiveCompression::Gzip, false).unwrap();
 
         assert_eq!(std::fs::read_to_string(victim).unwrap(), "owner-data");
         assert!(output.is_file());
@@ -385,10 +440,58 @@ mod tests {
         std::fs::write(source.join("file"), b"snapshot").unwrap();
         std::fs::write(&output, b"owner-data").unwrap();
 
-        assert!(create_gzip_archive(&source, &output, 1, false).is_err());
+        assert!(create_archive(&source, &output, ArchiveCompression::Gzip, false).is_err());
         assert_eq!(std::fs::read(&output).unwrap(), b"owner-data");
-        create_gzip_archive(&source, &output, 1, true).unwrap();
+        create_archive(&source, &output, ArchiveCompression::Gzip, true).unwrap();
         assert_ne!(std::fs::read(&output).unwrap(), b"owner-data");
+    }
+
+    #[test]
+    fn named_archive_formats_round_trip() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("source");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::write(source.join("metadata.json"), b"snapshot").unwrap();
+
+        for compression in [ArchiveCompression::Gzip, ArchiveCompression::None] {
+            let archive = directory
+                .path()
+                .join(format!("snapshot.{}", compression.extension()));
+            let destination = directory.path().join(compression.extension());
+            std::fs::create_dir(&destination).unwrap();
+            create_archive(&source, &archive, compression, false).unwrap();
+            extract_archive(&archive, &destination).unwrap();
+            assert_eq!(
+                std::fs::read(destination.join("metadata.json")).unwrap(),
+                b"snapshot"
+            );
+        }
+    }
+
+    #[test]
+    fn native_image_identity_is_checked_before_restore() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::create_dir(directory.path().join("native")).unwrap();
+        let archive = directory.path().join("native/vm.tvm");
+        std::fs::write(&archive, b"native-image").unwrap();
+        let digest = format!("sha256:{}", super::file_digest(&archive).unwrap());
+        let metadata = serde_json::from_value(serde_json::json!({
+            "name": "stable", "created_at": chrono::Utc::now(),
+            "description": null, "project_name": "demo", "source_environment": "demo-dev",
+            "provider": "tart", "architecture": "arm64", "consistency": "stopped",
+            "project_dir": "/project", "git_commit": null, "git_dirty": false,
+            "git_branch": null, "services": [], "volumes": [],
+            "native_vm_file": "vm.tvm", "native_image_digest": digest,
+            "excluded_mounts": [], "compose_file": "", "vm_config_file": "",
+            "total_size_bytes": 12
+        }))
+        .unwrap();
+        validate_snapshot_files(directory.path(), &metadata).unwrap();
+        std::fs::write(&archive, b"changed-image").unwrap();
+        assert!(validate_snapshot_files(directory.path(), &metadata)
+            .unwrap_err()
+            .to_string()
+            .contains("digest"));
     }
 
     #[test]

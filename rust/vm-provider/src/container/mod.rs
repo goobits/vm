@@ -33,8 +33,9 @@ use vm_core::error::Result;
 
 // Internal imports
 use crate::{
-    context::ProviderContext, preflight, CommandProvider, GuestExit, InstanceProvider,
-    InstanceState, Provider, ProvisioningProvider, TempProvider, TunnelProvider, VmStatusReport,
+    context::ProviderContext, preflight, CommandProvider, ExecOptions, GuestExit, GuestOutput,
+    InstanceProvider, InstanceState, LogRecord, Provider, ProvisioningProvider, TempProvider,
+    TunnelProvider, VmStatusReport,
 };
 use vm_config::config::VmConfig;
 
@@ -160,8 +161,27 @@ impl CommandProvider for ContainerProvider {
     }
 
     fn exec_status(&self, container: Option<&str>, cmd: &[String]) -> Result<GuestExit> {
+        self.exec_status_with_options(container, cmd, &ExecOptions::default())
+    }
+
+    fn exec_status_with_options(
+        &self,
+        container: Option<&str>,
+        cmd: &[String],
+        options: &ExecOptions,
+    ) -> Result<GuestExit> {
         self.lifecycle_ops()
-            .exec_status_in_container(container, cmd)
+            .exec_status_in_container_with_options(container, cmd, options)
+    }
+
+    fn exec_capture_with_options(
+        &self,
+        container: Option<&str>,
+        cmd: &[String],
+        options: &ExecOptions,
+    ) -> Result<GuestOutput> {
+        self.lifecycle_ops()
+            .exec_capture_in_container_with_options(container, cmd, options)
     }
 
     fn exec_interactive(
@@ -198,6 +218,19 @@ impl CommandProvider for ContainerProvider {
     ) -> Result<()> {
         self.lifecycle_ops()
             .show_logs_extended(container, follow, tail, service, config)
+    }
+
+    fn logs_records(
+        &self,
+        container: Option<&str>,
+        follow: bool,
+        tail: usize,
+        service: Option<&str>,
+        _config: &VmConfig,
+        sink: &mut dyn FnMut(LogRecord) -> Result<()>,
+    ) -> Result<()> {
+        self.lifecycle_ops()
+            .stream_log_records(container, follow, tail, service, sink)
     }
 
     fn copy(&self, source: &str, destination: &str, container: Option<&str>) -> Result<()> {

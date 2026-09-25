@@ -67,6 +67,9 @@ pub struct ProjectConfig {
 pub struct ServiceConfig {
     #[serde(default)]
     pub enabled: bool,
+    /// Installed declarative service plugin to activate for this service key.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plugin: Option<String>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -99,6 +102,31 @@ pub struct ServiceConfig {
     pub backup_on_destroy: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seed_file: Option<PathBuf>,
+}
+
+impl ServiceConfig {
+    /// Resolve the PostgreSQL database selected by this service definition.
+    pub fn resolved_database(
+        &self,
+        project: &str,
+        environment: Option<&str>,
+    ) -> Result<String, String> {
+        let value = self
+            .database
+            .clone()
+            .unwrap_or_else(|| format!("{project}_dev"));
+        let value = value
+            .replace("{{ project.name }}", project)
+            .replace("{{project.name}}", project)
+            .replace("{{ environment.name }}", environment.unwrap_or("default"))
+            .replace("{{environment.name}}", environment.unwrap_or("default"));
+        if value.contains("{{") || value.contains("}}") {
+            return Err(format!(
+                "Unsupported template in PostgreSQL database name '{value}'"
+            ));
+        }
+        Ok(value)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -220,4 +248,30 @@ where
     }
 
     deserializer.deserialize_option(OptionalVisitor)
+}
+
+#[cfg(test)]
+mod service_tests {
+    use super::ServiceConfig;
+
+    #[test]
+    fn database_templates_resolve_equally_for_default_and_named_environments() {
+        let service = ServiceConfig {
+            database: Some("{{ project.name }}_{{ environment.name }}".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            service.resolved_database("demo", Some("test")).unwrap(),
+            "demo_test"
+        );
+        assert_eq!(
+            service.resolved_database("demo", None).unwrap(),
+            "demo_default"
+        );
+        let service = ServiceConfig {
+            database: Some("{{ missing }}".into()),
+            ..Default::default()
+        };
+        assert!(service.resolved_database("demo", None).is_err());
+    }
 }

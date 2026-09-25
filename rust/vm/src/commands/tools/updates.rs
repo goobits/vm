@@ -7,9 +7,9 @@ use vm_core::vm_println;
 use vm_packages::ToolArtifactRecord;
 use vm_provider::InstanceInfo;
 
-use super::catalog;
 use super::guest::{InstallMode, InstalledTool};
-use super::reconcile::{apply_updates, reconcile_subject};
+use super::reconcile::{apply_updates, reconcile_environment};
+use super::{background, catalog};
 use crate::cli::FleetArgs;
 use crate::commands::base;
 use crate::commands::command_context::{
@@ -60,6 +60,7 @@ pub(super) async fn run(request: UpdateRequest) -> VmResult<()> {
     let requested = requested_tools.into_iter().collect::<BTreeSet<_>>();
     let mut configured = BTreeSet::new();
     let mut subjects = Vec::new();
+    let mut stopped = Vec::new();
     let mut progress = FleetProgress::default();
     let mut load_failed = false;
     for instance in instances {
@@ -72,11 +73,7 @@ pub(super) async fn run(request: UpdateRequest) -> VmResult<()> {
                     configured.extend(select_configured_tools(&mut subject.config, &requested));
                 }
                 if !vm_ops::is_running_status(&instance.status) {
-                    vm_println!(
-                        "Deferred tool update for stopped environment {}",
-                        instance.name
-                    );
-                    progress.success(&instance.name);
+                    stopped.push(subject);
                     continue;
                 }
                 subjects.push(subject);
@@ -90,6 +87,36 @@ pub(super) async fn run(request: UpdateRequest) -> VmResult<()> {
 
     if update_managed {
         validate_configured_selection(&requested, &configured, load_failed)?;
+    }
+
+    for subject in stopped {
+        let name = subject.target.clone();
+        let pending = background::PendingUpdate {
+            managed: if update_managed {
+                subject.config.tools.entries.keys().cloned().collect()
+            } else {
+                BTreeSet::new()
+            },
+            vendors: vendor_tools.iter().cloned().collect(),
+            all_managed: update_all,
+            all_vendors: update_all,
+        };
+        if !pending.all_managed
+            && !pending.all_vendors
+            && pending.managed.is_empty()
+            && pending.vendors.is_empty()
+        {
+            vm_println!("No selected tool update for stopped environment {name}");
+            progress.success(&name);
+            continue;
+        }
+        match background::defer(subject.provider.name(), &name, pending) {
+            Ok(()) => {
+                vm_println!("Deferred tool update for stopped environment {name}; it will apply after start");
+                progress.success(&name);
+            }
+            Err(error) => progress.failure(&name, &error),
+        }
     }
 
     let configs = subjects
@@ -109,6 +136,57 @@ pub(super) async fn run(request: UpdateRequest) -> VmResult<()> {
             &vendor_tools,
             update_all,
         )
+        .await;
+        match result {
+            Ok(()) => progress.success(&name),
+            Err(error) => progress.failure(&name, &error),
+        }
+    }
+    progress.finish()
+}
+
+/// Apply the new global selection to running managed environments. Disabled
+/// guest files remain in place; only currently selected tools are eligible for
+/// subsequent updates.
+pub(super) async fn reconcile_global_selection() -> VmResult<()> {
+    let instances = vm_ops::resolve_fleet_targets(
+        &FleetArgs {
+            fleet: true,
+            provider: None,
+            pattern: None,
+        },
+        InstanceStateFilter::Running,
+    )?;
+    if instances.is_empty() {
+        vm_println!("No running managed environments; the selection applies when one starts");
+        return Ok(());
+    }
+    let mut progress = FleetProgress::default();
+    for instance in instances {
+        let name = instance.name.clone();
+        let result: VmResult<()> = async {
+            let subject = load_runtime_subject_for_instance(None, None, &instance)?;
+            if !subject
+                .provider
+                .instance_state(Some(&name))
+                .map_err(VmError::from)?
+                .is_running()
+            {
+                return Ok(());
+            }
+            reconcile_environment(&subject)?;
+            if !subject.config.tools.entries.is_empty() {
+                catalog::prepare(std::slice::from_ref(&subject.config)).await?;
+                apply_updates(
+                    subject.provider.as_ref(),
+                    &name,
+                    &subject.config,
+                    InstallMode::Wait,
+                    false,
+                )?;
+            }
+            Ok(())
+        }
         .await;
         match result {
             Ok(()) => progress.success(&name),
@@ -139,7 +217,21 @@ async fn update_subject(
     vendor_tools: &[String],
     update_all_vendor_tools: bool,
 ) -> VmResult<()> {
-    reconcile_subject(subject).await?;
+    if !subject
+        .provider
+        .instance_state(Some(&subject.target))
+        .map_err(VmError::from)?
+        .is_running()
+    {
+        return Err(VmError::validation(
+            format!(
+                "Environment '{}' stopped before tool reconciliation",
+                subject.target
+            ),
+            Some("Restart it to apply the selected tools"),
+        ));
+    }
+    reconcile_environment(subject)?;
     if update_all_vendor_tools || !vendor_tools.is_empty() {
         base::update_vendor_tools(
             subject.provider.as_ref(),

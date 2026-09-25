@@ -15,14 +15,26 @@ declaration.
 ## Work Inside It
 
 ```bash
-vm shell dev
-vm exec --env dev -- npm test
+vm shell dev --cwd /workspace
+vm exec --env dev --cwd /workspace --user developer -- npm test
 vm logs dev --follow
 vm copy --env dev host:./config.json env:/workspace/config.json
 ```
 
-`shell` and `exec` require a running environment. Omit the name when the project
+`shell` requires a terminal and a running environment; `exec` requires a running
+environment. Copy requires one `host:` and one `env:` path, and `--overwrite`
+when replacing an existing destination. Omit the name when the project
 has an unambiguous default environment.
+
+To run one command in several environments, choose an output format explicitly:
+
+```bash
+vm exec --env dev --env test --output grouped -- npm test
+vm exec --all-envs --output json-lines -- npm test
+```
+
+Grouped output labels each target and its exit status. JSON Lines emits typed
+events with base64-encoded process bytes and a final aggregate result.
 
 ## See What Is Running
 

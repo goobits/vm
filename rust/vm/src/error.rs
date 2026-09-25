@@ -10,6 +10,7 @@ type ErrorSource = Box<dyn Error + Send + Sync>;
 pub struct VmError {
     message: String,
     hint: Option<String>,
+    target: Option<String>,
     source: Option<ErrorSource>,
     exit_code: i32,
     guest_exit: bool,
@@ -24,6 +25,7 @@ impl VmError {
         Self {
             message: message.into(),
             hint: None,
+            target: None,
             source: Some(Box::new(source)),
             exit_code: 1,
             guest_exit: false,
@@ -48,10 +50,20 @@ impl VmError {
         self
     }
 
+    pub fn with_target(mut self, target: impl Into<String>) -> Self {
+        self.target = Some(target.into());
+        self
+    }
+
+    pub fn target(&self) -> Option<&str> {
+        self.target.as_deref()
+    }
+
     pub fn guest_exit(code: i32) -> Self {
         Self {
             message: format!("Guest command exited with status {code}"),
             hint: None,
+            target: None,
             source: None,
             exit_code: code,
             guest_exit: true,
@@ -70,6 +82,7 @@ impl VmError {
             3 => "state_conflict",
             4 => "authorization_failed",
             5 => "deadline_exceeded",
+            130 => "interrupted",
             125 => "exec_prelaunch_failed",
             _ => "operation_failed",
         }
@@ -112,16 +125,19 @@ impl VmError {
     {
         let operation = operation.into();
         let source_message = source.to_string();
-        let message = vm_name.map_or_else(
+        let target = vm_name.map(Into::into);
+        let message = target.as_deref().map_or_else(
             || format!("VM operation '{operation}' failed: {source_message}"),
             |name| {
                 format!(
                     "VM operation '{operation}' failed for '{}': {source_message}",
-                    name.into()
+                    name
                 )
             },
         );
-        Self::with_source(message, source)
+        let mut error = Self::with_source(message, source);
+        error.target = target;
+        error
     }
 
     pub fn filesystem<E>(source: E, path: impl Into<String>, operation: impl Into<String>) -> Self
@@ -141,6 +157,7 @@ impl VmError {
         Self {
             message: format!("Validation error: {}", message.into()),
             hint: hint.map(Into::into),
+            target: None,
             source: None,
             exit_code: 2,
             guest_exit: false,
@@ -152,8 +169,45 @@ impl VmError {
         Self {
             message: format!("Conflict: {}", message.into()),
             hint: hint.map(Into::into),
+            target: None,
             source: None,
             exit_code: 3,
+            guest_exit: false,
+            reported: false,
+        }
+    }
+
+    pub fn deadline(message: impl Into<String>, hint: Option<impl Into<String>>) -> Self {
+        Self {
+            message: message.into(),
+            hint: hint.map(Into::into),
+            target: None,
+            source: None,
+            exit_code: 5,
+            guest_exit: false,
+            reported: false,
+        }
+    }
+
+    pub fn operation(message: impl Into<String>, hint: Option<impl Into<String>>) -> Self {
+        Self {
+            message: message.into(),
+            hint: hint.map(Into::into),
+            target: None,
+            source: None,
+            exit_code: 1,
+            guest_exit: false,
+            reported: false,
+        }
+    }
+
+    pub fn interrupted(message: impl Into<String>, hint: Option<impl Into<String>>) -> Self {
+        Self {
+            message: message.into(),
+            hint: hint.map(Into::into),
+            target: None,
+            source: None,
+            exit_code: 130,
             guest_exit: false,
             reported: false,
         }
@@ -187,6 +241,7 @@ impl From<anyhow::Error> for VmError {
         Self {
             message,
             hint: None,
+            target: None,
             source: Some(error.into_boxed_dyn_error()),
             exit_code: 1,
             guest_exit: false,
@@ -235,6 +290,7 @@ impl From<vm_core::error::VmError> for VmError {
         Self {
             message,
             hint,
+            target: None,
             source: Some(Box::new(error)),
             exit_code,
             guest_exit: false,
@@ -290,6 +346,7 @@ mod tests {
             error.to_string(),
             "VM operation 'start' failed for 'my-vm': permission denied"
         );
+        assert_eq!(error.target(), Some("my-vm"));
     }
 
     #[test]
@@ -313,6 +370,11 @@ mod tests {
             VmError::from(vm_core::error::VmError::NotFound("environment".into())).exit_code(),
             3
         );
+        assert_eq!(VmError::deadline("waited", None::<String>).exit_code(), 5);
+        assert_eq!(VmError::operation("failed", None::<String>).exit_code(), 1);
+        let interrupted = VmError::interrupted("stopped", None::<String>);
+        assert_eq!(interrupted.exit_code(), 130);
+        assert_eq!(interrupted.code(), "interrupted");
     }
 
     #[test]

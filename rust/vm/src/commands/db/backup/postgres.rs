@@ -3,14 +3,14 @@
 use super::DbRoute;
 use crate::error::{VmError, VmResult};
 
-/// Execute a command in the postgres docker container
+/// Execute a command in the selected PostgreSQL service container.
 pub(super) async fn execute_docker_command(
     route: &DbRoute,
     args: &[&str],
     input: Option<&[u8]>,
 ) -> VmResult<Vec<u8>> {
     let mut cmd = tokio::process::Command::new(&route.engine);
-    cmd.arg("exec").arg("-i").arg("vm-postgres-global");
+    cmd.arg("exec").arg("-i").arg(&route.container);
     cmd.args(args);
 
     if input.is_some() {
@@ -64,7 +64,7 @@ async fn execute_admin_sql(route: &DbRoute, query: &str) -> VmResult<Vec<u8>> {
         &[
             "psql",
             "-U",
-            "postgres",
+            &route.user,
             "-d",
             "postgres",
             "-v",
@@ -97,7 +97,7 @@ async fn disconnect_database(route: &DbRoute, db_name: &str) -> VmResult<()> {
 }
 
 pub(super) async fn create_database(route: &DbRoute, db_name: &str) -> VmResult<()> {
-    execute_docker_command(route, &["createdb", "-U", "postgres", "--", db_name], None).await?;
+    execute_docker_command(route, &["createdb", "-U", &route.user, "--", db_name], None).await?;
     Ok(())
 }
 
@@ -105,7 +105,7 @@ pub(super) async fn drop_database(route: &DbRoute, db_name: &str) -> VmResult<()
     disconnect_database(route, db_name).await?;
     execute_docker_command(
         route,
-        &["dropdb", "-U", "postgres", "--if-exists", "--", db_name],
+        &["dropdb", "-U", &route.user, "--if-exists", "--", db_name],
         None,
     )
     .await?;

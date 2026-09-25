@@ -489,7 +489,7 @@ fn binary_installer_links_an_executable_from_one_immutable_release() {
     fs::copy(&binary, home.join(".local/bin/release-tool")).unwrap();
     fs::write(
         home.join(".local/bin/release-helper"),
-        "#!/bin/sh\nprintf '%s\\n' 'legacy'\n",
+        "#!/bin/sh\nprintf '%s\\n' 'existing'\n",
     )
     .unwrap();
     for path in [
@@ -585,7 +585,7 @@ fn binary_installer_links_an_executable_from_one_immutable_release() {
     assert_eq!(backup_dirs.len(), 1);
     assert!(fs::read_to_string(backup_dirs[0].join("release-helper"))
         .unwrap()
-        .contains("legacy"));
+        .contains("existing"));
 
     fs::remove_file(&installed).unwrap();
     fs::remove_file(&helper).unwrap();

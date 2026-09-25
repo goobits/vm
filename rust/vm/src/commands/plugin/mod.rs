@@ -4,16 +4,16 @@ use crate::error::{VmError, VmResult};
 mod install;
 mod inventory;
 mod validation;
+mod view;
 
 use install::{handle_plugin_install, handle_plugin_remove};
 use inventory::{handle_plugin_info, handle_plugin_list, handle_plugin_validate};
 
 pub(super) fn handle_command(command: &PluginSubcommand) -> VmResult<()> {
     match command {
-        PluginSubcommand::List => handle_plugin_list().map_err(VmError::from),
-        PluginSubcommand::Show { plugin_name } => {
-            handle_plugin_info(plugin_name).map_err(VmError::from)
-        }
+        PluginSubcommand::List { json } => handle_plugin_list(*json).map_err(VmError::from),
+        PluginSubcommand::Show { plugin_name, json } => handle_plugin_info(plugin_name, *json)
+            .map_err(|error| VmError::from(error).with_target(plugin_name)),
         PluginSubcommand::Install { source_path } => {
             handle_plugin_install(source_path).map_err(VmError::from)
         }

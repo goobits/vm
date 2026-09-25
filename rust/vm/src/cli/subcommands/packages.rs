@@ -47,9 +47,19 @@ pub enum PackageBackupSubcommand {
     /// List appliance-local backups
     List,
     /// Create a consistent backup in a private named volume
-    Create,
+    Create { name: Option<String> },
+    /// Remove one exact appliance-local backup
+    Remove {
+        name: String,
+        #[arg(long)]
+        yes: bool,
+    },
     /// Restore a private named-volume backup while services are stopped
-    Restore { name: String },
+    Restore {
+        name: String,
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -161,7 +171,14 @@ pub enum PackagesSubcommand {
     #[command(hide = true)]
     CheckoutShow { checkout_id: String },
     /// Release the managed checkout or canonical workspace containing this directory
-    Release,
+    Release {
+        /// Observe or resume the checkout associated with a durable workflow receipt
+        #[arg(long)]
+        receipt: Option<String>,
+        /// Return once the service has accepted the release submission
+        #[arg(long)]
+        background: bool,
+    },
     /// Cancel and clean up the managed checkout containing this directory
     Cancel,
     /// Manage the controller's private Git token

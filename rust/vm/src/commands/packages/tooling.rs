@@ -35,18 +35,41 @@ pub(in crate::commands) async fn refresh(config: &VmConfig) -> VmResult<RefreshO
     refresh_many(std::slice::from_ref(config)).await
 }
 
+pub(in crate::commands) async fn refresh_named(
+    config: &VmConfig,
+    names: &[String],
+) -> VmResult<RefreshOutcome> {
+    for name in names {
+        validate_tool_name(name).map_err(VmError::from)?;
+    }
+    let selected = names.iter().map(String::as_str).collect::<BTreeSet<_>>();
+    refresh_selected(
+        std::slice::from_ref(config),
+        (!selected.is_empty()).then_some(&selected),
+    )
+    .await
+}
+
 pub(in crate::commands) async fn refresh_many(configs: &[VmConfig]) -> VmResult<RefreshOutcome> {
+    refresh_selected(configs, None).await
+}
+
+async fn refresh_selected(
+    configs: &[VmConfig],
+    names: Option<&BTreeSet<&str>>,
+) -> VmResult<RefreshOutcome> {
     let files = ApplianceFiles::discover()?;
     let Some(lock) = files.acquire_tool_cache_lock()? else {
         return Ok(RefreshOutcome::AlreadyRunning);
     };
-    refresh_locked(&files, configs, lock).await?;
+    refresh_locked(&files, configs, names, lock).await?;
     Ok(RefreshOutcome::Refreshed)
 }
 
 async fn refresh_locked(
     files: &ApplianceFiles,
     configs: &[VmConfig],
+    names: Option<&BTreeSet<&str>>,
     lock: std::fs::File,
 ) -> VmResult<()> {
     let (_, client) = configured_state_and_client(files)?;
@@ -58,9 +81,18 @@ async fn refresh_locked(
     .await;
     let mut refreshed = 0_usize;
     let mut last_error = None;
+    let mut found_named = BTreeSet::new();
     for (target, result) in indexes {
         match result {
             Ok(index) => {
+                if let Some(names) = names {
+                    found_named.extend(
+                        names
+                            .iter()
+                            .copied()
+                            .filter(|name| index.tools.contains_key(*name)),
+                    );
+                }
                 write_json(files, &index_cache_name(target), &index)?;
                 refreshed += 1;
             }
@@ -73,10 +105,23 @@ async fn refresh_locked(
             VmError::from,
         ));
     }
+    if let Some(names) = names {
+        let missing = names.difference(&found_named).copied().collect::<Vec<_>>();
+        if !missing.is_empty() {
+            if let Some(error) = last_error {
+                return Err(VmError::from(error));
+            }
+            return Err(VmError::validation(
+                format!("No published release was found for: {}", missing.join(", ")),
+                Some("Run `vm tools show NAME` to inspect its releases"),
+            ));
+        }
+    }
 
     let pins = configs
         .iter()
         .flat_map(|config| &config.tools.entries)
+        .filter(|(entry_name, _)| names.map_or(true, |names| names.contains(entry_name.as_str())))
         .filter_map(|(name, tool)| {
             tool.version
                 .as_deref()
