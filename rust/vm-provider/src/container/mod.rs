@@ -419,7 +419,9 @@ impl TempProvider for ContainerProvider {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use super::ContainerEngine;
+    #[cfg(unix)]
     use std::io::Write;
 
     #[cfg(unix)]

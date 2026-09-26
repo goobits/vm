@@ -137,6 +137,8 @@ mod tests {
     use std::sync::{Mutex, MutexGuard};
     use tempfile::TempDir;
 
+    const HOME_ENV: &str = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+
     static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     struct EnvGuard {
@@ -150,7 +152,7 @@ mod tests {
                 _guard: TEST_MUTEX
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner()),
-                home: env::var("HOME").ok(),
+                home: env::var(HOME_ENV).ok(),
             }
         }
     }
@@ -158,8 +160,8 @@ mod tests {
     impl Drop for EnvGuard {
         fn drop(&mut self) {
             match &self.home {
-                Some(original) => env::set_var("HOME", original),
-                None => env::remove_var("HOME"),
+                Some(original) => env::set_var(HOME_ENV, original),
+                None => env::remove_var(HOME_ENV),
             }
         }
     }
@@ -173,7 +175,7 @@ mod tests {
         let test_home = temp_dir.path().to_path_buf();
 
         // Set HOME to our test directory
-        env::set_var("HOME", &test_home);
+        env::set_var(HOME_ENV, &test_home);
 
         // Test that vm_state_dir() uses the test HOME
         let state_dir = platform::vm_state_dir().expect("should get state dir");

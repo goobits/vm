@@ -392,7 +392,9 @@ mod tests {
         let newest = root.join("c");
         for (path, age) in [(&oldest, 1), (&middle, 2), (&newest, 3)] {
             tokio::fs::write(path, b"four").await.unwrap();
-            std::fs::File::open(path)
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open(path)
                 .unwrap()
                 .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(age))
                 .unwrap();

@@ -3,7 +3,7 @@ pub(crate) fn quote_posix_argument(value: &str) -> String {
 }
 
 /// Quote a path while preserving the explicit `$HOME` marker used by guest mounts.
-#[cfg(any(feature = "tart", test))]
+#[cfg(any(feature = "tart", all(test, unix)))]
 pub(crate) fn quote_posix_home_path(value: &str) -> String {
     if value == "$HOME" {
         return r#""$HOME""#.to_string();

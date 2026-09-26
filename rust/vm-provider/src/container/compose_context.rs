@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::fs;
 use std::path::Path;
+#[cfg(unix)]
 use std::process::Command;
 
 use tera::Context as TeraContext;
@@ -258,8 +259,12 @@ pub(super) fn resolve_worktree_mounts(
                 return None;
             }
             let name = source_path.file_name()?;
-            let target = workspace_path.join(name);
-            Some((source, target.to_str()?.to_string()))
+            let target = format!(
+                "{}/{}",
+                workspace_path.to_str()?.trim_end_matches('/'),
+                name.to_str()?
+            );
+            Some((source, target))
         })
         .collect()
 }
@@ -275,7 +280,7 @@ fn expand_tilde(path: &str) -> Option<Cow<'_, str>> {
     }
 }
 
-fn maybe_chown_path_to_sudo_user(path: &Path) {
+fn maybe_chown_path_to_sudo_user(_path: &Path) {
     #[cfg(unix)]
     {
         let (Ok(uid), Ok(gid)) = (std::env::var("SUDO_UID"), std::env::var("SUDO_GID")) else {
@@ -283,7 +288,7 @@ fn maybe_chown_path_to_sudo_user(path: &Path) {
         };
         let owner = format!("{uid}:{gid}");
         let _ = Command::new("chown")
-            .args(["-R", &owner, path.to_string_lossy().as_ref()])
+            .args(["-R", &owner, _path.to_string_lossy().as_ref()])
             .status();
     }
 }

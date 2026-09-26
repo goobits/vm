@@ -41,7 +41,11 @@ pub fn validate_safe_path<P: AsRef<Path>>(path: P) -> ValidationResult<PathBuf> 
     }
 
     // Reject absolute paths
-    if path.is_absolute() {
+    if path.has_root()
+        || path_str.starts_with(['/', '\\'])
+        || (path_str.as_bytes().get(1) == Some(&b':')
+            && path_str.as_bytes()[0].is_ascii_alphabetic())
+    {
         return Err(ValidationError::AbsolutePath {
             path: path_str.to_string(),
         });
@@ -141,6 +145,9 @@ mod tests {
         // Invalid paths
         assert!(validate_safe_path("../../../etc/passwd").is_err());
         assert!(validate_safe_path("/etc/passwd").is_err());
+        assert!(validate_safe_path(r"\etc\passwd").is_err());
+        assert!(validate_safe_path(r"C:\packages\file").is_err());
+        assert!(validate_safe_path("C:packages").is_err());
         assert!(validate_safe_path("path/with/../traversal").is_err());
         assert!(validate_safe_path("path/with/null\0byte").is_err());
     }

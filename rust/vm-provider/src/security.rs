@@ -7,39 +7,42 @@ pub struct SecurityValidator;
 impl SecurityValidator {
     /// Validate the source directory of a VM-managed package checkout.
     pub fn validate_managed_checkout_path(path: &Path, home: &Path) -> Result<PathBuf> {
-        if !path.is_absolute() || !home.is_absolute() {
+        let guest_path = path
+            .to_str()
+            .ok_or_else(|| VmError::Internal("Guest path must be UTF-8".into()))?;
+        let guest_home = home
+            .to_str()
+            .ok_or_else(|| VmError::Internal("Guest home must be UTF-8".into()))?;
+        if !valid_guest_absolute(guest_path) || !valid_guest_absolute(guest_home) {
             return Err(VmError::Internal(
-                "Managed checkout and guest home paths must be absolute".into(),
+                "Managed checkout and guest home paths must be absolute Unix paths".into(),
             ));
         }
-        if path.to_string_lossy().len() > 4096 {
+        if guest_path.len() > 4096 {
             return Err(VmError::Internal(
                 "Managed checkout path is too long".into(),
             ));
         }
-        let base = home.join(".local/share/vm/package-checkouts");
-        let relative = path.strip_prefix(&base).map_err(|_| {
+        let base = format!(
+            "{}/.local/share/vm/package-checkouts/",
+            guest_home.trim_end_matches('/')
+        );
+        let relative = guest_path.strip_prefix(&base).ok_or_else(|| {
             VmError::Internal(format!(
-                "Path is outside the managed checkout root: {}",
-                path.display()
+                "Path is outside the managed checkout root: {guest_path}"
             ))
         })?;
-        let components = relative.components().collect::<Vec<_>>();
-        let valid_id = components.first().is_some_and(|component| {
-            let value = component.as_os_str().to_string_lossy();
+        let components = relative.split('/').collect::<Vec<_>>();
+        let valid_id = components.first().is_some_and(|value| {
             !value.is_empty()
                 && value.len() <= 128
                 && value
                     .chars()
                     .all(|character| character.is_ascii_alphanumeric() || "-_".contains(character))
         });
-        if components.len() != 2
-            || !valid_id
-            || components[1].as_os_str() != std::ffi::OsStr::new("source")
-        {
+        if components.len() != 2 || !valid_id || components[1] != "source" {
             return Err(VmError::Internal(format!(
-                "Path is not a managed checkout source directory: {}",
-                path.display()
+                "Path is not a managed checkout source directory: {guest_path}"
             )));
         }
         Ok(path.to_path_buf())
@@ -62,82 +65,66 @@ impl SecurityValidator {
                 path_str.len()
             )));
         }
-        // Reject absolute paths
-        if relative_path.is_absolute() {
+        // These paths address a Unix guest, regardless of the host OS.
+        if path_str.starts_with('/') {
+            return Err(VmError::Internal(format!("Absolute paths are not allowed; use a path relative to the workspace root: {path_str}")));
+        }
+        if path_str.split('/').any(|part| part == "..") {
             return Err(VmError::Internal(format!(
-                "Absolute paths are not allowed; use a path relative to the workspace root: {}",
-                relative_path.display()
+                "Path traversal attempts (..) are not allowed: {path_str}"
             )));
         }
-
-        // Check for dangerous path components
-        for component in relative_path.components() {
-            match component {
-                std::path::Component::ParentDir => {
-                    return Err(VmError::Internal(format!(
-                        "Path traversal attempts (..) are not allowed: {}",
-                        relative_path.display()
-                    )));
-                }
-                std::path::Component::CurDir => {
-                    // "." is okay
-                    continue;
-                }
-                std::path::Component::Normal(_) => {
-                    // Normal path components are okay
-                    continue;
-                }
-                _ => {
-                    return Err(VmError::Internal(format!(
-                        "Invalid path component in: {}",
-                        relative_path.display()
-                    )));
-                }
-            }
+        if path_str.contains(['\\', ':', '\0']) || !valid_guest_absolute(workspace_path) {
+            return Err(VmError::Internal(format!("Invalid guest path: {path_str}")));
         }
-
-        // Construct the safe target path
-        let workspace = Path::new(workspace_path);
-        let target_path = if relative_path.as_os_str().is_empty() || relative_path == Path::new(".")
-        {
-            workspace.to_path_buf()
+        let relative = path_str
+            .split('/')
+            .filter(|part| !part.is_empty() && *part != ".")
+            .collect::<Vec<_>>()
+            .join("/");
+        let target_path = if relative.is_empty() {
+            PathBuf::from(workspace_path)
         } else {
-            workspace.join(relative_path)
+            PathBuf::from(format!(
+                "{}/{relative}",
+                workspace_path.trim_end_matches('/')
+            ))
         };
-
-        // Ensure the resolved path is still within workspace
-        // This is an additional safety check
-        // Note: For VM paths (like /workspace), we can't canonicalize on the host,
-        // so we use string-based validation instead
-        let workspace_str = workspace.to_string_lossy();
-        let target_str = target_path.to_string_lossy();
-
-        // Ensure proper boundary checking by comparing with trailing slash
-        // This prevents "/workspace-evil" from passing when workspace is "/workspace"
-        let workspace_with_slash = if workspace_str.ends_with('/') {
-            workspace_str.to_string()
-        } else {
-            format!("{workspace_str}/")
-        };
-
-        // Check if target is within workspace (or is exactly the workspace)
-        if target_path != workspace && !target_str.starts_with(&workspace_with_slash) {
-            return Err(VmError::Internal(format!(
-                "Path escapes workspace boundary: {} -> {} (workspace: {})",
-                relative_path.display(),
-                target_path.display(),
-                workspace_str
-            )));
-        }
 
         Ok(target_path)
     }
+}
+
+fn valid_guest_absolute(path: &str) -> bool {
+    path.starts_with('/')
+        && !path.contains(['\\', '\0'])
+        && !path.split('/').any(|part| part == ".." || part == ".")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn guest_paths_do_not_accept_host_windows_paths() {
+        for path in [r"C:\workspace", r"..\secret", r"\server\share"] {
+            assert!(
+                SecurityValidator::validate_relative_path(Path::new(path), "/workspace").is_err()
+            );
+        }
+        assert_eq!(
+            SecurityValidator::validate_relative_path(Path::new("./src//file"), "/workspace/")
+                .unwrap()
+                .to_str(),
+            Some("/workspace/src/file")
+        );
+        assert!(SecurityValidator::validate_managed_checkout_path(
+            Path::new("/home/dev/.local/share/vm/package-checkouts/a/source"),
+            Path::new("/home/dev/../dev")
+        )
+        .is_err());
+    }
 
     #[test]
     fn test_validate_relative_path_normal() {

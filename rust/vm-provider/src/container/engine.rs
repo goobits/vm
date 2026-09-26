@@ -388,11 +388,22 @@ mod tests {
 
     #[test]
     fn compose_failure_includes_recent_output() {
+        #[cfg(not(windows))]
         let invocation = ComposeInvocation {
             program: "/bin/sh".into(),
             args: vec![
                 "-c".into(),
                 "printf 'specific compose failure\\n'; exit 9".into(),
+            ],
+        };
+
+        #[cfg(windows)]
+        let invocation = ComposeInvocation {
+            program: "cmd.exe".into(),
+            args: vec![
+                "/D".into(),
+                "/C".into(),
+                "echo specific compose failure & exit /b 9".into(),
             ],
         };
 

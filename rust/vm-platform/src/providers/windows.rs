@@ -233,7 +233,7 @@ impl PlatformProvider for WindowsPlatform {
 pub struct WindowsProcessProvider;
 
 impl ProcessProvider for WindowsProcessProvider {
-    fn prepare_command(&self, cmd: &mut Command) -> Result<()> {
+    fn prepare_command(&self, _cmd: &mut Command) -> Result<()> {
         // Set Windows-specific environment variables if needed
         // For now, no special preparation is required
         Ok(())

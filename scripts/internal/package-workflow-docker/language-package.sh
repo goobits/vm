@@ -115,6 +115,7 @@ JSON
     --volume "${compose_project}_source-mirrors:/data/sources" \
     --volume "$root:/consumer-fixture:ro" \
     --entrypoint /bin/sh "$server_image" -ec '
+      git config --global --add safe.directory /consumer-fixture/.git
       git clone --bare /consumer-fixture /data/sources/acceptance-review-consumer.git
       chown -R 10001:10001 /data/sources/acceptance-review-consumer.git
     '

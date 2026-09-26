@@ -376,9 +376,12 @@ mod tests {
         assert!(!StateManager::is_dangerous_mount_source(Path::new(
             "/tmp/test"
         )));
-        assert!(!StateManager::is_dangerous_mount_source(Path::new(
-            "/var/tmp"
-        )));
+        assert_eq!(
+            StateManager::is_dangerous_mount_source(Path::new("/var/tmp")),
+            cfg!(windows)
+        );
+        let temp = tempfile::tempdir().unwrap();
+        assert!(!StateManager::is_dangerous_mount_source(temp.path()));
 
         // Platform-specific safe paths
         #[cfg(target_os = "macos")]

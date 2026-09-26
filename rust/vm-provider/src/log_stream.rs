@@ -110,7 +110,9 @@ pub(crate) fn stream_log_command(
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_record, stream_log_command};
+    use super::decode_record;
+    #[cfg(unix)]
+    use super::stream_log_command;
 
     #[test]
     fn timestamp_is_separate_from_unmodified_application_bytes() {

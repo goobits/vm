@@ -156,7 +156,9 @@ assert actual == expected, (actual,expected)
     --volume "$fixture_root:/tool-fixture:ro" \
     --volume "$language_root:/language-fixture:ro" \
     --entrypoint /bin/sh "$server_image" -ec \
-    'git clone --bare /tool-fixture /data/sources/acceptance-skills.git &&
+    'git config --global --add safe.directory /tool-fixture/.git &&
+     git config --global --add safe.directory /language-fixture/.git &&
+     git clone --bare /tool-fixture /data/sources/acceptance-skills.git &&
      git clone --bare /language-fixture /data/sources/acceptance-language.git &&
      chown -R 10001:10001 /data/sources/acceptance-skills.git /data/sources/acceptance-language.git'
   run_vm tools register vm-acceptance-skills --kind collection \

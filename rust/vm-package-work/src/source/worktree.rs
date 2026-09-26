@@ -59,7 +59,21 @@ impl SourceManager {
             use std::os::unix::fs::PermissionsExt;
             tokio::fs::set_permissions(&temporary, std::fs::Permissions::from_mode(0o444)).await?;
         }
+        #[cfg(not(unix))]
+        {
+            let mut permissions = tokio::fs::metadata(&temporary).await?.permissions();
+            permissions.set_readonly(true);
+            tokio::fs::set_permissions(&temporary, permissions).await?;
+        }
         if let Err(error) = tokio::fs::rename(&temporary, &destination).await {
+            // Windows refuses to remove a readonly file. Only this unpublished
+            // temporary copy may be made writable again for cleanup.
+            #[cfg(windows)]
+            {
+                let mut permissions = tokio::fs::metadata(&temporary).await?.permissions();
+                permissions.set_readonly(false);
+                tokio::fs::set_permissions(&temporary, permissions).await?;
+            }
             cleanup_file(&temporary, "cleanup_uncommitted_release_source").await;
             if !tokio::fs::try_exists(&destination).await? {
                 return Err(error.into());
