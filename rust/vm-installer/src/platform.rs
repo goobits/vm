@@ -165,6 +165,7 @@ mod tests {
         home: Option<String>,
         shell: Option<String>,
         path: Option<String>,
+        profile: Option<String>,
     }
 
     impl EnvGuard {
@@ -176,6 +177,7 @@ mod tests {
                 home: env::var("HOME").ok(),
                 shell: env::var("SHELL").ok(),
                 path: env::var("PATH").ok(),
+                profile: env::var("PROFILE").ok(),
             }
         }
     }
@@ -189,6 +191,10 @@ mod tests {
             match &self.shell {
                 Some(shell) => env::set_var("SHELL", shell),
                 None => env::remove_var("SHELL"),
+            }
+            match &self.profile {
+                Some(profile) => env::set_var("PROFILE", profile),
+                None => env::remove_var("PROFILE"),
             }
             match &self.path {
                 Some(path) => env::set_var("PATH", path),
@@ -218,6 +224,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
     fn test_get_shell_profile_detection() {
         let _guard = EnvGuard::new();
 
@@ -254,6 +261,16 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
+    fn powershell_profile_uses_explicit_profile_path() {
+        let _guard = EnvGuard::new();
+        let directory = tempdir().unwrap();
+        let profile = directory.path().join("Microsoft.PowerShell_profile.ps1");
+        env::set_var("PROFILE", &profile);
+        assert_eq!(get_shell_profile().unwrap(), Some(profile));
+    }
+
+    #[test]
     fn test_path_modification_strings() {
         let temp_dir = tempdir().expect("Failed to create temp directory");
         let bin_dir = temp_dir.path().join("bin");
@@ -266,7 +283,12 @@ mod tests {
         let content = std::fs::read_to_string(&bash_profile).expect("Failed to read profile");
 
         assert!(content.contains("# Added by VM tool installer"));
-        assert!(content.contains(&format!("export PATH=\"{}:$PATH\"", bin_dir.display())));
+        let expected = if cfg!(windows) {
+            format!("$env:Path = \"{};$env:Path\"", bin_dir.display())
+        } else {
+            format!("export PATH=\"{}:$PATH\"", bin_dir.display())
+        };
+        assert!(content.contains(&expected));
 
         // Test fish format
         let fish_profile = temp_dir.path().join("config.fish");
@@ -288,22 +310,26 @@ mod tests {
 
         // Test PATH checking with directory in PATH
         let current_path = env::var("PATH").unwrap_or_default();
-        let test_path = format!("{}:{}", bin_dir.display(), current_path);
+        let test_path = env::join_paths(
+            std::iter::once(bin_dir.clone()).chain(env::split_paths(&current_path)),
+        )
+        .unwrap();
         env::set_var("PATH", &test_path);
 
         // Should detect that path is already in PATH
         let path_var = env::var("PATH").unwrap_or_default();
-        let is_in_path = path_var.split(':').any(|p| Path::new(p) == bin_dir);
+        let is_in_path = env::split_paths(&path_var).any(|p| p == bin_dir);
         assert!(is_in_path);
 
         // Test PATH checking with directory NOT in PATH
         env::set_var("PATH", &current_path);
         let path_var = env::var("PATH").unwrap_or_default();
-        let is_in_path = path_var.split(':').any(|p| Path::new(p) == bin_dir);
+        let is_in_path = env::split_paths(&path_var).any(|p| p == bin_dir);
         assert!(!is_in_path);
     }
 
     #[test]
+    #[cfg(not(windows))]
     fn test_shell_profile_path_validation() {
         let _guard = EnvGuard::new();
         let temp_dir = tempdir().expect("Failed to create temp directory");

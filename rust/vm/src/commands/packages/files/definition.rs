@@ -4,7 +4,7 @@ use vm_packages::{ApplianceConfig, COMPOSE_YAML, GATEWAY_CONFIG};
 
 use crate::error::{VmError, VmResult};
 
-use super::{write_private, ApplianceFiles};
+use super::{write_container_secret, write_private, ApplianceFiles};
 
 const COMPOSE_FILE: &str = "compose.yaml";
 const GATEWAY_FILE: &str = "Caddyfile";
@@ -33,15 +33,18 @@ impl ApplianceFiles {
         write_private(&self.environment_path(), config.environment().as_bytes())?;
         for path in self.runtime_credential_paths() {
             if !path.exists() {
-                write_private(
+                write_container_secret(
                     &path,
                     vm_core::secrets::generate_random_password(48).as_bytes(),
                 )?;
             }
+            vm_core::file_system::set_permissions_mode(&path, 0o444).map_err(VmError::from)?;
         }
         if !self.git_token_path().exists() {
-            write_private(&self.git_token_path(), b"")?;
+            write_container_secret(&self.git_token_path(), b"")?;
         }
+        vm_core::file_system::set_permissions_mode(&self.git_token_path(), 0o444)
+            .map_err(VmError::from)?;
         Ok(())
     }
 
@@ -63,6 +66,40 @@ impl ApplianceFiles {
 mod tests {
     use super::ApplianceFiles;
     use vm_packages::ApplianceConfig;
+
+    #[cfg(unix)]
+    #[test]
+    fn compose_secrets_are_readable_only_through_private_host_directory_or_granted_mounts() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempfile::tempdir().unwrap();
+        let files = ApplianceFiles::at(directory.path().join("packages"));
+        let config = ApplianceConfig::new("127.0.0.1", 3080, "registry:1", "jobs:1").unwrap();
+        files.materialize(&config).unwrap();
+        let token = files.read_token().unwrap();
+        std::fs::set_permissions(
+            files.read_token_path(),
+            std::fs::Permissions::from_mode(0o600),
+        )
+        .unwrap();
+        files.materialize(&config).unwrap();
+        files.set_git_token("rotated-token").unwrap();
+        let mode =
+            |path: &std::path::Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(files.root()), 0o700);
+        assert_eq!(mode(&files.environment_path()), 0o600);
+        for path in files
+            .runtime_credential_paths()
+            .into_iter()
+            .chain([files.git_token_path()])
+        {
+            assert_eq!(mode(&path), 0o444);
+        }
+        assert_eq!(files.read_token().unwrap(), token);
+        assert_eq!(
+            std::fs::read_to_string(files.git_token_path()).unwrap(),
+            "rotated-token"
+        );
+    }
 
     #[test]
     fn materializes_controller_files_without_registry_data() {

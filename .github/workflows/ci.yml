@@ -45,7 +45,7 @@ jobs:
 
       - name: Run unit tests
         working-directory: rust
-        run: cargo test --workspace --lib -- --test-threads=10
+        run: cargo test --workspace --lib --no-fail-fast -- --test-threads=10
 
       - name: Run CLI unit tests
         working-directory: rust
@@ -53,7 +53,7 @@ jobs:
 
       - name: Run integration tests
         working-directory: rust
-        run: cargo test --workspace --test '*' --features integration,vm-package-server/standalone-binary -- --test-threads=2
+        run: cargo test --workspace --test '*' --features integration,vm-package-server/standalone-binary --no-fail-fast -- --test-threads=2
 
       - name: Run shell regressions
         if: matrix.os == 'ubuntu-latest'
