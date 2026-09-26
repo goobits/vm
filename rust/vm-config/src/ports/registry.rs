@@ -392,11 +392,10 @@ mod tests {
 
     #[test]
     fn test_conflict_detection() {
-        let temp_file = tempfile::NamedTempFile::new()
-            .expect("Failed to create temporary file for conflict detection test");
+        let directory = tempdir().unwrap();
         let mut registry = PortRegistry {
             entries: HashMap::new(),
-            registry_path: temp_file.path().to_path_buf(),
+            registry_path: directory.path().join("ports.json"),
         };
 
         // Add a project
@@ -426,11 +425,10 @@ mod tests {
 
     #[test]
     fn test_suggest_next_range() {
-        let temp_file = tempfile::NamedTempFile::new()
-            .expect("Failed to create temporary file for suggestion test");
+        let directory = tempdir().unwrap();
         let mut registry = PortRegistry {
             entries: HashMap::new(),
-            registry_path: temp_file.path().to_path_buf(),
+            registry_path: directory.path().join("ports.json"),
         };
 
         // Register a range
@@ -529,10 +527,10 @@ mod tests {
 
     #[test]
     fn replacement_reuses_a_reserved_range_after_a_config_write_retry() {
-        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        let directory = tempdir().unwrap();
         let mut registry = PortRegistry {
             entries: HashMap::new(),
-            registry_path: temp_file.path().to_path_buf(),
+            registry_path: directory.path().join("ports.json"),
         };
         let previous = PortRange::new(3000, 3009).unwrap();
         registry.register("project", &previous, "/project").unwrap();

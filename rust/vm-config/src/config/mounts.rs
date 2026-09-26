@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use vm_core::error::{Result, VmError};
 
 /// Access granted to a guest for a host directory mount.
@@ -103,13 +103,12 @@ pub fn resolve_mount_source(source: &Path, project_dir: &Path) -> Result<PathBuf
 /// Validate a normalized absolute guest mount target.
 pub fn validate_mount_target(target: &Path) -> Result<()> {
     let rendered = target.to_string_lossy();
-    if !target.is_absolute()
-        || target == Path::new("/")
-        || rendered.ends_with('/')
-        || rendered.contains("//")
-        || target
-            .components()
-            .any(|component| matches!(component, Component::CurDir | Component::ParentDir))
+    // Targets are Unix guest paths, even when the controller runs on Windows.
+    if !rendered.starts_with('/')
+        || rendered.contains(['\\', '\0'])
+        || rendered[1..]
+            .split('/')
+            .any(|component| matches!(component, "" | "." | ".."))
     {
         return Err(VmError::Config(format!(
             "Mount target '{}' must be a normalized absolute path below /",
@@ -120,7 +119,7 @@ pub fn validate_mount_target(target: &Path) -> Result<()> {
     for reserved in [
         "/bin", "/boot", "/dev", "/etc", "/proc", "/root", "/sbin", "/sys", "/usr",
     ] {
-        if target == Path::new(reserved) || target.starts_with(reserved) {
+        if rendered == reserved || rendered.starts_with(&format!("{reserved}/")) {
             return Err(VmError::Config(format!(
                 "Mount target '{}' cannot replace a guest system filesystem",
                 target.display()
@@ -195,5 +194,20 @@ mod tests {
         assert!(validate_mount_target(Path::new("/workspace")).is_ok());
         assert!(validate_mount_target(Path::new("/proc/keys")).is_err());
         assert!(validate_mount_target(Path::new("../relative")).is_err());
+        for invalid in [
+            "/",
+            "/packages/",
+            "/packages//auth",
+            "/packages/./auth",
+            "/packages/../auth",
+            "C:/packages",
+            "/packages\\auth",
+        ] {
+            assert!(
+                validate_mount_target(Path::new(invalid)).is_err(),
+                "{invalid}"
+            );
+        }
+        assert!(validate_mount_target(Path::new("/usr-local")).is_ok());
     }
 }
