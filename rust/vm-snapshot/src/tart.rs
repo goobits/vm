@@ -125,6 +125,7 @@ pub async fn create(
     source_environment: &str,
     project_dir: &Path,
     home: Option<&Path>,
+    runtime_fingerprint: &str,
 ) -> Result<()> {
     if quiesce {
         return Err(VmError::validation(
@@ -202,11 +203,13 @@ pub async fn create(
         volumes: vec![],
         native_vm_file: Some(NATIVE_FILE.to_string()),
         native_image_digest: Some(format!("sha256:{}", file_digest(&archive)?)),
+        native_runtime_fingerprint: Some(runtime_fingerprint.to_string()),
         excluded_mounts,
         compose_file: String::new(),
         vm_config_file: String::new(),
         total_size_bytes: directory_size(staging.path())?,
     };
+    metadata.native_runtime_fingerprint()?;
     metadata.save(staging.path().join("metadata.json"))?;
     manager.install_staged_snapshot(staging, scope, name, false)
 }
@@ -217,7 +220,7 @@ pub async fn restore(
     target_environment: &str,
     home: Option<&Path>,
     owner: &Path,
-) -> Result<()> {
+) -> Result<String> {
     let manager = SnapshotManager::new()?;
     let snapshot_dir = manager.get_snapshot_dir(
         SnapshotScope::OwnedProject {
@@ -263,7 +266,8 @@ pub async fn restore(
         native_file,
         "native VM archive",
     )?;
-    runtime.restore_archive(&archive, target_environment)
+    runtime.restore_archive(&archive, target_environment)?;
+    Ok(metadata.native_runtime_fingerprint()?.to_string())
 }
 
 #[cfg(all(test, unix))]

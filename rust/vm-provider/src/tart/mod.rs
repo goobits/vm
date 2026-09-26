@@ -11,7 +11,8 @@ pub use storage::project_home as tart_project_home;
 #[cfg(feature = "tart")]
 pub use storage::{
     refresh_runtime_identity as refresh_tart_runtime_identity,
-    remove_storage as remove_tart_storage, storage_inventory as tart_storage_inventory,
+    remove_storage as remove_tart_storage, snapshot_fingerprint as tart_snapshot_fingerprint,
+    storage_inventory as tart_storage_inventory,
     validate_restore_target as validate_tart_restore_target, TartStorageEntry,
 };
 

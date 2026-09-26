@@ -247,6 +247,7 @@ mod tests {
             }],
             native_vm_file: None,
             native_image_digest: None,
+            native_runtime_fingerprint: None,
             excluded_mounts: vec![],
             compose_file: String::new(),
             vm_config_file: String::new(),

@@ -44,6 +44,12 @@ local VM through Tart's native `.tvm` export. Tart host shares, including the
 workspace, are excluded; stop the Tart environment before capture or restore.
 Tart restore imports a staged VM, preserves the original until replacement is
 installed, and leaves it named in the error if automatic recovery fails.
+Native snapshots retain the captured runtime's configuration fingerprint. Restoring
+one does not certify a newer project configuration: start reports drift when the
+restored runtime and selected configuration differ. Native archives require this
+fingerprint for import and restore.
+Container capture removes its temporary image tag after saving the archive,
+including on capture failure; cleanup errors identify the exact tag to remove.
 
 `<fleet-options>` means:
 

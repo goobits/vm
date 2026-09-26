@@ -249,6 +249,7 @@ pub async fn handle_create(
         volumes,
         native_vm_file: None,
         native_image_digest: None,
+        native_runtime_fingerprint: None,
         excluded_mounts: capture_plan.excluded_mounts,
         compose_file: compose_file.to_string(),
         vm_config_file: vm_config_file.to_string(),
@@ -382,6 +383,9 @@ fi
 if [ "$1" = save ]; then
     printf 'captured-rootfs' > "$4"
     exit 0
+fi
+if [ "$1" = image ] && [ "$2" = rm ]; then
+    case "$3" in vm-snapshot/owned/dev:clean-*) exit 0 ;; esac
 fi
 exit 1
 "#;

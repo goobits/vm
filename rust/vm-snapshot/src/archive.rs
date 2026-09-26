@@ -320,6 +320,7 @@ pub(crate) fn validate_snapshot_files(
     metadata: &SnapshotMetadata,
 ) -> Result<()> {
     if let Some(file) = &metadata.native_vm_file {
+        metadata.native_runtime_fingerprint()?;
         let native = snapshot_file_path(&snapshot_dir.join("native"), file, "native VM archive")?;
         if !native.is_file() || std::fs::metadata(&native)?.len() == 0 {
             return Err(VmError::validation(
@@ -483,18 +484,27 @@ mod tests {
         let archive = directory.path().join("native/vm.tvm");
         std::fs::write(&archive, b"native-image").unwrap();
         let digest = format!("sha256:{}", super::file_digest(&archive).unwrap());
-        let metadata = serde_json::from_value(serde_json::json!({
+        let mut metadata: crate::SnapshotMetadata = serde_json::from_value(serde_json::json!({
             "name": "stable", "created_at": chrono::Utc::now(),
             "description": null, "project_name": "demo", "source_environment": "demo-dev",
             "provider": "tart", "architecture": "arm64", "consistency": "stopped",
             "project_dir": "/project", "git_commit": null, "git_dirty": false,
             "git_branch": null, "services": [], "volumes": [],
             "native_vm_file": "vm.tvm", "native_image_digest": digest,
+            "native_runtime_fingerprint": "a".repeat(64),
             "excluded_mounts": [], "compose_file": "", "vm_config_file": "",
             "total_size_bytes": 12
         }))
         .unwrap();
         validate_snapshot_files(directory.path(), &metadata).unwrap();
+        for fingerprint in [None, Some("invalid".into())] {
+            metadata.native_runtime_fingerprint = fingerprint;
+            assert!(validate_snapshot_files(directory.path(), &metadata)
+                .unwrap_err()
+                .to_string()
+                .contains("fingerprint"));
+        }
+        metadata.native_runtime_fingerprint = Some("a".repeat(64));
         std::fs::write(&archive, b"changed-image").unwrap();
         assert!(validate_snapshot_files(directory.path(), &metadata)
             .unwrap_err()

@@ -109,3 +109,24 @@ package-volume identities. Test-owned Docker resources, the disposable Podman
 machine/connections, Tart VMs and isolated image cache, and temporary logs,
 archives, helpers, and baseline files were removed. Shared build caches and the
 built release binary remain available; installed runtimes are retained.
+
+## Snapshot review follow-up — 2026-09-26
+
+Review after `73d11cb0` found two issues beyond the scenarios exercised above.
+Native snapshots now store the captured runtime receipt fingerprint and restore
+that fingerprint with the disk identity. Restoring configuration A over a runtime
+recreated with B therefore reports drift against B. Missing or invalid capture
+fingerprints are rejected before native import or restore; no fingerprint is
+inferred from the restore target. The Tart runner includes this A/B regression.
+
+Container capture now removes its exact temporary image tag after saving the
+archive and on failed capture, including partial commits. Cleanup failure keeps
+the original failure context and reports the exact removal command. It never
+forces deletion or removes unrelated image tags.
+
+Local verification covers the snapshot, provider, and CLI suites (612 passing
+tests, 20 ignored), all-targets Clippy, formatting, and the Tart runner's shell
+syntax. Tests cover capture and cleanup failures, repeated unique captures,
+missing native fingerprints, replaced source disks, and A/B receipt restoration.
+These follow-up fixes were tested without live runtimes; the host acceptance
+results above describe the preceding revision.

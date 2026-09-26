@@ -45,6 +45,9 @@ pub struct SnapshotMetadata {
     /// Digest of the provider-native VM archive, verified before restore/import.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_image_digest: Option<String>,
+    /// Configuration identity of the captured native runtime, not the restore target.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_runtime_fingerprint: Option<String>,
     /// Mounts omitted from the snapshot after inspecting normalized Compose configuration
     pub excluded_mounts: Vec<ExcludedMount>,
     /// Relative path to compose file
@@ -90,6 +93,18 @@ pub struct ExcludedMount {
 }
 
 impl SnapshotMetadata {
+    pub fn native_runtime_fingerprint(&self) -> Result<&str> {
+        self.native_runtime_fingerprint
+            .as_deref()
+            .filter(|value| value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            .ok_or_else(|| {
+                VmError::validation(
+                    "Native snapshot has no valid captured runtime fingerprint",
+                    None::<String>,
+                )
+            })
+    }
+
     /// Load metadata from JSON file
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
@@ -153,6 +168,7 @@ mod tests {
             }],
             native_vm_file: None,
             native_image_digest: None,
+            native_runtime_fingerprint: None,
             excluded_mounts: vec![ExcludedMount {
                 service: "web".to_string(),
                 kind: "bind".to_string(),

@@ -39,8 +39,8 @@ pub use tart::{
 };
 #[cfg(feature = "tart")]
 pub use tart::{
-    refresh_tart_runtime_identity, remove_tart_storage, tart_storage_inventory,
-    validate_tart_restore_target, TartStorageEntry,
+    refresh_tart_runtime_identity, remove_tart_storage, tart_snapshot_fingerprint,
+    tart_storage_inventory, validate_tart_restore_target, TartStorageEntry,
 };
 pub use vm_core::error::{Result as VmResult, VmError};
 

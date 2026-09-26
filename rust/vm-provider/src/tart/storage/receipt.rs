@@ -79,11 +79,51 @@ pub fn validate_restore_target(instance: &str, config: &VmConfig) -> Result<()> 
     Ok(())
 }
 
+/// Read the identity of the actual captured runtime, even if project settings changed.
+#[cfg(feature = "tart")]
+pub fn snapshot_fingerprint(
+    instance: &str,
+    home: Option<&Path>,
+    config: &VmConfig,
+) -> Result<String> {
+    validate_instance(instance)?;
+    let state = read_state()?;
+    let home = home
+        .map(Path::to_path_buf)
+        .map(Ok)
+        .unwrap_or_else(default_home)?;
+    captured_fingerprint(&state, instance, &home, config)
+}
+
+#[cfg(feature = "tart")]
+pub(super) fn captured_fingerprint(
+    state: &StorageState,
+    instance: &str,
+    home: &Path,
+    config: &VmConfig,
+) -> Result<String> {
+    require_runtime_owner(state, instance, config)?;
+    let receipt = state.runtime_receipts.get(instance).ok_or_else(|| {
+        VmError::validation(
+            "Tart snapshot source has no runtime receipt",
+            None::<String>,
+        )
+    })?;
+    if disk_identity(&home.join("vms").join(instance))? != (receipt.device, receipt.inode) {
+        return Err(VmError::validation(
+            "Tart snapshot source disk identity changed since configuration",
+            None::<String>,
+        ));
+    }
+    Ok(receipt.fingerprint.clone())
+}
+
 #[cfg(feature = "tart")]
 pub fn refresh_runtime_identity(
     instance: &str,
     home: Option<&Path>,
     config: &VmConfig,
+    captured_fingerprint: &str,
 ) -> Result<()> {
     validate_instance(instance)?;
     let home = home
@@ -95,7 +135,7 @@ pub fn refresh_runtime_identity(
     let lock = lock(&directory)?;
     let path = directory.join(STATE_FILE);
     let mut state = read_state_at(&path)?;
-    refresh_receipt_identity(&mut state, instance, config, identity)?;
+    refresh_receipt_identity(&mut state, instance, config, identity, captured_fingerprint)?;
     let mut content = serde_json::to_vec_pretty(&state)?;
     content.push(b'\n');
     vm_core::file_system::atomic_write(&path, &content)?;
@@ -110,12 +150,14 @@ pub(super) fn refresh_receipt_identity(
     instance: &str,
     config: &VmConfig,
     identity: (u64, u64),
+    captured_fingerprint: &str,
 ) -> Result<()> {
     require_runtime_owner(state, instance, config)?;
     let receipt = state.runtime_receipts.get_mut(instance).ok_or_else(|| {
         VmError::validation("Tart restore target has no runtime receipt", None::<String>)
     })?;
     (receipt.device, receipt.inode) = identity;
+    receipt.fingerprint = captured_fingerprint.to_string();
     Ok(())
 }
 

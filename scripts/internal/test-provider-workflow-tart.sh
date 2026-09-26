@@ -131,6 +131,18 @@ for compression in gzip none; do
 done
 v snapshots restore clean --env dev --yes
 v snapshots list --env dev --json > "$root/snapshots.json"
+# Restoring A over a recreated B must restore A's configuration receipt too.
+v remove dev --delete-data --yes
+v config set environment.ACCEPTANCE_REV B
+v start dev
+v stop dev
+v snapshots restore clean --env dev --yes
+fail start dev
+grep -q 'Configuration drift' "$root/expected-failure.log"
+v config unset environment.ACCEPTANCE_REV
+v start dev
+v --quiet exec --env dev -- sh -c 'test "$(cat /home/admin/acceptance-marker)" = snapshot-data'
+v stop dev
 echo 'PASS Tart snapshot workflow'
 
 cp "$root/project/vm.yaml" "$root/other/vm.yaml"

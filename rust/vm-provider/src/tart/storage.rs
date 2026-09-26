@@ -19,7 +19,7 @@ pub use inventory::{remove_storage, storage_inventory, TartStorageEntry};
 #[cfg(feature = "tart")]
 pub(super) use receipt::{record_runtime_receipt, runtime_drift};
 #[cfg(feature = "tart")]
-pub use receipt::{refresh_runtime_identity, validate_restore_target};
+pub use receipt::{refresh_runtime_identity, snapshot_fingerprint, validate_restore_target};
 
 const STATE_DIRECTORY: &str = "tart";
 const STATE_FILE: &str = "instances.json";
@@ -355,6 +355,11 @@ mod tests {
             None
         );
         config.environment.insert("MODE".into(), "changed".into());
+        // Capture the runtime's recorded configuration, not newly edited project settings.
+        assert_eq!(
+            super::receipt::captured_fingerprint(&state, "demo-dev", &home, &config).unwrap(),
+            state.runtime_receipts["demo-dev"].fingerprint
+        );
         assert!(
             super::receipt::detect_runtime_drift(&state, "demo-dev", &home, &config)
                 .unwrap()
@@ -364,21 +369,41 @@ mod tests {
         std::fs::rename(&vm, home.join("vms/previous")).unwrap();
         std::fs::create_dir(&vm).unwrap();
         assert!(
+            super::receipt::captured_fingerprint(&state, "demo-dev", &home, &config)
+                .unwrap_err()
+                .to_string()
+                .contains("disk identity")
+        );
+        assert!(
             super::receipt::detect_runtime_drift(&state, "demo-dev", &home, &config)
                 .unwrap()
                 .unwrap()
                 .contains("disk identity")
         );
         let identity = super::receipt::disk_identity(&vm).unwrap();
-        super::receipt::refresh_receipt_identity(&mut state, "demo-dev", &config, identity)
-            .unwrap();
+        let captured = state.runtime_receipts["demo-dev"].fingerprint.clone();
+        super::receipt::refresh_receipt_identity(
+            &mut state, "demo-dev", &config, identity, &captured,
+        )
+        .unwrap();
         assert_eq!(
             super::receipt::detect_runtime_drift(&state, "demo-dev", &home, &config).unwrap(),
             None
         );
         config.environment.insert("MODE".into(), "changed".into());
-        super::receipt::refresh_receipt_identity(&mut state, "demo-dev", &config, identity)
-            .unwrap();
+        state
+            .runtime_receipts
+            .get_mut("demo-dev")
+            .unwrap()
+            .fingerprint = crate::runtime_fingerprint::runtime_fingerprint(&config).unwrap();
+        assert_eq!(
+            super::receipt::detect_runtime_drift(&state, "demo-dev", &home, &config).unwrap(),
+            None
+        );
+        super::receipt::refresh_receipt_identity(
+            &mut state, "demo-dev", &config, identity, &captured,
+        )
+        .unwrap();
         assert!(
             super::receipt::detect_runtime_drift(&state, "demo-dev", &home, &config)
                 .unwrap()
@@ -388,12 +413,16 @@ mod tests {
         let other = root.path().join("other.yaml");
         std::fs::write(&other, "project: demo").unwrap();
         config.source_path = Some(other);
-        assert!(
-            super::receipt::refresh_receipt_identity(&mut state, "demo-dev", &config, (0, 0))
-                .unwrap_err()
-                .to_string()
-                .contains("different project")
-        );
+        assert!(super::receipt::refresh_receipt_identity(
+            &mut state,
+            "demo-dev",
+            &config,
+            (0, 0),
+            &captured
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("different project"));
         assert_eq!(
             (
                 state.runtime_receipts["demo-dev"].device,

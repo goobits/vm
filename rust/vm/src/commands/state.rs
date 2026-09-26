@@ -105,6 +105,7 @@ pub(super) async fn handle(
             vm_progress!("Creating snapshot '{name}' for '{target}'...");
             if provider == "tart" {
                 let home = tart_home(&config.vm, &project)?;
+                let fingerprint = tart_snapshot_fingerprint(&target, home.as_deref(), &config.vm)?;
                 vm_snapshot::handle_tart_create(
                     &config.vm,
                     &name,
@@ -114,6 +115,7 @@ pub(super) async fn handle(
                     &target,
                     &project_dir,
                     home.as_deref(),
+                    &fingerprint,
                 )
                 .await?;
             } else {
@@ -198,10 +200,23 @@ pub(super) async fn handle(
                 let home = tart_home(&config.vm, &project)?;
                 #[cfg(feature = "tart")]
                 vm_provider::validate_tart_restore_target(&target, &config.vm)?;
-                vm_snapshot::handle_tart_restore(&name, &project, &target, home.as_deref(), &owner)
-                    .await?;
+                let fingerprint = vm_snapshot::handle_tart_restore(
+                    &name,
+                    &project,
+                    &target,
+                    home.as_deref(),
+                    &owner,
+                )
+                .await?;
                 #[cfg(feature = "tart")]
-                vm_provider::refresh_tart_runtime_identity(&target, home.as_deref(), &config.vm)?;
+                vm_provider::refresh_tart_runtime_identity(
+                    &target,
+                    home.as_deref(),
+                    &config.vm,
+                    &fingerprint,
+                )?;
+                #[cfg(not(feature = "tart"))]
+                let _ = fingerprint;
             } else {
                 vm_snapshot::handle_restore(
                     &config,
@@ -327,6 +342,23 @@ pub(super) async fn handle(
                 &format!("Imported snapshot '{name}'"),
             )
         }
+    }
+}
+
+fn tart_snapshot_fingerprint(
+    target: &str,
+    home: Option<&std::path::Path>,
+    config: &vm_config::config::VmConfig,
+) -> VmResult<String> {
+    #[cfg(feature = "tart")]
+    return vm_provider::tart_snapshot_fingerprint(target, home, config).map_err(Into::into);
+    #[cfg(not(feature = "tart"))]
+    {
+        let _ = (target, home, config);
+        Err(VmError::validation(
+            "Tart provider support is not enabled in this build",
+            None::<String>,
+        ))
     }
 }
 
