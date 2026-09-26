@@ -38,12 +38,12 @@ impl ApplianceFiles {
                     vm_core::secrets::generate_random_password(48).as_bytes(),
                 )?;
             }
-            vm_core::file_system::set_permissions_mode(&path, 0o444).map_err(VmError::from)?;
+            vm_core::file_system::set_permissions_mode(&path, 0o644).map_err(VmError::from)?;
         }
         if !self.git_token_path().exists() {
             write_container_secret(&self.git_token_path(), b"")?;
         }
-        vm_core::file_system::set_permissions_mode(&self.git_token_path(), 0o444)
+        vm_core::file_system::set_permissions_mode(&self.git_token_path(), 0o644)
             .map_err(VmError::from)?;
         Ok(())
     }
@@ -92,7 +92,7 @@ mod tests {
             .into_iter()
             .chain([files.git_token_path()])
         {
-            assert_eq!(mode(&path), 0o444);
+            assert_eq!(mode(&path), 0o644);
         }
         assert_eq!(files.read_token().unwrap(), token);
         assert_eq!(

@@ -83,5 +83,5 @@ fn write_private(path: &Path, content: &[u8]) -> VmResult<()> {
 // only its explicitly granted, read-only secret file and can use its own UID.
 fn write_container_secret(path: &Path, content: &[u8]) -> VmResult<()> {
     write_private(path, content)?;
-    vm_core::file_system::set_permissions_mode(path, 0o444).map_err(VmError::from)
+    vm_core::file_system::set_permissions_mode(path, 0o644).map_err(VmError::from)
 }
