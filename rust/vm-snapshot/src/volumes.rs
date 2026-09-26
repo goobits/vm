@@ -4,12 +4,31 @@ use futures_util::stream::{self, StreamExt};
 use vm_core::error::{Result, VmError};
 
 use crate::compose_plan::NamedVolume;
-use crate::docker::{
-    execute_docker, execute_docker_streaming, execute_docker_with_output,
-    remove_docker_volume_if_present,
-};
+use crate::docker::{execute_docker_streaming, execute_docker_with_output};
 use crate::metadata::VolumeSnapshot;
 use crate::optimal_concurrency;
+
+pub(crate) async fn verify_owned_volumes(executable: &str, volumes: &[NamedVolume]) -> Result<()> {
+    for volume in volumes {
+        let output =
+            execute_docker_with_output(executable, &["volume", "inspect", &volume.runtime_name])
+                .await?;
+        let inspected: serde_json::Value = serde_json::from_str(&output)
+            .map_err(|error| VmError::general(error, "Cannot inspect snapshot volume ownership"))?;
+        let labels = &inspected[0]["Labels"];
+        if labels["com.vm.managed"] != "true"
+            || labels["com.vm.instance"] != volume.instance
+            || labels["com.vm.config-path"] != volume.owner_config_path
+            || labels["com.vm.scope"] != "instance"
+        {
+            return Err(VmError::validation(
+                format!("Volume '{}' has a different owner", volume.runtime_name),
+                None::<String>,
+            ));
+        }
+    }
+    Ok(())
+}
 
 pub(crate) async fn backup_volumes(
     executable: &str,
@@ -21,19 +40,19 @@ pub(crate) async fn backup_volumes(
         let volumes_dir = volumes_dir.to_path_buf();
         async move {
             tracing::info!("  Backing up volume: {}", volume.name);
-            let archive_file = format!("{}.tar.zst", volume.name);
+            let archive_file = format!("{}.tar.gz", volume.name);
             let archive_path = volumes_dir.join(&archive_file);
             let run_args = [
                 "run",
                 "--rm",
                 "-v",
-                &format!("{}:/data", volume.runtime_name),
+                &format!("{}:/data:ro", volume.runtime_name),
                 "-v",
                 &format!("{}:/backup", volumes_dir.to_string_lossy()),
                 "alpine:latest",
                 "sh",
                 "-c",
-                &format!("tar -c -C /data . | zstd -3 -T0 > /backup/{archive_file}"),
+                &format!("tar -czf /backup/{archive_file} -C /data ."),
             ];
             execute_docker_with_output(executable, &run_args).await?;
             let size_bytes = tokio::fs::metadata(&archive_path)
@@ -63,7 +82,6 @@ pub(crate) async fn restore_volumes(
     executable: &str,
     volumes_dir: &Path,
     volumes: &[VolumeSnapshot],
-    force: bool,
 ) -> Result<()> {
     let restore_futures = volumes.iter().map(|volume| {
         let volume = volume.clone();
@@ -71,16 +89,9 @@ pub(crate) async fn restore_volumes(
         async move {
             tracing::info!("  Restoring volume: {}", volume.name);
             let full_volume_name = &volume.runtime_name;
-            if force {
-                remove_docker_volume_if_present(executable, full_volume_name).await?;
-            }
-            execute_docker(executable, &["volume", "create", full_volume_name]).await?;
-
-            let restore_command = if volume.archive_file.ends_with(".tar.zst") {
-                "zstd -d -c \"/backup/$1\" | tar -x -C /data"
-            } else {
-                "tar -xzf \"/backup/$1\" -C /data"
-            };
+            // Keep the existing, ownership-verified volume and its labels.
+            // Delete the captured state only after validating the archive.
+            let restore_command = "tar -tzf \"/backup/$1\" >/dev/null && find /data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -xzf \"/backup/$1\" -C /data";
             let run_args = [
                 "run",
                 "--rm",

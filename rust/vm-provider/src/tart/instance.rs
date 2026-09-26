@@ -70,10 +70,18 @@ impl<'a> TartInstanceManager<'a> {
             let name = entry.name;
             let status = entry.state;
 
+            let project = self
+                .command
+                .instance_config_path(&name)?
+                .filter(|path| path.is_file())
+                .map(|path| VmConfig::from_file(&path))
+                .transpose()?
+                .map(|config| extract_project_name(&config).to_string());
             let (created_at, uptime) = self.get_vm_metadata(&name);
             instances.push(create_tart_instance_info(
                 &name,
                 &status,
+                project.as_deref(),
                 created_at.as_deref(),
                 uptime.as_deref(),
             ));

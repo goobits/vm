@@ -195,3 +195,77 @@ fn tart_run_arguments_preserve_directory_paths_without_shell_parsing() {
         .any(|pair| pair == ["--dir", "/Users/me/project with spaces:tag=workspace"]));
     assert_eq!(args.last().map(String::as_str), Some("vm-mac"));
 }
+
+#[test]
+#[cfg(unix)]
+fn file_upload_attaches_stdin_and_preserves_binary_contents() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let executable = root.path().join("tart");
+    std::fs::write(
+        &executable,
+        "#!/bin/sh\nset -eu\ntest \"$1\" = exec\ntest \"$2\" = -i\nshift 3\n\"$@\" || exit 19\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let source = root.path().join("source bytes");
+    let destination = root.path().join("guest bytes");
+    let bytes = b"binary\0contents\xff\n";
+    std::fs::write(&source, bytes).unwrap();
+    provider(VmConfig::default())
+        .file_upload_command(
+            source.to_str().unwrap(),
+            "demo-peer",
+            destination.to_str().unwrap(),
+        )
+        .env("PATH", format!("{}:/usr/bin:/bin", root.path().display()))
+        .run()
+        .unwrap();
+    assert_eq!(std::fs::read(destination).unwrap(), bytes);
+    let missing_parent = root.path().join("missing/target");
+    let error = provider(VmConfig::default())
+        .file_upload_command(
+            source.to_str().unwrap(),
+            "demo-peer",
+            missing_parent.to_str().unwrap(),
+        )
+        .env("PATH", format!("{}:/usr/bin:/bin", root.path().display()))
+        .stderr_capture()
+        .run()
+        .unwrap_err();
+    assert!(error.to_string().contains("19"), "{error}");
+    assert!(!missing_parent.exists());
+}
+
+#[test]
+fn log_options_reject_services_and_return_only_requested_tail_bytes() {
+    use crate::CommandProvider;
+    let root = tempfile::tempdir().unwrap();
+    let config = VmConfig {
+        tart: Some(TartConfig {
+            storage_path: Some(root.path().to_string_lossy().into_owned()),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let provider = provider(config.clone());
+    let logs = root
+        .path()
+        .join("vms")
+        .join(provider.vm_name())
+        .join("app.log");
+    std::fs::create_dir_all(logs.parent().unwrap()).unwrap();
+    std::fs::write(&logs, b"old\nlast\xff\n").unwrap();
+    let error = provider
+        .logs_extended(None, false, 1, Some("cache"), &config)
+        .unwrap_err();
+    assert!(error.to_string().contains("do not support --service"));
+    let mut bytes = Vec::new();
+    provider
+        .logs_records(None, false, 1, None, &config, &mut |record| {
+            bytes.extend(record.bytes);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(bytes, b"last\xff\n");
+}

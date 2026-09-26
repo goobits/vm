@@ -11,10 +11,11 @@ use super::{appliance, files::ApplianceFiles, state::ApplianceState};
 
 // Bump when edge labels, environment, mounts, or lifecycle policy change
 // without requiring a new registry image.
-const PACKAGE_EDGE_POLICY_REVISION: &str = "3";
+const PACKAGE_EDGE_POLICY_REVISION: &str = "4";
 
 pub(super) fn configured_client_environment(
     config: &VmConfig,
+    environment: &str,
 ) -> VmResult<Option<(ClientEnvironment, PackageEdgeConfig)>> {
     let files = ApplianceFiles::discover()?;
     let Some(state) = files.read_state()? else {
@@ -46,10 +47,13 @@ pub(super) fn configured_client_environment(
         &state,
         files.read_token()?,
         &files.agent_signing_key()?,
-        consumer,
-        canonical_source.as_ref(),
-        provider,
-        workspace_path(config),
+        ClientContext {
+            consumer,
+            environment,
+            canonical_source: canonical_source.as_ref(),
+            provider,
+            workspace: workspace_path(config),
+        },
     )?;
     Ok(Some((client, edge)))
 }
@@ -123,15 +127,27 @@ fn workspace_path(config: &VmConfig) -> &str {
         .unwrap_or("/workspace")
 }
 
+struct ClientContext<'a> {
+    consumer: &'a str,
+    environment: &'a str,
+    canonical_source: Option<&'a CanonicalSource>,
+    provider: &'a str,
+    workspace: &'a str,
+}
+
 fn client_environment(
     state: &ApplianceState,
     read_token: String,
     agent_signing_key: &str,
-    consumer: &str,
-    canonical_source: Option<&CanonicalSource>,
-    provider: &str,
-    canonical_workspace: &str,
+    context: ClientContext<'_>,
 ) -> VmResult<(ClientEnvironment, PackageEdgeConfig)> {
+    let ClientContext {
+        consumer,
+        environment,
+        canonical_source,
+        provider,
+        workspace,
+    } = context;
     if state.registry_image.trim().is_empty() {
         return Err(VmError::validation(
             "Package appliance state predates worker-edge support",
@@ -140,7 +156,12 @@ fn client_environment(
     }
     let internal_gateway = gateway_for_provider(state, provider)?;
     let client_gateway = match provider {
-        "docker" | "podman" => format!("http://{consumer}-package-edge:3080"),
+        "docker" | "podman" => {
+            // Use the concrete edge container, including its declaration name.
+            // Project consumer identity is independent of network routing.
+            let instance = environment.strip_suffix("-dev").unwrap_or(environment);
+            format!("http://{instance}-package-edge:3080")
+        }
         "tart" => "http://127.0.0.1:3080".to_string(),
         _ => {
             return Err(VmError::validation(
@@ -177,7 +198,7 @@ fn client_environment(
     )
     .and_then(|client| client.with_oci_mirror(internal_gateway))
     .and_then(|client| client.with_agent_access(&edge.internal_gateway, agent_token, claims))
-    .and_then(|client| client.with_canonical_workspace(canonical_workspace))
+    .and_then(|client| client.with_canonical_workspace(workspace))
     .map_err(VmError::from)?;
     Ok((client, edge))
 }
@@ -241,20 +262,26 @@ mod tests {
             &state,
             "read-token".into(),
             signing_key,
-            "project-a",
-            None,
-            "docker",
-            "/workspace",
+            ClientContext {
+                consumer: "project-a",
+                environment: "project-a-dev",
+                canonical_source: None,
+                provider: "docker",
+                workspace: "/workspace",
+            },
         )
         .unwrap();
         let (tart, tart_edge) = client_environment(
             &state,
             "read-token".into(),
             signing_key,
-            "project-a",
-            None,
-            "tart",
-            "/workspace",
+            ClientContext {
+                consumer: "project-a",
+                environment: "project-a-dev",
+                canonical_source: None,
+                provider: "tart",
+                workspace: "/workspace",
+            },
         )
         .unwrap();
         let docker_variables = docker
@@ -265,7 +292,8 @@ mod tests {
             .variables()
             .into_iter()
             .collect::<std::collections::BTreeMap<_, _>>();
-        assert!(docker_variables["NPM_CONFIG_REGISTRY"].contains("project-a-package-edge"));
+        assert!(docker_variables["NPM_CONFIG_REGISTRY"]
+            .starts_with("http://project-a-package-edge:3080/"));
         assert!(tart_variables["NPM_CONFIG_REGISTRY"].contains("127.0.0.1"));
         assert!(docker_variables["VM_OCI_MIRROR"].ends_with(":3080"));
         assert_eq!(docker_variables["VM_PACKAGES_CONSUMER"], "project-a");
@@ -280,19 +308,62 @@ mod tests {
     }
 
     #[test]
+    fn shared_network_edges_use_distinct_environment_names_and_project_authority() {
+        let signing_key = "agent-signing-key-012345678901234567890123456789";
+        for provider in ["docker", "podman"] {
+            let mut gateways = std::collections::BTreeSet::new();
+            for environment in ["project-a-dev-dev", "project-a-test-dev"] {
+                let (client, edge) = client_environment(
+                    &state(),
+                    "read-token".into(),
+                    signing_key,
+                    ClientContext {
+                        consumer: "project-a",
+                        environment,
+                        canonical_source: None,
+                        provider,
+                        workspace: "/workspace",
+                    },
+                )
+                .unwrap();
+                let instance = environment.strip_suffix("-dev").unwrap();
+                assert_eq!(
+                    edge.client_gateway,
+                    format!("http://{instance}-package-edge:3080")
+                );
+                assert!(gateways.insert(edge.client_gateway));
+                let variables = client
+                    .variables()
+                    .into_iter()
+                    .collect::<std::collections::BTreeMap<_, _>>();
+                assert_eq!(variables["VM_PACKAGES_CONSUMER"], "project-a");
+                let claims = vm_packages::verify_agent_capability(
+                    signing_key,
+                    &variables["VM_PACKAGES_AGENT_TOKEN"],
+                )
+                .unwrap();
+                assert_eq!(claims.consumer, "project-a");
+            }
+        }
+    }
+
+    #[test]
     fn canonical_repository_issues_a_v2_workspace_capability() {
         let signing_key = "agent-signing-key-012345678901234567890123456789";
         let (client, _) = client_environment(
             &state(),
             "read-token".into(),
             signing_key,
-            "project-a",
-            Some(&CanonicalSource {
-                repository: "https://github.com/team/project.git".into(),
-                tool: None,
-            }),
-            "docker",
-            "/workspace",
+            ClientContext {
+                consumer: "project-a",
+                environment: "project-a-dev",
+                canonical_source: Some(&CanonicalSource {
+                    repository: "https://github.com/team/project.git".into(),
+                    tool: None,
+                }),
+                provider: "docker",
+                workspace: "/workspace",
+            },
         )
         .unwrap();
         let variables = client

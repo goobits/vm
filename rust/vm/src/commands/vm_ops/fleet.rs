@@ -196,7 +196,6 @@ pub fn handle_fleet_status(targets: &FleetArgs, project: &FleetProject) -> VmRes
 
 #[derive(Debug, Clone, Copy)]
 pub enum FleetAction {
-    Start,
     Stop,
     Restart,
 }
@@ -205,7 +204,6 @@ pub async fn handle_fleet_lifecycle(
     targets: &FleetArgs,
     project: &FleetProject,
     action: FleetAction,
-    no_wait: bool,
 ) -> VmResult<()> {
     let span = info_span!("vm_operation", operation = "fleet_lifecycle");
     let _enter = span.enter();
@@ -213,13 +211,27 @@ pub async fn handle_fleet_lifecycle(
     let instances = project_targets(targets, InstanceStateFilter::Any, project)?;
 
     let mut progress = FleetProgress::default();
-    let context = ProviderContext::default();
+    let global = vm_config::GlobalConfig::load()?;
+    let context = ProviderContext::default().with_config(global.clone());
 
     for (_provider_name, provider_instances) in group_by_provider(instances) {
         for instance in provider_instances {
             let outcome = async {
-                let provider = configured_provider_for_instance(project, &instance)?;
-                apply_lifecycle(provider.as_ref(), &context, &instance.name, action, no_wait).await
+                let mut config = selected_config_for_instance(project, &instance);
+                crate::commands::packages::apply_client_environment(&mut config, &instance.name)?;
+                let provider = configured_provider(&config, &instance.provider)?;
+                apply_lifecycle(provider.as_ref(), &context, &instance.name, action).await?;
+                if matches!(action, FleetAction::Restart) {
+                    super::lifecycle::reconcile_started(
+                        provider.as_ref(),
+                        Some(&instance.name),
+                        &instance.name,
+                        &config,
+                        &global,
+                    )
+                    .await?;
+                }
+                Ok::<(), VmError>(())
             }
             .await;
             match outcome {
@@ -237,9 +249,8 @@ pub(super) async fn apply_lifecycle(
     context: &ProviderContext,
     environment: &str,
     action: FleetAction,
-    no_wait: bool,
 ) -> VmResult<()> {
-    if matches!(action, FleetAction::Start | FleetAction::Restart) {
+    if matches!(action, FleetAction::Restart) {
         if let Some(drift) = provider.runtime_drift(environment).map_err(VmError::from)? {
             return Err(VmError::validation(
                 format!("Configuration drift for '{environment}': {drift}"),
@@ -251,16 +262,11 @@ pub(super) async fn apply_lifecycle(
         .instance_state(Some(environment))
         .map_err(VmError::from)?;
     match (action, state) {
-        (FleetAction::Start, InstanceState::Running | InstanceState::Starting)
-        | (
+        (
             FleetAction::Stop,
             InstanceState::Stopped | InstanceState::Paused | InstanceState::Suspended,
         ) => {}
         (
-            FleetAction::Start,
-            InstanceState::Stopped | InstanceState::Paused | InstanceState::Suspended,
-        )
-        | (
             FleetAction::Restart,
             InstanceState::Stopped | InstanceState::Paused | InstanceState::Suspended,
         ) => {
@@ -285,7 +291,6 @@ pub(super) async fn apply_lifecycle(
     }
 
     let should_wait = match action {
-        FleetAction::Start => !no_wait,
         FleetAction::Restart => true,
         FleetAction::Stop => false,
     };
@@ -299,7 +304,8 @@ pub(in crate::commands) fn configured_provider_for_instance(
     project: &FleetProject,
     instance: &InstanceInfo,
 ) -> VmResult<Box<dyn Provider>> {
-    let selected = selected_config_for_instance(project, instance);
+    let mut selected = selected_config_for_instance(project, instance);
+    crate::commands::packages::apply_client_environment(&mut selected, &instance.name)?;
     configured_provider(&selected, &instance.provider)
 }
 

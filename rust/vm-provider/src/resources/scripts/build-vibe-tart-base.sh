@@ -123,7 +123,7 @@ if [[ -L "$log_dir" ]]; then
 fi
 mkdir -p "$log_dir"
 chmod 700 "$log_dir"
-run_log=$(mktemp "$log_dir/build.XXXXXX.log")
+run_log=$(mktemp "$log_dir/build.log.XXXXXX")
 chmod 600 "$run_log"
 
 echo "[1/5] Creating staged Tart base '${BASE_NAME}' from '${BASE_IMAGE}'..."

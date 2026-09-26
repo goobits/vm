@@ -9,6 +9,8 @@ use crate::metadata::ExcludedMount;
 pub(crate) struct NamedVolume {
     pub(crate) name: String,
     pub(crate) runtime_name: String,
+    pub(crate) instance: String,
+    pub(crate) owner_config_path: String,
 }
 
 pub(crate) struct ComposeCapturePlan {
@@ -22,7 +24,7 @@ enum VolumeDisposition {
 }
 
 impl ComposeCapturePlan {
-    pub(crate) fn parse(json: &str) -> Result<Self> {
+    pub(crate) fn parse(json: &str, owner_config_path: &str) -> Result<Self> {
         let config: Value = serde_json::from_str(json).map_err(|error| {
             VmError::general(error, "Cannot parse normalized Compose configuration")
         })?;
@@ -63,14 +65,13 @@ impl ComposeCapturePlan {
                     .get("source")
                     .and_then(Value::as_str)
                     .map(str::to_string);
-                let disposition = if kind == "volume" {
-                    source
-                        .as_deref()
-                        .map(|logical| named_volume(definitions, project, logical))
-                        .transpose()?
-                } else {
-                    None
-                };
+                let disposition = volume_disposition(
+                    kind,
+                    source.as_deref(),
+                    definitions,
+                    project,
+                    owner_config_path,
+                )?;
                 if let Some(VolumeDisposition::Included(ref volume)) = disposition {
                     volumes.insert(volume.name.clone(), volume.clone());
                     continue;
@@ -104,10 +105,26 @@ impl ComposeCapturePlan {
     }
 }
 
+fn volume_disposition(
+    kind: &str,
+    source: Option<&str>,
+    definitions: Option<&serde_json::Map<String, Value>>,
+    project: &str,
+    owner_config_path: &str,
+) -> Result<Option<VolumeDisposition>> {
+    if kind != "volume" {
+        return Ok(None);
+    }
+    source
+        .map(|logical| named_volume(definitions, project, logical, owner_config_path))
+        .transpose()
+}
+
 fn named_volume(
     definitions: Option<&serde_json::Map<String, Value>>,
     project: &str,
     logical: &str,
+    owner_config_path: &str,
 ) -> Result<VolumeDisposition> {
     if !valid_volume_name(logical) {
         return Err(VmError::validation(
@@ -140,12 +157,19 @@ fn named_volume(
             None::<String>,
         ));
     }
-    if runtime_name != format!("{project}_{logical}") {
+    let labels = &definition["labels"];
+    if labels["com.vm.managed"] != "true"
+        || labels["com.vm.instance"] != project
+        || labels["com.vm.config-path"] != owner_config_path
+        || labels["com.vm.scope"] != "instance"
+    {
         return Ok(VolumeDisposition::Excluded("unscoped-volume"));
     }
     Ok(VolumeDisposition::Included(NamedVolume {
         name: logical.to_string(),
         runtime_name,
+        instance: project.to_string(),
+        owner_config_path: owner_config_path.to_string(),
     }))
 }
 
@@ -176,7 +200,7 @@ mod tests {
         let plan = ComposeCapturePlan::parse(
             r#"{
             "name": "demo", "volumes": {
-                "data": {"name": "demo_data"},
+                "data": {"name": "vm_demo_data", "labels":{"com.vm.managed":"true","com.vm.instance":"demo","com.vm.config-path":"/project/vm.yaml","com.vm.scope":"instance"}},
                 "custom": {"name": "custom-data"},
                 "shared": {"name": "shared", "external": true}
             }, "services": {"web": {"volumes": [
@@ -187,10 +211,11 @@ mod tests {
                 {"type":"volume", "source":"shared", "target":"/shared"}
             ]}}
         }"#,
+            "/project/vm.yaml",
         )
         .unwrap();
         assert_eq!(plan.volumes.len(), 1);
-        assert_eq!(plan.volumes[0].runtime_name, "demo_data");
+        assert_eq!(plan.volumes[0].runtime_name, "vm_demo_data");
         assert_eq!(plan.excluded_mounts.len(), 4);
         assert_eq!(
             plan.excluded_mounts
@@ -211,8 +236,29 @@ mod tests {
     }
 
     #[test]
+    fn excludes_shared_volumes_and_other_configuration_owners() {
+        let mut config = serde_json::json!({
+            "name": "demo-dev",
+            "services": {"dev": {"volumes": [{"type":"volume", "source":"data", "target":"/data"}]}},
+            "volumes": {"data": {"name":"vm_demo-dev_data", "labels": {
+                "com.vm.managed":"true", "com.vm.instance":"demo-dev",
+                "com.vm.config-path":"/project/vm.yaml", "com.vm.scope":"instance"
+            }}}
+        });
+        let parse = |config: &serde_json::Value, owner: &str| {
+            ComposeCapturePlan::parse(&config.to_string(), owner).unwrap()
+        };
+        assert_eq!(parse(&config, "/project/vm.yaml").volumes.len(), 1);
+        assert!(parse(&config, "/other/vm.yaml").volumes.is_empty());
+        for scope in ["project", "platform"] {
+            config["volumes"]["data"]["labels"]["com.vm.scope"] = scope.into();
+            assert!(parse(&config, "/project/vm.yaml").volumes.is_empty());
+        }
+    }
+
+    #[test]
     fn rejects_uninspectable_mounts_instead_of_reporting_incomplete_coverage() {
         let invalid = r#"{"name":"demo","services":{"web":{"volumes":["./data:/data"]}}}"#;
-        assert!(ComposeCapturePlan::parse(invalid).is_err());
+        assert!(ComposeCapturePlan::parse(invalid, "/project/vm.yaml").is_err());
     }
 }

@@ -300,7 +300,19 @@ mod tests {
         let lock = files.acquire_tool_cache_lock().unwrap().unwrap();
         assert!(files.acquire_tool_cache_lock().unwrap().is_none());
         drop(lock);
-        assert!(files.acquire_tool_cache_lock().unwrap().is_some());
+        // Concurrent subprocess tests can briefly inherit the descriptor between
+        // fork and exec. Close-on-exec releases that copy; allow it to finish.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        loop {
+            if files.acquire_tool_cache_lock().unwrap().is_some() {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "cache lock remained held"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
     }
 
     #[test]

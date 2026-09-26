@@ -32,7 +32,7 @@ pub(crate) async fn create_from_dockerfile(
     if manager.snapshot_exists(scope, snapshot_name)? && !force {
         return Err(VmError::validation(
             format!(
-                "Snapshot '{}' already exists globally. Use --force to overwrite.",
+                "Snapshot '{}' already exists globally. Choose a new snapshot name.",
                 snapshot_name
             ),
             None::<String>,

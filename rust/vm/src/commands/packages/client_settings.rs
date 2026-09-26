@@ -64,8 +64,11 @@ if [ "$current" != "$2" ]; then
   git config --global "$1" "$2"
 fi"#;
 
-pub(in crate::commands) fn apply_client_environment(config: &mut VmConfig) -> VmResult<()> {
-    let Some((client, edge)) = configured_client_environment(config)? else {
+pub(in crate::commands) fn apply_client_environment(
+    config: &mut VmConfig,
+    environment: &str,
+) -> VmResult<()> {
+    let Some((client, edge)) = configured_client_environment(config, environment)? else {
         return Ok(());
     };
     config.package_edge = Some(edge);
@@ -94,7 +97,7 @@ pub(in crate::commands) fn reconcile_client_settings(
                 .name = Some(project.to_string());
         }
     }
-    let Some((client, _)) = configured_client_environment(&effective_config)? else {
+    let Some((client, _)) = configured_client_environment(&effective_config, environment)? else {
         return Ok(());
     };
     crate::commands::managed_guest::install_package_settings(

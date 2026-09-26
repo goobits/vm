@@ -136,24 +136,16 @@ pub(crate) fn create_container_instance_info(
 pub(crate) fn create_tart_instance_info(
     name: &str,
     status: &str,
+    project: Option<&str>,
     created_at: Option<&str>,
     uptime: Option<&str>,
 ) -> InstanceInfo {
-    // Extract project name from VM name (e.g., "myproject-dev" -> "myproject")
-    let project = name
-        .strip_suffix("-dev")
-        .map(|project_part| project_part.to_string())
-        .or_else(|| {
-            name.strip_suffix("-staging")
-                .map(|project_part| project_part.to_string())
-        });
-
     InstanceInfo {
         name: name.to_string(),
         id: name.to_string(), // Tart uses VM name as ID
         status: status.to_string(),
         provider: "tart".to_string(),
-        project,
+        project: project.map(str::to_string),
         uptime: uptime.map(|s| s.to_string()),
         created_at: created_at.map(|s| s.to_string()),
     }
@@ -258,13 +250,18 @@ mod tests {
     #[test]
     fn creates_tart_instance_metadata() {
         for (created_at, uptime) in [(None, None), (Some("Created: 2023-01-01"), Some("running"))] {
-            let info =
-                create_tart_instance_info("myproject-staging", "running", created_at, uptime);
+            let info = create_tart_instance_info(
+                "myproject-peer",
+                "running",
+                Some("myproject"),
+                created_at,
+                uptime,
+            );
             assert_eq!(
                 fields(&info),
                 (
-                    "myproject-staging",
-                    "myproject-staging",
+                    "myproject-peer",
+                    "myproject-peer",
                     "running",
                     "tart",
                     Some("myproject"),

@@ -5,13 +5,14 @@ use std::collections::BTreeSet;
 use crate::cli::FleetArgs;
 use crate::error::{VmError, VmResult};
 use vm_config::{config::VmConfig, GlobalConfig};
-use vm_provider::{InstanceInfo, ProviderContext};
+use vm_provider::InstanceInfo;
 
 use super::create::handle_create;
 use super::fleet::{
-    apply_lifecycle, configured_provider, configured_provider_for_instance,
-    filter_project_instances, FleetAction, FleetProgress, FleetProject,
+    configured_provider, filter_project_instances, selected_config_for_instance, FleetProgress,
+    FleetProject,
 };
+use super::lifecycle::handle_start;
 use super::target::canonical_instance_name;
 use super::targets::match_pattern;
 
@@ -120,18 +121,22 @@ pub async fn handle_fleet_start(
     let existing = discover_start_instances(targets, project)?;
     let frozen = plan_start_targets(project, targets, existing)?;
     let global = GlobalConfig::load()?;
-    let context = ProviderContext::default().with_config(global.clone());
     let mut progress = FleetProgress::default();
     for target in frozen {
         match target {
             StartTarget::Existing(instance) => {
                 let outcome = async {
-                    let provider = configured_provider_for_instance(project, &instance)?;
-                    apply_lifecycle(
-                        provider.as_ref(),
-                        &context,
+                    let mut config = selected_config_for_instance(project, &instance);
+                    crate::commands::packages::apply_client_environment(
+                        &mut config,
                         &instance.name,
-                        FleetAction::Start,
+                    )?;
+                    let provider = configured_provider(&config, &instance.provider)?;
+                    handle_start(
+                        provider,
+                        Some(&instance.name),
+                        config,
+                        global.clone(),
                         no_wait,
                     )
                     .await
@@ -146,26 +151,20 @@ pub async fn handle_fleet_start(
                 name,
                 provider,
                 runtime,
-                config,
+                mut config,
             } => {
                 let outcome = async {
+                    crate::commands::packages::apply_client_environment(&mut config, &runtime)?;
                     let provider = configured_provider(&config, &provider)?;
                     handle_create(
                         provider.clone_box(),
-                        *config,
+                        (*config).clone(),
                         global.clone(),
                         false,
                         Some(name),
                     )
                     .await?;
-                    apply_lifecycle(
-                        provider.as_ref(),
-                        &context,
-                        &runtime,
-                        FleetAction::Start,
-                        no_wait,
-                    )
-                    .await
+                    handle_start(provider, Some(&runtime), *config, global.clone(), no_wait).await
                 }
                 .await;
                 match outcome {

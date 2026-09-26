@@ -336,8 +336,7 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
         } => {
             if fleet.fleet {
                 let project = fleet_project(args.config, args.profile)?;
-                vm_ops::handle_fleet_lifecycle(&fleet, &project, vm_ops::FleetAction::Stop, false)
-                    .await
+                vm_ops::handle_fleet_lifecycle(&fleet, &project, vm_ops::FleetAction::Stop).await
             } else {
                 let subjects = resolve_named_subjects(args.config, args.profile, environments)?;
                 let mut failures = Vec::new();
@@ -399,13 +398,7 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
         } => {
             if fleet.fleet {
                 let project = fleet_project(args.config, args.profile)?;
-                vm_ops::handle_fleet_lifecycle(
-                    &fleet,
-                    &project,
-                    vm_ops::FleetAction::Restart,
-                    false,
-                )
-                .await
+                vm_ops::handle_fleet_lifecycle(&fleet, &project, vm_ops::FleetAction::Restart).await
             } else {
                 let subjects = resolve_named_subjects(args.config, args.profile, environments)?;
                 let mut failures = Vec::new();
@@ -472,8 +465,7 @@ fn fleet_project(
     config_path: Option<PathBuf>,
     profile: Option<String>,
 ) -> VmResult<vm_ops::FleetProject> {
-    let mut config = AppConfig::load(config_path, profile, None)?;
-    packages::apply_client_environment(&mut config.vm)?;
+    let config = AppConfig::load(config_path, profile, None)?;
     vm_ops::FleetProject::new(config.vm)
 }
 

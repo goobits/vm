@@ -13,6 +13,7 @@ mod images;
 mod import;
 mod manager;
 mod metadata;
+mod quiesce;
 mod restore;
 mod tart;
 mod volumes;

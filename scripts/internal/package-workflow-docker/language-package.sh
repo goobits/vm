@@ -7,7 +7,7 @@ release_source_only_language_package() {
     vm packages checkout vm-acceptance-language >"$language_log" 2>&1
   source=$(checkout_source_from_log "$language_log")
   checkout_id=$(basename "$(dirname "$source")")
-  run_vm packages show "$checkout_id" | grep -F '"source_only": true' >/dev/null
+  assert_checkout_field "$checkout_id" source_only true
   docker exec --user acceptance "$environment_name" \
     test ! -e "$(dirname "$source")/override.json"
   docker exec --user acceptance "$environment_name" sh -ec '
@@ -43,7 +43,7 @@ assert_language_dependency_restoration() {
     vm packages checkout vm-acceptance-language >"$language_log.cancel" 2>&1
   source=$(checkout_source_from_log "$language_log.cancel")
   checkout_id=$(basename "$(dirname "$source")")
-  run_vm packages show "$checkout_id" | grep -F '"source_only": false' >/dev/null || {
+  assert_checkout_field "$checkout_id" source_only false || {
     echo "Managed dependency checkout was incorrectly marked source-only" >&2
     return 1
   }
@@ -72,7 +72,7 @@ assert_language_dependency_restoration() {
     exit 4
   }
   docker exec --user acceptance "$environment_name" test -d "$source"
-  run_vm packages show "$checkout_id" | grep -F '"state": "cancelled"' >/dev/null
+  assert_checkout_field "$checkout_id" state cancelled
   docker exec --user acceptance "$environment_name" sh -ec '
     test "$(cat /workspace/node_modules/vm-acceptance-language/source-marker.txt)" = checkout-only
     sed -i '\''s/"pinned_version": "9.9.9"/"pinned_version": "1.0.1"/'\'' "$(dirname "$1")/override.json"
@@ -80,7 +80,7 @@ assert_language_dependency_restoration() {
     vm packages cancel
   ' sh "$source" >>"$language_log.cancel" 2>&1
   docker exec --user acceptance "$environment_name" test ! -e "$source"
-  run_vm packages show "$checkout_id" | grep -F '"state": "closed"' >/dev/null
+  assert_checkout_field "$checkout_id" state closed
   docker exec --user acceptance "$environment_name" sh -ec '
     cd /workspace
     restored=node_modules/vm-acceptance-language
@@ -97,7 +97,78 @@ assert_language_dependency_restoration() {
 }
 
 accept_language_package_lifecycle() {
+  prepare_language_consumer
   release_source_only_language_package
+  assert_language_consumer_review
   assert_language_dependency_restoration
   assert_project_dependency_files_unchanged
+}
+
+prepare_language_consumer() {
+  local root=$acceptance_root/review-consumer
+  mkdir -p "$root"
+  cat > "$root/package.json" <<'JSON'
+{"name":"acceptance-review-consumer","version":"1.0.0","private":true,"dependencies":{"vm-acceptance-language":"1.0.0"},"scripts":{"test":"node -e \"if(require('vm-acceptance-language/package.json').version !== '1.0.1') process.exit(1)\""}}
+JSON
+  initialize_fixture_repository "$root" 'test: add consumer awaiting reviewed package update'
+  docker run --rm --user 0:0 \
+    --volume "${compose_project}_source-mirrors:/data/sources" \
+    --volume "$root:/consumer-fixture:ro" \
+    --entrypoint /bin/sh "$server_image" -ec '
+      git clone --bare /consumer-fixture /data/sources/acceptance-review-consumer.git
+      chown -R 10001:10001 /data/sources/acceptance-review-consumer.git
+    '
+  run_vm packages consumers register acceptance-review-consumer \
+    --repository file:///data/sources/acceptance-review-consumer.git \
+    --dependency vm-acceptance-language@1.0.0
+}
+
+assert_language_consumer_review() {
+  local attempt branch ready=false
+  for attempt in $(seq 1 300); do
+    if workflow_state | python3 -c '
+import json,sys
+state=json.load(sys.stdin)
+rollouts=[r for r in state["rollouts"].values()
+          if r["consumer"] == "acceptance-review-consumer"]
+if any(r["state"] == "failed" for r in rollouts):
+    print(rollouts, file=sys.stderr)
+    sys.exit(2)
+assert len(rollouts) == 1 and rollouts[0]["state"] == "ready_for_review", rollouts
+rollout=rollouts[0]
+assert rollout["submitted_commit"] and rollout["branch"], rollout
+assert all(t["receipt_id"] for t in rollout["transitions"]), rollout
+assert state["consumers"]["acceptance-review-consumer"]["dependencies"]["vm-acceptance-language"] == "1.0.0"
+print(rollout["branch"])
+' >"$language_log.review" 2>"$language_log.review.error"; then
+      ready=true
+      break
+    elif test "$?" -eq 2; then
+      cat "$language_log.review.error" >&2
+      return 1
+    fi
+    sleep 1
+  done
+  test "$ready" = true || { cat "$language_log.review.error" >&2; return 1; }
+  branch=$(cat "$language_log.review")
+  docker run --rm --user 10001:10001 \
+    --volume "${compose_project}_source-mirrors:/data/sources:ro" \
+    --entrypoint /bin/sh "$server_image" -ec '
+      repository=/data/sources/acceptance-review-consumer.git
+      git --git-dir="$repository" show main:package.json
+      git --git-dir="$repository" show "$1:package.json"
+    ' sh "$branch" >"$language_log.review.manifests"
+  python3 -c '
+import json,sys
+with open(sys.argv[1]) as source:
+    decoder=json.JSONDecoder()
+    content=source.read().lstrip()
+    original,end=decoder.raw_decode(content)
+    updated,_=decoder.raw_decode(content[end:].lstrip())
+assert original["dependencies"]["vm-acceptance-language"] == "1.0.0"
+assert updated["dependencies"]["vm-acceptance-language"].lstrip("^~") == "1.0.1"
+' "$language_log.review.manifests"
+  run_vm packages consumers retry acceptance-review-consumer >>"$language_log.review" 2>&1
+  grep -F 'No failed dependency updates need retry for acceptance-review-consumer' \
+    "$language_log.review" >/dev/null
 }

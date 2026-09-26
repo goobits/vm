@@ -38,7 +38,10 @@ pub use tart::{
     TartBaseSource,
 };
 #[cfg(feature = "tart")]
-pub use tart::{remove_tart_storage, tart_storage_inventory, TartStorageEntry};
+pub use tart::{
+    refresh_tart_runtime_identity, remove_tart_storage, tart_storage_inventory,
+    validate_tart_restore_target, TartStorageEntry,
+};
 pub use vm_core::error::{Result as VmResult, VmError};
 
 mod capabilities;

@@ -15,6 +15,30 @@ use super::{
     state::{ServiceState, ServiceStateStore},
 };
 
+/// Project services are owned by the provider; only user-enabled shared services
+/// participate in the host lifecycle, and a local service takes precedence.
+pub(crate) fn enabled_shared_services<'a>(
+    vm_config: &'a VmConfig,
+    global_config: &'a GlobalConfig,
+) -> impl Iterator<Item = &'static str> + 'a {
+    ["auth_proxy", "postgresql", "redis", "mongodb", "mysql"]
+        .into_iter()
+        .filter(|name| {
+            !vm_config
+                .services
+                .get(*name)
+                .is_some_and(|service| service.enabled)
+                && match *name {
+                    "postgresql" => global_config.services.postgresql.enabled,
+                    "redis" => global_config.services.redis.enabled,
+                    "mongodb" => global_config.services.mongodb.enabled,
+                    "mysql" => global_config.services.mysql.enabled,
+                    "auth_proxy" => global_config.services.auth_proxy.enabled,
+                    _ => false,
+                }
+        })
+}
+
 #[derive(Clone)]
 pub(crate) struct ServiceLifecycle {
     state: ServiceStateStore,
@@ -55,7 +79,7 @@ impl ServiceLifecycle {
         global_config: &GlobalConfig,
     ) -> Result<()> {
         info!(vm_name, "Registering services for environment");
-        let selected = self.selected_services(vm_config, global_config);
+        let selected = enabled_shared_services(vm_config, global_config);
         let mut services_needing_start = Vec::new();
         self.state.update(|states| {
             for service_name in selected {
@@ -204,29 +228,6 @@ impl ServiceLifecycle {
         Ok(())
     }
 
-    fn selected_services<'a>(
-        &'a self,
-        vm_config: &'a VmConfig,
-        global_config: &'a GlobalConfig,
-    ) -> impl Iterator<Item = &'static str> + 'a {
-        ["auth_proxy", "postgresql", "redis", "mongodb", "mysql"]
-            .into_iter()
-            .filter(|name| {
-                vm_config
-                    .services
-                    .get(*name)
-                    .is_some_and(|service| service.enabled)
-                    || match *name {
-                        "postgresql" => global_config.services.postgresql.enabled,
-                        "redis" => global_config.services.redis.enabled,
-                        "mongodb" => global_config.services.mongodb.enabled,
-                        "mysql" => global_config.services.mysql.enabled,
-                        "auth_proxy" => global_config.services.auth_proxy.enabled,
-                        _ => false,
-                    }
-            })
-    }
-
     fn service(&self, service_name: &str) -> Result<Arc<dyn super::ManagedService>> {
         self.services
             .get(service_name)
@@ -352,12 +353,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn provider_owned_services_never_register_or_stop_shared_services() {
+        let directory = tempfile::tempdir().unwrap();
+        let service = test_service(false, true);
+        let lifecycle = lifecycle(service.clone(), directory.path().join("services.json"));
+        let mut global = GlobalConfig::default();
+        for shared_enabled in [false, true] {
+            global.services.postgresql.enabled = shared_enabled;
+            lifecycle
+                .register_vm_services("demo-dev", &enabled_config(), &global)
+                .await
+                .unwrap();
+            lifecycle
+                .unregister_vm_services("demo-dev", &global)
+                .await
+                .unwrap();
+        }
+        assert!(lifecycle.service_status("postgresql").is_none());
+        assert_eq!(service.starts.load(Ordering::SeqCst), 0);
+        assert_eq!(service.stops.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
     async fn failed_start_remains_retryable_for_the_same_vm() {
         let directory = tempfile::tempdir().unwrap();
         let service = test_service(true, true);
         let lifecycle = lifecycle(service.clone(), directory.path().join("services.json"));
-        let config = enabled_config();
-        let global = GlobalConfig::default();
+        let config = VmConfig::default();
+        let mut global = GlobalConfig::default();
+        global.services.postgresql.enabled = true;
 
         lifecycle
             .register_vm_services("demo-dev", &config, &global)
@@ -381,8 +405,9 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let service = test_service(false, false);
         let lifecycle = lifecycle(service.clone(), directory.path().join("services.json"));
-        let config = enabled_config();
-        let global = GlobalConfig::default();
+        let config = VmConfig::default();
+        let mut global = GlobalConfig::default();
+        global.services.postgresql.enabled = true;
 
         lifecycle
             .register_vm_services("demo-dev", &config, &global)

@@ -179,7 +179,7 @@ impl SnapshotManager {
         let target = self.get_snapshot_dir(scope, name)?;
         if target.exists() && !force {
             return Err(VmError::validation(
-                format!("Snapshot '{name}' already exists. Use --force to overwrite."),
+                format!("Snapshot '{name}' already exists. Choose a new snapshot name."),
                 None::<String>,
             ));
         }

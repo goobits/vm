@@ -11,6 +11,13 @@ provider: docker
 project:
   name: $name
   workspace_path: /workspace
+  default_environment: dev
+environments:
+  dev:
+    provider: docker
+    image:
+      dockerfile: Dockerfile.acceptance
+      context: .
 vm:
   user: acceptance
   uid: 11000
@@ -72,7 +79,10 @@ prepare_acceptance_fixtures() {
     "$stopped_root" "$fixture_root" "$language_root" "$fake_bin"
 
   cp "$fixture_assets/fake-gh.sh" "$fake_bin/gh"
-  chmod 0755 "$fake_bin/gh"
+  cp "$fixture_assets/docker.sh" "$fake_bin/docker"
+  cp "$fixture_assets/unavailable-provider.sh" "$fake_bin/podman"
+  cp "$fixture_assets/unavailable-provider.sh" "$fake_bin/tart"
+  chmod 0755 "$fake_bin/gh" "$fake_bin/docker" "$fake_bin/podman" "$fake_bin/tart"
 
   for root in "$project_root" "$consumer_root" "$stopped_root"; do
     cp "$fixture_assets/environment.Dockerfile" "$root/Dockerfile.acceptance"
@@ -117,13 +127,29 @@ YAML
   test "$(run_vm packages list | grep -c 'vm-acceptance-alias')" = 1
   test "$(run_vm packages list | grep -c 'vm-acceptance-ignored' || true)" = 0
 
-  run_project_vm "$project_root" start
+  run_project_vm "$project_root" start --all-envs
   run_project_vm "$consumer_root" start
   run_project_vm "$stopped_root" start
   wait_for_guest_vm "$environment_name"
   wait_for_guest_vm "$consumer_environment"
   wait_for_guest_vm "$stopped_environment"
   run_project_vm "$stopped_root" stop
+
+  # Prove controller-wide discovery is isolated before any release, repair, or
+  # global tool selection can reconcile environments.
+  docker ps --all --filter label=com.vm.managed=true \
+    --format '{{.Names}} {{.ID}} {{.Label "com.vm.project"}}' \
+    > "$acceptance_root/host-managed-containers.txt"
+  run_vm list --all-projects --json > "$acceptance_root/isolated-environments.json"
+  python3 -c '
+import json,sys
+result=json.load(open(sys.argv[1]))
+assert result["ok"], result
+actual={(e["provider"],e["name"]) for e in result["data"]["environments"]}
+expected={("docker",name) for name in sys.argv[2:]}
+assert actual == expected, (actual,expected)
+' "$acceptance_root/isolated-environments.json" \
+    "$environment_name" "$consumer_environment" "$stopped_environment"
 
   docker run --rm --user 0:0 \
     --volume "${compose_project}_source-mirrors:/data/sources" \

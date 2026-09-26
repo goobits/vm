@@ -209,11 +209,36 @@ pub async fn handle_start(
         StartOutcome::Started => print_vm_runtime_details(&config, false),
     }
     if !no_wait {
-        crate::commands::tools::activation::activate_deferred(provider.name(), &display_name)
-            .await?;
+        reconcile_started(
+            provider.as_ref(),
+            container,
+            &display_name,
+            &config,
+            &global_config,
+        )
+        .await?;
     }
     vm_hint!("Connect with: vm shell {display_name}");
     Ok(())
+}
+
+/// Reconcile guest access and durable tool work after any successful start.
+pub(super) async fn reconcile_started(
+    provider: &dyn Provider,
+    container: Option<&str>,
+    environment: &str,
+    config: &VmConfig,
+    global_config: &GlobalConfig,
+) -> VmResult<()> {
+    crate::commands::tools::reconcile_managed_guest(
+        provider,
+        container,
+        environment,
+        config,
+        global_config,
+    )?;
+    crate::commands::tools::activation::activate_deferred(provider.name(), environment, config)
+        .await
 }
 
 /// Handle a graceful environment stop.
@@ -276,6 +301,14 @@ pub async fn handle_restart(
     }
 
     wait_until_ready(provider.as_ref(), container, &display_name).await?;
+    reconcile_started(
+        provider.as_ref(),
+        container,
+        &display_name,
+        &config,
+        &global_config,
+    )
+    .await?;
     if has_enabled_services(&config, &global_config) {
         register_vm_services_helper(&display_name, &config, &global_config).await?;
     }

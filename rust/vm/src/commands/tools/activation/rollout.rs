@@ -35,7 +35,20 @@ pub(in crate::commands) async fn repair() -> VmResult<usize> {
 pub(in crate::commands) async fn activate_deferred(
     provider: &str,
     environment: &str,
+    config: &VmConfig,
 ) -> VmResult<()> {
+    activate_managed_deferred(provider, environment, config).await?;
+    background::apply_deferred_after_start(provider, environment).await
+}
+
+async fn activate_managed_deferred(
+    provider: &str,
+    environment: &str,
+    config: &VmConfig,
+) -> VmResult<()> {
+    if config.tools.entries.is_empty() {
+        return Ok(());
+    }
     let client = tooling::client()?;
     let activations =
         latest_deferred_activations(client.tool_activations().await?, provider, environment);
@@ -79,7 +92,7 @@ pub(in crate::commands) async fn activate_deferred(
             ));
         }
     }
-    background::apply_deferred_after_start(provider, environment).await
+    Ok(())
 }
 
 fn latest_deferred_activations(
@@ -89,11 +102,10 @@ fn latest_deferred_activations(
 ) -> Vec<ToolActivationRecord> {
     let mut latest = std::collections::BTreeMap::new();
     for activation in activations.into_iter().filter(|activation| {
-        activation.targets.iter().any(|target| {
-            target.provider == provider
-                && target.environment == environment
-                && target.state == ToolActivationTargetState::Deferred
-        })
+        activation
+            .targets
+            .iter()
+            .any(|target| target.provider == provider && target.environment == environment)
     }) {
         let replace =
             latest
@@ -106,7 +118,18 @@ fn latest_deferred_activations(
             latest.insert(activation.tool.clone(), activation);
         }
     }
-    latest.into_values().collect()
+    // An already active newer release supersedes older deferred releases too.
+    // Filtering before choosing the newest would downgrade on the next start.
+    latest
+        .into_values()
+        .filter(|activation| {
+            activation.targets.iter().any(|target| {
+                target.provider == provider
+                    && target.environment == environment
+                    && target.state == ToolActivationTargetState::Deferred
+            })
+        })
+        .collect()
 }
 
 pub(super) async fn process_next() -> VmResult<bool> {
@@ -499,6 +522,13 @@ mod tests {
         .await
     }
 
+    #[tokio::test]
+    async fn startup_without_managed_tools_does_not_require_package_infrastructure() {
+        activate_managed_deferred("unconfigured-provider", "plain-dev", &VmConfig::default())
+            .await
+            .unwrap();
+    }
+
     #[test]
     fn target_ids_are_stable_managed_components() {
         let target = target_id("docker", "typemill-dev");
@@ -556,8 +586,11 @@ mod tests {
         newer.created_at += chrono::Duration::seconds(2);
 
         let selected =
-            latest_deferred_activations(vec![newer.clone(), older], "docker", "demo-dev");
-        assert_eq!(selected, vec![newer]);
+            latest_deferred_activations(vec![newer.clone(), older.clone()], "docker", "demo-dev");
+        assert_eq!(selected, vec![newer.clone()]);
+
+        newer.targets[0].state = ToolActivationTargetState::Active;
+        assert!(latest_deferred_activations(vec![older, newer], "docker", "demo-dev").is_empty());
     }
 
     #[tokio::test]

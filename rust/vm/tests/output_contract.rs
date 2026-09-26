@@ -4,14 +4,26 @@ use std::process::{Command, Output, Stdio};
 use tempfile::TempDir;
 
 fn run(temp_dir: &TempDir, args: &[&str]) -> Output {
-    Command::new(cargo_bin!("vm"))
+    command(temp_dir, args).output().unwrap()
+}
+
+fn command(temp_dir: &TempDir, args: &[&str]) -> Command {
+    let mut command = Command::new(cargo_bin!("vm"));
+    command
         .args(args)
         .current_dir(temp_dir.path())
         .env("HOME", temp_dir.path())
         .env("VM_TOOL_DIR", temp_dir.path().join(".vm"))
         .env("VM_TEST_MODE", "1")
         .env("VM_TEST_COMMAND_CONTEXT", "host")
-        .env("CI", "1")
+        .env("CI", "1");
+    command
+}
+
+fn run_storage(temp_dir: &TempDir, args: &[&str]) -> Output {
+    command(temp_dir, args)
+        .env("PATH", temp_dir.path())
+        .env("TART_HOME", temp_dir.path().join("tart"))
         .output()
         .unwrap()
 }
@@ -229,7 +241,7 @@ fn snapshot_json_reads_are_scoped_and_redacted() {
 #[test]
 fn storage_json_omits_owner_paths() {
     let temp_dir = TempDir::new().unwrap();
-    let output = run(&temp_dir, &["system", "storage", "list", "--json"]);
+    let output = run_storage(&temp_dir, &["system", "storage", "list", "--json"]);
     assert!(
         output.status.success(),
         "{}",
@@ -245,7 +257,7 @@ fn storage_json_omits_owner_paths() {
 #[test]
 fn storage_remove_json_errors_have_one_targeted_envelope() {
     let temp_dir = TempDir::new().unwrap();
-    let output = run(
+    let output = run_storage(
         &temp_dir,
         &["system", "storage", "remove", "missing", "--json", "--yes"],
     );
@@ -260,6 +272,110 @@ fn storage_remove_json_errors_have_one_targeted_envelope() {
         output.stdout.iter().filter(|byte| **byte == b'\n').count(),
         1
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn storage_json_reports_unreachable_provider_without_claiming_complete_inventory() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp_dir = TempDir::new().unwrap();
+    let docker = temp_dir.path().join("docker");
+    fs::write(
+        &docker,
+        "#!/bin/sh\nif [ \"$1\" = --version ]; then exit 0; fi\necho 'daemon unavailable' >&2\nexit 1\n",
+    )
+    .unwrap();
+    fs::set_permissions(docker, fs::Permissions::from_mode(0o755)).unwrap();
+
+    for (args, target) in [
+        (vec!["system", "storage", "list", "--json"], "docker"),
+        (
+            vec![
+                "system",
+                "storage",
+                "remove",
+                "docker:volume:owned",
+                "--json",
+                "--yes",
+            ],
+            "docker:volume:owned",
+        ),
+    ] {
+        let output = run_storage(&temp_dir, &args);
+        assert_eq!(output.status.code(), Some(1));
+        assert!(output.stderr.is_empty());
+        let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(value["ok"], false);
+        assert!(value["data"].is_null());
+        assert_eq!(value["errors"].as_array().unwrap().len(), 1);
+        assert_eq!(value["errors"][0]["target"], target);
+        assert!(value["errors"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("daemon unavailable"));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn storage_inventory_tolerates_only_confirmed_disappearance_during_inspection() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp_dir = TempDir::new().unwrap();
+    let docker = temp_dir.path().join("docker");
+    let script = r#"#!/bin/sh
+case "$1 $2" in
+  '--version ') exit 0 ;;
+  'volume ls') printf 'gone-volume\n'; exit 0 ;;
+  'image ls') printf 'gone-image\n'; exit 0 ;;
+  'volume inspect') printf '%s\n' 'VOLUME_ERROR' >&2; exit 1 ;;
+  'image inspect') printf '%s\n' 'IMAGE_ERROR' >&2; exit 1 ;;
+  *) echo 'unexpected command' >&2; exit 1 ;;
+esac
+"#;
+    let missing_volume = "Error response from daemon: get gone-volume: no such volume";
+    let missing_image = "Error response from daemon: No such image: gone-image";
+    for (volume_error, image_error, succeeds) in [
+        (missing_volume, missing_image, true),
+        ("Cannot connect to the Docker daemon", missing_image, false),
+        (missing_volume, "permission denied", false),
+        (
+            "Error response from daemon: get other-volume: no such volume",
+            missing_image,
+            false,
+        ),
+        (
+            missing_volume,
+            "No such image: gone-image; daemon unavailable",
+            false,
+        ),
+    ] {
+        fs::write(
+            &docker,
+            script
+                .replace("VOLUME_ERROR", volume_error)
+                .replace("IMAGE_ERROR", image_error),
+        )
+        .unwrap();
+        fs::set_permissions(&docker, fs::Permissions::from_mode(0o755)).unwrap();
+        let output = run_storage(&temp_dir, &["system", "storage", "list", "--json"]);
+        assert_eq!(
+            output.status.success(),
+            succeeds,
+            "{volume_error}; {image_error}"
+        );
+        assert!(output.stderr.is_empty());
+        let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(value["ok"], succeeds);
+        if succeeds {
+            assert_eq!(value["data"], serde_json::json!([]));
+        } else {
+            assert_eq!(output.status.code(), Some(1));
+            assert!(value["data"].is_null());
+            assert_eq!(value["errors"][0]["target"], "docker");
+        }
+    }
 }
 
 #[test]

@@ -114,34 +114,13 @@ pub async fn handle_export(
     // Create manifest.json
     let mut manifest = ArchiveManifest::new(executable, clean_name, is_global, &metadata);
 
-    // Export the immutable image archives recorded by snapshot creation.
-    let images_dir = export_build_dir.join("images");
-    tracing::info!("Copying recorded service images...");
-    copy_directory(&snapshot_dir.join("images"), &images_dir).await?;
+    copy_snapshot_components(&snapshot_dir, &export_build_dir).await?;
 
     // Copy metadata.json
     let metadata_dest = export_build_dir.join("metadata.json");
     tokio::fs::copy(&metadata_path, &metadata_dest)
         .await
         .map_err(|e| VmError::filesystem(e, metadata_dest.display().to_string(), "copy"))?;
-
-    // Copy volumes if they exist
-    let volumes_src = snapshot_dir.join("volumes");
-    if volumes_src.exists() {
-        let volumes_dest = export_build_dir.join("volumes");
-        copy_directory(&volumes_src, &volumes_dest).await?;
-    }
-
-    // Copy compose files if they exist
-    let compose_src = snapshot_dir.join("compose");
-    if compose_src.exists() {
-        let compose_dest = export_build_dir.join("compose");
-        copy_directory(&compose_src, &compose_dest).await?;
-    }
-    let native_src = snapshot_dir.join("native");
-    if native_src.exists() {
-        copy_directory(&native_src, &export_build_dir.join("native")).await?;
-    }
 
     manifest.record_files(&export_build_dir)?;
     let manifest_path = export_build_dir.join("manifest.json");
@@ -181,4 +160,35 @@ pub async fn handle_export(
     }
 
     Ok(())
+}
+
+async fn copy_snapshot_components(source: &Path, destination: &Path) -> Result<()> {
+    for component in ["images", "volumes", "compose", "native"] {
+        let directory = source.join(component);
+        if directory.exists() {
+            copy_directory(&directory, &destination.join(component)).await?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn native_snapshot_exports_without_container_components() {
+        let source = tempfile::tempdir().unwrap();
+        let destination = tempfile::tempdir().unwrap();
+        std::fs::create_dir(source.path().join("native")).unwrap();
+        std::fs::write(source.path().join("native/vm.tvm"), b"native archive").unwrap();
+        copy_snapshot_components(source.path(), destination.path())
+            .await
+            .unwrap();
+        assert_eq!(
+            std::fs::read(destination.path().join("native/vm.tvm")).unwrap(),
+            b"native archive"
+        );
+        assert!(!destination.path().join("images").exists());
+    }
 }

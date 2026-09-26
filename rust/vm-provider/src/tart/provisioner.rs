@@ -229,13 +229,33 @@ $SUDO chmod 0555 "$target""#
     }
 
     fn ssh_exec(&self, command: &str) -> Result<String> {
-        let output = self
-            .command
-            .expr(&["exec", &self.instance_name, "bash", "-c", command])
-            .read()
-            .map_err(|e| VmError::Provider(format!("Exec command failed: {}", e)))?;
+        Self::run_setup_command(self.command.expr(&[
+            "exec",
+            &self.instance_name,
+            "bash",
+            "-c",
+            command,
+        ]))
+    }
 
-        Ok(output)
+    fn run_setup_command(command: duct::Expression) -> Result<String> {
+        let output = command
+            .stdout_capture()
+            .stderr_capture()
+            .unchecked()
+            .run()
+            .map_err(|error| VmError::Provider(format!("Exec command failed: {error}")))?;
+        if !output.status.success() {
+            return Err(VmError::Provider(format!(
+                "Exec command failed ({}):\n{}{}",
+                output.status,
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr),
+            )));
+        }
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .trim_end_matches('\n')
+            .to_string())
     }
 
     fn render_command_batch(commands: &[GuestCommand]) -> Option<String> {

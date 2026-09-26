@@ -96,7 +96,7 @@ pub async fn handle_import(
     if manager.snapshot_exists(scope, &snapshot_name)? && !force {
         return Err(VmError::validation(
             format!(
-                "Snapshot '{}' already exists for project '{}'. Use --force to overwrite.",
+                "Snapshot '{}' already exists for project '{}'. Choose a new snapshot name.",
                 snapshot_name, project_name
             ),
             None::<String>,

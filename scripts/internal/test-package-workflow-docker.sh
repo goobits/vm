@@ -16,15 +16,16 @@ fi
 run_id=$$
 compose_project=vm-packages-acceptance-$run_id
 docker_config=${DOCKER_CONFIG:-$HOME/.docker}
+docker_executable=$(command -v docker || true)
 project_name=package-producer-acceptance-$run_id
-environment_name=$project_name-dev
-edge_name=$project_name-package-edge
+environment_name=$project_name-dev-dev
+edge_name=$project_name-dev-package-edge
 consumer_name=package-consumer-acceptance-$run_id
-consumer_environment=$consumer_name-dev
-consumer_edge=$consumer_name-package-edge
+consumer_environment=$consumer_name-dev-dev
+consumer_edge=$consumer_name-dev-package-edge
 stopped_name=package-stopped-acceptance-$run_id
-stopped_environment=$stopped_name-dev
-stopped_edge=$stopped_name-package-edge
+stopped_environment=$stopped_name-dev-dev
+stopped_edge=$stopped_name-dev-package-edge
 acceptance_root=$(mktemp -d "${TMPDIR:-/tmp}/vm-package-acceptance.XXXXXX")
 acceptance_home=$acceptance_root/home
 source_shelf=$acceptance_root/sources
@@ -51,6 +52,8 @@ failure_line=unknown
 run_vm() {
   env HOME="$acceptance_home" \
     DOCKER_CONFIG="$docker_config" \
+    VM_ACCEPTANCE_REAL_DOCKER="$docker_executable" \
+    VM_ACCEPTANCE_DOCKER_NAME_FILTER="^/?($environment_name|$consumer_environment|$stopped_environment)$" \
     VM_PACKAGES_COMPOSE_PROJECT="$compose_project" \
     PATH="$fake_bin:$(dirname "$vm_binary"):$PATH" "$vm_binary" "$@"
 }
@@ -82,7 +85,7 @@ capture_failure_evidence() {
 }
 
 cleanup_environment_resources() {
-  local project container volume network
+  local project container volume network owned_image
   for project in "$project_name" "$consumer_name" "$stopped_name"; do
     case "$project" in
       package-*-acceptance-[0-9]*) ;;
@@ -94,19 +97,24 @@ cleanup_environment_resources() {
     while IFS= read -r container; do
       test -z "$container" || docker rm --force "$container" >/dev/null 2>&1
     done < <(docker ps --all --quiet \
-      --filter "label=com.docker.compose.project=$project")
+      --filter "label=com.docker.compose.project=$project-dev")
     while IFS= read -r volume; do
       test -z "$volume" || docker volume rm "$volume" >/dev/null 2>&1
     done < <(docker volume ls --quiet --filter "label=com.vm.project=$project")
     while IFS= read -r network; do
       test -z "$network" || docker network rm "$network" >/dev/null 2>&1
     done < <(docker network ls --quiet \
-      --filter "label=com.docker.compose.project=$project")
+      --filter "label=com.docker.compose.project=$project-dev")
+    while IFS= read -r owned_image; do
+      test -z "$owned_image" || docker image rm "$owned_image" >/dev/null 2>&1
+    done < <(docker image ls --format '{{.Repository}}:{{.Tag}}' \
+      --filter "label=com.docker.compose.project=$project-dev")
+    docker image rm "vm-custom-$project:latest" >/dev/null 2>&1 || true
   done
 }
 
 stop_acceptance_activation_worker() {
-  local command pid pid_file
+  local command pid pid_file attempt
   pid_file=$acceptance_home/.vm/infrastructure/packages/activation-worker.pid
   test -s "$pid_file" || return 0
   pid=$(tr -d '[:space:]' < "$pid_file")
@@ -115,12 +123,26 @@ stop_acceptance_activation_worker() {
   esac
   command=$(ps -p "$pid" -o command= 2>/dev/null || true)
   case "$command" in
-    *"$vm_binary tools activation-worker"*) kill "$pid" 2>/dev/null || true ;;
+    *"$vm_binary tools activation-worker"*)
+      kill -TERM "$pid" 2>/dev/null || true
+      # An interruption test may have suspended this worker. Resume it so the
+      # pending termination signal can run; never leave a stopped test process.
+      kill -CONT "$pid" 2>/dev/null || true
+      for attempt in $(seq 1 20); do
+        kill -0 "$pid" 2>/dev/null || return 0
+        sleep 0.05
+      done
+      command=$(ps -p "$pid" -o command= 2>/dev/null || true)
+      case "$command" in
+        *"$vm_binary tools activation-worker"*) kill -KILL "$pid" 2>/dev/null || true ;;
+      esac
+      ;;
   esac
 }
 
 cleanup() {
   local status=$?
+  local package_volume
   trap - EXIT
   set +e
   if test "$status" -ne 0; then
@@ -134,12 +156,17 @@ cleanup() {
     docker compose --project-name "$compose_project" --file "$package_compose" \
       --env-file "$package_environment" down --volumes --remove-orphans >/dev/null 2>&1
   fi
+  # Inactive maintenance-profile volumes can survive Compose down --volumes.
+  while IFS= read -r package_volume; do
+    test -z "$package_volume" || docker volume rm "$package_volume" >/dev/null 2>&1
+  done < <(docker volume ls --quiet \
+    --filter "label=com.docker.compose.project=$compose_project")
   docker network rm "$compose_project" "$compose_project-controller" \
     "$compose_project-egress" >/dev/null 2>&1
   if test -n "$server_image" && test -n "$jobs_image"; then
     docker image rm --force "$server_image" "$jobs_image" >/dev/null 2>&1
   fi
-  if test "$status" -eq 0; then
+  if test "$status" -eq 0 && test "${VM_ACCEPTANCE_KEEP_EVIDENCE:-0}" != 1; then
     case "$acceptance_root" in
       */vm-package-acceptance.*) find "$acceptance_root" -depth -delete ;;
     esac
@@ -156,6 +183,7 @@ source "$script_dir/package-workflow-docker/assertions.sh"
 source "$script_dir/package-workflow-docker/fixtures.sh"
 source "$script_dir/package-workflow-docker/language-package.sh"
 source "$script_dir/package-workflow-docker/tool-release.sh"
+source "$script_dir/package-workflow-docker/maintenance.sh"
 
 acceptance_phase=check-prerequisites
 test -x "$vm_binary" || {
@@ -184,6 +212,9 @@ acceptance_phase=language-package-lifecycle
 accept_language_package_lifecycle
 acceptance_phase=managed-tool-workflows
 accept_tool_workflows
+acceptance_phase=package-service-backups
+accept_package_backups
 
 acceptance_phase=complete
+workflow_state > "$acceptance_root/final-workflows.json"
 echo 'Docker package workflow acceptance passed'

@@ -1,5 +1,5 @@
 publish_initial_collection() {
-  local baseline_log baseline_source
+  local baseline_log baseline_source baseline_receipt
   baseline_log=$acceptance_root/collection-baseline.log
 
   docker exec --user acceptance "$environment_name" \
@@ -7,8 +7,13 @@ publish_initial_collection() {
   baseline_source=$(checkout_source_from_log "$baseline_log")
   docker exec --user acceptance "$environment_name" sh -ec '
     cd "$1"
-    vm packages release
+    vm packages release --background
   ' sh "$baseline_source" >>"$baseline_log" 2>&1
+  grep -F 'Release accepted:' "$baseline_log" >/dev/null
+  docker exec --user acceptance "$environment_name" test -d "$baseline_source"
+  baseline_receipt=$(release_receipt_from_log "$baseline_log")
+  docker exec --user acceptance "$environment_name" \
+    vm packages release --receipt "$baseline_receipt" >>"$baseline_log" 2>&1
   docker exec --user acceptance "$environment_name" test ! -e "$baseline_source"
   run_vm tools show vm-acceptance-skills | grep -F '1.0.0' >/dev/null
 }
@@ -163,7 +168,7 @@ accept_tool_workflows() {
   fi
   grep -F 'Released release-tool@1.0.0' "$workspace_log" >/dev/null
   grep -F 'Activated in 2 of 2 running environments' "$workspace_log" >/dev/null
-  grep -F '1 stopped environment will update when started' "$workspace_log" >/dev/null
+  grep -F '1 stopped environment still deferred; 0 activated after start' "$workspace_log" >/dev/null
   grep -F 'No environments or volumes recreated' "$workspace_log" >/dev/null
   assert_release_published_once 1.0.0
   assert_builder_workspaces_clean
@@ -246,8 +251,11 @@ accept_tool_workflows() {
 
   worker_pid=$(activation_worker_pid)
   kill -STOP "$worker_pid"
-  docker exec --user acceptance "$environment_name" sh -ec \
-    'cd /workspace && vm packages release' >"$activation_log" 2>&1 &
+  docker exec --user acceptance "$environment_name" sh -ec '
+    cd /workspace
+    printf "%s\n" "$$" > /tmp/vm-acceptance-release.pid
+    exec vm packages release
+  ' >"$activation_log" 2>&1 &
   release_process=$!
   if ! wait_for_nonempty_log "$activation_log" 2; then
     kill -CONT "$worker_pid" 2>/dev/null || true
@@ -263,6 +271,25 @@ accept_tool_workflows() {
     exit 4
   fi
 
+  activation_receipt=$(release_receipt_from_log "$activation_log")
+  docker exec --user acceptance "$environment_name" sh -ec '
+    pid=$(cat /tmp/vm-acceptance-release.pid)
+    case "$pid" in ""|*[!0-9]*) exit 1 ;; esac
+    kill -INT "$pid"
+    rm /tmp/vm-acceptance-release.pid
+  '
+  set +e
+  wait "$release_process"
+  interrupted_release_status=$?
+  set -e
+  test "$interrupted_release_status" -eq 130 || {
+    cat "$activation_log" >&2
+    echo "Interrupted release exited $interrupted_release_status instead of 130" >&2
+    exit 4
+  }
+  grep -F "Stopped waiting for release receipt $activation_receipt" "$activation_log" >/dev/null
+  grep -F "vm packages release --receipt $activation_receipt" "$activation_log" >/dev/null
+
   if test -n "$docker_restart_command"; then
     bash -lc "$docker_restart_command"
     restart_scope='Docker daemon'
@@ -272,13 +299,44 @@ accept_tool_workflows() {
   fi
   kill -KILL "$worker_pid" 2>/dev/null || true
   wait_for_package_controller
+  # A file at the installer staging path deterministically fails only this
+  # running target; the other running target must still activate successfully.
+  docker exec --user acceptance "$consumer_environment" sh -ec '
+    path=/home/acceptance/.local/share/vm-tools/tmp
+    test ! -e "$path" || mv "$path" "$path.acceptance-saved"
+    printf "%s\n" acceptance-failure > "$path"
+  '
   run_vm tools activation-worker --once >>"$activation_log" 2>&1
-  set +e
-  wait "$release_process"
-  interrupted_release_status=$?
-  set -e
-  docker exec --user acceptance "$environment_name" sh -ec \
-    'cd /workspace && vm packages release' >>"$activation_log" 2>&1
+  activation_receipt=$(release_receipt_from_log "$activation_log")
+  if docker exec --user acceptance "$environment_name" \
+    vm packages release --receipt "$activation_receipt" >>"$activation_log" 2>&1; then
+    echo 'Release reported success despite a required failed activation' >&2
+    exit 4
+  fi
+  workflow_state | python3 -c '
+import json,sys
+state=json.load(sys.stdin)
+activation=next(a for a in state["tool_activations"].values()
+                if a["tool"] == "release-tool" and a["version"] == "1.1.0")
+targets={t["environment"]: t for t in activation["targets"]}
+assert targets[sys.argv[1]]["state"] == "active", targets
+assert targets[sys.argv[2]]["state"] == "failed", targets
+assert targets[sys.argv[2]]["error"], targets
+assert targets[sys.argv[3]]["state"] == "deferred", targets
+' "$environment_name" "$consumer_environment" "$stopped_environment"
+  assert_release_published_once 1.1.0
+  docker exec --user acceptance "$consumer_environment" sh -ec '
+    path=/home/acceptance/.local/share/vm-tools/tmp
+    rm "$path"
+    test ! -e "$path.acceptance-saved" || mv "$path.acceptance-saved" "$path"
+  '
+  run_vm packages service doctor --fix >>"$activation_log" 2>&1
+  docker exec --user acceptance "$environment_name" \
+    vm packages release --receipt "$activation_receipt" >>"$activation_log" 2>&1
+  if grep -F 'local checkout cleanup was skipped' "$activation_log" >/dev/null; then
+    echo 'Canonical receipt resume attempted managed-checkout cleanup' >&2
+    return 1
+  fi
   printf 'Resumable activation restart scope: %s; interrupted release status: %s\n' \
     "$restart_scope" "$interrupted_release_status"
 
@@ -327,7 +385,7 @@ accept_tool_workflows() {
     echo 'Initially stopped environment was started during rollout' >&2
     exit 4
   }
-  run_project_vm "$stopped_root" start
+  run_project_vm "$stopped_root" start --all-envs
   test "$(docker exec --user acceptance "$stopped_environment" \
     /home/acceptance/.local/bin/release-tool --version)" = '1.1.0'
 
@@ -362,6 +420,8 @@ accept_tool_workflows() {
   test "$(run_vm tools show release-tool)" = "$inventory_before"
   test "$(docker exec --user acceptance "$consumer_environment" \
     cat /home/acceptance/.local/share/vm-tools/state/release-tool.state)" = "$installed_state"
+
+  accept_tool_selection
 
   capture_runtime_state "$after_ids" "$after_volumes"
   cmp "$before_ids" "$after_ids"

@@ -465,7 +465,7 @@ value. Secret values never appear in listings.
 ```bash
 vm snapshots create before-refactor --env backend
 vm snapshots restore before-refactor --env backend
-vm snapshots export before-refactor --env backend --output backend.tar.gz
+vm snapshots export before-refactor --output backend.tar.gz
 ```
 
 ## Tunnels

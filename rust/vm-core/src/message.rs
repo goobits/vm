@@ -21,7 +21,8 @@ impl MessageBuilder {
     }
 
     pub fn var(mut self, key: &'static str, value: impl Into<String>) -> Self {
-        self.vars.insert(key, value.into());
+        self.vars
+            .insert(key.strip_prefix("r#").unwrap_or(key), value.into());
         self
     }
 
@@ -55,4 +56,15 @@ macro_rules! msg {
             builder.build()
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn raw_identifier_arguments_replace_plain_placeholders() {
+        assert_eq!(
+            crate::msg!("Installed {type}", r#type = "service"),
+            "Installed service"
+        );
+    }
 }

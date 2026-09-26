@@ -17,10 +17,18 @@ The root `Makefile` owns the supported test and quality commands. It uses
 | Clippy | `make clippy` |
 | Full local gate | `make quality-gates` |
 | Docker package workflow | `scripts/internal/test-package-workflow-docker.sh` |
+| Docker CLI provider workflow | `VM_ACCEPTANCE_BIN=/path/to/release/vm bash scripts/internal/test-provider-workflow-docker.sh` |
+| Podman CLI provider workflow | `VM_ACCEPTANCE_PROVIDER=podman VM_ACCEPTANCE_BIN=/path/to/release/vm bash scripts/internal/test-provider-workflow-docker.sh` |
+| Tart CLI provider workflow | `VM_ACCEPTANCE_BIN=/path/to/release/vm bash scripts/internal/test-provider-workflow-tart.sh` |
 
 The Docker workflow entrypoint sources its assertions and scenarios from
 `scripts/internal/package-workflow-docker/`; static fixture files live under
-that directory instead of being embedded in the runner.
+that directory instead of being embedded in the runner. The
+[CLI acceptance log](cli-acceptance.md) records revisions, provider availability,
+results, supported capabilities, and limitations.
+The shared Docker/Podman provider runner pins its binary and excludes unrelated
+providers from discovery. Podman requires an operational explicit connection;
+the [Podman evidence](cli-podman-acceptance.md) records the isolated machine setup.
 
 `make quality-gates` also requires `cargo-deny`, `jscpd`, and any provider
 dependencies used by integration tests. Use `make udeps` separately to inspect

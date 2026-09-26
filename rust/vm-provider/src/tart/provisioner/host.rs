@@ -96,7 +96,8 @@ impl TartProvisioner {
             let source = quote_posix_argument(&source.to_string_lossy());
             let remote_command =
                 quote_posix_argument(&format!("mkdir -p {guest_parent} && cat > {guest_target}"));
-            let command = format!("cat {source} | tart exec {instance} bash -lc {remote_command}");
+            let command =
+                format!("cat {source} | tart exec -i {instance} bash -lc {remote_command}");
             self.host_shell(&command).run().map_err(|error| {
                 VmError::Provider(format!("Failed to sync file to Tart VM: {error}"))
             })?;
@@ -114,7 +115,7 @@ impl TartProvisioner {
                 "mkdir -p {guest_parent} && tar -xf - -C {guest_parent}"
             ));
             let command = format!(
-                "tar -C {parent} -cf - {name} | tart exec {instance} bash -lc {remote_command}"
+                "tar -C {parent} -cf - {name} | tart exec -i {instance} bash -lc {remote_command}"
             );
             self.host_shell(&command).run().map_err(|error| {
                 VmError::Provider(format!("Failed to sync directory to Tart VM: {error}"))
@@ -157,7 +158,7 @@ $SUDO chown "$home_uid:$home_gid" {target} 2>/dev/null || true
 chmod {mode} {target}"#,
         );
         let remote_script = quote_posix_argument(&remote_script);
-        let command = format!("cat {source} | tart exec {instance} bash -lc {remote_script}");
+        let command = format!("cat {source} | tart exec -i {instance} bash -lc {remote_script}");
 
         self.host_shell(&command).run().map_err(|error| {
             VmError::Provider(format!(

@@ -138,7 +138,7 @@ fn ensure_vibe_base(base: TartVibeBase, command: &TartCommand) -> Result<Prepare
     install::build(command, base.guest_os, &local_name, BASE_BUILDER).map_err(|error| {
         VmError::validation(
             format!("Could not prepare Tart vibe base '{local_name}': {error}"),
-            Some("Run `vm system base build vibe --provider tart` to retry with full output"),
+            Some("Run `vm system images build vibe --provider tart` to retry with full output"),
         )
     })?;
     Ok(PreparedTartBase {

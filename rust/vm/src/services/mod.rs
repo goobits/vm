@@ -13,7 +13,7 @@ mod lifecycle;
 mod registry;
 mod state;
 
-pub(crate) use lifecycle::service_lifecycle;
+pub(crate) use lifecycle::{enabled_shared_services, service_lifecycle};
 
 /// Trait for managed services
 #[async_trait::async_trait]

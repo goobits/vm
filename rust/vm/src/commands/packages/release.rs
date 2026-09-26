@@ -264,7 +264,7 @@ async fn handle_guest_inner(
         VmError::operation("Published submission has no release record", None::<String>)
     })?;
     let release = client.release(release_id).await?;
-    let managed_checkout = workspace.is_none();
+    let managed_checkout = !checkout.workspace_release;
     if let Some(workspace) = workspace.as_mut() {
         workspace.record_commit(&release.source_commit)?;
     }

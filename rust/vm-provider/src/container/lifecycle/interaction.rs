@@ -318,8 +318,7 @@ impl<'a> LifecycleOperations<'a> {
             .and_then(|t| t.shell.as_deref())
             .unwrap_or(DEFAULT_SHELL);
         let working_dir = options.guest_cwd(workspace_path);
-        let workspace_quoted = shell_session::quote_posix_argument(&working_dir.to_string_lossy());
-        let worktree_repair = shell_session::worktree_repair_script(workspace_path);
+        let script = shell_session::exec_script(workspace_path, &working_dir.to_string_lossy());
 
         Self::repair_home_state(self.runtime.executable(), &target_container, &user_config)?;
 
@@ -339,8 +338,8 @@ impl<'a> LifecycleOperations<'a> {
             format!("SHELL={shell}"),
             "VM_MANAGED_GUEST=1".to_string(),
             shell.to_string(),
-            "-ilc".to_string(),
-            format!("{worktree_repair}\ncd {workspace_quoted} && exec \"$@\""),
+            "-lc".to_string(),
+            script,
             "vm-exec".to_string(),
         ]);
         args.extend(cmd.iter().cloned());

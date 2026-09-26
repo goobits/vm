@@ -4,7 +4,7 @@ pub const COMPOSE_PROJECT: &str = "vm-packages";
 pub const COMPOSE_YAML: &str = include_str!("resources/compose.yaml");
 pub const GATEWAY_CONFIG: &str = include_str!("resources/Caddyfile");
 /// Bump when running appliance services must be rebuilt or recreated.
-pub const APPLIANCE_DEFINITION_REVISION: u32 = 6;
+pub const APPLIANCE_DEFINITION_REVISION: u32 = 7;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplianceConfig {
@@ -131,6 +131,14 @@ mod tests {
         assert!(COMPOSE_YAML.contains("exec pkg-rollout"));
         assert!(COMPOSE_YAML.contains("build-edge:"));
         assert!(COMPOSE_YAML.contains("profiles: [maintenance]"));
+        let maintenance = &definition["services"]["maintenance"];
+        assert_eq!(maintenance["user"], "0:0");
+        assert_eq!(maintenance["network_mode"], "none");
+        assert_eq!(maintenance["read_only"], true);
+        assert_eq!(
+            maintenance["cap_add"],
+            serde_yaml_ng::to_value(["DAC_OVERRIDE", "CHOWN", "FOWNER"]).unwrap()
+        );
         assert!(GATEWAY_CONFIG.contains("dynamic a work 3091"));
         assert!(GATEWAY_CONFIG.contains("dynamic a oci-cache 5000"));
         assert!(GATEWAY_CONFIG.contains("dynamic a registry 3080"));

@@ -9,6 +9,29 @@ use vm_config::config::{
 };
 
 #[test]
+fn setup_captures_success_diagnostics_and_preserves_failure_context() {
+    let output = TartProvisioner::run_setup_command(duct::cmd(
+        "sh",
+        ["-c", "printf ready; printf 'VM_PROVISION_STEP=setup\n' >&2"],
+    ))
+    .unwrap();
+    assert_eq!(output, "ready");
+
+    let error = TartProvisioner::run_setup_command(duct::cmd(
+        "sh",
+        [
+            "-c",
+            "printf 'setup output\n'; printf 'setup failed\n' >&2; exit 19",
+        ],
+    ))
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("19"));
+    assert!(error.contains("setup output"));
+    assert!(error.contains("setup failed"));
+}
+
+#[test]
 fn host_shell_applies_tart_home() {
     let provisioner = TartProvisioner::new(
         "vm-mac".to_string(),

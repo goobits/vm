@@ -10,8 +10,9 @@ pub(crate) use command::TartCommand;
 pub use storage::project_home as tart_project_home;
 #[cfg(feature = "tart")]
 pub use storage::{
+    refresh_runtime_identity as refresh_tart_runtime_identity,
     remove_storage as remove_tart_storage, storage_inventory as tart_storage_inventory,
-    TartStorageEntry,
+    validate_restore_target as validate_tart_restore_target, TartStorageEntry,
 };
 
 #[cfg(feature = "tart")]

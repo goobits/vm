@@ -2,7 +2,7 @@
 
 use crate::archive::validate_snapshot_files;
 use crate::compose_plan::ComposeCapturePlan;
-use crate::docker::{execute_docker_compose, execute_docker_compose_status};
+use crate::docker::{execute_docker_compose, execute_docker_compose_status, ComposeProject};
 use crate::images::load_service_images;
 use crate::manager::{snapshot_file_path, SnapshotManager, SnapshotScope};
 use crate::metadata::SnapshotMetadata;
@@ -91,6 +91,12 @@ pub async fn handle_restore(
             None::<String>,
         ));
     }
+    if metadata.services.is_empty() {
+        return Err(VmError::validation(
+            "Container snapshot has no captured service images and cannot restore root filesystems",
+            Some("Create a new snapshot with captured container services"),
+        ));
+    }
     if metadata.compose_file.is_empty()
         || !snapshot_file_path(
             &snapshot_dir.join("compose"),
@@ -109,7 +115,7 @@ pub async fn handle_restore(
     if !matches!(scope, SnapshotScope::Global) && metadata.project_name != project_name && !force {
         return Err(VmError::validation(
             format!(
-                "Snapshot was created for project '{}' but current project is '{}'. Use --force to override.",
+                "Snapshot was created for project '{}' but current project is '{}'. Select the snapshot owner project.",
                 metadata.project_name, project_name
             ),
             None::<String>,
@@ -131,9 +137,12 @@ pub async fn handle_restore(
         }
     };
 
+    let compose =
+        ComposeProject::for_environment(executable, target_environment, &project_dir).await?;
     let normalized =
-        execute_docker_compose(executable, &["config", "--format", "json"], &project_dir).await?;
-    let current_plan = ComposeCapturePlan::parse(&normalized)?;
+        execute_docker_compose(executable, &["config", "--format", "json"], &compose).await?;
+    let current_plan =
+        ComposeCapturePlan::parse(&normalized, &owner.canonicalize()?.to_string_lossy())?;
     for volume in &metadata.volumes {
         if !current_plan.volumes.iter().any(|current| {
             current.name == volume.name && current.runtime_name == volume.runtime_name
@@ -148,24 +157,23 @@ pub async fn handle_restore(
         }
     }
 
+    crate::volumes::verify_owned_volumes(executable, &current_plan.volumes).await?;
+
+    // Load images
+    tracing::info!("Loading service images in parallel...");
+    let images_dir = snapshot_dir.join("images");
+    load_service_images(executable, &images_dir, &metadata.services).await?;
+
     // Stop current compose environment
     tracing::info!("Stopping current environment...");
-    execute_docker_compose_status(executable, &["down"], &project_dir).await?;
+    execute_docker_compose_status(executable, &["down"], &compose).await?;
 
     // Restore volumes
     if !metadata.volumes.is_empty() {
         tracing::info!("Restoring volumes in parallel...");
         let volumes_dir = snapshot_dir.join("volumes");
 
-        restore_volumes(executable, &volumes_dir, &metadata.volumes, force).await?;
-    }
-
-    // Load images
-    if !metadata.services.is_empty() {
-        tracing::info!("Loading service images in parallel...");
-        let images_dir = snapshot_dir.join("images");
-
-        load_service_images(executable, &images_dir, &metadata.services).await?;
+        restore_volumes(executable, &volumes_dir, &metadata.volumes).await?;
     }
 
     // Restore configuration files
@@ -175,14 +183,16 @@ pub async fn handle_restore(
     // Backup current files
     for config_file in &[&metadata.compose_file, &metadata.vm_config_file] {
         let source = snapshot_file_path(&compose_dir, config_file, "configuration file")?;
-        let dest = snapshot_file_path(&project_dir, config_file, "configuration file")?;
+        let dest = if config_file.as_str() == metadata.compose_file {
+            compose.file.clone()
+        } else {
+            snapshot_file_path(&project_dir, config_file, "configuration file")?
+        };
 
         if source.exists() {
             // Create backup of existing file
             if dest.exists() {
-                let backup_name = format!("{config_file}.bak");
-                let backup_path =
-                    snapshot_file_path(&project_dir, &backup_name, "configuration backup")?;
+                let backup_path = dest.with_extension("bak");
                 tokio::fs::copy(&dest, &backup_path)
                     .await
                     .map_err(|e| VmError::filesystem(e, dest.to_string_lossy(), "copy"))?;
@@ -199,7 +209,12 @@ pub async fn handle_restore(
 
     // Start compose environment
     tracing::info!("Starting restored environment...");
-    execute_docker_compose_status(executable, &["up", "-d"], &project_dir).await?;
+    execute_docker_compose_status(
+        executable,
+        &["up", "-d", "--no-build", "--pull", "never"],
+        &compose,
+    )
+    .await?;
 
     tracing::info!("Snapshot '{}' restored successfully", snapshot_name);
 

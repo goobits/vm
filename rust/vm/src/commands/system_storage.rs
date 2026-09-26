@@ -5,8 +5,8 @@ use crate::error::{VmError, VmResult};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeSet;
-use std::process::Command;
-use vm_core::{vm_println, vm_success, vm_warning};
+use std::process::{Command, Output};
+use vm_core::{vm_println, vm_success};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Resource {
@@ -55,7 +55,8 @@ pub(super) fn handle(command: &SystemStorageSubcommand) -> VmResult<()> {
             yes,
             json,
         } => {
-            let resource = inventory_all()?
+            let resource = inventory_all()
+                .map_err(|error| error.with_target(resource_id))?
                 .into_iter()
                 .find(|item| item.id == *resource_id)
                 .ok_or_else(|| {
@@ -96,7 +97,8 @@ pub(super) fn handle(command: &SystemStorageSubcommand) -> VmResult<()> {
 
             // Reinspect after confirmation. The provider's non-force removal is
             // the final reference check if state changes after this inspection.
-            let current = inventory_all()?
+            let current = inventory_all()
+                .map_err(|error| error.with_target(resource_id))?
                 .into_iter()
                 .find(|item| item.id == *resource_id)
                 .ok_or_else(|| {
@@ -146,10 +148,8 @@ fn inventory_all() -> VmResult<Vec<Resource>> {
             .output()
             .is_ok_and(|output| output.status.success())
         {
-            match container_inventory(engine) {
-                Ok(found) => resources.extend(found),
-                Err(error) => vm_warning!("Could not inspect {engine} storage: {error}"),
-            }
+            resources
+                .extend(container_inventory(engine).map_err(|error| error.with_target(engine))?);
         }
     }
     resources.extend(tart_resources()?);
@@ -201,7 +201,9 @@ fn container_inventory(engine: &str) -> VmResult<Vec<Resource>> {
         ],
     )?;
     for name in volumes.lines().filter(|line| !line.is_empty()) {
-        let inspect = inspect(engine, &["volume", "inspect", name])?;
+        let Some(inspect) = inspect(engine, "volume", name)? else {
+            continue;
+        };
         if let Some(resource) = volume_resource(engine, &inspect)? {
             let refs = run(
                 engine,
@@ -235,7 +237,9 @@ fn container_inventory(engine: &str) -> VmResult<Vec<Resource>> {
         .filter(|line| !line.is_empty())
         .collect::<BTreeSet<_>>()
     {
-        let inspect = inspect(engine, &["image", "inspect", id])?;
+        let Some(inspect) = inspect(engine, "image", id)? else {
+            continue;
+        };
         if let Some(resource) = image_resource(engine, &inspect)? {
             let full_id = resource
                 .id
@@ -336,7 +340,14 @@ fn image_resource(engine: &str, inspect: &Value) -> VmResult<Option<Resource>> {
         return Ok(None);
     }
     let id = required_string(&item["Id"], "image ID")?;
-    if !id.starts_with("sha256:") || !id[7..].bytes().all(|byte| byte.is_ascii_hexdigit()) {
+    // Docker reports a digest; Podman's native image inspection reports a bare
+    // full SHA-256. Keep each runtime's identifier for later reference checks.
+    let hash = id
+        .strip_prefix("sha256:")
+        .or_else(|| (engine == "podman").then_some(id));
+    if !hash
+        .is_some_and(|hash| hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit()))
+    {
         return Err(VmError::validation(
             "Provider returned an invalid image ID",
             None::<String>,
@@ -397,18 +408,45 @@ fn required_string<'a>(value: &'a Value, field: &str) -> VmResult<&'a str> {
         })
 }
 
-fn inspect(engine: &str, args: &[&str]) -> VmResult<Value> {
-    serde_json::from_str(&run(engine, args)?)
+fn inspect(engine: &str, kind: &str, id: &str) -> VmResult<Option<Value>> {
+    let args = [kind, "inspect", id];
+    let output = command_output(engine, &args)?;
+    // Independent cleanup can remove a listed resource before inspection. Only
+    // a precise missing-resource response is safe to omit from the inventory.
+    if !output.status.success() && missing_resource(engine, kind, id, &output.stderr) {
+        return Ok(None);
+    }
+    serde_json::from_str(&output_text(engine, &args, output)?)
+        .map(Some)
         .map_err(|error| VmError::general(error, "Invalid provider inspection result"))
 }
 
-fn run(engine: &str, args: &[&str]) -> VmResult<String> {
-    let output = Command::new(engine)
+fn missing_resource(engine: &str, kind: &str, id: &str, stderr: &[u8]) -> bool {
+    if engine != "docker" {
+        return false;
+    }
+    let expected = match kind {
+        "volume" => format!("Error response from daemon: get {id}: no such volume"),
+        "image" => format!("Error response from daemon: No such image: {id}"),
+        _ => return false,
+    };
+    String::from_utf8_lossy(stderr).trim() == expected
+}
+
+fn command_output(engine: &str, args: &[&str]) -> VmResult<Output> {
+    Command::new(engine)
         .args(args)
         .output()
-        .map_err(|error| VmError::general(error, format!("Failed to run {engine}")))?;
+        .map_err(|error| VmError::general(error, format!("Failed to run {engine}")))
+}
+
+fn run(engine: &str, args: &[&str]) -> VmResult<String> {
+    output_text(engine, args, command_output(engine, args)?)
+}
+
+fn output_text(engine: &str, args: &[&str], output: Output) -> VmResult<String> {
     if !output.status.success() {
-        return Err(VmError::validation(
+        return Err(VmError::operation(
             format!(
                 "{engine} {} failed: {}",
                 args.join(" "),
@@ -476,6 +514,33 @@ mod tests {
             .is_none());
         dangling[0].as_object_mut().unwrap().remove("RepoDigests");
         assert!(image_resource("podman", &dangling).is_err());
+    }
+
+    #[test]
+    fn image_ids_accept_native_provider_forms_and_reject_malformed_hashes() {
+        let hash = "a".repeat(64);
+        for engine in ["docker", "podman"] {
+            for id in [
+                hash.clone(),
+                format!("sha256:{hash}"),
+                "sha256:".to_string(),
+                format!("sha256:{}", "a".repeat(63)),
+                format!("sha256:{}", "g".repeat(64)),
+                format!("sha512:{hash}"),
+                "a".repeat(65),
+                "--all".to_string(),
+            ] {
+                let item = json!([{"Id": id, "Config": {
+                    "Labels": {"com.vm.managed": "true"}},
+                    "RepoTags": [], "RepoDigests": []}]);
+                let accepted = id == format!("sha256:{hash}") || (engine == "podman" && id == hash);
+                let result = image_resource(engine, &item);
+                assert_eq!(result.is_ok(), accepted, "{engine}: {id}");
+                if accepted {
+                    assert_eq!(result.unwrap().unwrap().id, format!("{engine}:image:{id}"));
+                }
+            }
+        }
     }
 
     #[test]

@@ -21,6 +21,20 @@ pub(crate) fn worktree_repair_script(workspace: &str) -> String {
     )
 }
 
+/// Prepare noninteractive commands without loading interactive shell hooks.
+pub(crate) fn exec_script(workspace: &str, working_dir: &str) -> String {
+    exec_script_with_profile(workspace, working_dir, "/etc/profile.d/vm-packages.sh")
+}
+
+fn exec_script_with_profile(workspace: &str, working_dir: &str, profile: &str) -> String {
+    let repair = worktree_repair_script(workspace);
+    let working_dir = quote_posix_argument(working_dir);
+    let profile = quote_posix_argument(profile);
+    format!(
+        "{repair}\nif [ -r {profile} ]; then . {profile}; fi\nexport PATH=\"$HOME/.local/bin:$PATH\"\ncd {working_dir} && exec \"$@\""
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -47,6 +61,58 @@ mod tests {
 
         assert!(output.status.success());
         assert_eq!(output.stdout, value.as_bytes());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn noninteractive_exec_preserves_empty_and_shell_sensitive_arguments() {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace = directory.path().to_str().unwrap();
+        let script = exec_script_with_profile(workspace, workspace, "/nonexistent-vm-profile");
+        let values = [
+            "",
+            "two words",
+            "'quotes'",
+            "$(touch injected)",
+            "*",
+            "line\nbreak",
+        ];
+        let output = std::process::Command::new("sh")
+            .args(["-c", &script, "vm-exec", "printf", "%s\\0"])
+            .args(values)
+            .output()
+            .unwrap();
+
+        assert!(output.status.success());
+        assert!(output.stderr.is_empty());
+        let expected = values
+            .iter()
+            .flat_map(|value| value.bytes().chain([0]))
+            .collect::<Vec<_>>();
+        assert_eq!(output.stdout, expected);
+        assert!(!directory.path().join("injected").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn noninteractive_exec_loads_managed_environment_and_preserves_exit_status() {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace = directory.path().to_str().unwrap();
+        let profile = directory.path().join("managed profile.sh");
+        std::fs::write(&profile, "export VM_EXEC_TEST='managed settings'\n").unwrap();
+        let script = exec_script_with_profile(workspace, workspace, profile.to_str().unwrap());
+        let output = std::process::Command::new("sh")
+            .args([
+                "-c", &script, "vm-exec", "sh", "-c",
+                "printf '%s' \"$VM_EXEC_TEST\"; case \"$PATH\" in \"$HOME/.local/bin:\"*) exit 17 ;; *) exit 18 ;; esac",
+            ])
+            .env("HOME", directory.path())
+            .output()
+            .unwrap();
+
+        assert_eq!(output.status.code(), Some(17));
+        assert_eq!(output.stdout, b"managed settings");
+        assert!(output.stderr.is_empty());
     }
 
     #[cfg(unix)]

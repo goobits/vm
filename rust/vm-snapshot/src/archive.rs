@@ -376,6 +376,14 @@ pub(crate) fn validate_snapshot_files(
                 None::<String>,
             ));
         }
+        let input = std::fs::File::open(&archive_path)?;
+        let decoder = flate2::read::GzDecoder::new(input);
+        let mut archive = tar::Archive::new(decoder);
+        for entry in archive.entries()? {
+            std::io::copy(&mut entry?, &mut std::io::sink())?;
+        }
+        // Consume the gzip trailer as well so CRC errors are preflight failures.
+        std::io::copy(&mut archive.into_inner(), &mut std::io::sink())?;
     }
 
     Ok(())

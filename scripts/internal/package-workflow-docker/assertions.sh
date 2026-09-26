@@ -166,3 +166,27 @@ assert_guest_only_checkout() {
       "$checkout_source" "/data/agents/$checkout_id/source"
   done
 }
+
+release_receipt_from_log() {
+  local receipt
+  receipt=$(sed -n 's/^Receipt: //p' "$1" | sort -u)
+  case "$receipt" in
+    ''|*[!A-Za-z0-9_-]*)
+      cat "$1" >&2
+      echo 'Release did not return one durable receipt identifier' >&2
+      return 1
+      ;;
+  esac
+  printf '%s\n' "$receipt"
+}
+
+assert_checkout_field() {
+  workflow_state | python3 -c '
+import json,sys
+checkout=json.load(sys.stdin)["checkouts"][sys.argv[1]]
+actual=checkout[sys.argv[2]]
+if isinstance(actual, bool):
+    actual=str(actual).lower()
+assert actual == sys.argv[3], checkout
+' "$1" "$2" "$3"
+}

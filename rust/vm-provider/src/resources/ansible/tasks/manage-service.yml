@@ -5,7 +5,7 @@
 #   - service_name: The name of the service (e.g., 'postgresql', 'redis', 'mongodb')
 #   - service_config: The service configuration from project_config.services[service_name]
 #   - project_config: The full project configuration
-#   - is_docker_container: Boolean indicating if running in Docker
+#   - is_container: Boolean indicating if running in a container
 
 - name: "Validate {{ service_name }} service definition"
   assert:
@@ -100,14 +100,14 @@
     state: started
     daemon_reload: "{{ service_systemd_daemon_reload }}"
   when:
-    - not is_docker_container
+    - not is_container
     - service_systemd_name != "" or service_name is defined
   notify: "restart {{ service_name }}"
 
 - name: "Force systemd service restart for {{ service_name }}"
   meta: flush_handlers
   when:
-    - not is_docker_container
+    - not is_container
     - service_systemd_name != "" or service_name is defined
 
 - name: "Create {{ service_name }} supervisor config (Docker)"
@@ -127,14 +127,14 @@
       environment={{ service_supervisor_environment }}
       {% endif %}
   when:
-    - is_docker_container
+    - is_container
     - service_supervisor_command != ""
   notify: restart supervisor
 
 - name: "Apply supervisor config for {{ service_name }} (Docker)"
   meta: flush_handlers
   when:
-    - is_docker_container
+    - is_container
     - service_supervisor_command != ""
 
 - name: "Wait for {{ service_name }} to be ready"

@@ -214,6 +214,9 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let selected = root.path().join("vm.yaml");
         std::fs::write(&selected, "project: demo\n").unwrap();
+        // The deletion planner passes a canonical owner path, including on
+        // hosts where the temporary directory itself is a symlink.
+        let selected = selected.canonicalize().unwrap();
         let labels = serde_json::json!({
             "com.vm.managed": "true",
             "com.vm.project": "demo",

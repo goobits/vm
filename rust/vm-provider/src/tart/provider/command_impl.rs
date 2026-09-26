@@ -1,6 +1,6 @@
 use super::TartProvider;
 use crate::{shell_session, CommandProvider, ExecOptions, GuestOutput, LogRecord, VmError};
-use duct::cmd;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tracing::{error, info};
@@ -10,6 +10,17 @@ use vm_core::msg;
 use vm_messages::messages::MESSAGES;
 
 impl TartProvider {
+    pub(super) fn file_upload_command(
+        &self,
+        local: &str,
+        vm_name: &str,
+        remote: &str,
+    ) -> duct::Expression {
+        let command = format!("cat > {}", shell_session::quote_posix_argument(remote));
+        self.tart_expr(&["exec", "-i", vm_name, "sh", "-c", &command])
+            .stdin_path(local)
+    }
+
     fn app_log_path(&self, container: Option<&str>) -> Result<PathBuf> {
         let vm_name = self.vm_name_with_instance(container)?;
         let tart_home = self.tart_home().map(PathBuf::from).map_or_else(
@@ -65,7 +76,8 @@ impl CommandProvider for TartProvider {
     }
 
     fn exec_with_stdin(&self, container: Option<&str>, cmd: &[String], input: &[u8]) -> Result<()> {
-        let args = self.guest_exec_args(container, cmd)?;
+        let mut args = self.guest_exec_args(container, cmd)?;
+        args.insert(1, "-i".to_string());
         self.tart_expr(&args)
             .stdin_bytes(input.to_vec())
             .run()
@@ -114,6 +126,25 @@ impl CommandProvider for TartProvider {
 
         let log_path = log_path.to_string_lossy();
         stream_command("tail", &["-f", &log_path])
+    }
+
+    fn logs_extended(
+        &self,
+        container: Option<&str>,
+        follow: bool,
+        tail: usize,
+        service: Option<&str>,
+        config: &vm_config::config::VmConfig,
+    ) -> Result<()> {
+        self.logs_records(container, follow, tail, service, config, &mut |record| {
+            let mut output: Box<dyn Write> = match record.stream {
+                "stderr" => Box::new(io::stderr().lock()),
+                _ => Box::new(io::stdout().lock()),
+            };
+            output.write_all(&record.bytes)?;
+            output.flush()?;
+            Ok(())
+        })
     }
 
     fn logs_records(
@@ -167,24 +198,11 @@ impl CommandProvider for TartProvider {
         };
 
         if is_upload {
-            let copy_cmd = format!("cat > {}", shell_session::quote_posix_argument(remote_path));
-            let output = cmd!(
-                "sh",
-                "-c",
-                format!(
-                    "cat {} | tart exec {} sh -c {}",
-                    shell_session::quote_posix_argument(local_path),
-                    shell_session::quote_posix_argument(&vm_name),
-                    shell_session::quote_posix_argument(&copy_cmd)
-                )
-            );
-            let output = if let Some(tart_home) = self.tart_home() {
-                output.env("TART_HOME", tart_home).run()
-            } else {
-                output.run()
-            };
-
-            output.map_err(|e| VmError::Provider(format!("Failed to copy file to VM: {}", e)))?;
+            self.file_upload_command(local_path, &vm_name, remote_path)
+                .run()
+                .map_err(|error| {
+                    VmError::Provider(format!("Failed to copy file to VM: {error}"))
+                })?;
         } else {
             let copy_cmd = format!("cat {}", shell_session::quote_posix_argument(remote_path));
             let result = self

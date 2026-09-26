@@ -3,7 +3,7 @@
 //! This module provides common Docker command execution patterns to avoid
 //! code duplication across create, restore, import, and export modules.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use vm_core::error::{Result, VmError};
 
@@ -43,7 +43,7 @@ pub async fn execute_docker_streaming(executable: &str, args: &[&str]) -> Result
     let operation = operation("docker", args);
     let status = tokio::process::Command::new(executable)
         .args(args)
-        .stdout(Stdio::inherit())
+        .stdout(Stdio::from(std::io::stderr()))
         .stderr(Stdio::inherit())
         .status()
         .await
@@ -72,33 +72,64 @@ pub async fn execute_docker_with_output(executable: &str, args: &[&str]) -> Resu
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-/// Execute docker command without capturing output (for quick commands like volume create/rm)
-pub async fn execute_docker(executable: &str, args: &[&str]) -> Result<()> {
-    let operation = operation("docker", args);
-    let status = tokio::process::Command::new(executable)
-        .args(args)
-        .status()
-        .await
-        .map_err(|error| VmError::general(error, format!("Failed to execute {operation}")))?;
+#[derive(Clone)]
+pub(crate) struct ComposeProject {
+    pub directory: PathBuf,
+    pub file: PathBuf,
+}
 
-    if !status.success() {
-        return Err(command_failure(&operation, &[]));
+impl ComposeProject {
+    pub async fn for_environment(
+        executable: &str,
+        environment: Option<&str>,
+        directory: &Path,
+    ) -> Result<Self> {
+        let environment = environment.ok_or_else(|| {
+            VmError::validation("Snapshot requires a selected environment", None::<String>)
+        })?;
+        let files = execute_docker_with_output(
+            executable,
+            &[
+                "inspect",
+                "--format",
+                "{{ index .Config.Labels \"com.docker.compose.project.config_files\" }}",
+                environment,
+            ],
+        )
+        .await?;
+        if files.is_empty() || files == "<no value>" || files.contains(',') {
+            return Err(VmError::validation(
+                "Snapshot requires one recorded Compose configuration",
+                None::<String>,
+            ));
+        }
+        let file = PathBuf::from(files);
+        if !file.is_absolute() || !file.is_file() {
+            return Err(VmError::validation(
+                "The environment's recorded Compose configuration is unavailable",
+                None::<String>,
+            ));
+        }
+        Ok(Self {
+            directory: directory.to_path_buf(),
+            file,
+        })
     }
-
-    Ok(())
 }
 
 /// Execute docker compose command and return output
 pub async fn execute_docker_compose(
     executable: &str,
     args: &[&str],
-    project_dir: &Path,
+    project: &ComposeProject,
 ) -> Result<String> {
     let operation = operation("docker compose", args);
     let output = tokio::process::Command::new(executable)
         .arg("compose")
+        .arg("--file")
+        .arg(&project.file)
         .args(args)
-        .current_dir(project_dir)
+        .current_dir(&project.directory)
         .output()
         .await
         .map_err(|error| VmError::general(error, format!("Failed to execute {operation}")))?;
@@ -114,13 +145,16 @@ pub async fn execute_docker_compose(
 pub async fn execute_docker_compose_status(
     executable: &str,
     args: &[&str],
-    project_dir: &Path,
+    project: &ComposeProject,
 ) -> Result<()> {
     let operation = operation("docker compose", args);
     let status = tokio::process::Command::new(executable)
         .arg("compose")
+        .arg("--file")
+        .arg(&project.file)
         .args(args)
-        .current_dir(project_dir)
+        .current_dir(&project.directory)
+        .stdout(Stdio::from(std::io::stderr()))
         .status()
         .await
         .map_err(|error| VmError::general(error, format!("Failed to execute {operation}")))?;
@@ -130,22 +164,6 @@ pub async fn execute_docker_compose_status(
     }
 
     Ok(())
-}
-
-pub async fn remove_docker_volume_if_present(executable: &str, name: &str) -> Result<()> {
-    let output = tokio::process::Command::new(executable)
-        .args(["volume", "rm", name])
-        .output()
-        .await
-        .map_err(|error| VmError::general(error, "Failed to execute docker volume rm"))?;
-    if output.status.success()
-        || String::from_utf8_lossy(&output.stderr)
-            .to_ascii_lowercase()
-            .contains("no such volume")
-    {
-        return Ok(());
-    }
-    Err(command_failure("docker volume rm", &output.stderr))
 }
 
 #[cfg(test)]

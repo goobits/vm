@@ -571,6 +571,12 @@ mod tests {
 
     #[test]
     fn unknown_nested_keys_fail_while_extension_roots_remain_available() {
+        let identity: Value =
+            serde_yaml_ng::from_str("vm:\n  user: acceptance\n  uid: 11000\n  gid: 11000\n")
+                .unwrap();
+        validate_known_keys(&identity, false).unwrap();
+        assert_eq!(lookup_field_type("vm.uid", false), SchemaType::Integer);
+        assert_eq!(lookup_field_type("vm.gid", false), SchemaType::Integer);
         let typo: Value =
             serde_yaml_ng::from_str("project:\n  name: test\nvm:\n  memroy: 4096\n").unwrap();
         assert!(validate_known_keys(&typo, false)

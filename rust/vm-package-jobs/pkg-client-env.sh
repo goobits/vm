@@ -20,7 +20,14 @@ scheme="${gateway%%://*}"
 authority="${gateway#*://}"
 authenticated="${scheme}://reader:${read_token}@${authority}"
 
-export NPM_CONFIG_REGISTRY="${authenticated}/npm/"
+# npm follows tarball URLs supplied by registry metadata. URL credentials do not
+# follow those clean URLs, so scope the read token to the registry path instead.
+NPM_CONFIG_USERCONFIG=$(mktemp /tmp/vm-package-npmrc.XXXXXX)
+chmod 600 "$NPM_CONFIG_USERCONFIG"
+printf 'registry=%s/npm/\n//%s/npm/:_authToken=%s\n' \
+  "$gateway" "$authority" "$read_token" > "$NPM_CONFIG_USERCONFIG"
+export NPM_CONFIG_USERCONFIG
+export NPM_CONFIG_REGISTRY="${gateway}/npm/"
 export PIP_INDEX_URL="${authenticated}/pypi/simple/"
 export UV_INDEX_URL="$PIP_INDEX_URL"
 export CARGO_REGISTRIES_VM_INDEX="sparse+${gateway}/cargo/index/"

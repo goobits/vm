@@ -363,6 +363,7 @@ services:
               exit 3
             }
             mkdir "$${temporary}"
+            trap 'rm -rf -- "$${temporary}"' EXIT
             for dataset in $${datasets}; do
               tar --numeric-owner -C "/volumes/$${dataset}" -czf "$${temporary}/$${dataset}.tar.gz" .
             done
@@ -407,6 +408,8 @@ services:
             ;;
         esac
     cap_drop: ["ALL"]
+    # Preserve private artifact data and numeric ownership across backup/restore.
+    cap_add: ["DAC_OVERRIDE", "CHOWN", "FOWNER"]
     security_opt: ["no-new-privileges:true"]
     read_only: true
     tmpfs: ["/tmp:rw,nosuid,size=256m"]

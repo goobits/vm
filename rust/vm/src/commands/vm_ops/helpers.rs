@@ -13,12 +13,9 @@ use vm_core::{vm_println, vm_success, vm_warning};
 use vm_messages::messages::MESSAGES;
 
 pub(super) fn has_enabled_services(config: &VmConfig, global: &GlobalConfig) -> bool {
-    config.services.values().any(|service| service.enabled)
-        || global.services.auth_proxy.enabled
-        || global.services.postgresql.enabled
-        || global.services.redis.enabled
-        || global.services.mongodb.enabled
-        || global.services.mysql.enabled
+    crate::services::enabled_shared_services(config, global)
+        .next()
+        .is_some()
 }
 
 /// Helper function to register VM services

@@ -107,18 +107,15 @@ impl TartProvider {
         self.ensure_workspace_mount_ready(&vm_name, &sync_dir)?;
         self.ensure_configured_mounts_ready(&vm_name)?;
         self.ensure_shell_config_ready(&vm_name, &sync_dir)?;
-        let worktree_repair = shell_session::worktree_repair_script(&sync_dir);
+        let script = shell_session::exec_script(&sync_dir, &working_dir.to_string_lossy());
         let mut args = vec!["exec".to_string(), vm_name];
         if let Some(user) = options.user.as_deref() {
             args.extend(["sudo".to_string(), "-nHu".to_string(), user.to_string()]);
         }
         args.extend([
             shell.to_string(),
-            "-ilc".to_string(),
-            format!(
-                "{worktree_repair}\ncd {} && exec \"$@\"",
-                shell_session::quote_posix_argument(&working_dir.to_string_lossy())
-            ),
+            "-lc".to_string(),
+            script,
             "vm-exec".to_string(),
         ]);
         args.extend(command.iter().cloned());

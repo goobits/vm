@@ -18,6 +18,8 @@ mod receipt;
 pub use inventory::{remove_storage, storage_inventory, TartStorageEntry};
 #[cfg(feature = "tart")]
 pub(super) use receipt::{record_runtime_receipt, runtime_drift};
+#[cfg(feature = "tart")]
+pub use receipt::{refresh_runtime_identity, validate_restore_target};
 
 const STATE_DIRECTORY: &str = "tart";
 const STATE_FILE: &str = "instances.json";
@@ -335,7 +337,7 @@ mod tests {
             ..Default::default()
         };
         let (device, inode) = super::receipt::disk_identity(&vm).unwrap();
-        let state = StorageState {
+        let mut state = StorageState {
             managed: BTreeSet::from(["demo-dev".into()]),
             instances: BTreeMap::from([("demo-dev".into(), home.clone())]),
             configs: BTreeMap::from([("demo-dev".into(), owner)]),
@@ -366,6 +368,38 @@ mod tests {
                 .unwrap()
                 .unwrap()
                 .contains("disk identity")
+        );
+        let identity = super::receipt::disk_identity(&vm).unwrap();
+        super::receipt::refresh_receipt_identity(&mut state, "demo-dev", &config, identity)
+            .unwrap();
+        assert_eq!(
+            super::receipt::detect_runtime_drift(&state, "demo-dev", &home, &config).unwrap(),
+            None
+        );
+        config.environment.insert("MODE".into(), "changed".into());
+        super::receipt::refresh_receipt_identity(&mut state, "demo-dev", &config, identity)
+            .unwrap();
+        assert!(
+            super::receipt::detect_runtime_drift(&state, "demo-dev", &home, &config)
+                .unwrap()
+                .unwrap()
+                .contains("configuration differs")
+        );
+        let other = root.path().join("other.yaml");
+        std::fs::write(&other, "project: demo").unwrap();
+        config.source_path = Some(other);
+        assert!(
+            super::receipt::refresh_receipt_identity(&mut state, "demo-dev", &config, (0, 0))
+                .unwrap_err()
+                .to_string()
+                .contains("different project")
+        );
+        assert_eq!(
+            (
+                state.runtime_receipts["demo-dev"].device,
+                state.runtime_receipts["demo-dev"].inode
+            ),
+            identity
         );
     }
 }

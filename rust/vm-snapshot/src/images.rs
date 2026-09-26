@@ -19,8 +19,11 @@ pub(crate) async fn snapshot_container(
     tracing::info!("  Snapshotting container: {}", service_name);
 
     let image_tag = format!(
-        "vm-snapshot/{}/{}:{}",
-        project_name, service_name, snapshot_name
+        "vm-snapshot/{}/{}:{}-{}",
+        project_name,
+        service_name,
+        snapshot_name,
+        uuid::Uuid::new_v4().simple()
     );
     let commit_output =
         execute_docker_with_output(executable, &["commit", container_id, &image_tag]).await?;
@@ -61,7 +64,18 @@ pub(crate) async fn load_service_images(
             tracing::info!("  Loading image: {}", service.name);
             let image_path = snapshot_file_path(&images_dir, &service.image_file, "image file")?;
             let image_path = path_argument(&image_path)?;
-            execute_docker_streaming(executable, &["load", "-i", image_path]).await
+            execute_docker_streaming(executable, &["load", "-i", image_path]).await?;
+            let actual = image_digest(executable, &service.image_tag).await?;
+            if actual.is_none() || actual != service.image_digest {
+                return Err(VmError::validation(
+                    format!(
+                        "Snapshot image identity does not match service '{}'",
+                        service.name
+                    ),
+                    None::<String>,
+                ));
+            }
+            Ok(())
         }
     });
 
@@ -174,9 +188,8 @@ exit 0
 
             assert_eq!(digest.as_deref(), Some(fallback.as_str()));
             assert_eq!(commands.lines().count(), 3);
-            assert!(commands
-                .lines()
-                .any(|line| line == "image inspect --format={{.Id}} vm-snapshot/demo/app:stable"));
+            assert!(commands.lines().any(|line| line
+                .starts_with("image inspect --format={{.Id}} vm-snapshot/demo/app:stable-")));
         }
     }
 }

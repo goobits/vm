@@ -19,6 +19,25 @@ pub(in crate::tart) fn record_runtime_receipt(
     let lock = lock(&state_dir)?;
     let path = state_dir.join(STATE_FILE);
     let mut state = read_state_at(&path)?;
+    require_runtime_owner(&state, instance, config)?;
+    state.runtime_receipts.insert(
+        instance.to_string(),
+        RuntimeReceipt {
+            fingerprint,
+            device,
+            inode,
+        },
+    );
+    let mut content = serde_json::to_vec_pretty(&state)?;
+    content.push(b'\n');
+    vm_core::file_system::atomic_write(&path, &content)?;
+    vm_core::file_system::set_permissions_mode(&path, 0o600)?;
+    FileExt::unlock(&lock)?;
+    Ok(())
+}
+
+#[cfg(feature = "tart")]
+fn require_runtime_owner(state: &StorageState, instance: &str, config: &VmConfig) -> Result<()> {
     if !state.managed.contains(instance) {
         return Err(VmError::validation(
             format!("Tart VM '{instance}' has no managed ownership record"),
@@ -43,19 +62,60 @@ pub(in crate::tart) fn record_runtime_receipt(
             None::<String>,
         ));
     }
-    state.runtime_receipts.insert(
-        instance.to_string(),
-        RuntimeReceipt {
-            fingerprint,
-            device,
-            inode,
-        },
-    );
+    Ok(())
+}
+
+#[cfg(feature = "tart")]
+pub fn validate_restore_target(instance: &str, config: &VmConfig) -> Result<()> {
+    validate_instance(instance)?;
+    let state = read_state()?;
+    require_runtime_owner(&state, instance, config)?;
+    if !state.runtime_receipts.contains_key(instance) {
+        return Err(VmError::validation(
+            "Tart restore target has no runtime receipt",
+            None::<String>,
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "tart")]
+pub fn refresh_runtime_identity(
+    instance: &str,
+    home: Option<&Path>,
+    config: &VmConfig,
+) -> Result<()> {
+    validate_instance(instance)?;
+    let home = home
+        .map(Path::to_path_buf)
+        .map(Ok)
+        .unwrap_or_else(default_home)?;
+    let identity = disk_identity(&home.join("vms").join(instance))?;
+    let directory = state_dir()?;
+    let lock = lock(&directory)?;
+    let path = directory.join(STATE_FILE);
+    let mut state = read_state_at(&path)?;
+    refresh_receipt_identity(&mut state, instance, config, identity)?;
     let mut content = serde_json::to_vec_pretty(&state)?;
     content.push(b'\n');
     vm_core::file_system::atomic_write(&path, &content)?;
     vm_core::file_system::set_permissions_mode(&path, 0o600)?;
     FileExt::unlock(&lock)?;
+    Ok(())
+}
+
+#[cfg(feature = "tart")]
+pub(super) fn refresh_receipt_identity(
+    state: &mut StorageState,
+    instance: &str,
+    config: &VmConfig,
+    identity: (u64, u64),
+) -> Result<()> {
+    require_runtime_owner(state, instance, config)?;
+    let receipt = state.runtime_receipts.get_mut(instance).ok_or_else(|| {
+        VmError::validation("Tart restore target has no runtime receipt", None::<String>)
+    })?;
+    (receipt.device, receipt.inode) = identity;
     Ok(())
 }
 

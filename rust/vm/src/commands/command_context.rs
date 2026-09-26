@@ -148,12 +148,7 @@ pub(super) fn prepare_start(
         }
     };
     Ok(PreparedStart {
-        subject: RuntimeSubject {
-            provider,
-            config,
-            global_config,
-            target,
-        },
+        subject: configure_runtime_subject(config, global_config, target)?,
         create_name,
     })
 }
@@ -164,8 +159,7 @@ pub(super) fn load_provider_context(
     provider_override: Option<String>,
 ) -> VmResult<(Box<dyn Provider>, VmConfig, GlobalConfig)> {
     let app_config = AppConfig::load(config_path, profile, provider_override)?;
-    let mut config = app_config.vm;
-    packages::apply_client_environment(&mut config)?;
+    let config = app_config.vm;
     let global_config = app_config.global;
     let provider = get_provider(config.clone()).map_err(VmError::from)?;
     Ok((provider, config, global_config))
@@ -215,12 +209,7 @@ fn assemble_runtime_context(
     )?;
     let instance =
         vm_ops::target::resolve_runtime_instance(provider.as_ref(), &config, selected.as_deref())?;
-    Ok(RuntimeSubject {
-        provider,
-        config,
-        global_config,
-        target: instance.name,
-    })
+    configure_runtime_subject(config, global_config, instance.name)
 }
 
 fn load_environment_provider_context(
@@ -232,14 +221,13 @@ fn load_environment_provider_context(
     let app = AppConfig::load(config_path, profile, provider_override)?;
     require_project_config(&app.vm)?;
     let selected = super::declarations::selected_name(&app.vm, requested_target)?;
-    let mut config = selected
+    let config = selected
         .as_deref()
         .and_then(|name| app.vm.environments.get(name))
         .map_or_else(
             || app.vm.clone(),
             |declaration| declaration.apply_to(&app.vm),
         );
-    packages::apply_client_environment(&mut config)?;
     let provider = get_provider(config.clone()).map_err(VmError::from)?;
     Ok(EnvironmentContext {
         provider,
@@ -281,14 +269,22 @@ pub(super) fn load_runtime_subject_for_instance(
         profile,
         Some(instance.provider.clone()),
     )?;
-    let mut config = config_for_named_instance(&app.vm, instance);
-    packages::apply_client_environment(&mut config)?;
+    let config = config_for_named_instance(&app.vm, instance);
+    configure_runtime_subject(config, app.global, instance.name.clone())
+}
+
+fn configure_runtime_subject(
+    mut config: VmConfig,
+    global_config: GlobalConfig,
+    target: String,
+) -> VmResult<RuntimeSubject> {
+    packages::apply_client_environment(&mut config, &target)?;
     let provider = get_provider(config.clone()).map_err(VmError::from)?;
     Ok(RuntimeSubject {
         provider,
         config,
-        global_config: app.global,
-        target: instance.name.clone(),
+        global_config,
+        target,
     })
 }
 

@@ -186,6 +186,14 @@ properties:
         maximum: 100
         default: 60
         description: Swappiness value (0-100). Controls tendency to swap memory to disk.
+      uid:
+        type: integer
+        minimum: 0
+        description: Numeric guest user ID
+      gid:
+        type: integer
+        minimum: 0
+        description: Numeric guest group ID
       user:
         type: string
         default: developer

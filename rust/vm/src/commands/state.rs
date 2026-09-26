@@ -196,8 +196,12 @@ pub(super) async fn handle(
             };
             if provider == "tart" {
                 let home = tart_home(&config.vm, &project)?;
+                #[cfg(feature = "tart")]
+                vm_provider::validate_tart_restore_target(&target, &config.vm)?;
                 vm_snapshot::handle_tart_restore(&name, &project, &target, home.as_deref(), &owner)
                     .await?;
+                #[cfg(feature = "tart")]
+                vm_provider::refresh_tart_runtime_identity(&target, home.as_deref(), &config.vm)?;
             } else {
                 vm_snapshot::handle_restore(
                     &config,
