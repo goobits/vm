@@ -202,10 +202,9 @@ runner now excludes unselected provider discovery and isolates TART_HOME, while
 preserving the selected engine's explicit connection. It also copies the binary
 at run start so concurrent rebuilds cannot change the tested revision.
 
-Podman passed with its isolated machine removed; see [Podman evidence](cli-podman-acceptance.md). Tart completion is recorded below.
-Their unchecked cross-provider tasks remain in the active proposals until actual
-acceptance passes; Docker passing alone does not complete provider acceptance.
-
+Podman passed with its isolated machine removed; see
+[Podman evidence](cli-podman-acceptance.md). Tart completion is recorded below.
+The completed proposals were removed; see [tracker closure](cli-acceptance.md#closure).
 
 ## Final Tart acceptance — passed
 
