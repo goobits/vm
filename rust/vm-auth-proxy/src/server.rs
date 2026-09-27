@@ -15,6 +15,7 @@ use axum::{
     Router,
 };
 use serde::Deserialize;
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Instant;
@@ -83,6 +84,13 @@ pub async fn run_server_with_shutdown(
     data_dir: PathBuf,
     shutdown_receiver: Option<tokio::sync::oneshot::Receiver<()>>,
 ) -> Result<()> {
+    let address: IpAddr = host
+        .parse()
+        .context("Auth proxy listener requires a literal loopback IP address")?;
+    anyhow::ensure!(
+        address.is_loopback(),
+        "Auth proxy HTTP listener must bind to loopback; use a TLS proxy for remote access"
+    );
     let store = SecretStore::new(data_dir).context("Failed to initialize secret store")?;
     let state = AppState {
         store: Arc::new(Mutex::new(store)),
@@ -92,8 +100,8 @@ pub async fn run_server_with_shutdown(
     let app = app_router(state);
 
     // Start server
-    let addr = format!("{host}:{port}");
-    let listener = TcpListener::bind(&addr)
+    let addr = SocketAddr::new(address, port);
+    let listener = TcpListener::bind(addr)
         .await
         .with_context(|| format!("Failed to bind to {addr}"))?;
 
@@ -380,6 +388,20 @@ mod tests {
     use crate::types::SecretScope;
     use axum_test::TestServer;
     use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn rejects_non_loopback_listeners_before_creating_secret_storage() {
+        let directory = TempDir::new().unwrap();
+        let storage = directory.path().join("secrets");
+        for host in ["0.0.0.0", "::", "192.0.2.1", "localhost"] {
+            assert!(
+                run_server_with_shutdown(host.to_string(), 0, storage.clone(), None)
+                    .await
+                    .is_err()
+            );
+            assert!(!storage.exists());
+        }
+    }
 
     async fn create_test_server() -> (TestServer, String, TempDir) {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");

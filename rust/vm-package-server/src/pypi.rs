@@ -4,12 +4,13 @@ use std::sync::Arc;
 use axum::{
     extract::{Multipart, Path as AxumPath, State},
     http::HeaderMap,
-    response::Html,
+    response::Response,
 };
 use tracing::{debug, info, warn};
 use vm_packages::{sha256_hex, PackageEcosystem, PackageIdentity};
 
 mod download;
+mod html;
 mod upload;
 pub use download::{download_file, download_internal_file, download_upstream_file};
 pub use upload::upload_package;
@@ -45,7 +46,7 @@ async fn list_package_files(pypi_dir: &Path) -> AppResult<Vec<PathBuf>> {
 ///   </body>
 /// </html>
 /// ```
-pub async fn simple_index(State(state): State<Arc<AppState>>) -> AppResult<Html<String>> {
+pub async fn simple_index(State(state): State<Arc<AppState>>) -> AppResult<Response> {
     let pypi_dir = state.data_dir.join("pypi/packages");
 
     let mut packages = std::collections::HashSet::new();
@@ -68,11 +69,13 @@ pub async fn simple_index(State(state): State<Arc<AppState>>) -> AppResult<Html<
     );
 
     for package in packages {
-        html.push_str(&format!(r#"    <a href="{package}/">{package}</a><br/>"#));
+        let href = html::escape(&format!("{}/", html::path_segment(&package)));
+        let package = html::escape(&package);
+        html.push_str(&format!(r#"    <a href="{href}">{package}</a><br/>"#));
     }
 
     html.push_str("  </body>\n</html>");
-    Ok(Html(html))
+    Ok(html::response(html))
 }
 
 /// Returns download links for all versions of a specific PyPI package.
@@ -105,7 +108,7 @@ pub async fn package_index(
     AxumPath(package): AxumPath<String>,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-) -> AppResult<Html<String>> {
+) -> AppResult<Response> {
     let normalized_package = PackageIdentity::new(PackageEcosystem::Python, &package)
         .map_err(|error| AppError::BadRequest(error.to_string()))?
         .name;
@@ -213,9 +216,10 @@ pub async fn package_index(
             source = ?source,
             "package index resolved"
         );
-        return Ok(Html(html));
+        return Ok(html::response(html));
     }
 
+    let package = html::escape(&normalized_package);
     let mut html = format!(
         r#"<!DOCTYPE html>
 <html>
@@ -226,19 +230,17 @@ pub async fn package_index(
     );
 
     for (filename, hash) in files {
-        html.push_str(&format!(
-            r#"    <a href="../../packages/{filename}#sha256={hash}">{filename}</a><br/>"#
-        ));
+        html.push_str(&html::artifact_link(&filename, &hash));
     }
 
     html.push_str("  </body>\n</html>");
-    Ok(Html(html))
+    Ok(html::response(html))
 }
 
 fn rewrite_upstream_links(html: String, public_base_url: &str) -> String {
     html.replace(
         "https://files.pythonhosted.org/packages/",
-        &format!("{public_base_url}/pypi/upstream/"),
+        &html::escape(&format!("{public_base_url}/pypi/upstream/")),
     )
 }
 
@@ -246,7 +248,7 @@ fn rewrite_internal_links(html: String, internal_gateway: &str, public_base_url:
     html.replace("../../packages/", "../../internal/packages/")
         .replace(
             &format!("{}/pypi/", internal_gateway.trim_end_matches('/')),
-            &format!("{public_base_url}/pypi/internal/"),
+            &html::escape(&format!("{public_base_url}/pypi/internal/")),
         )
 }
 

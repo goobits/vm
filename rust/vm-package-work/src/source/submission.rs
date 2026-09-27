@@ -373,3 +373,73 @@ async fn bundle_head(
         .map(str::to_string)
         .ok_or_else(|| WorkError::Invalid(missing.into()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn checkout(id: &str) -> CheckoutRecord {
+        serde_json::from_value(serde_json::json!({
+            "checkout_id": id,
+            "package": "example",
+            "agent": "test",
+            "consumers": [],
+            "task": "path boundary test",
+            "state": "created",
+            "created_at": "2026-09-27T00:00:00Z",
+            "updated_at": "2026-09-27T00:00:00Z",
+            "transitions": []
+        }))
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn submission_staging_rejects_path_components_before_creating_directories() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("managed");
+        let manager = SourceManager::new(&root);
+        for id in [
+            "",
+            ".",
+            "..",
+            "../outside",
+            "/outside",
+            r"..\outside",
+            r"C:\outside",
+            "a/b",
+            "a%2fb",
+        ] {
+            assert!(
+                manager
+                    .submission_staging_path(&checkout(id))
+                    .await
+                    .is_err(),
+                "{id}"
+            );
+            assert!(
+                !root.exists(),
+                "invalid identifiers must not touch the filesystem"
+            );
+        }
+        let expected = root.join("agents/checkout-safe_123/uploads");
+        let first = manager
+            .submission_staging_path(&checkout("checkout-safe_123"))
+            .await
+            .unwrap();
+        let second = manager
+            .submission_staging_path(&checkout("checkout-safe_123"))
+            .await
+            .unwrap();
+        assert_eq!(first.parent(), Some(expected.as_path()));
+        assert_eq!(second.parent(), Some(expected.as_path()));
+        assert_ne!(first, second);
+        assert_eq!(
+            first.extension().and_then(|value| value.to_str()),
+            Some("bundle")
+        );
+        assert!(
+            !first.exists(),
+            "staging allocation must not create or overwrite a bundle"
+        );
+    }
+}

@@ -193,3 +193,87 @@ fn upstream_package_links_stay_behind_the_gateway() {
         r#"<a href="https://packages.internal/pypi/upstream/ab/cd/hash/pkg.whl#sha256=123">pkg</a>"#
     );
 }
+
+#[test]
+fn artifact_html_escapes_markup_and_encodes_url_segments() {
+    let link = html::artifact_link(
+        "pkg-1.0.0\"><img src=x onerror=alert(1)>&'.whl",
+        "\"><script>alert(2)</script>&",
+    );
+    assert!(!link.contains("<img"));
+    assert!(!link.contains("<script"));
+    assert!(link.contains("&quot;&gt;&lt;img src=x onerror=alert(1)&gt;&amp;&#39;"));
+    assert!(link.contains("pkg-1.0.0%22%3E%3Cimg%20src%3Dx%20onerror%3Dalert%281%29%3E%26%27.whl"));
+    assert!(link.contains("#sha256=%22%3E%3Cscript%3Ealert%282%29%3C%2Fscript%3E%26"));
+    assert_eq!(link.matches("href=\"").count(), 1);
+}
+
+#[tokio::test]
+async fn uploaded_special_filename_is_inert_and_download_link_roundtrips() {
+    let (state, _directory) = create_pypi_test_state();
+    let server = TestServer::new(
+        axum::Router::new()
+            .route("/pypi/", axum::routing::post(upload_package))
+            .route("/pypi/simple/", axum::routing::get(simple_index))
+            .route("/pypi/simple/{package}/", axum::routing::get(package_index))
+            .route(
+                "/pypi/packages/{filename}",
+                axum::routing::get(download_file),
+            )
+            .with_state(state),
+    );
+    // All characters are legal on Windows too. Literal angle brackets/quotes are
+    // tested by the renderer above without relying on filesystem support.
+    let filename = "testpackage-1.0.0' onmouseover='alert(1)&lt;img&gt;#% café.whl";
+    let content = b"artifact bytes";
+    let part = Part::bytes(content.to_vec()).file_name(filename);
+    server
+        .post("/pypi/")
+        .multipart(MultipartForm::new().add_part("content", part))
+        .await
+        .assert_status_ok();
+
+    let index = server.get("/pypi/simple/TestPackage/").await;
+    index.assert_status_ok();
+    assert_eq!(
+        index.headers()["content-security-policy"],
+        "default-src 'none'; base-uri 'none'; form-action 'none'; sandbox"
+    );
+    let body = index.text();
+    assert!(body.contains("<h1>Links for testpackage</h1>"));
+    assert!(body.contains("&#39; onmouseover=&#39;alert(1)&amp;lt;img&amp;gt;#% café.whl"));
+    assert!(!body.contains("<img"));
+    let href = body
+        .split("href=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap();
+    assert!(href.ends_with(&format!("#sha256={}", sha256_hex(content))));
+    assert!(href.contains("%23%25%20caf%C3%A9.whl"));
+    let index_url = url::Url::parse("http://registry.test/pypi/simple/testpackage/").unwrap();
+    let artifact_url = index_url.join(href).unwrap();
+    let download = server.get(artifact_url.path()).await;
+    download.assert_status_ok();
+    assert_eq!(download.as_bytes().as_ref(), content);
+
+    let root_index = server.get("/pypi/simple/").await;
+    assert_eq!(
+        root_index.headers()["content-security-policy"],
+        index.headers()["content-security-policy"]
+    );
+}
+
+#[test]
+fn remote_index_response_has_no_script_or_same_origin_authority() {
+    let response = html::response("<script>alert(1)</script>".into());
+    assert_eq!(
+        response.headers()["content-security-policy"],
+        "default-src 'none'; base-uri 'none'; form-action 'none'; sandbox"
+    );
+    assert_eq!(
+        response.headers()["content-type"],
+        "text/html; charset=utf-8"
+    );
+}

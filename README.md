@@ -4,6 +4,12 @@
 <p align="center">Use Docker by default, Tart for macOS guests on Apple Silicon, or an explicitly selected compatible provider.</p>
 
 <p align="center">
+  <a href="https://github.com/goobits/vm/actions/workflows/ci.yml"><img src="https://github.com/goobits/vm/actions/workflows/ci.yml/badge.svg?branch=main" alt="Code health: CI tests and lint"></a>
+  <a href="https://github.com/goobits/vm/actions/workflows/security.yml"><img src="https://github.com/goobits/vm/actions/workflows/security.yml/badge.svg?branch=main" alt="Security scan workflow status"></a>
+  <a href="https://github.com/goobits/vm/actions/workflows/coverage.yml"><img src="https://github.com/goobits/vm/actions/workflows/coverage.yml/badge.svg?branch=main" alt="Code coverage workflow status"></a>
+</p>
+
+<p align="center">
   <a href="#why-vm">Why vm</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#daily-workflow">Daily workflow</a> ·
