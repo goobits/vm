@@ -34,6 +34,26 @@ The [Testing Guide](docs/development/testing.md) owns supported checks, test
 placement, and provider-isolation rules. Do not run provider-mutating tests
 against an environment containing unique or uncheckpointed data.
 
+## Opt-in CI
+
+All repository workflows run only when explicitly dispatched. Pushes, pull
+requests, tags, and schedules do not start CI or publish releases automatically.
+Use **Actions → select a workflow → Run workflow**, choosing the branch to test,
+or run only the checks needed for the change:
+
+```bash
+gh workflow run ci.yml --ref <branch>
+gh workflow run security.yml --ref <branch>
+gh workflow run coverage.yml --ref <branch>
+gh run list --branch <branch>
+```
+
+Dispatch PR checks on the PR's source branch. README badges show the latest
+completed main-branch run, which may predate the latest commit. Dependabot alerts,
+secret scanning, and push protection remain enabled independently of CI.
+Release publishing requires an explicit dispatch on a verified release tag; see
+[Publishing](docs/development/publishing.md).
+
 ## Code and Documentation
 
 - Keep Rust formatted and free of Clippy warnings.

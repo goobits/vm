@@ -32,7 +32,14 @@ Both commands must pass before tagging a release.
 ## Publish
 
 After the changelog, version, and release commit are approved, create and push
-the matching `vX.Y.Z` tag. The release workflow builds each supported target,
+the matching annotated `vX.Y.Z` tag, then explicitly start publication:
+
+```bash
+gh workflow run release.yml --ref vX.Y.Z
+```
+
+Pushing a tag alone does not publish anything. The workflow rejects branch
+refs, unannotated or mismatched tags, and existing releases. It builds each supported target,
 publishes archives and checksums, creates the GitHub Release, and publishes the
 matching multi-architecture `vm-package-server` and `vm-package-jobs` images to
 GHCR. The image tag omits the leading `v` so it matches the CLI's default image

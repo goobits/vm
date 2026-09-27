@@ -25,13 +25,13 @@ checks, package acceptance, and the repository security workflows before merging
 ## Workflow and security checks
 
 GitHub-hosted runners execute dependency policy checks and CodeQL analysis for
-Rust and GitHub Actions. Security scans run on pull requests, main pushes, weekly,
-and manually. Repository Dependabot alerts/security updates, secret scanning, and
+Rust and GitHub Actions. All workflows are opt-in; run security scans explicitly
+from Actions or `gh workflow run security.yml --ref <branch>`. Repository Dependabot alerts/security updates, secret scanning, and
 secret push protection are enabled. Review alert results; a successful scan is
 not a guarantee that all vulnerabilities have been found.
 
 Actions using Node 24 require runner 2.327.1 or newer. Keep the protected
 self-hosted Tart publisher current (at least 2.329.0 for container-based
 checkout authentication). Release workflows retain protected environments and
-immutable publication checks. Validate artifact transport in ordinary PR CI;
+immutable publication checks. Validate artifact transport by manually running `ci.yml`;
 do not publish releases or overwrite existing image tags merely to test actions.

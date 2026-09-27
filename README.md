@@ -9,6 +9,8 @@
   <a href="https://github.com/goobits/vm/actions/workflows/coverage.yml"><img src="https://github.com/goobits/vm/actions/workflows/coverage.yml/badge.svg?branch=main" alt="Code coverage workflow status"></a>
 </p>
 
+<p align="center"><sub>Latest manual runs on main · <a href="CONTRIBUTING.md#opt-in-ci">Run checks</a></sub></p>
+
 <p align="center">
   <a href="#why-vm">Why vm</a> ·
   <a href="#quick-start">Quick start</a> ·

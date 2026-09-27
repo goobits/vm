@@ -13,3 +13,6 @@ and acceptance remain tracked here; existing host environments are preserved.
 - [x] Fix PyPI HTML injection, auth transport boundaries, and scoped-consumer receipt persistence; validate regressions.
 - [ ] Preserve per-alert evidence and apply justified dispositions; verify main-branch security results after integration.
 - [ ] Close superseded PRs, merge, preserve evidence, and clean task resources/branches.
+
+- [ ] Make all workflows opt-in and document explicit validation/publication commands.
+- [ ] Inspect and repair build regressions in newly merged dependency PRs #103–108; rerun explicitly selected checks.

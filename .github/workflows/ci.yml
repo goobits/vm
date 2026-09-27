@@ -1,13 +1,8 @@
 name: Continuous Integration
 
-# Runs automatically on push to main and pull requests
-# Also supports manual triggering via Actions tab
+# Run explicitly from the Actions tab or gh workflow run.
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:  # Manual trigger option
+  workflow_dispatch:
 
 permissions:
   contents: read

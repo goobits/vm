@@ -2,8 +2,6 @@ name: VM Tool Onboarding Test
 
 on:
   workflow_dispatch:
-  push:
-    branches: [test-vm-onboarding]
 
 permissions:
   contents: read

@@ -69,8 +69,7 @@ contains uncheckpointed work or unique writable-layer data.
 
 The Docker package-workflow acceptance test uses an isolated temporary home,
 local appliance images, an appliance-volume Git remote, and a purpose-built
-producer, consumer, and stopped project environment. CI runs it on every
-main-branch push and pull request. It proves that package-scoped `open` enters
+producer, consumer, and stopped project environment. The opt-in `ci.yml` workflow runs it when explicitly dispatched. It proves that package-scoped `open` enters
 the original host bind without creating checkout state, plus automatic
 workspace registration, exactly-once publication, fleet activation, executable
 adoption with backups, restart/resume, deferred activation on start, and stable
