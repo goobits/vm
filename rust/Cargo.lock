@@ -1123,7 +1123,7 @@ dependencies = [
  "anyhow",
  "assert_cmd",
  "async-trait",
- "base64 0.22.1",
+ "base64 0.23.1",
  "chrono",
  "clap",
  "clap_complete",
@@ -3574,7 +3574,7 @@ dependencies = [
  "anyhow",
  "axum",
  "axum-test",
- "base64 0.22.1",
+ "base64 0.23.1",
  "chrono",
  "dirs",
  "pbkdf2",
@@ -3675,7 +3675,7 @@ name = "vm-package-jobs"
 version = "6.0.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
+ "base64 0.23.1",
  "flate2",
  "fs2",
  "reqwest",
@@ -3703,7 +3703,7 @@ dependencies = [
  "anyhow",
  "axum",
  "axum-test",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "clap",
@@ -3756,7 +3756,7 @@ name = "vm-packages"
 version = "6.0.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
+ "base64 0.23.1",
  "chrono",
  "hmac",
  "reqwest",
@@ -3797,7 +3797,7 @@ dependencies = [
 name = "vm-provider"
 version = "6.0.0"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "chrono",
  "duct",
  "fs2",
