@@ -45,6 +45,14 @@ impl PlatformProvider for WindowsPlatform {
     }
 
     fn home_dir(&self) -> Result<PathBuf> {
+        if let Some(profile) = env::var_os("USERPROFILE").filter(|value| !value.is_empty()) {
+            let profile = PathBuf::from(profile);
+            anyhow::ensure!(
+                profile.is_absolute(),
+                "USERPROFILE must be an absolute path"
+            );
+            return Ok(profile);
+        }
         self.default_home_dir()
     }
 

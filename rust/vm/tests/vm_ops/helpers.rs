@@ -47,6 +47,7 @@ impl VmOpsTestFixture {
             .args(args)
             .current_dir(&self.test_dir)
             .env("HOME", self.test_dir.parent().unwrap())
+            .env("USERPROFILE", self.test_dir.parent().unwrap())
             .env("VM_TOOL_DIR", &self.test_dir)
             .env("VM_TEST_MODE", "1") // Disable structured logging for tests
             .env("VM_TEST_COMMAND_CONTEXT", "host")

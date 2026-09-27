@@ -143,7 +143,6 @@ mod tests {
         assert_eq!(platform::vm_state_dir().unwrap(), home.join(".vm"));
     }
 
-    #[cfg(unix)]
     #[test]
     fn test_platform_respects_home_env() {
         const CHILD_HOME: &str = "VM_PLATFORM_TEST_HOME";
@@ -155,7 +154,6 @@ mod tests {
         }
 
         // Isolate the environment override from concurrent native path lookups.
-        // Windows uses Known Folder APIs, rather than HOME/USERPROFILE overrides.
         let directory = tempfile::tempdir().unwrap();
         let output = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
@@ -163,7 +161,10 @@ mod tests {
                 "tests::test_platform_respects_home_env",
                 "--nocapture",
             ])
-            .env("HOME", directory.path())
+            .env(
+                if cfg!(windows) { "USERPROFILE" } else { "HOME" },
+                directory.path(),
+            )
             .env(CHILD_HOME, directory.path())
             .output()
             .unwrap();
@@ -173,6 +174,51 @@ mod tests {
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_profile_fallback_and_invalid_override() {
+        const CHILD_MODE: &str = "VM_PLATFORM_TEST_PROFILE_MODE";
+        if let Ok(mode) = std::env::var(CHILD_MODE) {
+            if mode == "relative" {
+                assert!(platform::home_dir()
+                    .unwrap_err()
+                    .to_string()
+                    .contains("absolute"));
+            } else {
+                assert_eq!(platform::home_dir().unwrap(), dirs::home_dir().unwrap());
+            }
+            return;
+        }
+        for mode in ["absent", "empty", "relative"] {
+            let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+            command
+                .args([
+                    "--exact",
+                    "tests::windows_profile_fallback_and_invalid_override",
+                    "--nocapture",
+                ])
+                .env(CHILD_MODE, mode);
+            match mode {
+                "absent" => {
+                    command.env_remove("USERPROFILE");
+                }
+                "empty" => {
+                    command.env("USERPROFILE", "");
+                }
+                _ => {
+                    command.env("USERPROFILE", "relative/profile");
+                }
+            }
+            let output = command.output().unwrap();
+            assert!(
+                output.status.success(),
+                "{mode}: {}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
     }
 
     #[test]
