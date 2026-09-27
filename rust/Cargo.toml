@@ -69,7 +69,7 @@ base64 = "0.22.1"
 fs2 = "0.4"
 flate2 = "1.1"
 uuid = { version = "1.23", features = ["v4", "serde"] }
-sysinfo = "0.30.13"
+sysinfo = "0.39.6"
 tar = "0.4.46"
 axum = { version = "0.8", features = ["multipart", "ws"] }
 tokio = { version = "1.52", features = ["net", "rt-multi-thread", "macros", "fs", "io-util", "process", "signal"] }
