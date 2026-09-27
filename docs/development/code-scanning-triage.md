@@ -79,12 +79,14 @@ reported alerts resolved. Do not dismiss a real defect solely to obtain zero ale
 - Deployed package-work requires `PKG_WORK_AGENT_SIGNING_KEY` from its process environment at `rust/vm-package-work/src/main.rs:56`; the test router directly supplies its own fixture credentials. The service validates minimum signing-key length at `server.rs:82`.
 - Signing/verification APIs accept caller-provided key material (`rust/vm-packages/src/credentials.rs:132–164,202–215`); hard-coded keys occur only below the `#[cfg(test)]` boundary at line230.
 
-## Suggested dispositions for owner review
+## Applied dispositions
 
 - #15–31: `used in tests`, with the per-alert compile-time exclusion and test purpose above.
 - #32–33: `false positive`, because the flagged initializers are replaced before use by PBKDF2/OS randomness.
 
-This conclusion is limited to the reported hard-coded-value flows, not a claim that the entire cryptographic/storage design is independently audited. Existing tests already cover different-key rejection, random salt/token differences, persisted master-key reuse and tamper-evident capabilities. No additional test run is necessary for this read-only classification.
+All 29 reviewed dispositions (#2–11 and #15–33) were applied individually with links to this evidence. No rule categories were disabled.
+
+This conclusion is limited to the reported hard-coded-value flows, not a claim that the entire cryptographic/storage design is independently audited. Existing tests already cover different-key rejection, random salt/token differences, persisted master-key reuse and tamper-evident capabilities.
 
 ## Filesystem findings
 
@@ -112,6 +114,29 @@ These conclusions assume the appliance-owned data directory and service configur
 
 ## Validation result
 
-Passed `cargo test --manifest-path rust/Cargo.toml -p vm-package-work submission_staging_rejects_path_components_before_creating_directories` (1 focused test) and `cargo test --manifest-path rust/Cargo.toml -p vm-core file_system::tests` (4 tests). Formatting applied to owned crates; `git diff --check` passed. Initial path triage introduced tests only; the subsequent scoped-consumer fix is described above. No commit or GitHub disposition made.
+Passed `cargo test --manifest-path rust/Cargo.toml -p vm-package-work submission_staging_rejects_path_components_before_creating_directories` (1 focused test) and `cargo test --manifest-path rust/Cargo.toml -p vm-core file_system::tests` (4 tests). Formatting applied to owned crates; `git diff --check` passed. Initial path triage introduced tests only; the subsequent scoped-consumer fix is described above.
 
 Scoped-consumer regression after fix: `cargo test --manifest-path rust/Cargo.toml -p vm-package-work scoped_consumer_receipts_materialize_and_survive_reopen` PASSED (1 test; previously failed). Formatting applied and `git diff --check` passed. All owned source is frozen.
+
+## Post-integration review
+
+Main scan [36329256263](https://github.com/goobits/vm/actions/runs/36329256263)
+completed successfully on `d471a8fc`. PyPI alert #1 is fixed. Subsequent scans
+through `1cf77e53` still report #12–14 at the send calls: the query does not
+recognize `endpoint_url`'s HTTPS/literal-loopback guard. Every secret request
+uses that guard, no environment proxy, and no redirects. Remote cleartext is
+rejected before token loading or I/O; the built-in listener is loopback-only.
+The remaining reported flow is authorized local IPC, not unencrypted remote
+transport. These residual reports are false positives after the source fix.
+
+New alert #34 is the same consumer receipt directory creation described in #5:
+`Store.root()/receipts/consumers` is a literal path under trusted startup storage.
+The change additionally encodes each validated consumer label as one filename.
+HTTP request content cannot choose the directory. This is a duplicate false
+positive, with the same boundary and scoped-consumer restart regression evidence.
+
+The later AES-GCM dependency migration uses the workspace rand crate's `SysRng`
+in a shared `random_bytes` helper. It fully fills the buffer from the OS before
+returning; entropy failure returns an error (or panics at the existing infallible
+salt/token API boundary), never zero fallback material. The cryptographic
+classifications above describe the original scanned revision.
