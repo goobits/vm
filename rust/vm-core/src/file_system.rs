@@ -106,6 +106,23 @@ mod tests {
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_replaces_a_destination_symlink_without_writing_its_target() {
+        let directory = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let target = outside.path().join("sentinel");
+        std::fs::write(&target, "unchanged").unwrap();
+        let path = directory.path().join("receipt.json");
+        std::os::unix::fs::symlink(&target, &path).unwrap();
+
+        atomic_write(&path, b"receipt").unwrap();
+
+        assert_eq!(std::fs::read_to_string(target).unwrap(), "unchanged");
+        assert!(!path.is_symlink());
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "receipt");
+    }
+
     #[tokio::test]
     async fn atomic_write_async_replaces_existing_content() {
         let directory = tempfile::tempdir().unwrap();

@@ -69,8 +69,12 @@ impl Store {
         let consumers = self.root().join("receipts/consumers");
         tokio::fs::create_dir_all(&consumers).await?;
         for consumer in database.consumers.values() {
+            // Consumer labels may be scoped. Keep each projection in one file,
+            // using the same lossless encoding as consumer request paths.
+            let filename =
+                url::form_urlencoded::byte_serialize(consumer.name.as_bytes()).collect::<String>();
             atomic_write_async(
-                consumers.join(format!("{}.json", consumer.name)),
+                consumers.join(format!("{filename}.json")),
                 pretty_json(consumer)?,
             )
             .await?;
@@ -94,5 +98,57 @@ impl Store {
             .await?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn scoped_consumer_receipts_materialize_and_survive_reopen() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).await.unwrap();
+        store
+            .register_package(vm_packages::RegisterPackage {
+                name: "shared".into(),
+                ecosystem: vm_packages::PackageEcosystem::Npm,
+                repository: "https://example.com/shared.git".into(),
+                default_branch: "main".into(),
+                workspace_release: false,
+            })
+            .await
+            .unwrap();
+        for (name, filename) in [
+            ("team/app", "team%2Fapp.json"),
+            ("team-app", "team-app.json"),
+            ("@team/app", "%40team%2Fapp.json"),
+        ] {
+            let request = vm_packages::RegisterConsumer {
+                name: name.into(),
+                repository: "https://example.com/consumer.git".into(),
+                default_branch: "main".into(),
+                dependencies: [("shared".into(), "1.0.0".into())].into(),
+            };
+            let record = store.register_consumer(request).await.unwrap();
+            store
+                .materialize_receipts()
+                .await
+                .expect("accepted consumer names must have durable receipts");
+            let path = directory.path().join("receipts/consumers").join(filename);
+            let saved: vm_packages::ConsumerRecord =
+                serde_json::from_slice(&tokio::fs::read(path).await.unwrap()).unwrap();
+            assert_eq!(saved, record);
+        }
+        drop(store);
+        Store::open(directory.path())
+            .await
+            .expect("accepted scoped consumers must not prevent service restart");
+        assert_eq!(
+            std::fs::read_dir(directory.path().join("receipts/consumers"))
+                .unwrap()
+                .count(),
+            3
+        );
     }
 }

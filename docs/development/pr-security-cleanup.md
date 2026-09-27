@@ -85,3 +85,68 @@ release, tag, or image was published as a test. The protected self-hosted Tart
 publisher and a full Ubuntu/Node major migration were not exercised by this
 maintenance task. The earlier full provider acceptance remains recorded in the
 CLI acceptance documents; these scans do not guarantee absence of vulnerabilities.
+
+## Follow-up after dependency scanning populated
+
+After #89 merged, Dependabot populated additional PRs #90–101 and alert #1 for
+[`tar` PAX header desynchronization](https://github.com/advisories/GHSA-3pv8-6f4r-ffg2).
+The initial empty alert response above was a point-in-time result, not completion
+of the asynchronous dependency scan. [PR #102](https://github.com/goobits/vm/pull/102)
+updates the lockfile to tar 0.4.46 and requires that minimum in the workspace.
+
+- #90 was declined: Ubuntu 22.10 has been unsupported since July 20, 2023.
+  Ubuntu minor-version changes are distro migrations too; Dependabot now excludes
+  those as well as major migrations while retaining digest updates.
+- #91 updates the immutable Buildx action; #92 applies the archive security fix.
+- #93–101 consolidate TOML 1.1.6, tokio-util 0.7.19, clap 4.6.7, reqwest 0.13.5,
+  serial_test 4.0.1, futures-util 0.3.34, indexmap 2.14.2, flate2 1.1.10,
+  and which 8.0.6. The test-only serial_test major update requires Rust 1.93.1,
+  below the Rust 1.98.1 toolchain used here. No compatibility shim was added.
+- Compatible Cargo updates and workflow actions are grouped to reduce recurring
+  PR noise. Superseded individual CI runs were cancelled to free runner capacity.
+- `CONTRIBUTING.md#changelog` defines the user-facing release-note policy, linked
+  from `AGENTS.md`. Unreleased notes were condensed into user-facing outcomes;
+  published 5.0.0 history is byte-for-byte unchanged. Routine dependency and CI
+  details remain here, outside the changelog.
+
+Resolved dependency revision: `1834c6f72a6c67536f969168bcf9c2c5e7446f26`.
+The final tar minimum-version declaration selects the same checked lockfile.
+Local workspace tests passed (1,201 passed, 24 existing ignored), as did Clippy,
+formatting, generated CLI reference, locked Cargo metadata, the all-features
+release build, and `git diff --check`.
+
+Follow-up validation runs:
+
+- [CI 36314787088](https://github.com/goobits/vm/actions/runs/36314787088).
+- [Coverage 36314787070](https://github.com/goobits/vm/actions/runs/36314787070).
+- [Security 36314787095](https://github.com/goobits/vm/actions/runs/36314787095).
+  Both CodeQL languages reported zero findings and no analysis errors at PR merge
+  revision `272b55fb31685fe6d6bf9b37d1e2dafa9ee79ada`. Earlier cancelled runs are
+  superseded by these complete analyses.
+
+## Main-branch CodeQL follow-up
+
+The later main-branch analysis reported 33 alerts on `097be68b`. The zero-result
+PR analyses above did not establish a clean main-branch security state.
+[Per-alert review](code-scanning-triage.md) records the actual flows, test-only
+fixtures, and false-positive evidence. PR #102 fixes PyPI HTML injection and auth
+transport boundaries. The review also found and fixed scoped consumer receipt
+persistence. No CodeQL rule category is disabled, and genuine findings remain
+open until the integrated source is rescanned.
+
+Security-fix revision: `63f954bedbdf2028eb21a6a380ae9e652aa0e4f3`.
+Local checks passed: 1,210 tests, zero failures, 24 existing ignored tests;
+Clippy (all targets/features, warnings denied), formatting, generated CLI reference,
+all-features release build, and whitespace checks. No parser regeneration was needed.
+
+Hosted checks passed at that revision:
+
+- [CI 36324862930](https://github.com/goobits/vm/actions/runs/36324862930):
+  Linux/macOS/Windows, Clippy/audit, artifact roundtrip, and live Docker package acceptance.
+- [Coverage 36324862961](https://github.com/goobits/vm/actions/runs/36324862961).
+- [Security 36324862940](https://github.com/goobits/vm/actions/runs/36324862940).
+  Rust and Actions PR analyses completed without analysis errors. Main-branch alert
+  state must still be verified after integration.
+
+README badges link to live main-branch CI, security, and coverage workflow status.
+They do not imply a numeric coverage percentage or absence of vulnerabilities.

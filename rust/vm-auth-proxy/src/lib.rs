@@ -1,6 +1,10 @@
 //! # VM Auth Proxy
 //!
 //! A centralized secrets management service for secure credential sharing across VMs.
+//!
+//! The built-in HTTP listener accepts only literal loopback addresses. Remote
+//! access requires a TLS reverse proxy. Clients require HTTPS except on literal
+//! loopback IPs, ignore environment-selected proxies, and never follow redirects.
 //! Provides encrypted storage and HTTP API for managing secrets with automatic
 //! environment variable injection into VMs.
 //!

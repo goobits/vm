@@ -2,20 +2,27 @@ version: 2
 updates:
   - package-ecosystem: "cargo"
     directory: "/rust"
+    groups:
+      compatible-workspace-dependencies:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
   - package-ecosystem: "github-actions"
     directory: "/"
+    groups:
+      workflow-actions:
+        patterns: ["*"]
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
   - package-ecosystem: "docker"
     directory: "/"
-    # OS migrations require adapting distro-specific package installation first.
+    # Distro-series migrations include Ubuntu minor versions (e.g. 22.10).
     ignore:
       - dependency-name: "ubuntu"
-        update-types: ["version-update:semver-major"]
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
