@@ -4,7 +4,7 @@
 # =============================================================================
 # STAGE: base
 # =============================================================================
-FROM ubuntu:22.04@sha256:b8b6ee6aa931ecd9d0d952abc34dc0e5f7c6a30c6bb71b079fe399fde0329c02 AS base
+FROM ubuntu:22.10@sha256:e322f4808315c387868a9135beeb11435b5b83130a8599fd7d0014452c34f489 AS base
 
 ARG USER_NAME=developer
 ARG USER_UID=1000
