@@ -507,9 +507,15 @@ mod tests {
 
     #[test]
     fn configured_source_roots_must_be_absolute() {
+        let directory = tempfile::tempdir().unwrap();
+        let absolute = directory
+            .path()
+            .join("packages")
+            .to_string_lossy()
+            .into_owned();
         assert_eq!(
-            validated_source_roots(&["/srv/packages".to_string()]).unwrap(),
-            ["/srv/packages"]
+            validated_source_roots(std::slice::from_ref(&absolute)).unwrap(),
+            [absolute]
         );
         let error = validated_source_roots(&["../packages".to_string()]).unwrap_err();
         assert!(error.to_string().contains("absolute host path"));

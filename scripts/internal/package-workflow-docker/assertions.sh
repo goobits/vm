@@ -149,7 +149,8 @@ wait_for_package_controller() {
   for attempt in $(seq 1 120); do
     if docker info >/dev/null 2>&1 \
       && test "$(docker container inspect --format '{{.State.Status}}' \
-        "$compose_project-work-1" 2>/dev/null)" = running; then
+        "$compose_project-work-1" 2>/dev/null)" = running \
+      && workflow_state >/dev/null 2>&1; then
       return 0
     fi
     sleep 0.5

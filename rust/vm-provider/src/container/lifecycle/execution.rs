@@ -88,7 +88,7 @@ impl<'a> LifecycleOperations<'a> {
         let target_container = self.resolve_target_container(container)?;
 
         // Check if container exists before attempting destruction
-        if !ContainerOps::container_exists(&self.runtime, &target_container).unwrap_or(false) {
+        if !ContainerOps::container_exists(&self.runtime, &target_container)? {
             return Err(VmError::Internal(format!(
                 "Container '{target_container}' does not exist"
             )));
@@ -142,7 +142,7 @@ impl<'a> LifecycleOperations<'a> {
     }
 
     fn start_named_with_compose(&self, container_name: &str) -> Result<()> {
-        if !ContainerOps::container_exists(&self.runtime, container_name).unwrap_or(false) {
+        if !ContainerOps::container_exists(&self.runtime, container_name)? {
             return Err(VmError::NotFound(format!(
                 "Container '{container_name}' does not exist"
             )));
@@ -151,7 +151,7 @@ impl<'a> LifecycleOperations<'a> {
         self.reconcile_package_edge(container_name)?;
         let expected_services =
             ContainerOps::list_managed_service_containers(&self.runtime, container_name)?;
-        let running = ContainerOps::running_container_names(&self.runtime).unwrap_or_default();
+        let running = ContainerOps::running_container_names(&self.runtime)?;
         for service in expected_services {
             if running.contains(&service) {
                 continue;
@@ -184,48 +184,39 @@ impl<'a> LifecycleOperations<'a> {
 mod tests {
     use super::*;
     use std::fs;
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::symlink;
     use std::path::PathBuf;
     use tempfile::TempDir;
     use vm_config::config::{MountAccess, PackageEdgeConfig, ProjectConfig, VmConfig};
     use vm_config::GlobalConfig;
+
+    fn fixture_runtime(temp_dir: &TempDir, mode: &str) -> (PathBuf, PathBuf) {
+        let executable = temp_dir.path().join("runtime");
+        // Keep executable bytes immutable while parallel tests spawn children.
+        // A fork can otherwise inherit a writable descriptor and cause ETXTBSY.
+        symlink(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/lifecycle-engine.sh"),
+            &executable,
+        )
+        .unwrap();
+        fs::write(temp_dir.path().join("mode"), mode).unwrap();
+        (executable, temp_dir.path().join("commands.log"))
+    }
 
     fn fake_runtime_with_edge(
         temp_dir: &TempDir,
         inspect_state: Option<&str>,
         edge_revision: Option<&str>,
     ) -> (PathBuf, PathBuf) {
-        let executable = temp_dir.path().join("runtime");
-        let log = temp_dir.path().join("commands.log");
-        let inspect = inspect_state.map_or_else(
-            || "echo 'Error: No such object' >&2; exit 1".to_string(),
-            |state| {
-                edge_revision.map_or_else(
-                    || {
-                        format!(
-                            "case \"$*\" in *Config.Image*) echo 'vm-derived:test' ;; *) echo '{state}' ;; esac; exit 0"
-                        )
-                    },
-                    |revision| {
-                        format!(
-                            "case \"$*\" in *Config.Image*) echo 'vm-derived:test' ;; *package-edge.revision*) printf 'running\\t{revision}\\n' ;; *) echo '{state}' ;; esac; exit 0"
-                        )
-                    },
-                )
-            },
-        );
-        fs::write(
-            &executable,
-            format!(
-                "#!/bin/sh\necho \"$@\" >> '{}'\nif [ \"$1\" = inspect ]; then {inspect}; fi\nexit 0\n",
-                log.display()
-            ),
-        )
-        .unwrap();
-        let mut permissions = fs::metadata(&executable).unwrap().permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&executable, permissions).unwrap();
-        (executable, log)
+        let runtime = fixture_runtime(temp_dir, "inspect");
+        if let Some(state) = inspect_state {
+            fs::write(temp_dir.path().join("state"), state).unwrap();
+        }
+        if let Some(revision) = edge_revision {
+            fs::write(temp_dir.path().join("revision"), revision).unwrap();
+        }
+        runtime
     }
 
     fn fake_runtime(temp_dir: &TempDir, inspect_state: Option<&str>) -> (PathBuf, PathBuf) {
@@ -233,29 +224,7 @@ mod tests {
     }
 
     fn fake_service_runtime(temp_dir: &TempDir) -> (PathBuf, PathBuf) {
-        let executable = temp_dir.path().join("runtime");
-        let log = temp_dir.path().join("commands.log");
-        fs::write(
-            &executable,
-            format!(
-                r#"#!/bin/sh
-echo "$@" >> '{}'
-if [ "$1" = ps ]; then
-  case "$*" in
-    *--filter*) printf 'demo-dev\ndemo-cache\ndemo-db\n' ;;
-    *-a*) printf 'demo-dev\ndemo-cache\ndemo-db\n' ;;
-    *) printf 'demo-cache\n' ;;
-  esac
-fi
-"#,
-                log.display()
-            ),
-        )
-        .unwrap();
-        let mut permissions = fs::metadata(&executable).unwrap().permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&executable, permissions).unwrap();
-        (executable, log)
+        fixture_runtime(temp_dir, "services")
     }
 
     fn config() -> VmConfig {
@@ -323,6 +292,30 @@ fi
     }
 
     #[test]
+    fn start_preserves_inventory_failures_without_claiming_target_is_missing() {
+        let temp_dir = TempDir::new().unwrap();
+        let (executable, log) = fake_service_runtime(&temp_dir);
+        fs::write(
+            temp_dir.path().join("inventory-error"),
+            "engine unavailable",
+        )
+        .unwrap();
+        let config = config();
+        let generated_dir = temp_dir.path().join("generated");
+        let project_dir = temp_dir.path().join("project");
+        let ops = LifecycleOperations::new(
+            &config,
+            &generated_dir,
+            &project_dir,
+            executable.to_str().unwrap(),
+        );
+        let error = ops.start_named_with_compose("demo-dev").unwrap_err();
+        assert!(!matches!(error, VmError::NotFound(_)));
+        assert!(error.to_string().contains("engine unavailable"), "{error}");
+        assert!(!fs::read_to_string(log).unwrap().contains("start "));
+    }
+
+    #[test]
     fn orphan_recovery_inventories_services_once_per_state() {
         let temp_dir = TempDir::new().unwrap();
         let (executable, log) = fake_service_runtime(&temp_dir);
@@ -358,19 +351,7 @@ fi
     #[test]
     fn destroy_finds_services_without_generated_compose_state() {
         let temp_dir = TempDir::new().unwrap();
-        let executable = temp_dir.path().join("runtime");
-        let log = temp_dir.path().join("commands.log");
-        fs::write(
-            &executable,
-            format!(
-                "#!/bin/sh\necho \"$@\" >> '{}'\nif [ \"$1\" = ps ]; then printf 'demo-dev\\ndemo-postgres\\n'; fi\n",
-                log.display()
-            ),
-        )
-        .unwrap();
-        let mut permissions = fs::metadata(&executable).unwrap().permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&executable, permissions).unwrap();
+        let (executable, log) = fixture_runtime(&temp_dir, "destroy");
         let config = config();
         let generated_dir = temp_dir.path().join("missing-generated");
         let project_dir = temp_dir.path().join("project");

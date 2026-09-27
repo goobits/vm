@@ -71,6 +71,7 @@ capture_failure_evidence() {
   mkdir -p "$evidence/containers"
   printf 'exit_status=%s\nphase=%s\nline=%s\n' \
     "$status" "$acceptance_phase" "$failure_line" > "$evidence/status"
+  cat "$evidence/status" >&2
   docker ps --all --no-trunc > "$evidence/docker-ps.txt" 2>&1 || true
   docker info > "$evidence/docker-info.txt" 2>&1 || true
   df -Pk > "$evidence/host-disk.txt" 2>&1 || true
