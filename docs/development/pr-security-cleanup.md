@@ -133,3 +133,20 @@ fixtures, and false-positive evidence. PR #102 fixes PyPI HTML injection and aut
 transport boundaries. The review also found and fixed scoped consumer receipt
 persistence. No CodeQL rule category is disabled, and genuine findings remain
 open until the integrated source is rescanned.
+
+Security-fix revision: `63f954bedbdf2028eb21a6a380ae9e652aa0e4f3`.
+Local checks passed: 1,210 tests, zero failures, 24 existing ignored tests;
+Clippy (all targets/features, warnings denied), formatting, generated CLI reference,
+all-features release build, and whitespace checks. No parser regeneration was needed.
+
+Hosted checks passed at that revision:
+
+- [CI 36324862930](https://github.com/goobits/vm/actions/runs/36324862930):
+  Linux/macOS/Windows, Clippy/audit, artifact roundtrip, and live Docker package acceptance.
+- [Coverage 36324862961](https://github.com/goobits/vm/actions/runs/36324862961).
+- [Security 36324862940](https://github.com/goobits/vm/actions/runs/36324862940).
+  Rust and Actions PR analyses completed without analysis errors. Main-branch alert
+  state must still be verified after integration.
+
+README badges link to live main-branch CI, security, and coverage workflow status.
+They do not imply a numeric coverage percentage or absence of vulnerabilities.
