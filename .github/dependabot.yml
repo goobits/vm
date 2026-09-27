@@ -2,11 +2,18 @@ version: 2
 updates:
   - package-ecosystem: "cargo"
     directory: "/rust"
+    groups:
+      compatible-workspace-dependencies:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
   - package-ecosystem: "github-actions"
     directory: "/"
+    groups:
+      workflow-actions:
+        patterns: ["*"]
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
