@@ -4,7 +4,7 @@
 # =============================================================================
 # STAGE: base
 # =============================================================================
-FROM ubuntu:22.04@sha256:2edbbc5dc405e9612ba3584ce95480277e3eb374407b5505fe26f17df77c7dbc AS base
+FROM ubuntu:22.04@sha256:b8b6ee6aa931ecd9d0d952abc34dc0e5f7c6a30c6bb71b079fe399fde0329c02 AS base
 
 ARG USER_NAME=developer
 ARG USER_UID=1000
@@ -58,7 +58,7 @@ ARG USER_UID=1000
 ARG USER_GID=1000
 ARG NVM_COMMIT=a885b885fef16fac4bc544188fb25e9e37ae83e8
 ARG NVM_INSTALLER_SHA256=48a0eee9a60e07422dce0eb5774754c83889570ca1ee2566c516acbe8af03a9e
-ARG NODE_VERSION=22.23.2
+ARG NODE_VERSION=22.23.3
 
 USER ${USER_NAME}
 ENV NVM_DIR="/home/${USER_NAME}/.nvm"
@@ -98,7 +98,7 @@ ARG USER_NAME=developer
 ARG USER_UID=1000
 ARG USER_GID=1000
 ARG TARGETARCH
-ARG RUST_TOOLCHAIN=1.98.0
+ARG RUST_TOOLCHAIN=1.98.1
 
 USER ${USER_NAME}
 
@@ -129,7 +129,7 @@ RUN --mount=type=cache,target=/home/${USER_NAME}/.cargo/registry,uid=${USER_UID}
 FROM base AS final
 
 ARG USER_NAME=developer
-ARG NODE_VERSION=22.23.2
+ARG NODE_VERSION=22.23.3
 
 COPY --from=node-builder --chown=${USER_NAME}:${USER_NAME} /home/${USER_NAME}/.nvm /home/${USER_NAME}/.nvm
 COPY --from=node-builder --chown=${USER_NAME}:${USER_NAME} /home/${USER_NAME}/playwright-browsers /home/${USER_NAME}/.cache/ms-playwright
