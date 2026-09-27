@@ -96,7 +96,7 @@ git2 = "0.21.0"
 tracing-appender = "0.2"
 assert_cmd = "2.2"
 predicates = "3.1"
-serial_test = "3.5"
+serial_test = "4.0"
 axum-test = "21.0"
 
 
