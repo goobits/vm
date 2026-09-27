@@ -56,7 +56,7 @@ anyhow = "1.0.103"
 thiserror = "2.0"
 indexmap = { version = "2.14", features = ["serde"] }
 regex = "1.12.4"
-tera = "1.20"
+tera = "2.4"
 which = "8.0"
 duct = "1.1.1"
 rayon = "1.12"
