@@ -18,9 +18,9 @@ checks, package acceptance, and the repository security workflows before merging
   Chromium packages. See [Ubuntu lifecycle](https://ubuntu.com/about/release-cycle).
 - Rust builders and the CLI/package-server runtime use Debian Bookworm. Keep
   runtime libc compatible with the builder when changing either base.
-- Dependabot continues digest/minor/patch and security updates. Ubuntu and Node
+- Dependabot continues digest/minor/patch and security updates. Ubuntu distro-series changes (including minor versions such as 22.10) and Node
   major changes require an explicit migration with live acceptance; their routine
-  major-version PRs are excluded in `.github/dependabot.yml`.
+  migration PRs are excluded in `.github/dependabot.yml`.
 
 ## Workflow and security checks
 

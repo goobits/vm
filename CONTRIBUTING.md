@@ -49,6 +49,30 @@ against an environment containing unique or uncheckpointed data.
 - Use the owners listed in the [documentation index](docs/README.md) instead of
   creating parallel command, test, configuration, or workflow inventories.
 
+## Changelog
+
+Update [CHANGELOG.md](CHANGELOG.md) in the same PR when users need to know about
+a change. Treat it as release notes, not a commit log.
+
+- Include new capabilities, breaking changes with migration guidance, meaningful
+  fixes, and security changes that affect users. Omit entries with no user impact.
+- Use one short bullet per outcome: what changed and why it matters. Name the
+  affected command or behavior precisely; verify command syntax against help.
+- Edit or combine an existing Unreleased entry when work completes the same
+  outcome. Do not stack implementation steps or repeat highlights elsewhere.
+- Keep a clean layout: `Breaking changes`, `Added`, `Changed`, `Fixed`, `Security`
+  only as needed, in that order. Omit empty sections, decorative emoji, nested
+  lists, hype, and vague claims such as “improved reliability.”
+- Leave refactors, routine dependency bumps, CI changes, test counts, acceptance
+  logs, branch cleanup, and internal bookkeeping in PRs or development docs.
+  Mention a dependency only when its update fixes a relevant security or
+  compatibility issue; explain the impact and link the advisory when useful.
+- Add changes under `Unreleased`; do not invent a release date or version. Keep
+  published release history intact. At release time, use the actual tag/date.
+
+Example: “Snapshot import preserves the existing snapshot when replacement
+verification fails.” Avoid: “Refactor snapshot staging and add regression tests.”
+
 ## Commits and Review
 
 The commit hook requires `type(scope): description` or `type: description`.
