@@ -77,3 +77,11 @@ fn write_private(path: &Path, content: &[u8]) -> VmResult<()> {
     })?;
     vm_core::file_system::set_permissions_mode(path, 0o600).map_err(VmError::from)
 }
+
+// Compose file-backed secrets retain the host UID/mode on Linux. The enclosing
+// directory is 0700, so only the controller can traverse it; each container sees
+// only its explicitly granted, read-only secret file and can use its own UID.
+fn write_container_secret(path: &Path, content: &[u8]) -> VmResult<()> {
+    write_private(path, content)?;
+    vm_core::file_system::set_permissions_mode(path, 0o644).map_err(VmError::from)
+}

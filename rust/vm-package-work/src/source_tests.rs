@@ -175,7 +175,9 @@ async fn binary_build_sources_are_declared_registered_and_immutable() {
         .success());
     git(&clone, &["checkout", "--detach", &hif_commit]);
     assert_eq!(
-        std::fs::read_to_string(clone.join("source.txt")).unwrap(),
+        std::fs::read_to_string(clone.join("source.txt"))
+            .unwrap()
+            .replace("\r\n", "\n"),
         "immutable input\n"
     );
     assert!(source

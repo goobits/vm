@@ -71,8 +71,10 @@ capture_failure_evidence() {
   mkdir -p "$evidence/containers"
   printf 'exit_status=%s\nphase=%s\nline=%s\n' \
     "$status" "$acceptance_phase" "$failure_line" > "$evidence/status"
+  cat "$evidence/status" >&2
   docker ps --all --no-trunc > "$evidence/docker-ps.txt" 2>&1 || true
   docker info > "$evidence/docker-info.txt" 2>&1 || true
+  df -Pk > "$evidence/host-disk.txt" 2>&1 || true
   workflow_state > "$evidence/workflows.json" 2> "$evidence/workflows.error" || true
   while IFS= read -r container; do
     test -n "$container" || continue
@@ -80,6 +82,14 @@ capture_failure_evidence() {
       > "$evidence/containers/$container.inspect.json" 2>&1 || true
     docker logs "$container" \
       > "$evidence/containers/$container.log" 2>&1 || true
+    case "$container" in
+      "$compose_project-build-edge-"*)
+        echo "Build-edge failure diagnostics: $container" >&2
+        docker inspect --format '{{json .State}}' "$container" >&2 || true
+        docker exec "$container" df -Pk /data >&2 || true
+        docker logs --tail 80 "$container" >&2 || true
+        ;;
+    esac
   done < <(docker ps --all --format '{{.Names}}' 2>/dev/null | \
     grep -E "^(${compose_project}|${project_name}|${consumer_name}|${stopped_name})" || true)
 }

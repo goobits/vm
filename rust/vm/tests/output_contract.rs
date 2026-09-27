@@ -8,11 +8,25 @@ fn run(temp_dir: &TempDir, args: &[&str]) -> Output {
 }
 
 fn command(temp_dir: &TempDir, args: &[&str]) -> Command {
+    // Windows known-folder lookup verifies AppData exists under USERPROFILE.
+    // Populate a complete isolated profile instead of using the runner's folders.
+    let config = temp_dir.path().join("AppData/Roaming");
+    let data = temp_dir.path().join("AppData/Local");
+    let cache = temp_dir.path().join(".cache");
+    for directory in [&config, &data, &cache] {
+        fs::create_dir_all(directory).unwrap();
+    }
     let mut command = Command::new(cargo_bin!("vm"));
     command
         .args(args)
         .current_dir(temp_dir.path())
         .env("HOME", temp_dir.path())
+        .env("USERPROFILE", temp_dir.path())
+        .env("APPDATA", &config)
+        .env("LOCALAPPDATA", &data)
+        .env("XDG_CONFIG_HOME", &config)
+        .env("XDG_DATA_HOME", &data)
+        .env("XDG_CACHE_HOME", &cache)
         .env("VM_TOOL_DIR", temp_dir.path().join(".vm"))
         .env("VM_TEST_MODE", "1")
         .env("VM_TEST_COMMAND_CONTEXT", "host")
@@ -103,6 +117,7 @@ fn managed_guest_guard_prints_the_exact_host_command() {
         .args(["tools", "update", "--env", "dev"])
         .current_dir(temp_dir.path())
         .env("HOME", temp_dir.path())
+        .env("USERPROFILE", temp_dir.path())
         .env("VM_MANAGED_GUEST", "1")
         .env("VM_TEST_MODE", "1")
         .env("VM_TEST_COMMAND_CONTEXT", "guest")
@@ -189,13 +204,19 @@ fn snapshot_json_reads_are_scoped_and_redacted() {
     );
     assert!(
         output.status.success(),
-        "{}",
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(output.stderr.is_empty());
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(value["command"], "snapshots list");
     assert_eq!(value["data"], serde_json::json!([]));
+    #[cfg(windows)]
+    assert!(temp_dir
+        .path()
+        .join("AppData/Roaming/vm/snapshots")
+        .is_dir());
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/snapshots-list-empty.json")).unwrap();
     assert_eq!(value, fixture);
@@ -244,7 +265,8 @@ fn storage_json_omits_owner_paths() {
     let output = run_storage(&temp_dir, &["system", "storage", "list", "--json"]);
     assert!(
         output.status.success(),
-        "{}",
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(output.stderr.is_empty());
@@ -395,7 +417,8 @@ fn tunnel_list_json_is_scoped_and_uses_one_redacted_envelope() {
     );
     assert!(
         output.status.success(),
-        "{}",
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(output.stderr.is_empty());
@@ -683,6 +706,7 @@ fn config_show_tolerates_a_closed_stdout_pipe() {
         .args(["--config", config.to_str().unwrap(), "config", "show"])
         .current_dir(temp_dir.path())
         .env("HOME", temp_dir.path())
+        .env("USERPROFILE", temp_dir.path())
         .env("VM_TOOL_DIR", temp_dir.path().join(".vm"))
         .env("VM_TEST_MODE", "1")
         .env("VM_TEST_COMMAND_CONTEXT", "host")

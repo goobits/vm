@@ -17,6 +17,7 @@ fn json_plans_are_read_only_redacted_and_report_validation_errors() {
             .args(args)
             .current_dir(directory.path())
             .env("HOME", directory.path())
+            .env("USERPROFILE", directory.path())
             .env("VM_TOOL_DIR", directory.path().join(".vm"))
             .env("CI", "1")
             .output()

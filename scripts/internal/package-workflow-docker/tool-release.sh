@@ -291,7 +291,21 @@ accept_tool_workflows() {
   grep -F "vm packages release --receipt $activation_receipt" "$activation_log" >/dev/null
 
   if test -n "$docker_restart_command"; then
+    # Managed guests deliberately have no daemon restart policy. Restore only
+    # test-owned containers that were running, leaving the stopped target stopped.
+    local container
+    local restart_containers=()
+    for container in "${stable_containers[@]}"; do
+      if test "$(docker inspect --format '{{.State.Running}}' "$container")" = true; then
+        restart_containers+=("$container")
+      fi
+    done
     bash -lc "$docker_restart_command"
+    wait_for_package_controller
+    docker start "${restart_containers[@]}" >/dev/null
+    wait_for_guest_vm "$environment_name"
+    wait_for_guest_vm "$consumer_environment"
+    test "$(docker inspect --format '{{.State.Running}}' "$stopped_environment")" = false
     restart_scope='Docker daemon'
   else
     docker restart "$compose_project-work-1" >/dev/null

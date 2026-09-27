@@ -324,7 +324,9 @@ fn receipt_matches(path: &Path, expected: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use super::LifecycleOperations;
+    #[cfg(unix)]
     use crate::container::UserConfig;
     use crate::resources::HOME_STATE_REPAIR;
 

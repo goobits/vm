@@ -14,7 +14,8 @@ static TEST_MUTEX: Mutex<()> = Mutex::new(());
 struct SimpleTestFixture {
     _temp_dir: TempDir,
     test_dir: PathBuf,
-    original_home: Option<String>,
+    original_home: Option<std::ffi::OsString>,
+    original_userprofile: Option<std::ffi::OsString>,
     original_cwd: PathBuf,
 }
 
@@ -27,16 +28,19 @@ impl SimpleTestFixture {
         let test_dir = temp_dir.path().to_path_buf();
 
         // Save original environment variables
-        let original_home = std::env::var("HOME").ok();
+        let original_home = std::env::var_os("HOME");
+        let original_userprofile = std::env::var_os("USERPROFILE");
         let original_cwd = std::env::current_dir()?;
 
         // Set environment variables to use our temp directory
         std::env::set_var("HOME", &test_dir);
+        std::env::set_var("USERPROFILE", &test_dir);
 
         Ok(Self {
             _temp_dir: temp_dir,
             test_dir,
             original_home,
+            original_userprofile,
             original_cwd,
         })
     }
@@ -69,6 +73,10 @@ impl Drop for SimpleTestFixture {
         match &self.original_home {
             Some(home) => std::env::set_var("HOME", home),
             None => std::env::remove_var("HOME"),
+        }
+        match &self.original_userprofile {
+            Some(profile) => std::env::set_var("USERPROFILE", profile),
+            None => std::env::remove_var("USERPROFILE"),
         }
     }
 }

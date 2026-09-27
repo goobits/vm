@@ -177,7 +177,7 @@ mod tests {
     use super::snapshot_container;
     use crate::metadata::ServiceSnapshot;
     use std::fs;
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::symlink;
     use vm_core::error::Result;
 
     struct Engine {
@@ -188,34 +188,23 @@ mod tests {
         fn new(output: &str, failure: &str, cleanup_failure: bool, partial_commit: bool) -> Self {
             let directory = tempfile::tempdir().unwrap();
             let executable = directory.path().join("runtime");
-            let fallback = format!("sha256:{}", "b".repeat(64));
-            fs::write(
+            // Execute an existing, immutable script. Writing an executable while
+            // other tests fork can briefly leave an inherited writable descriptor
+            // in a child and make Linux exec fail with ETXTBSY.
+            symlink(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("tests/fixtures/snapshot-engine.sh"),
                 &executable,
-                format!(
-                    r#"#!/bin/sh
-cd "$(dirname "$0")" || exit 1
-echo "$@" >> commands.log
-case "$1 $2" in
-    'image rm')
-        if [ '{cleanup_failure}' = true ]; then echo 'cleanup fixture failure' >&2; exit 23; fi
-        exit 0 ;;
-    'image ls')
-        if [ '{partial_commit}' = true ]; then printf '%s' '{fallback}'; fi
-        exit 0 ;;
-esac
-if [ "$1" = '{failure}' ] || {{ [ "$2" = inspect ] && [ '{failure}' = inspect ]; }}; then
-    echo '{failure} fixture failure' >&2
-    exit 23
-fi
-if [ "$1" = commit ]; then printf '%s' '{output}'; fi
-if [ "$2" = inspect ]; then printf '%s' '{fallback}'; fi
-"#,
-                ),
             )
             .unwrap();
-            let mut permissions = fs::metadata(&executable).unwrap().permissions();
-            permissions.set_mode(0o755);
-            fs::set_permissions(&executable, permissions).unwrap();
+            for (name, value) in [
+                ("output", output.to_owned()),
+                ("failure", failure.to_owned()),
+                ("cleanup-failure", cleanup_failure.to_string()),
+                ("partial-commit", partial_commit.to_string()),
+            ] {
+                fs::write(directory.path().join(name), value).unwrap();
+            }
             Self { directory }
         }
 
@@ -307,11 +296,17 @@ if [ "$2" = inspect ]; then printf '%s' '{fallback}'; fi
 
             let error = engine.snapshot().await.unwrap_err();
 
-            assert!(error.to_string().contains("cleanup fixture failure"));
+            assert!(
+                error.to_string().contains("cleanup fixture failure"),
+                "capture failure {failure:?}: expected cleanup diagnostic, got {error:?}"
+            );
             if !failure.is_empty() {
-                assert!(error
-                    .to_string()
-                    .contains(&format!("{failure} fixture failure")));
+                assert!(
+                    error
+                        .to_string()
+                        .contains(&format!("{failure} fixture failure")),
+                    "capture failure {failure:?}: original diagnostic lost: {error:?}"
+                );
             }
             let tag = engine.assert_exact_cleanup();
             assert_eq!(

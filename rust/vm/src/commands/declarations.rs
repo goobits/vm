@@ -223,18 +223,19 @@ fn parse_memory(value: &str) -> VmResult<MemoryLimit> {
 }
 
 fn parse_mount(value: &str) -> VmResult<MountConfig> {
-    let (source, target) = value.split_once(':').ok_or_else(|| {
+    let (source, target) = value.rsplit_once(':').ok_or_else(|| {
         VmError::validation(
             format!("Invalid mount '{value}'"),
             Some("Use HOST_PATH:GUEST_PATH"),
         )
     })?;
-    if source.is_empty() || !Path::new(target).is_absolute() {
+    if source.is_empty() {
         return Err(VmError::validation(
             format!("Invalid mount '{value}'"),
             Some("Use a nonempty host path and an absolute guest path"),
         ));
     }
+    vm_config::config::mounts::validate_mount_target(Path::new(target)).map_err(VmError::from)?;
     Ok(MountConfig {
         source: PathBuf::from(source),
         target: PathBuf::from(target),
@@ -304,6 +305,31 @@ mod tests {
         assert_eq!(raw.project.unwrap().name.as_deref(), Some("demo"));
         assert!(raw.environments.contains_key("dev"));
         assert!(persist_declaration(&path, "dev", declaration).is_err());
+    }
+
+    #[test]
+    fn mount_arguments_preserve_host_drives_and_validate_unix_guest_targets() {
+        for source in [
+            "./shared",
+            "C:/Users/dev/shared",
+            r"C:\Users\dev\shared",
+            r"\\server\share",
+        ] {
+            let mount = parse_mount(&format!("{source}:/packages/shared")).unwrap();
+            assert_eq!(mount.source, Path::new(source));
+            assert_eq!(mount.target.to_str(), Some("/packages/shared"));
+            assert_eq!(mount.access, MountAccess::ReadWrite);
+        }
+        for value in [
+            ":/shared",
+            "host:relative",
+            "host:/",
+            "host:/etc",
+            "host:/shared/../etc",
+            r"host:/shared\nested",
+        ] {
+            assert!(parse_mount(value).is_err(), "{value}");
+        }
     }
 
     #[test]

@@ -1,9 +1,11 @@
 use std::fs;
 use std::path::Path;
+#[cfg(unix)]
 use std::process::Command;
 
 use anyhow::{bail, Context, Result};
 
+#[cfg(unix)]
 use crate::runtime::run_command;
 
 const WORKSPACE_PREFIX: &str = "vm-build-";

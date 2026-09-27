@@ -119,7 +119,10 @@ mod tests {
         assert!(COMPOSE_YAML.contains("cap_add: [\"CHOWN\", \"FOWNER\"]"));
         assert!(COMPOSE_YAML.contains("condition: service_completed_successfully"));
         assert!(COMPOSE_YAML.contains("work_controller_token"));
-        assert!(COMPOSE_YAML.contains("publish_token:\n    file: ./publish-token"));
+        assert_eq!(
+            definition["secrets"]["publish_token"]["file"],
+            "./publish-token"
+        );
         assert!(COMPOSE_YAML.contains("work_release_token"));
         assert!(COMPOSE_YAML.contains("work_build_token"));
         assert!(COMPOSE_YAML.contains("work_rollout_token"));

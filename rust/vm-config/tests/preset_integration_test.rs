@@ -26,7 +26,8 @@ struct PresetTestFixture {
     _temp_dir: TempDir,
     project_dir: PathBuf,
     plugins_dir: PathBuf,
-    original_home: Option<String>,
+    original_home: Option<std::ffi::OsString>,
+    original_userprofile: Option<std::ffi::OsString>,
     original_current_dir: PathBuf,
 }
 
@@ -44,17 +45,20 @@ impl PresetTestFixture {
         fs::create_dir_all(&plugins_dir)?;
 
         // Save and override environment variables
-        let original_home = std::env::var("HOME").ok();
+        let original_home = std::env::var_os("HOME");
+        let original_userprofile = std::env::var_os("USERPROFILE");
         let original_current_dir = std::env::current_dir()?;
 
-        std::env::set_var("HOME", &test_root);
         std::env::set_current_dir(&project_dir)?;
+        std::env::set_var("HOME", &test_root);
+        std::env::set_var("USERPROFILE", &test_root);
 
         Ok(Self {
             _temp_dir: temp_dir,
             project_dir,
             plugins_dir,
             original_home,
+            original_userprofile,
             original_current_dir,
         })
     }
@@ -183,6 +187,10 @@ impl Drop for PresetTestFixture {
         match &self.original_home {
             Some(home) => std::env::set_var("HOME", home),
             None => std::env::remove_var("HOME"),
+        }
+        match &self.original_userprofile {
+            Some(profile) => std::env::set_var("USERPROFILE", profile),
+            None => std::env::remove_var("USERPROFILE"),
         }
     }
 }

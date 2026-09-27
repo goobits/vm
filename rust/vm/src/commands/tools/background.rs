@@ -91,7 +91,9 @@ pub(super) async fn run(environment: &str) -> VmResult<()> {
     let lock = paths.open_lock()?;
     match lock.try_lock_exclusive() {
         Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => return Ok(()),
+        Err(error) if error.raw_os_error() == fs2::lock_contended_error().raw_os_error() => {
+            return Ok(())
+        }
         Err(error) => return Err(VmError::from(error)),
     }
     if has_recent_receipt(&paths.success, SUCCESS_COOLDOWN) {
@@ -370,8 +372,8 @@ mod tests {
         let second = paths.open_lock().unwrap();
         first.try_lock_exclusive().unwrap();
         assert_eq!(
-            second.try_lock_exclusive().unwrap_err().kind(),
-            std::io::ErrorKind::WouldBlock
+            second.try_lock_exclusive().unwrap_err().raw_os_error(),
+            fs2::lock_contended_error().raw_os_error()
         );
     }
 }

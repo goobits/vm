@@ -23,7 +23,9 @@ pub(in crate::commands) fn ensure_worker() -> VmResult<()> {
     let lock = paths.open_lock()?;
     match lock.try_lock_exclusive() {
         Ok(()) => FileExt::unlock(&lock).map_err(VmError::from)?,
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => return Ok(()),
+        Err(error) if error.raw_os_error() == fs2::lock_contended_error().raw_os_error() => {
+            return Ok(())
+        }
         Err(error) => return Err(VmError::from(error)),
     }
 
@@ -55,7 +57,7 @@ pub(in crate::commands) fn remove_worker() -> VmResult<()> {
     let lock = paths.open_lock()?;
     match lock.try_lock_exclusive() {
         Ok(()) => FileExt::unlock(&lock).map_err(VmError::from)?,
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+        Err(error) if error.raw_os_error() == fs2::lock_contended_error().raw_os_error() => {
             let pid = std::fs::read_to_string(&paths.pid)
                 .ok()
                 .and_then(|pid| pid.trim().parse::<u32>().ok());
@@ -78,7 +80,9 @@ pub(in crate::commands) async fn run_worker(once: bool) -> VmResult<()> {
     let lock = paths.open_lock()?;
     match lock.try_lock_exclusive() {
         Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => return Ok(()),
+        Err(error) if error.raw_os_error() == fs2::lock_contended_error().raw_os_error() => {
+            return Ok(())
+        }
         Err(error) => return Err(VmError::from(error)),
     }
     std::fs::write(&paths.pid, format!("{}\n", std::process::id())).map_err(VmError::from)?;

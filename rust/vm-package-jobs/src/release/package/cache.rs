@@ -65,7 +65,7 @@ impl ArtifactCache {
         fs::create_dir_all(&self.directory)?;
         let path = self.directory.join(filename);
         fs::copy(&artifact.path, &path)?;
-        fs::File::open(&path)?.sync_all()?;
+        fs::OpenOptions::new().write(true).open(&path)?.sync_all()?;
         let digest = vm_packages::sha256_reader(std::io::BufReader::new(fs::File::open(&path)?))?.0;
         if digest != artifact.digest {
             bail!("package artifact changed while it was retained");

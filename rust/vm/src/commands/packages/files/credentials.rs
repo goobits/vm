@@ -5,7 +5,7 @@ use std::{
 
 use crate::error::{VmError, VmResult};
 
-use super::{write_private, ApplianceFiles};
+use super::{write_container_secret, ApplianceFiles};
 
 const READ_TOKEN_FILE: &str = "read-token";
 const PUBLISH_TOKEN_FILE: &str = "publish-token";
@@ -111,7 +111,7 @@ impl ApplianceFiles {
             ));
         }
         self.ensure_root()?;
-        write_private(path, token.as_bytes())
+        write_container_secret(path, token.as_bytes())
     }
 
     fn token(&self, path: &Path) -> VmResult<String> {

@@ -32,7 +32,9 @@ impl ApplianceFiles {
         vm_core::file_system::set_permissions_mode(&path, 0o600).map_err(VmError::from)?;
         match file.try_lock_exclusive() {
             Ok(()) => Ok(Some(file)),
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
+            Err(error) if error.raw_os_error() == fs2::lock_contended_error().raw_os_error() => {
+                Ok(None)
+            }
             Err(error) => Err(VmError::from(error)),
         }
     }

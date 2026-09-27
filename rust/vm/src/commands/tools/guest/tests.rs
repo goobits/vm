@@ -1,5 +1,6 @@
 use super::*;
 use chrono::Utc;
+#[cfg(unix)]
 use std::{fs, process::Command};
 #[cfg(unix)]
 use std::{
@@ -95,6 +96,7 @@ fn consumability_requires_links_to_the_recorded_release() {
 }
 
 #[test]
+#[cfg(unix)]
 fn finds_only_standalone_project_collection_checkouts() {
     let directory = tempfile::tempdir().unwrap();
     let workspace = directory.path().join("workspace");
@@ -259,6 +261,7 @@ fn manifest_keeps_a_collection_as_one_artifact() {
 }
 
 #[test]
+#[cfg(unix)]
 fn collection_installer_retargets_managed_links_without_duplicate_copies() {
     let directory = tempfile::tempdir().unwrap();
     let home = directory.path().join("home");

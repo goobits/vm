@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use serde::{Deserialize, Serialize};
 use vm_core::vm_println;
 use vm_packages::PackageEcosystem;
@@ -149,7 +151,7 @@ impl OverrideRecord {
         if self.checkout_id != checkout.checkout_id
             || self.package != checkout.package
             || self.consumer != consumer
-            || self.source != format!("{}/source", self.root()?)
+            || Path::new(&self.source) != Path::new(self.root()?).join("source")
         {
             return Err(VmError::validation(
                 "Managed package override does not match the checkout",
@@ -160,29 +162,40 @@ impl OverrideRecord {
     }
 
     fn root(&self) -> VmResult<&str> {
-        let root = self.source.strip_suffix("/source").ok_or_else(|| {
-            VmError::validation(
-                "Managed package source has an unexpected location",
-                None::<String>,
-            )
-        })?;
-        let suffix = format!("/package-checkouts/{}", self.checkout_id);
-        if !root.ends_with(&suffix) {
+        vm_packages::validate_managed_id("checkout ID", &self.checkout_id)
+            .map_err(VmError::from)?;
+        let source = Path::new(&self.source);
+        let root = source
+            .parent()
+            .filter(|_| source.file_name() == Some("source".as_ref()))
+            .ok_or_else(|| {
+                VmError::validation(
+                    "Managed package source has an unexpected location",
+                    None::<String>,
+                )
+            })?;
+        if root.file_name() != Some(self.checkout_id.as_ref())
+            || root.parent().and_then(Path::file_name) != Some("package-checkouts".as_ref())
+        {
             return Err(VmError::validation(
                 "Managed package source escaped checkout storage",
                 None::<String>,
             ));
         }
-        Ok(root)
+        root.to_str().ok_or_else(|| {
+            VmError::validation("Managed package source path is not UTF-8", None::<String>)
+        })
     }
 
     fn home(&self) -> VmResult<&str> {
-        self.root()?
-            .strip_suffix(&format!(
-                "/.local/share/vm/package-checkouts/{}",
-                self.checkout_id
-            ))
-            .filter(|home| home.starts_with('/') && !home.is_empty())
+        let root = Path::new(self.root()?);
+        // GuestRuntime uses the local filesystem: compare components, not Unix
+        // separators, including when exercising these operations on Windows.
+        let suffix = Path::new(".local/share/vm/package-checkouts").join(&self.checkout_id);
+        root.ancestors()
+            .nth(5)
+            .filter(|home| home.is_absolute() && home.join(&suffix) == root)
+            .and_then(Path::to_str)
             .ok_or_else(|| {
                 VmError::validation(
                     "Managed package checkout is outside the guest cache",
@@ -276,9 +289,7 @@ fn remove_cargo(subject: &GuestRuntime, checkout_id: &str) -> VmResult<()> {
     let root = checkout_root(subject, checkout_id)?;
     let fragment = format!("{root}/cargo.config");
     remove_file(&fragment)?;
-    let home = root
-        .strip_suffix(&format!("/.local/share/vm/package-checkouts/{checkout_id}"))
-        .ok_or_else(|| VmError::validation("Managed checkout root is invalid", None::<String>))?;
+    let home = subject.home().to_string_lossy();
     let wrapper = format!("{home}/.local/bin/cargo");
     let base = format!("{home}/.local/share/vm/package-checkouts");
     if !has_cargo_override(&base) && cargo_wrapper_state(&wrapper)? == CargoWrapperState::Managed {
@@ -474,19 +485,21 @@ mod tests {
 
     #[test]
     fn override_state_is_confined_to_the_managed_guest_cache() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory
+            .path()
+            .join(".local/share/vm/package-checkouts/pkg-auth-20260811-000001");
+        let source = root.join("source");
         let record = OverrideRecord::new(
             "pkg-auth-20260811-000001",
             "project-a",
             "auth",
             PackageEcosystem::Cargo,
-            "/home/developer/.local/share/vm/package-checkouts/pkg-auth-20260811-000001/source",
+            source.to_str().unwrap(),
             "1.4.2",
         );
-        assert_eq!(
-            record.root().unwrap(),
-            "/home/developer/.local/share/vm/package-checkouts/pkg-auth-20260811-000001"
-        );
-        assert_eq!(record.home().unwrap(), "/home/developer");
+        assert_eq!(Path::new(record.root().unwrap()), root);
+        assert_eq!(Path::new(record.home().unwrap()), directory.path());
 
         let escaped = OverrideRecord::new(
             "pkg-auth-20260811-000001",

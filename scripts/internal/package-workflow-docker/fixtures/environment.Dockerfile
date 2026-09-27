@@ -1,10 +1,12 @@
 FROM node:22-bookworm@sha256:8a34c4ab3ea2c5cd194f07e317b2a8f09461d3c8b05c4e34c8ccd56d56024c4d
 ARG DEBIAN_FRONTEND=noninteractive
+ARG PROJECT_UID=11000
+ARG PROJECT_GID=11000
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ansible-core ca-certificates curl git python3 sudo bash tar gzip && \
     rm -rf /var/lib/apt/lists/* && \
-    groupadd --gid 11000 acceptance && \
-    useradd --create-home --uid 11000 --gid 11000 --shell /bin/bash acceptance && \
+    groupadd --non-unique --gid "$PROJECT_GID" acceptance && \
+    useradd --non-unique --create-home --uid "$PROJECT_UID" --gid "$PROJECT_GID" --shell /bin/bash acceptance && \
     printf '%s\n' 'acceptance ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/acceptance && \
     chmod 0440 /etc/sudoers.d/acceptance && \
     install -d -o acceptance -g acceptance /workspace && \

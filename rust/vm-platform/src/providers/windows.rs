@@ -45,6 +45,14 @@ impl PlatformProvider for WindowsPlatform {
     }
 
     fn home_dir(&self) -> Result<PathBuf> {
+        if let Some(profile) = env::var_os("USERPROFILE").filter(|value| !value.is_empty()) {
+            let profile = PathBuf::from(profile);
+            anyhow::ensure!(
+                profile.is_absolute(),
+                "USERPROFILE must be an absolute path"
+            );
+            return Ok(profile);
+        }
         self.default_home_dir()
     }
 
@@ -233,7 +241,7 @@ impl PlatformProvider for WindowsPlatform {
 pub struct WindowsProcessProvider;
 
 impl ProcessProvider for WindowsProcessProvider {
-    fn prepare_command(&self, cmd: &mut Command) -> Result<()> {
+    fn prepare_command(&self, _cmd: &mut Command) -> Result<()> {
         // Set Windows-specific environment variables if needed
         // For now, no special preparation is required
         Ok(())

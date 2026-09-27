@@ -133,56 +133,92 @@ pub mod platform {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
-    use std::sync::{Mutex, MutexGuard};
-    use tempfile::TempDir;
-
-    static TEST_MUTEX: Mutex<()> = Mutex::new(());
-
-    struct EnvGuard {
-        _guard: MutexGuard<'static, ()>,
-        home: Option<String>,
-    }
-
-    impl EnvGuard {
-        fn new() -> Self {
-            Self {
-                _guard: TEST_MUTEX
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner()),
-                home: env::var("HOME").ok(),
-            }
-        }
-    }
-
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            match &self.home {
-                Some(original) => env::set_var("HOME", original),
-                None => env::remove_var("HOME"),
-            }
-        }
+    #[test]
+    fn state_directory_follows_the_platform_home() {
+        let home = platform::home_dir().expect("should get home dir");
+        assert_eq!(
+            home,
+            dirs::home_dir().expect("native home must be available")
+        );
+        assert_eq!(platform::vm_state_dir().unwrap(), home.join(".vm"));
     }
 
     #[test]
     fn test_platform_respects_home_env() {
-        let _guard = EnvGuard::new();
+        const CHILD_HOME: &str = "VM_PLATFORM_TEST_HOME";
+        if let Some(expected) = std::env::var_os(CHILD_HOME) {
+            let expected = std::path::PathBuf::from(expected);
+            assert_eq!(platform::home_dir().unwrap(), expected);
+            assert_eq!(platform::vm_state_dir().unwrap(), expected.join(".vm"));
+            return;
+        }
 
-        // Create a temporary directory for testing
-        let temp_dir = TempDir::new().expect("should create temp dir");
-        let test_home = temp_dir.path().to_path_buf();
+        // Isolate the environment override from concurrent native path lookups.
+        let directory = tempfile::tempdir().unwrap();
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "tests::test_platform_respects_home_env",
+                "--nocapture",
+            ])
+            .env(
+                if cfg!(windows) { "USERPROFILE" } else { "HOME" },
+                directory.path(),
+            )
+            .env(CHILD_HOME, directory.path())
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 
-        // Set HOME to our test directory
-        env::set_var("HOME", &test_home);
-
-        // Test that vm_state_dir() uses the test HOME
-        let state_dir = platform::vm_state_dir().expect("should get state dir");
-        assert!(state_dir.starts_with(&test_home));
-        assert!(state_dir.ends_with(".vm"));
-
-        // Test that home_dir() returns the test HOME
-        let home = platform::home_dir().expect("should get home dir");
-        assert_eq!(home, test_home);
+    #[cfg(windows)]
+    #[test]
+    fn windows_profile_fallback_and_invalid_override() {
+        const CHILD_MODE: &str = "VM_PLATFORM_TEST_PROFILE_MODE";
+        if let Ok(mode) = std::env::var(CHILD_MODE) {
+            if mode == "relative" {
+                assert!(platform::home_dir()
+                    .unwrap_err()
+                    .to_string()
+                    .contains("absolute"));
+            } else {
+                assert_eq!(platform::home_dir().unwrap(), dirs::home_dir().unwrap());
+            }
+            return;
+        }
+        for mode in ["absent", "empty", "relative"] {
+            let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+            command
+                .args([
+                    "--exact",
+                    "tests::windows_profile_fallback_and_invalid_override",
+                    "--nocapture",
+                ])
+                .env(CHILD_MODE, mode);
+            match mode {
+                "absent" => {
+                    command.env_remove("USERPROFILE");
+                }
+                "empty" => {
+                    command.env("USERPROFILE", "");
+                }
+                _ => {
+                    command.env("USERPROFILE", "relative/profile");
+                }
+            }
+            let output = command.output().unwrap();
+            assert!(
+                output.status.success(),
+                "{mode}: {}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
     }
 
     #[test]

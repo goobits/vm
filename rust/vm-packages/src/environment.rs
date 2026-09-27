@@ -120,8 +120,8 @@ impl ClientEnvironment {
 
     pub fn with_canonical_workspace(mut self, workspace: impl Into<String>) -> Result<Self> {
         let workspace = workspace.into();
-        if !std::path::Path::new(&workspace).is_absolute() || workspace.contains(['\0', '\n', '\r'])
-        {
+        // This path is consumed in the Unix guest, regardless of the host OS.
+        if !workspace.starts_with('/') || workspace.contains(['\\', '\0', '\n', '\r']) {
             bail!("canonical package workspace must be one absolute path");
         }
         self.canonical_workspace = Some(workspace);
@@ -327,9 +327,17 @@ mod tests {
             .clone()
             .with_canonical_workspace("/workspace")
             .is_ok());
-        assert!(environment
-            .with_canonical_workspace("../workspace")
-            .is_err());
+        for invalid in [
+            "../workspace",
+            r"C:\workspace",
+            r"\workspace",
+            "/work\nspace",
+        ] {
+            assert!(environment
+                .clone()
+                .with_canonical_workspace(invalid)
+                .is_err());
+        }
     }
 
     #[test]
