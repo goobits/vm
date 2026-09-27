@@ -123,6 +123,14 @@ jobs:
         working-directory: rust
         run: cargo build --locked --release --package goobits-vm
 
+      - name: Record acceptance runtime versions
+        run: |
+          uname -a
+          docker version
+          docker compose version
+          rustc --version
+          cargo --version
+
       - name: Prove persistent checkout and workspace release workflows
         env:
           VM_ACCEPTANCE_BIN: ${{ github.workspace }}/rust/target/release/vm
