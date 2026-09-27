@@ -130,6 +130,26 @@ pub fn validate_mount_target(target: &Path) -> Result<()> {
 }
 
 fn is_dangerous_source(path: &Path) -> bool {
+    if is_dangerous_windows_source(&path.to_string_lossy()) {
+        return true;
+    }
+    #[cfg(windows)]
+    for variable in [
+        "SystemRoot",
+        "ProgramFiles",
+        "ProgramFiles(x86)",
+        "ProgramData",
+    ] {
+        if let Some(root) =
+            std::env::var_os(variable).and_then(|root| PathBuf::from(root).canonicalize().ok())
+        {
+            let source = path.to_string_lossy().to_lowercase();
+            let root = root.to_string_lossy().to_lowercase();
+            if source == root || source.starts_with(&format!("{root}\\")) {
+                return true;
+            }
+        }
+    }
     if ["/private/var/folders", "/private/var/tmp"]
         .iter()
         .any(|allowed| path.starts_with(allowed))
@@ -158,9 +178,90 @@ fn is_dangerous_source(path: &Path) -> bool {
     })
 }
 
+// Canonical Windows paths may have verbatim drive or UNC prefixes. Keep this
+// lexical check host-independent so all CI platforms exercise the policy.
+fn is_dangerous_windows_source(path: &str) -> bool {
+    let normalized = path.replace('\\', "/").to_lowercase();
+    let path = normalized.strip_prefix("//?/").unwrap_or(&normalized);
+    let relative = if let Some(unc) = path
+        .strip_prefix("unc/")
+        .or_else(|| path.strip_prefix("//"))
+    {
+        if unc.starts_with("./") {
+            return true; // Device namespaces are never ordinary shared directories.
+        }
+        unc.splitn(3, '/').nth(2).unwrap_or("")
+    } else if path.as_bytes().get(1) == Some(&b':')
+        && path.as_bytes()[0].is_ascii_alphabetic()
+        && path.as_bytes().get(2) == Some(&b'/')
+    {
+        &path[3..]
+    } else {
+        return normalized.starts_with("//?/");
+    };
+    let relative = relative.trim_end_matches('/');
+    let first = relative.split('/').next().unwrap_or("");
+    relative.is_empty()
+        || relative == "users"
+        || matches!(
+            first,
+            "windows"
+                | "program files"
+                | "program files (x86)"
+                | "programdata"
+                | "recovery"
+                | "system volume information"
+                | "$recycle.bin"
+        )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_sources_block_volume_and_system_roots() {
+        for source in [
+            r"C:\",
+            "d:/",
+            r"\\?\C:\",
+            r"\\server\share",
+            r"\\?\UNC\server\share\",
+            r"\\.\C:\workspace",
+            r"\\?\Volume{example}\workspace",
+            r"C:\WINDOWS\System32",
+            r"\\?\c:\Program Files\app",
+            r"D:\ProgramData\app",
+            r"C:\Users",
+            r"C:\System Volume Information",
+        ] {
+            assert!(is_dangerous_windows_source(source), "{source}");
+        }
+        for source in [
+            r"C:\Users\dev\project",
+            r"C:\workspace",
+            r"\\?\C:\workspace",
+            r"\\server\share\project",
+            r"\\?\UNC\server\share\project",
+            r"C:\Windows-project",
+            "/tmp/project",
+        ] {
+            assert!(!is_dangerous_windows_source(source), "{source}");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn resolved_windows_volume_roots_are_rejected() {
+        let project = tempfile::tempdir().unwrap();
+        let root = project.path().ancestors().last().unwrap();
+        let error = resolve_mount_source(root, project.path()).unwrap_err();
+        assert!(
+            error.to_string().contains("Dangerous mount source"),
+            "{error}"
+        );
+        assert!(resolve_mount_source(project.path(), project.path()).is_ok());
+    }
 
     #[test]
     fn access_accepts_config_and_cli_spellings() {

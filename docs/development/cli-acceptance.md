@@ -1,5 +1,8 @@
 # CLI acceptance log
 
+[Cross-platform CI follow-up](cli-ci-acceptance.md) records the completed Windows
+and native Linux package acceptance corrections on 2026-09-27.
+
 ## 2026-09-25 host audit
 
 Tested starting revision: `37658c3d` (clean working tree).
