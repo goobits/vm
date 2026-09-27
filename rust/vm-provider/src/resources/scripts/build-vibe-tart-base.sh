@@ -5,10 +5,10 @@ set -euo pipefail
 GUEST_OS="${GUEST_OS:-macos}"
 BASE_NAME="${BASE_NAME:-}"
 BASE_IMAGE="${BASE_IMAGE:-}"
-NODE_VERSION="${NODE_VERSION:-22.23.2}"
+NODE_VERSION="${NODE_VERSION:-22.23.3}"
 NVM_COMMIT="${NVM_COMMIT:-a885b885fef16fac4bc544188fb25e9e37ae83e8}"
 NVM_INSTALLER_SHA256="${NVM_INSTALLER_SHA256:-48a0eee9a60e07422dce0eb5774754c83889570ca1ee2566c516acbe8af03a9e}"
-RUST_TOOLCHAIN="${RUST_TOOLCHAIN:-1.98.0}"
+RUST_TOOLCHAIN="${RUST_TOOLCHAIN:-1.98.1}"
 WAIT_SECONDS="${WAIT_SECONDS:-120}"
 
 usage() {
@@ -22,10 +22,10 @@ Environment overrides:
   GUEST_OS       Guest OS type to build (default: macos)
   BASE_NAME       Target Tart VM name (default depends on guest OS)
   BASE_IMAGE      Source Tart image (default depends on guest OS)
-  NODE_VERSION    Default Node version to preinstall (default: 22.23.2)
+  NODE_VERSION    Default Node version to preinstall (default: 22.23.3)
   NVM_COMMIT      Pinned NVM installer commit
   NVM_INSTALLER_SHA256  SHA-256 of the pinned NVM installer
-  RUST_TOOLCHAIN  Pinned Rust toolchain (default: 1.98.0)
+  RUST_TOOLCHAIN  Pinned Rust toolchain (default: 1.98.1)
   WAIT_SECONDS    SSH readiness timeout in seconds (default: 120)
 EOF
 }

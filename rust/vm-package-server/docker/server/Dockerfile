@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Build with the repository root as context:
 # docker build -f rust/vm-package-server/docker/server/Dockerfile .
-FROM rust:1.97-bookworm@sha256:0e2bcaef56d041a486784e54104a81aebe0da44bd03019bd70bc0401e42e4a97 AS builder
+FROM rust:1.98-bookworm@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e AS builder
 
 ARG VM_PACKAGE_BUILD_PROFILE=release
 WORKDIR /source
@@ -28,7 +28,7 @@ RUN --mount=type=cache,id=vm-packages-cargo-registry,target=/usr/local/cargo/reg
     install -m 0755 "$CARGO_TARGET_DIR/$VM_PACKAGE_BUILD_PROFILE/pkg-git-askpass" /usr/local/bin/pkg-git-askpass && \
     install -D -m 0755 "$CARGO_TARGET_DIR/$VM_PACKAGE_BUILD_PROFILE/vm" /usr/local/lib/vm-packages/vm
 
-FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
+FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl git && \

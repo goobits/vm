@@ -1,16 +1,20 @@
 # Stage 1: Build environment with VM tool
-FROM rust:1.97-bookworm@sha256:0e2bcaef56d041a486784e54104a81aebe0da44bd03019bd70bc0401e42e4a97 AS builder
+FROM rust:1.98-bookworm@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e AS builder
 
 # Build the reviewed checkout instead of an unrelated mutable crates.io release.
 WORKDIR /source
 COPY rust/ .
+COPY configs/ /configs/
+COPY Dockerfile.vibe /Dockerfile.vibe
+COPY plugins/vibe-dev/preset.yaml /plugins/vibe-dev/preset.yaml
 RUN cargo install --locked --path vm
 
 # Verify installation
 RUN vm --version
 
+# Keep the runtime libc compatible with the Bookworm builder.
 # Stage 2: Runtime environment
-FROM ubuntu:22.04@sha256:2edbbc5dc405e9612ba3584ce95480277e3eb374407b5505fe26f17df77c7dbc
+FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
 
 # Copy VM binary from builder
 COPY --from=builder /usr/local/cargo/bin/vm /usr/local/bin/vm
@@ -28,5 +32,5 @@ RUN echo '{"name": "docker-ci-test", "version": "1.0.0"}' > package.json
 RUN vm --version
 RUN vm --help
 
-# Entry point for CI tests
-CMD ["vm", "create", "--force"]
+# Default to a read-only smoke test; provider acceptance uses its own workflow.
+CMD ["vm", "--help"]
