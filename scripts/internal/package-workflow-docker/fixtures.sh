@@ -1,4 +1,8 @@
 fixture_assets=$script_dir/package-workflow-docker/fixtures
+# Native Linux bind mounts retain host ownership. Match it without changing any
+# host directory permissions or ownership; Docker Desktop supports this too.
+fixture_uid=$(id -u)
+fixture_gid=$(id -g)
 
 write_environment_config() {
   local root=$1
@@ -18,13 +22,19 @@ environments:
     image:
       dockerfile: Dockerfile.acceptance
       context: .
+      args:
+        PROJECT_UID: '$fixture_uid'
+        PROJECT_GID: '$fixture_gid'
 vm:
   user: acceptance
-  uid: 11000
-  gid: 11000
+  uid: $fixture_uid
+  gid: $fixture_gid
   image:
     dockerfile: Dockerfile.acceptance
     context: .
+    args:
+      PROJECT_UID: '$fixture_uid'
+      PROJECT_GID: '$fixture_gid'
 terminal:
   shell: bash
 host_sync:

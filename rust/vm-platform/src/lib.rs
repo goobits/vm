@@ -133,58 +133,46 @@ pub mod platform {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
-    use std::sync::{Mutex, MutexGuard};
-    use tempfile::TempDir;
-
-    const HOME_ENV: &str = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
-
-    static TEST_MUTEX: Mutex<()> = Mutex::new(());
-
-    struct EnvGuard {
-        _guard: MutexGuard<'static, ()>,
-        home: Option<String>,
+    #[test]
+    fn state_directory_follows_the_platform_home() {
+        let home = platform::home_dir().expect("should get home dir");
+        assert_eq!(
+            home,
+            dirs::home_dir().expect("native home must be available")
+        );
+        assert_eq!(platform::vm_state_dir().unwrap(), home.join(".vm"));
     }
 
-    impl EnvGuard {
-        fn new() -> Self {
-            Self {
-                _guard: TEST_MUTEX
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner()),
-                home: env::var(HOME_ENV).ok(),
-            }
-        }
-    }
-
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            match &self.home {
-                Some(original) => env::set_var(HOME_ENV, original),
-                None => env::remove_var(HOME_ENV),
-            }
-        }
-    }
-
+    #[cfg(unix)]
     #[test]
     fn test_platform_respects_home_env() {
-        let _guard = EnvGuard::new();
+        const CHILD_HOME: &str = "VM_PLATFORM_TEST_HOME";
+        if let Some(expected) = std::env::var_os(CHILD_HOME) {
+            let expected = std::path::PathBuf::from(expected);
+            assert_eq!(platform::home_dir().unwrap(), expected);
+            assert_eq!(platform::vm_state_dir().unwrap(), expected.join(".vm"));
+            return;
+        }
 
-        // Create a temporary directory for testing
-        let temp_dir = TempDir::new().expect("should create temp dir");
-        let test_home = temp_dir.path().to_path_buf();
-
-        // Set HOME to our test directory
-        env::set_var(HOME_ENV, &test_home);
-
-        // Test that vm_state_dir() uses the test HOME
-        let state_dir = platform::vm_state_dir().expect("should get state dir");
-        assert!(state_dir.starts_with(&test_home));
-        assert!(state_dir.ends_with(".vm"));
-
-        // Test that home_dir() returns the test HOME
-        let home = platform::home_dir().expect("should get home dir");
-        assert_eq!(home, test_home);
+        // Isolate the environment override from concurrent native path lookups.
+        // Windows uses Known Folder APIs, rather than HOME/USERPROFILE overrides.
+        let directory = tempfile::tempdir().unwrap();
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "tests::test_platform_respects_home_env",
+                "--nocapture",
+            ])
+            .env("HOME", directory.path())
+            .env(CHILD_HOME, directory.path())
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     #[test]

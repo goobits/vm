@@ -99,6 +99,8 @@ pub(super) fn make_private_executable(path: &str) -> VmResult<()> {
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
             .map_err(VmError::from)?;
     }
+    #[cfg(not(unix))]
+    let _ = path;
     Ok(())
 }
 
@@ -149,8 +151,10 @@ mod tests {
     fn checkout_roots_cannot_escape_guest_temporary_storage() {
         let home = Path::new("/home/developer");
         assert_eq!(
-            guest_checkout_root(home, "pkg-auth-20260811-000001").unwrap(),
-            "/home/developer/.local/share/vm/package-checkouts/pkg-auth-20260811-000001"
+            // GuestRuntime performs local filesystem operations in the guest;
+            // path separators therefore follow the platform running this test.
+            Path::new(&guest_checkout_root(home, "pkg-auth-20260811-000001").unwrap()),
+            Path::new("/home/developer/.local/share/vm/package-checkouts/pkg-auth-20260811-000001")
         );
         for invalid in ["../workspace", "/workspace", "scope/auth", "."] {
             assert!(guest_checkout_root(home, invalid).is_err());
