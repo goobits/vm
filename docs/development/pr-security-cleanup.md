@@ -72,8 +72,8 @@ directory and task-only logs were removed after recording this evidence.
 ## Security results and limits
 
 Repository settings now enable Dependabot alerts/security updates, secret
-scanning, and secret push protection. Rust and Actions CodeQL scans run on PRs,
-main pushes, weekly, and manually. After both initial scans completed, the
+scanning, and secret push protection. Rust and Actions CodeQL scans initially ran on PRs,
+main pushes, weekly, and manually; the later opt-in policy below supersedes those triggers. After both initial scans completed, the
 Dependabot, secret-scanning, and code-scanning APIs each reported zero open alerts;
 the PR merge analysis commit was `b7c7fa7e98f7fcf216b4f1b905d6c6ec3436dc53`,
 with zero results and no errors for both languages. No alert was dismissed to
@@ -195,3 +195,48 @@ root helper writes it. Existing files cannot be silently overwritten. A disposab
 Alpine helper check preserved UID/GID 1000:1000, mode 0600, and exact archived data.
 The failed hosted acceptance cleaned its test containers, volumes, images, and
 networks; existing host environments were never used by that run.
+
+## Final closeout — 2026-09-28
+
+Final tested source: `2b863feca7313d57f6fc034a4b823b115354e970`, including starting
+commit `37658c3d`. All task source changes are integrated on main; subsequent
+closeout edits only preserve documentation and remove the completed tracker.
+
+- Local macOS 27.0 (26A428), arm64, Rust/Cargo 1.98.1: all 1,210 workspace tests
+  passed, zero failures, 24 existing ignored; all-target/all-feature Clippy with
+  warnings denied, formatting, all-feature release build, CLI reference, and
+  `git diff --check` passed. No CLI inventory regeneration was required.
+- [CI 36375948749](https://github.com/goobits/vm/actions/runs/36375948749) passed
+  Linux/macOS/Windows, Clippy, audit, and artifact checks. The explicit dispatch
+  selected `package_acceptance=false`: unchanged package code had already passed
+  live acceptance in [36373623786](https://github.com/goobits/vm/actions/runs/36373623786)
+  at `dc8a79e0`. This option defaults to true for future dispatches.
+- [Security 36375951018](https://github.com/goobits/vm/actions/runs/36375951018)
+  passed dependency policy and both CodeQL languages, with no analysis errors.
+  All reported alerts have individual source-level dispositions in the
+  [triage record](code-scanning-triage.md); no query category is disabled.
+- [Live onboarding 36375953385](https://github.com/goobits/vm/actions/runs/36375953385)
+  passed `VM_ACCEPTANCE_BIN="$(command -v vm)" bash
+  scripts/internal/test-provider-workflow-docker.sh` after a source install.
+  Host: Ubuntu 24.04.5, linux/amd64, Rust 1.98.1, Docker client/server 28.0.4,
+  Compose 2.38.2. Tested binary SHA256:
+  `9f269a331244712c32fb17002dbfd4b75f9f9ef25e4acb6b820019ab0bedb2ff`.
+  The workflow verified restored data, gzip/none archives, project ownership,
+  overwrite/recovery and corruption rejection, environment/fleet operations,
+  database routing/backups, tunnels, service plugins, and storage ownership.
+  It exited zero at 04:12:38 UTC and cleaned its disposable provider resources.
+
+Final API checks returned no open PRs, issues, CodeQL alerts, Dependabot alerts,
+or secret-scanning alerts. The active follow-up tracker is complete and removed.
+All six repository workflows are opt-in; their latest runs were explicitly
+selected, and no runs were triggered by the intervening documentation pushes.
+Release publishing still requires an explicit annotated-tag dispatch and retains
+its immutable-publication checks and protected environments.
+
+Temporary review reports, request bodies, and local test logs were removed after
+preserving their evidence. The shared Cargo cache remains in place. Existing
+`vm-dev`, `sketch-api-dev`, their databases, and package services remain running;
+no disposable local containers remain. Remote branches are main, release/5.x,
+and two pre-existing branches with unique work; completed task and dependency
+branches are gone. Earlier Podman/Tart acceptance and release-publishing limits
+remain as recorded in the preceding acceptance documents.

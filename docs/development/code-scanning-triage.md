@@ -29,8 +29,9 @@ show check status, not a guarantee of vulnerability-free code.
   echo credentials. Tests cover URL boundary cases, live redirect refusal,
   non-disclosure of server error bodies, and rejected listener initialization.
 
-These source fixes require a new main-branch analysis before declaring the
-reported alerts resolved. Do not dismiss a real defect solely to obtain zero alerts.
+Main-branch analyses verified these fixes; remaining query limitations are
+documented in the post-integration review below. Genuine defects were repaired
+before any residual false-positive disposition.
 
 ## Logging findings
 
@@ -140,3 +141,16 @@ in a shared `random_bytes` helper. It fully fills the buffer from the OS before
 returning; entropy failure returns an error (or panics at the existing infallible
 salt/token API boundary), never zero fallback material. The cryptographic
 classifications above describe the original scanned revision.
+
+Alert #35, introduced by the dependency-migration scan at `dc8a79e0`, points to
+the initialized buffer in `crypto.rs::random_bytes`. This is the same overwritten
+output-buffer false positive as #33: `SysRng.try_fill_bytes` fills the entire
+buffer before `Ok(bytes)`, and failure returns an error rather than the buffer.
+Salt/token callers panic on that error; nonce/master-password callers propagate
+it. No initializer bytes are used as cryptographic material. No source change
+or suppression is needed to alter the correctly fail-closed randomness flow.
+
+Final review at `2b863fec`: #35 was individually dismissed with the buffer-flow
+evidence above. Rust and Actions analyses completed without errors, and the
+code-scanning API returned zero open alerts. See the
+[acceptance closeout](pr-security-cleanup.md#final-closeout--2026-09-28).
