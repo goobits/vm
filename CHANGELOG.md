@@ -19,7 +19,7 @@
 ### Fixed
 
 - Environment removal preserves snapshots and persistent data unless deletion is explicit, completes configured database backups first, and deletes only exclusively owned storage.
-- Failed snapshot replacement preserves the previous snapshot; restored runtimes retain their original configuration identity so later starts detect drift.
+- Failed snapshot replacement preserves the previous snapshot; restored runtimes retain their original configuration identity so later starts detect drift. Volume archives remain private and owned by the invoking user on native Linux.
 - Package retries retain durable work and immutable publication state, report partial activation failures accurately, and preserve environment and volume identities during tool updates.
 - Scoped consumer names persist correctly across package-service restarts.
 - Source installs keep the executable independent of temporary build caches, and private package infrastructure can build matching images from the installed source checkout.

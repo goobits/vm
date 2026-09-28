@@ -93,7 +93,6 @@ pub(crate) fn finish<T>(snapshot: Result<T>, resume: Result<()>) -> Result<T> {
 mod tests {
     use super::*;
     use std::fs;
-    use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
 
     fn fixture(root: &Path) -> (String, ComposeProject) {
@@ -106,34 +105,14 @@ mod tests {
         ] {
             fs::write(root.join(id), state).unwrap();
         }
-        let script = r#"#!/bin/sh
-root=ROOT
-case "$1" in
-  compose) printf 'first\nsecond\nstopped\nprior\nprior-podman\n' ;;
-  inspect)
-    case "$(cat "$root/$4")" in
-      running) printf '{"Running":true,"Paused":false}' ;;
-      paused) printf '{"Running":false,"Paused":true}' ;;
-      paused-running) printf '{"Running":true,"Paused":true}' ;;
-      stopped) printf '{"Running":false,"Paused":false}' ;;
-      *) exit 1 ;;
-    esac ;;
-  pause)
-    printf paused > "$root/$2"
-    if [ -f "$root/fail-pause" ] && [ "$2" = second ]; then echo 'partial pause failed' >&2; exit 1; fi ;;
-  unpause)
-    if [ "$2" = first ]; then
-      if [ -f "$root/fail-unpause" ]; then echo 'unpause failed' >&2; exit 1; fi
-      if [ -f "$root/noop-unpause" ]; then exit 0; fi
-    fi
-    printf running > "$root/$2" ;;
-  *) exit 1 ;;
-esac
-"#;
         let runtime = root.join("runtime");
-        let quoted = format!("'{}'", root.display().to_string().replace('\'', "'\"'\"'"));
-        fs::write(&runtime, script.replace("ROOT", &quoted)).unwrap();
-        fs::set_permissions(&runtime, fs::Permissions::from_mode(0o755)).unwrap();
+        // Immutable fixtures avoid Linux ETXTBSY when another test forks while
+        // a dynamically generated executable is still open for writing.
+        std::os::unix::fs::symlink(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/snapshot-quiesce.sh"),
+            &runtime,
+        )
+        .unwrap();
         (
             runtime.to_str().unwrap().to_string(),
             ComposeProject {
@@ -183,7 +162,10 @@ esac
         let (runtime, compose) = fixture(directory.path());
         fs::write(directory.path().join("fail-pause"), "").unwrap();
         let error = pause(&runtime, &compose).await.unwrap_err();
-        assert!(error.to_string().contains("partial pause failed"));
+        assert!(
+            error.to_string().contains("partial pause failed"),
+            "unexpected snapshot error: {error}"
+        );
         for id in ["first", "second"] {
             assert_eq!(
                 fs::read_to_string(directory.path().join(id)).unwrap(),

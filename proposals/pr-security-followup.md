@@ -16,3 +16,5 @@ and acceptance remain tracked here; existing host environments are preserved.
 
 - [x] Make all workflows opt-in and document explicit validation/publication commands.
 - [ ] Inspect and repair build regressions in newly merged dependency PRs #103–108; rerun explicitly selected checks.
+
+- [ ] Fix and verify native Linux volume-archive ownership and the remaining mutable snapshot fixture exposed by explicit acceptance.

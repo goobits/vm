@@ -48,6 +48,10 @@ gh workflow run coverage.yml --ref <branch>
 gh run list --branch <branch>
 ```
 
+The CI dispatch includes live package acceptance by default. When it has already
+passed for unchanged package code, skip that lengthy job with
+`gh workflow run ci.yml --ref <branch> -F package_acceptance=false`.
+
 Dispatch PR checks on the PR's source branch. README badges show the latest
 completed main-branch run, which may predate the latest commit. Dependabot alerts,
 secret scanning, and push protection remain enabled independently of CI.

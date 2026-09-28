@@ -3,6 +3,11 @@ name: Continuous Integration
 # Run explicitly from the Actions tab or gh workflow run.
 on:
   workflow_dispatch:
+    inputs:
+      package_acceptance:
+        description: Run live Docker package acceptance
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -109,6 +114,7 @@ jobs:
 
   package-workflow-docker:
     name: Package workflow Docker acceptance
+    if: inputs.package_acceptance
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:

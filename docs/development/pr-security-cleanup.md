@@ -176,3 +176,22 @@ retired `run`, `status`, and `shell --command` calls.
 Main CodeQL scans confirmed the PyPI injection fixed; reviewed residual transport
 reports and duplicate receipt-path alert #34 were individually dismissed with
 post-fix evidence. The code-scanning API then reported zero open alerts.
+
+## Native Linux acceptance follow-up
+
+Explicit runs at `dc8a79e0` passed macOS/Windows checks, Clippy, dependency policy,
+artifact roundtrip, and [security scanning](https://github.com/goobits/vm/actions/runs/36373626499).
+The Linux unit run exposed the remaining dynamically written snapshot executable
+fixture. It now follows the crate's immutable fixture pattern to avoid Linux
+ETXTBSY races during concurrent fork/exec; related snapshot fixtures were migrated
+too. The old assertion did not print its underlying error, so the exact original
+errno was not recorded; assertions now retain that diagnostic.
+
+[Onboarding 36373629138](https://github.com/goobits/vm/actions/runs/36373629138)
+reached live snapshot create, restore, ownership checks, and native image-tamper
+rejection, then failed trying to corrupt a root-owned volume archive. Backup now
+creates the archive exclusively as the invoking user with mode 0600 before the
+root helper writes it. Existing files cannot be silently overwritten. A disposable
+Alpine helper check preserved UID/GID 1000:1000, mode 0600, and exact archived data.
+The failed hosted acceptance cleaned its test containers, volumes, images, and
+networks; existing host environments were never used by that run.

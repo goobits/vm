@@ -273,7 +273,6 @@ pub async fn restore(
 #[cfg(all(test, unix))]
 mod tests {
     use super::TartRuntime;
-    use std::os::unix::fs::PermissionsExt;
 
     #[test]
     fn restore_stages_replacement_and_recovers_original_on_install_failure() {
@@ -281,26 +280,12 @@ mod tests {
         let home = root.path().join("home");
         std::fs::create_dir_all(home.join("vms")).unwrap();
         let script = root.path().join("tart");
-        std::fs::write(
+        std::os::unix::fs::symlink(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/snapshot-tart.sh"),
             &script,
-            r#"#!/bin/sh
-set -eu
-case "$1" in
-  list) printf '[{"Name":"demo-dev","State":"stopped","Source":"local"}]' ;;
-  import) cp "$2" "$TART_HOME/vms/$3" ;;
-  rename)
-    case "$2" in
-      vm-restore-*)
-        if [ -f "$TART_HOME/fail-install" ]; then exit 19; fi ;;
-    esac
-    mv "$TART_HOME/vms/$2" "$TART_HOME/vms/$3" ;;
-  delete) rm "$TART_HOME/vms/$2" ;;
-  *) exit 20 ;;
-esac
-"#,
         )
         .unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
         let archive = root.path().join("vm.tvm");
         std::fs::write(&archive, b"captured").unwrap();
         let target = home.join("vms/demo-dev");

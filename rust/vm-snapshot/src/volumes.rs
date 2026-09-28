@@ -42,6 +42,16 @@ pub(crate) async fn backup_volumes(
             tracing::info!("  Backing up volume: {}", volume.name);
             let archive_file = format!("{}.tar.gz", volume.name);
             let archive_path = volumes_dir.join(&archive_file);
+            // The helper runs as root to read volume data. Create its output
+            // as the caller first so native Linux backups remain caller-owned
+            // and private, rather than inheriting the container's ownership.
+            let mut archive_options = tokio::fs::OpenOptions::new();
+            archive_options.write(true).create_new(true);
+            #[cfg(unix)]
+            archive_options.mode(0o600);
+            drop(archive_options.open(&archive_path).await.map_err(|error| {
+                VmError::filesystem(error, archive_path.to_string_lossy(), "create")
+            })?);
             let run_args = [
                 "run",
                 "--rm",

@@ -32,3 +32,17 @@ jobs:
       - name: Verify installed CLI with isolated Docker acceptance
         run: VM_ACCEPTANCE_BIN="$(command -v vm)" bash scripts/internal/test-provider-workflow-docker.sh
         timeout-minutes: 30
+
+      - name: Preserve failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: provider-acceptance-diagnostics
+          retention-days: 3
+          if-no-files-found: ignore
+          path: |
+            /tmp/vm-provider-acceptance.*/run.log
+            /tmp/vm-provider-acceptance.*/*.json
+            /tmp/vm-provider-acceptance.*/*.txt
+            /tmp/vm-provider-acceptance.*/expected-failure.log
+            /tmp/vm-provider-acceptance.*/container-evidence/
