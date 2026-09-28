@@ -132,6 +132,15 @@ static COMPOSE_TERA: OnceLock<Tera> = OnceLock::new();
 pub(crate) fn get_compose_tera() -> &'static Tera {
     COMPOSE_TERA.get_or_init(|| {
         let mut tera = Tera::default();
+        // JSON scalars are also valid YAML, including strings with quotes,
+        // newlines, colons, or YAML boolean-like contents.
+        tera.register_filter(
+            "yaml_scalar",
+            |value: tera::Value, _: tera::Kwargs, _: &tera::State| {
+                serde_json::to_string(&value)
+                    .map_err(|error| tera::Error::message(error.to_string()))
+            },
+        );
         tera.add_raw_template("docker-compose.yml", include_str!("template.yml"))
             .expect("Failed to add docker-compose template");
         tera

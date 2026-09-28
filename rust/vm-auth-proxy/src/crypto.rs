@@ -1,12 +1,13 @@
 //! Cryptographic operations for secret encryption and decryption
 
 use aes_gcm::{
-    aead::{rand_core::RngCore, Aead, AeadCore, KeyInit, OsRng},
+    aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
 };
 use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use pbkdf2::pbkdf2_hmac;
+use rand::{rngs::SysRng, TryRng};
 use sha2::Sha256;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -49,7 +50,7 @@ impl EncryptionKey {
     /// Encrypt a plaintext value
     pub fn encrypt(&self, plaintext: &str) -> Result<String> {
         // Generate random nonce
-        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+        let nonce = Nonce::from(random_bytes::<NONCE_LENGTH>()?);
 
         // Encrypt the data
         let ciphertext = self
@@ -94,18 +95,22 @@ impl EncryptionKey {
     }
 }
 
+fn random_bytes<const N: usize>() -> Result<[u8; N]> {
+    let mut bytes = [0u8; N];
+    SysRng
+        .try_fill_bytes(&mut bytes)
+        .map_err(|error| anyhow!("Failed to obtain OS randomness: {error}"))?;
+    Ok(bytes)
+}
+
 /// Generate a cryptographically secure random salt
 pub fn generate_salt() -> [u8; SALT_LENGTH] {
-    let mut salt = [0u8; SALT_LENGTH];
-    OsRng.fill_bytes(&mut salt);
-    salt
+    random_bytes().expect("OS randomness is required for a secret salt")
 }
 
 /// Generate a secure random authentication token
 pub fn generate_auth_token() -> String {
-    let mut token_bytes = [0u8; 32];
-    OsRng.fill_bytes(&mut token_bytes);
-    STANDARD.encode(token_bytes)
+    STANDARD.encode(random_bytes::<32>().expect("OS randomness is required for an auth token"))
 }
 
 pub fn get_or_create_master_password(data_dir: &Path) -> Result<String> {
@@ -136,9 +141,7 @@ pub fn get_or_create_master_password(data_dir: &Path) -> Result<String> {
         }
     }
 
-    let mut key_bytes = [0u8; MASTER_KEY_BYTES];
-    OsRng.fill_bytes(&mut key_bytes);
-    let password = STANDARD.encode(key_bytes);
+    let password = STANDARD.encode(random_bytes::<MASTER_KEY_BYTES>()?);
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]

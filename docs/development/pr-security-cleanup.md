@@ -150,3 +150,29 @@ Hosted checks passed at that revision:
 
 README badges link to live main-branch CI, security, and coverage workflow status.
 They do not imply a numeric coverage percentage or absence of vulnerabilities.
+
+## Dependency migration and opt-in checks — 2026-09-28
+
+After #102, PRs #103–108 were merged into main (`1cf77e53`). The compatible
+update group passed CI, but the additional AES-GCM, sysinfo, and Tera migrations
+introduced compile/render failures. The repair uses sysinfo's static physical-core
+query on every platform, OS randomness through rand's `SysRng`, Tera's explicit
+optional access and indexed tuples, and a Compose-specific YAML scalar encoder.
+Service-port collection now happens in Rust rather than template mutation.
+No fallback dependency version or compatibility implementation was added.
+
+Local workspace validation after the repair: 1,210 passed, zero failed,
+24 existing ignored tests; all-target/all-feature Clippy passed. Existing tests
+cover crypto roundtrips/persistence, all 214 provider cases, and CLI output.
+
+At the owner's request, commit `52c779bd` makes all six repository workflows
+manual-only, including security, coverage, onboarding, and release publishing.
+No active branch-protection or repository rule requires automatic checks.
+Dependabot alerts, secret scanning, and push protection remain enabled. Badge
+captions and contributor/publication instructions explain explicit dispatch.
+The onboarding workflow now reuses isolated provider acceptance instead of
+retired `run`, `status`, and `shell --command` calls.
+
+Main CodeQL scans confirmed the PyPI injection fixed; reviewed residual transport
+reports and duplicate receipt-path alert #34 were individually dismissed with
+post-fix evidence. The code-scanning API then reported zero open alerts.

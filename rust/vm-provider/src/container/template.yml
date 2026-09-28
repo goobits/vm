@@ -1,11 +1,11 @@
 # This is a Tera template for docker-compose.yml
 # It will be rendered by the vm-provider crate.
 
-name: {{ project_name | json_encode }}
+name: {{ project_name | yaml_scalar }}
 
 services:
-  {{ dev_container_name | json_encode }}:
-    container_name: {{ dev_container_name | json_encode }}
+  {{ dev_container_name | yaml_scalar }}:
+    container_name: {{ dev_container_name | yaml_scalar }}
     working_dir: {{ workspace_path }}
     build:
       context: {{ build_context_dir }}
@@ -21,54 +21,54 @@ services:
       # BuildKit layer caching for faster rebuilds (70-85% reduction)
       cache_from:
         - {{ image_tag }}
-        - {{ build_cache_image | json_encode }}
+        - {{ build_cache_image | yaml_scalar }}
     image: {{ image_tag }}
     labels:
       com.vm.managed: "true"
       com.vm.role: "environment"
-      com.vm.project: {{ base_project_name | json_encode }}
-      com.vm.instance: {{ project_name | json_encode }}
-      com.vm.runtime-fingerprint: {{ runtime_fingerprint | json_encode }}
+      com.vm.project: {{ base_project_name | yaml_scalar }}
+      com.vm.instance: {{ project_name | yaml_scalar }}
+      com.vm.runtime-fingerprint: {{ runtime_fingerprint | yaml_scalar }}
       {% if config_path_label %}
       com.vm.config-path: {{ config_path_label }}
       {% endif %}
       {% if is_temporary %}
       com.vm.temporary: "true"
       {% endif %}
-    {% if config.services.postgresql.enabled | default(value=false) -%}
+    {% if config.services?.postgresql?.enabled | default(value=false) -%}
     depends_on:
       - postgres
     {%- endif %}
     volumes:
       {% set workspace_mount = project_dir ~ ":" ~ workspace_path ~ ":" ~ workspace_access %}
-      - {{ workspace_mount | json_encode }}
+      - {{ workspace_mount | yaml_scalar }}
       {% if ssh_auth_sock %}
       # SSH agent forwarding (read-only for security)
       {% set ssh_agent_mount = ssh_auth_sock ~ ":/ssh-agent:ro" %}
-      - {{ ssh_agent_mount | json_encode }}
+      - {{ ssh_agent_mount | yaml_scalar }}
       {% endif %}
       {% if ssh_config_path %}
       # SSH config (read-only)
       {% set ssh_config_mount = ssh_config_path ~ ":/home/" ~ project_user ~ "/.ssh/config:ro" %}
-      - {{ ssh_config_mount | json_encode }}
+      - {{ ssh_config_mount | yaml_scalar }}
       {% endif %}
       {% if dotfile_mounts %}
       # Dotfiles sync (read-only)
       {% for dotfile in dotfile_mounts %}
-      {% set dotfile_mount = dotfile.0 ~ ":" ~ dotfile.1 ~ ":ro" %}
-      - {{ dotfile_mount | json_encode }}
+      {% set dotfile_mount = dotfile[0] ~ ":" ~ dotfile[1] ~ ":ro" %}
+      - {{ dotfile_mount | yaml_scalar }}
       {% endfor %}
       {% endif %}
       {% if worktrees_base_dir %}
       # Git worktrees base directory (mounted at identical absolute path)
       {% set worktrees_base_mount = worktrees_base_dir ~ ":" ~ worktrees_base_dir ~ ":" ~ workspace_access %}
-      - {{ worktrees_base_mount | json_encode }}
+      - {{ worktrees_base_mount | yaml_scalar }}
       {% endif %}
       {% if worktrees %}
       # Git worktrees (fallback: individual worktree mounts)
       {% for worktree in worktrees %}
-      {% set worktree_mount = worktree.0 ~ ":" ~ worktree.1 ~ ":" ~ workspace_access %}
-      - {{ worktree_mount | json_encode }}
+      {% set worktree_mount = worktree[0] ~ ":" ~ worktree[1] ~ ":" ~ workspace_access %}
+      - {{ worktree_mount | yaml_scalar }}
       {% endfor %}
       {% endif %}
       # Shell history persistence (survives container recreation)
@@ -103,25 +103,25 @@ services:
       # Temporary VM custom mounts
       {% for mount in extra_mounts %}
       {% set extra_mount = mount.source ~ ":" ~ mount.target ~ ":" ~ mount.permissions %}
-      - {{ extra_mount | json_encode }}
+      - {{ extra_mount | yaml_scalar }}
       {% endfor %}
       {% endif %}
       {% if claude_sync_enabled %}
       # Claude AI data persistence (stored in ~/.vm/ai-sync/ to avoid polluting ~/.claude/)
       {% set claude_mount = home_dir ~ "/.vm/ai-sync/claude/" ~ project_name ~ ":/home/" ~ project_user ~ "/.claude:rw" %}
-      - {{ claude_mount | json_encode }}
+      - {{ claude_mount | yaml_scalar }}
       {% endif %}
       {% if antigravity_sync_enabled %}
       # Antigravity CLI data persistence (Antigravity retains ~/.gemini)
       {% set antigravity_mount = home_dir ~ "/.vm/ai-sync/gemini/" ~ project_name ~ ":/home/" ~ project_user ~ "/.gemini:rw" %}
-      - {{ antigravity_mount | json_encode }}
+      - {{ antigravity_mount | yaml_scalar }}
       {% endif %}
       {% if codex_sync_enabled %}
       # OpenAI Codex data persistence
       {% set codex_mount = home_dir ~ "/.vm/ai-sync/codex/" ~ project_name ~ ":/home/" ~ project_user ~ "/.codex:rw" %}
-      - {{ codex_mount | json_encode }}
+      - {{ codex_mount | yaml_scalar }}
       {% endif %}
-      {% if config.services.audio | default(value=false) %}
+      {% if config.services?.audio | default(value=false) %}
       # Audio: PulseAudio socket
       {% if is_macos %}
       - /tmp/pulseaudio.socket:/tmp/pulseaudio.socket
@@ -130,52 +130,42 @@ services:
       {% endif %}
       {% endif %}
       # Container is now self-contained - no VM tool mount needed
-    {% if config.services.gpu | default(value=false) or config.services.audio | default(value=false) or config.services.video | default(value=false) %}
+    {% if config.services?.gpu | default(value=false) or config.services?.audio | default(value=false) or config.services?.video | default(value=false) %}
     devices:
-      {% if config.services.gpu | default(value=false) %}
+      {% if config.services?.gpu | default(value=false) %}
       - /dev/dri:/dev/dri
       {% endif %}
-      {% if config.services.audio | default(value=false) %}
+      {% if config.services?.audio | default(value=false) %}
       - /dev/snd:/dev/snd
       {% endif %}
-      {% if config.services.video | default(value=false) %}
+      {% if config.services?.video | default(value=false) %}
       - /dev/video0:/dev/video0
       - /dev/video1:/dev/video1
       {% endif %}
     group_add:
-      {% if config.services.gpu | default(value=false) %}
+      {% if config.services?.gpu | default(value=false) %}
       - video
       - render
       {% endif %}
-      {% if config.services.audio | default(value=false) %}
+      {% if config.services?.audio | default(value=false) %}
       - audio
       {% endif %}
-      {% if config.services.video | default(value=false) %}
+      {% if config.services?.video | default(value=false) %}
       - video
       {% endif %}
     {% endif %}
-    {% if config.ports.mappings or config.ports._range -%}
+    {% if config.ports?.mappings or config.ports?._range -%}
     ports:
       # Explicit port mappings from vm.yaml
-      {% if config.ports.mappings -%}
-      {% for mapping in config.ports.mappings -%}
+      {% if config.ports?.mappings -%}
+      {% for mapping in config.ports?.mappings -%}
       - "{{ port_binding }}:{{ mapping.host }}:{{ mapping.guest }}{% if mapping.protocol | lower == 'udp' %}/udp{% endif %}"
       {% endfor -%}
       {%- endif %}
       # Application port range (excluding ports used by service containers)
-      {% if config.ports._range -%}
-      {% set range_start = config.ports._range[0] %}
-      {% set range_end = config.ports._range[1] %}
-      {% set service_ports = [] %}
-      {% if config.services.postgresql.enabled | default(value=false) and config.services.postgresql.port %}
-        {% set_global service_ports = service_ports | concat(with=[config.services.postgresql.port]) %}
-      {% endif %}
-      {% if config.services.redis.enabled | default(value=false) and config.services.redis.port %}
-        {% set_global service_ports = service_ports | concat(with=[config.services.redis.port]) %}
-      {% endif %}
-      {% if config.services.mongodb.enabled | default(value=false) and config.services.mongodb.port %}
-        {% set_global service_ports = service_ports | concat(with=[config.services.mongodb.port]) %}
-      {% endif %}
+      {% if config.ports?._range -%}
+      {% set range_start = config.ports?._range[0] %}
+      {% set range_end = config.ports?._range[1] %}
       {% if service_ports | length == 0 %}
       # No service ports to exclude, expose full range
       - "{{ port_binding }}:{{ range_start }}-{{ range_end }}:{{ range_start }}-{{ range_end }}"
@@ -194,53 +184,53 @@ services:
       # SSH agent socket for forwarding
       - SSH_AUTH_SOCK=/ssh-agent
       {% endif %}
-      {% if config.services.audio | default(value=false) %}
+      {% if config.services?.audio | default(value=false) %}
       {% if is_macos %}
       - PULSE_SERVER=unix:/tmp/pulseaudio.socket
       {% else %}
       - PULSE_SERVER=unix:/run/user/{{ project_uid }}/pulse/native
       {% endif %}
       {% endif %}
-      {% if config.services.postgresql.enabled | default(value=false) %}
-      - DATABASE_URL=postgresql://{{ config.services.postgresql.user | default(value="postgres") }}:{{ postgresql_password | default(value="postgres") }}@postgres:5432/{{ config.services.postgresql.database | default(value=project_name ~ "_dev") }}
+      {% if config.services?.postgresql?.enabled | default(value=false) %}
+      - DATABASE_URL=postgresql://{{ config.services?.postgresql?.user | default(value="postgres") }}:{{ postgresql_password | default(value="postgres") }}@postgres:5432/{{ config.services?.postgresql?.database | default(value=project_name ~ "_dev") }}
       - PGPASSWORD={{ postgresql_password | default(value="postgres") }}
       {% endif %}
       # Shared service environment
-      {% if service_env_vars %}{% for env_var in service_env_vars %}- {{ env_var.0 }}={{ env_var.1 }}
+      {% if service_env_vars %}{% for env_var in service_env_vars %}- {{ env_var[0] }}={{ env_var[1] }}
       {% endfor %}{% endif %}
       {% if config.environment and config.environment | length > 0 -%}
       {% for name, value in config.environment %}- {{ name }}={{ value }}
       {% endfor %}
       {%- endif %}
       # Provider-neutral defaults; explicit project environment values win.
-      {% for env_var in guest_cache_env %}- {{ env_var.0 }}={{ env_var.1 }}
+      {% for env_var in guest_cache_env %}- {{ env_var[0] }}={{ env_var[1] }}
       {% endfor %}
       # Internal values come last so project environment cannot weaken bootstrap identity.
       - VM_MANAGED_GUEST=1
       - VM_IMAGE_IDENTITY={{ image_tag }}
-    {% if config.security.enable_debugging | default(value=false) %}
+    {% if config.security?.enable_debugging | default(value=false) %}
     cap_add:
       - SYS_PTRACE
     {% endif %}
-    {% if (config.security.enable_debugging | default(value=false)) or (config.security.no_new_privileges | default(value=false)) or (config.security.security_opts and config.security.security_opts | length > 0) %}
+    {% if (config.security?.enable_debugging | default(value=false)) or (config.security?.no_new_privileges | default(value=false)) or (config.security?.security_opts and config.security?.security_opts | length > 0) %}
     security_opt:
-      {% if config.security.enable_debugging | default(value=false) %}
+      {% if config.security?.enable_debugging | default(value=false) %}
       - seccomp=unconfined
       {% endif %}
-      {% if config.security.no_new_privileges | default(value=false) %}
+      {% if config.security?.no_new_privileges | default(value=false) %}
       - no-new-privileges
       {% endif %}
-      {% if config.security.security_opts and config.security.security_opts | length > 0 %}
-      {% for opt in config.security.security_opts %}- {{ opt }}
+      {% if config.security?.security_opts and config.security?.security_opts | length > 0 %}
+      {% for opt in config.security?.security_opts %}- {{ opt }}
       {% endfor %}
       {% endif %}
     {% endif %}
-    {% if config.security.user_namespaces | default(value=false) %}
+    {% if config.security?.user_namespaces | default(value=false) %}
     userns_mode: "host"
     {% endif %}
-    {% if config.security.drop_capabilities and config.security.drop_capabilities | length > 0 %}
+    {% if config.security?.drop_capabilities and config.security?.drop_capabilities | length > 0 %}
     cap_drop:
-      {% for cap in config.security.drop_capabilities %}- {{ cap }}
+      {% for cap in config.security?.drop_capabilities %}- {{ cap }}
       {% endfor %}
     {% endif %}
     {% if resources.memory %}
@@ -249,24 +239,24 @@ services:
     {% if resources.cpus %}
     cpus: "{{ resources.cpus }}"
     {% endif %}
-    {% if config.vm.swappiness is defined %}
-    mem_swappiness: {{ config.vm.swappiness }}
+    {% if config.vm?.swappiness is defined %}
+    mem_swappiness: {{ config.vm?.swappiness }}
     {% endif %}
     {# Note: swap is now a SwapLimit enum, memswap_limit is computed provider-side #}
-    {% if config.vm.pids_limit %}
-    pids_limit: {{ config.vm.pids_limit }}
+    {% if config.vm?.pids_limit %}
+    pids_limit: {{ config.vm?.pids_limit }}
     {% endif %}
-    {% if config.vm.stop_grace_period %}
-    stop_grace_period: "{{ config.vm.stop_grace_period }}s"
+    {% if config.vm?.stop_grace_period %}
+    stop_grace_period: "{{ config.vm?.stop_grace_period }}s"
     {% endif %}
-    {% if config.vm.logging %}
+    {% if config.vm?.logging %}
     logging:
-      driver: {{ config.vm.logging.driver }}
+      driver: {{ config.vm?.logging?.driver }}
       options:
-        max-size: "{{ config.vm.logging.max_size }}"
-        max-file: "{{ config.vm.logging.max_files }}"
+        max-size: "{{ config.vm?.logging?.max_size }}"
+        max-file: "{{ config.vm?.logging?.max_files }}"
     {% endif %}
-    {% if config.security.read_only_root | default(value=false) %}
+    {% if config.security?.read_only_root | default(value=false) %}
     read_only: true
     {% endif %}
     {% if tmpfs_mounts and tmpfs_mounts | length > 0 %}
@@ -280,12 +270,12 @@ services:
     restart: "no"
     tty: true
     stdin_open: true
-    {% if config.networking and config.networking.networks and config.networking.networks | length > 0 -%}
+    {% if config.networking and config.networking?.networks and config.networking?.networks | length > 0 -%}
     networks:
-      {% for network in config.networking.networks -%}
+      {% for network in config.networking?.networks -%}
       {{ network }}:
         aliases:
-          - {{ dev_container_name | json_encode }}
+          - {{ dev_container_name | yaml_scalar }}
       {% endfor -%}
     {%- endif %}
 
@@ -310,11 +300,11 @@ services:
 
   package-edge:
     image: "{{ package_edge.image }}"
-    container_name: {{ package_edge_container_name | json_encode }}
+    container_name: {{ package_edge_container_name | yaml_scalar }}
     labels:
       com.vm.managed: "true"
-      com.vm.project: {{ base_project_name | json_encode }}
-      com.vm.instance: {{ project_name | json_encode }}
+      com.vm.project: {{ base_project_name | yaml_scalar }}
+      com.vm.instance: {{ project_name | yaml_scalar }}
       com.vm.package-edge.revision: "{{ package_edge.revision }}"
     environment:
       PKG_SERVER_INTERNAL_GATEWAY: "{{ package_edge.internal_gateway }}"
@@ -336,26 +326,26 @@ services:
     security_opt: ["no-new-privileges:true"]
     read_only: true
     tmpfs: ["/tmp:rw,nosuid,size=64m"]
-    {% if config.networking and config.networking.networks and config.networking.networks | length > 0 -%}
+    {% if config.networking and config.networking?.networks and config.networking?.networks | length > 0 -%}
     networks:
-      {% for network in config.networking.networks -%}
+      {% for network in config.networking?.networks -%}
       {{ network }}:
         aliases: [package-edge]
       {% endfor -%}
     {%- endif %}
   {% endif %}
 
-  {% if config.services.postgresql.enabled | default(value=false) %}
+  {% if config.services?.postgresql?.enabled | default(value=false) %}
   postgres:
     image: postgres:15-alpine
-    container_name: {{ postgres_container_name | json_encode }}
+    container_name: {{ postgres_container_name | yaml_scalar }}
     labels:
       com.vm.managed: "true"
-      com.vm.project: {{ base_project_name | json_encode }}
-      com.vm.instance: {{ project_name | json_encode }}
+      com.vm.project: {{ base_project_name | yaml_scalar }}
+      com.vm.instance: {{ project_name | yaml_scalar }}
     environment:
-      - POSTGRES_DB={{ config.services.postgresql.database | default(value=project_name ~ "_dev") }}
-      - POSTGRES_USER={{ config.services.postgresql.user | default(value="postgres") }}
+      - POSTGRES_DB={{ config.services?.postgresql?.database | default(value=project_name ~ "_dev") }}
+      - POSTGRES_USER={{ config.services?.postgresql?.user | default(value="postgres") }}
       - POSTGRES_PASSWORD={{ postgresql_password | default(value="postgres") }}
     volumes:
       - type: volume
@@ -364,14 +354,14 @@ services:
         volume:
           nocopy: true
     ports:
-      - "{{ port_binding }}:{{ config.services.postgresql.port | default(value=5432) }}:5432"
+      - "{{ port_binding }}:{{ config.services?.postgresql?.port | default(value=5432) }}:5432"
     restart: unless-stopped
-    {% if config.networking and config.networking.networks and config.networking.networks | length > 0 -%}
+    {% if config.networking and config.networking?.networks and config.networking?.networks | length > 0 -%}
     networks:
-      {% for network in config.networking.networks -%}
+      {% for network in config.networking?.networks -%}
       {{ network }}:
         aliases:
-          - {{ postgres_container_name | json_encode }}
+          - {{ postgres_container_name | yaml_scalar }}
           - postgres
       {% endfor -%}
     {%- endif %}
@@ -379,35 +369,35 @@ services:
 
   {% for plugin in plugin_services %}
   plugin_{{ plugin.name }}:
-    image: {{ plugin.image | json_encode }}
-    container_name: {{ plugin.container_name | json_encode }}
+    image: {{ plugin.image | yaml_scalar }}
+    container_name: {{ plugin.container_name | yaml_scalar }}
     labels:
       com.vm.managed: "true"
       com.vm.role: "service-plugin"
-      com.vm.project: {{ base_project_name | json_encode }}
-      com.vm.instance: {{ project_name | json_encode }}
-      com.vm.runtime-fingerprint: {{ runtime_fingerprint | json_encode }}
+      com.vm.project: {{ base_project_name | yaml_scalar }}
+      com.vm.instance: {{ project_name | yaml_scalar }}
+      com.vm.runtime-fingerprint: {{ runtime_fingerprint | yaml_scalar }}
       {% if config_path_label %}
       com.vm.config-path: {{ config_path_label }}
       {% endif %}
     {% if plugin.environment %}
     environment:
       {% for entry in plugin.environment %}
-      {{ entry.0 | json_encode }}: {{ entry.1 | json_encode }}
+      {{ entry[0] | yaml_scalar }}: {{ entry[1] | yaml_scalar }}
       {% endfor %}
     {% endif %}
     {% if plugin.published_ports %}
     ports:
       {% for port in plugin.published_ports %}
-      - {{ port | json_encode }}
+      - {{ port | yaml_scalar }}
       {% endfor %}
     {% endif %}
     {% if plugin.volumes %}
     volumes:
       {% for volume in plugin.volumes %}
       - type: volume
-        source: {{ volume.name | json_encode }}
-        target: {{ volume.target | json_encode }}
+        source: {{ volume.name | yaml_scalar }}
+        target: {{ volume.target | yaml_scalar }}
         volume:
           nocopy: true
       {% endfor %}
@@ -421,27 +411,27 @@ services:
     restart: unless-stopped
     security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]
-    {% if config.networking and config.networking.networks and config.networking.networks | length > 0 -%}
+    {% if config.networking and config.networking?.networks and config.networking?.networks | length > 0 -%}
     networks:
-      {% for network in config.networking.networks -%}
+      {% for network in config.networking?.networks -%}
       {{ network }}:
-        aliases: [{{ plugin.name | json_encode }}]
+        aliases: [{{ plugin.name | yaml_scalar }}]
       {% endfor -%}
     {% else %}
     networks:
       default:
-        aliases: [{{ plugin.name | json_encode }}]
+        aliases: [{{ plugin.name | yaml_scalar }}]
     {%- endif %}
   {% endfor %}
 
 volumes:
   {% if package_edge %}
   package_edge_cache:
-    name: {{ package_edge_cache_name | json_encode }}
+    name: {{ package_edge_cache_name | yaml_scalar }}
     labels:
       com.vm.managed: "true"
-      com.vm.project: {{ base_project_name | json_encode }}
-      com.vm.instance: {{ project_name | json_encode }}
+      com.vm.project: {{ base_project_name | yaml_scalar }}
+      com.vm.instance: {{ project_name | yaml_scalar }}
       com.vm.retention: "keep"
       com.vm.scope: "instance"
       {% if config_path_label %}
@@ -453,8 +443,8 @@ volumes:
     name: {{ volume.name }}
     labels:
       com.vm.managed: "true"
-      com.vm.project: {{ base_project_name | json_encode }}
-      com.vm.instance: {{ project_name | json_encode }}
+      com.vm.project: {{ base_project_name | yaml_scalar }}
+      com.vm.instance: {{ project_name | yaml_scalar }}
       com.vm.retention: "{{ volume.retention }}"
       com.vm.scope: "{{ volume.scope }}"
       {% if config_path_label %}
@@ -462,9 +452,9 @@ volumes:
       {% endif %}
   {% endfor %}
 
-{% if config.networking and config.networking.networks and config.networking.networks | length > 0 -%}
+{% if config.networking and config.networking?.networks and config.networking?.networks | length > 0 -%}
 networks:
-  {% for network in config.networking.networks -%}
+  {% for network in config.networking?.networks -%}
   {{ network }}:
     external: true
     name: {{ network }}

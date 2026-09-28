@@ -23,6 +23,7 @@ vm-logging = { path = "../vm-logging", features = ["http"] }
 # Cryptography
 aes-gcm = { workspace = true }
 pbkdf2 = { workspace = true }
+rand = { workspace = true }
 sha2 = { workspace = true }
 subtle = { workspace = true }
 

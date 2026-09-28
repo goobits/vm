@@ -386,8 +386,10 @@ mod tests {
         );
 
         assert!(context.get("worktrees_base_dir").is_none());
-        let mounts: Vec<(String, String)> =
-            serde_json::from_value(context.get("worktrees").unwrap().clone()).unwrap();
+        let mounts: Vec<(String, String)> = serde_json::from_value(
+            serde_json::to_value(context.get("worktrees").unwrap()).unwrap(),
+        )
+        .unwrap();
         assert_eq!(
             mounts,
             vec![(

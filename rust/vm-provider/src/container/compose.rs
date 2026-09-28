@@ -195,6 +195,14 @@ impl<'a> ComposeOperations<'a> {
 
         let mut tera_context = TeraContext::new();
         tera_context.insert("config", &final_config);
+        let service_ports: Vec<u16> = ["postgresql", "redis", "mongodb"]
+            .into_iter()
+            .filter_map(|name| final_config.services.get(name))
+            .filter(|service| service.enabled)
+            .filter_map(|service| service.port)
+            .filter(|port| *port != 0)
+            .collect();
+        tera_context.insert("service_ports", &service_ports);
         tera_context.insert(
             "runtime_fingerprint",
             &crate::runtime_fingerprint::runtime_fingerprint(self.config)?,

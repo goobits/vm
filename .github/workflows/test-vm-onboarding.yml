@@ -29,43 +29,6 @@ jobs:
           vm --version
         timeout-minutes: 10
 
-      - name: Create test project
-        run: |
-          mkdir -p test-project
-          cd test-project
-          echo '{"name": "ci-test", "version": "1.0.0"}' > package.json
-          echo "console.log('Hello from CI');" > index.js
-
-      - name: Create and start VM
-        run: |
-          cd test-project
-          vm run container
-        timeout-minutes: 5
-        env:
-          VM_NO_PROMPT: "true"
-
-      - name: Verify VM status
-        run: |
-          cd test-project
-          vm list
-          vm status
-
-      - name: Execute command in VM
-        run: |
-          cd test-project
-          vm exec -- node --version
-          vm exec -- npm --version
-          vm exec -- cat package.json
-
-      - name: Test SSH (non-interactive)
-        run: |
-          cd test-project
-          vm shell --command "echo 'SSH works in CI'"
-          vm shell --command "ls -la"
-
-      - name: Cleanup
-        if: always()
-        run: |
-          cd test-project
-          vm remove --force
-          docker ps -a  # Verify cleanup
+      - name: Verify installed CLI with isolated Docker acceptance
+        run: VM_ACCEPTANCE_BIN="$(command -v vm)" bash scripts/internal/test-provider-workflow-docker.sh
+        timeout-minutes: 30
