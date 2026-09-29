@@ -48,7 +48,12 @@ pub enum ExecOutput {
 #[derive(Debug, Clone, Subcommand)]
 pub enum Command {
     /// Initialize a project in the current or selected directory
-    Init { path: Option<PathBuf> },
+    Init {
+        path: Option<PathBuf>,
+        /// Development preset to initialize with
+        #[arg(long, default_value = "vibe")]
+        preset: String,
+    },
     /// Declare and provision a stopped environment
     Create {
         name: String,
@@ -92,7 +97,7 @@ pub enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Open a shell promptly; safe runtime updates continue in the background
+    /// Provision/start an initialized environment and open a shell
     Shell {
         /// Environment name; omit to use the project default
         environment: Option<String>,

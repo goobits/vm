@@ -42,7 +42,7 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
     command_context::ensure_controller_host(&args.command)?;
 
     match args.command {
-        Command::Init { path } => project::init(path),
+        Command::Init { path, preset } => project::init(path, &preset, args.profile),
         Command::Create {
             name,
             provider,
@@ -205,6 +205,12 @@ pub async fn execute_command(mut args: Args) -> VmResult<()> {
                     Some("Use `vm exec -- PROGRAM` for noninteractive commands"),
                 ));
             }
+            let prepared = command_context::prepare_start(
+                args.config.clone(),
+                args.profile.clone(),
+                environment.clone(),
+            )?;
+            start_prepared(prepared, false).await?;
             let subject = load_runtime_subject(args.config, args.profile, environment)?;
             vm_ops::handle_ssh(
                 subject.provider,

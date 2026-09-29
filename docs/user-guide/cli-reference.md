@@ -81,7 +81,7 @@ environment, not a provider selector. Explicit environment names resolve only
 inside the selected project.
 
 `create` records a named environment in the project configuration and leaves its
-runtime stopped. `start` provisions a missing declared environment. `shell` and `exec` require
+runtime stopped. `start` provisions a missing declared environment. `shell` provisions/starts a declared environment before connecting; `exec` requires
 a running environment; `status`,
 `logs`, `copy`, `stop`, `restart`, `remove`, and snapshot operations require an
 existing environment. Host-to-guest copy paths use `environment:/path`.

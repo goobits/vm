@@ -65,6 +65,7 @@ pub use detector::{detect_worktrees, detect_worktrees_in};
 pub use loader::ConfigLoader;
 pub use merge::{apply_profile, merge_configs, ConfigMerger};
 pub use preset::{validate_plugin_preset_content, PresetDetector};
+pub use user_defaults::apply as apply_user_defaults;
 pub use yaml::CoreOperations;
 
 use std::path::PathBuf;

@@ -3,7 +3,7 @@
 use crate::config::{CpuLimit, MemoryLimit, VmConfig, VmSettings};
 use crate::GlobalDefaults;
 
-pub(crate) fn apply(config: &mut VmConfig, defaults: &GlobalDefaults) {
+pub fn apply(config: &mut VmConfig, defaults: &GlobalDefaults) {
     if config.provider.is_none() {
         config.provider = defaults.provider.as_deref().map(Into::into);
     }

@@ -103,13 +103,13 @@ mod tests {
         let missing_config =
             Some(std::env::temp_dir().join("vm-missing-config-for-shell-test.yaml"));
         assert_resolved(
-            resolve_noninteractive(missing_config, None, Some("mac".into())),
+            resolve_noninteractive(missing_config.clone(), None, Some("mac".into())),
             None,
             None,
             Some("mac"),
         );
         assert_resolved(
-            resolve_noninteractive(None, None, Some("backend".into())),
+            resolve_noninteractive(missing_config, None, Some("backend".into())),
             None,
             None,
             Some("backend"),

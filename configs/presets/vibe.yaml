@@ -1,0 +1,34 @@
+---
+preset:
+  name: vibe
+  description: Development environment with preinstalled AI tools
+
+vm:
+  image: '@vibe-image'
+  user: developer
+
+project:
+  workspace_path: /workspace
+
+tools:
+  updates: prompt
+  agent-skills: {}
+
+host_sync:
+  git_config: true
+  ai_tools: true
+
+profiles:
+  docker:
+    provider: docker
+  podman:
+    provider: podman
+  tart:
+    provider: tart
+    vm:
+      image: vibe-tart-linux-base
+    tart:
+      guest_os: linux
+      disk_size: 80
+      ssh_user: admin
+      install_docker: true

@@ -8,7 +8,7 @@ Generated from the CLI parser. Run `vm help <command>` for options and examples.
 | `vm create` | Declare and provision a stopped environment |
 | `vm start` | Start an existing environment |
 | `vm list` | List environments for this project |
-| `vm shell` | Open a shell promptly; safe runtime updates continue in the background |
+| `vm shell` | Provision/start an initialized environment and open a shell |
 | `vm exec` | Run a single command inside an environment |
 | `vm logs` | Stream output logs from an environment |
 | `vm copy` | Move files between host and environment |

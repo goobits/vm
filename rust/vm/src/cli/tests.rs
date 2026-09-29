@@ -104,7 +104,7 @@ fn project_selection_and_init_parse() {
     ));
     assert!(matches!(
         Args::parse_from(["vm", "init", "./example"]).command,
-        Command::Init { path: Some(path) } if path == std::path::Path::new("./example")
+        Command::Init { path: Some(path), preset } if path == std::path::Path::new("./example") && preset == "vibe"
     ));
     assert!(
         Args::try_parse_from(["vm", "--project", "demo", "--config", "vm.yaml", "list"]).is_err()
@@ -1135,4 +1135,12 @@ fn doctor_parses_environment_target() {
 fn shell_rejects_removed_refresh_flags() {
     assert!(Args::try_parse_from(["vm", "ssh", "--force-refresh"]).is_err());
     assert!(Args::try_parse_from(["vm", "ssh", "--no-refresh"]).is_err());
+}
+
+#[test]
+fn init_accepts_an_explicit_preset() {
+    assert!(
+        matches!(Args::parse_from(["vm", "init", "--preset", "base"]).command,
+        Command::Init { path: None, preset } if preset == "base")
+    );
 }

@@ -124,7 +124,11 @@ pub(super) async fn ensure_configured_container_base(
 
     let manager = SnapshotManager::new()?;
     if manager.snapshot_exists(SnapshotScope::Global, "vibe-image")? {
-        return Ok(());
+        let snapshot_dir = manager.get_snapshot_dir(SnapshotScope::Global, "vibe-image")?;
+        match preflight_snapshot_files("vibe-image", &snapshot_dir) {
+            Ok(()) => return Ok(()),
+            Err(error) => vm_progress!("Rebuilding the unusable Vibe base image: {error}"),
+        }
     }
 
     vm_progress!("Preparing the Vibe base image for first use (this may take several minutes)...");
@@ -292,6 +296,31 @@ mod tests {
 
         std::fs::write(snapshot.path().join("metadata.json"), "broken json").unwrap();
         assert!(preflight_snapshot_files("vibe-image", snapshot.path()).is_err());
+    }
+
+    #[test]
+    fn legacy_vibe_snapshot_requires_rebuilding() {
+        let snapshot = tempfile::tempdir().unwrap();
+        let metadata = serde_json::json!({
+            "name": "vibe-image", "created_at": "2026-09-23T06:38:55Z",
+            "project_name": "global", "project_dir": "/workspace",
+            "git_dirty": false,
+            "services": [{"name": "base", "image_tag": "vibe:latest", "image_file": "base.tar"}],
+            "volumes": [], "compose_file": "", "vm_config_file": "",
+            "total_size_bytes": 7
+        });
+        std::fs::write(snapshot.path().join("metadata.json"), metadata.to_string()).unwrap();
+        std::fs::create_dir(snapshot.path().join("images")).unwrap();
+        std::fs::write(snapshot.path().join("images/base.tar"), "archive").unwrap();
+        assert!(preflight_snapshot_files("vibe-image", snapshot.path()).is_err());
+
+        let mut current = metadata;
+        current["provider"] = "docker".into();
+        current["architecture"] = "aarch64".into();
+        current["consistency"] = "stopped".into();
+        current["excluded_mounts"] = serde_json::json!([]);
+        std::fs::write(snapshot.path().join("metadata.json"), current.to_string()).unwrap();
+        preflight_snapshot_files("vibe-image", snapshot.path()).unwrap();
     }
 
     #[test]

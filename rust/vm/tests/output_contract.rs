@@ -772,3 +772,42 @@ fn direct_tool_publication_is_not_a_public_command() {
         "{stderr}"
     );
 }
+
+#[test]
+fn init_declares_vibe_and_rejects_overwriting_the_project() {
+    let temp = TempDir::new().unwrap();
+    let output = run(&temp, &["init"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let path = temp.path().join("vm.yaml");
+    let original = fs::read_to_string(&path).unwrap();
+    let config: vm_config::config::VmConfig = serde_yaml_ng::from_str(&original).unwrap();
+    assert_eq!(config.preset.as_deref(), Some("vibe"));
+    assert_eq!(
+        config.project.unwrap().default_environment.as_deref(),
+        Some("dev")
+    );
+    assert_eq!(config.environments["dev"].provider.as_str(), "docker");
+    assert!(run(&temp, &["config", "validate"]).status.success());
+    assert!(!run(&temp, &["init"]).status.success());
+    assert_eq!(fs::read_to_string(path).unwrap(), original);
+}
+
+#[test]
+fn init_invalid_preset_leaves_no_project_and_start_requires_init() {
+    let temp = TempDir::new().unwrap();
+    let output = run(&temp, &["init", "--preset", "missing-preset-123"]);
+    assert!(!output.status.success());
+    assert!(!temp.path().join("vm.yaml").exists());
+    let output = run(&temp, &["start"]);
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("vm init"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!temp.path().join("vm.yaml").exists());
+}

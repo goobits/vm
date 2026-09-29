@@ -89,6 +89,14 @@ impl PresetDetector {
     pub fn load_preset(&self, name: &str) -> Result<VmConfig> {
         // Try plugin presets first (user-facing presets)
         if let Some(config) = self.load_plugin_preset(name)? {
+            // A plugin can customize a built-in preset without losing its provider profiles.
+            if let Some(content) = crate::embedded_presets::get_preset_content(name) {
+                let builtin: PresetFile = crate::yaml::CoreOperations::parse_yaml_with_diagnostics(
+                    content,
+                    &format!("embedded preset '{name}'"),
+                )?;
+                return crate::ConfigMerger::new(builtin.config).merge(config);
+            }
             return Ok(config);
         }
 

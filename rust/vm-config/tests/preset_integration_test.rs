@@ -500,7 +500,7 @@ fn test_config_preset_provision() -> Result<()> {
 // ============================================================================
 
 #[test]
-fn test_image_preset_not_in_config_list() -> Result<()> {
+fn test_builtin_vibe_remains_available_with_an_image_plugin() -> Result<()> {
     // Validates that list_presets() (used by 'vm config preset')
     //excludes image presets but includes provision presets
 
@@ -518,11 +518,14 @@ fn test_image_preset_not_in_config_list() -> Result<()> {
     let detector = fixture.create_detector();
     let presets = detector.list_presets()?;
 
-    // Assert: Image preset should NOT be in list
+    // Built-in vibe remains available even when customized by an image plugin.
     assert!(
-        !presets.contains(&"vibe".to_string()),
-        "vibe (image preset) should NOT be in config preset list"
+        presets.contains(&"vibe".to_string()),
+        "built-in vibe should remain in the config preset list"
     );
+
+    let vibe = detector.load_preset("vibe")?;
+    assert!(vibe.profiles.as_ref().unwrap().contains_key("tart"));
 
     // Provision presets SHOULD be in list
     assert!(

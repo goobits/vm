@@ -1,6 +1,8 @@
 # Presets
 
 Presets are reusable configuration overlays for common project types.
+`vm init` defaults to `vibe` and declares the default `dev` environment without
+provisioning it. Use `vm init --preset base` to select a different preset.
 
 Custom presets must be installed as preset plugins.
 

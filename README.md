@@ -44,10 +44,13 @@ Create and start a Linux environment:
 
 ```bash
 vm init
-vm create dev --provider docker --image ubuntu:24.04
-vm start dev
-vm shell dev
+vm shell
 ```
+
+`vm init` uses the `vibe` preset and declares `dev` without provisioning it.
+Use `vm init --preset base` for a basic environment or `--preset vibe-tart`
+for Tart. `vm shell` provisions/starts the declared environment and connects;
+`vm start` prepares it without opening a shell. Initialization is always explicit.
 
 ## Daily workflow
 

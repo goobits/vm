@@ -4,6 +4,7 @@ use std::collections::HashMap;
 pub fn get_embedded_presets() -> HashMap<&'static str, &'static str> {
     let mut presets = HashMap::new();
 
+    presets.insert("vibe", include_str!("../../../configs/presets/vibe.yaml"));
     presets.insert("base", include_str!("../../../configs/presets/base.yaml"));
     presets.insert(
         "vibe-tart",

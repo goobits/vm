@@ -4,7 +4,7 @@
 
 ### Breaking changes
 
-- The v6 CLI uses explicit, project-scoped environments: `vm create` provisions a stopped environment, `vm start` starts it, and `vm shell` / `vm exec` require it to be running. Use `--project` to select another project.
+- The v6 CLI uses explicit, project-scoped environments: `vm create` provisions a stopped environment, `vm init` defaults to the vibe preset and declares `dev`, `vm start` provisions/starts declared environments, and `vm shell` starts them before connecting. `vm exec` requires a running environment. Use `--project` to select another project.
 - Snapshots live under `vm snapshots`; fleet operations use `--all-envs` with optional provider and name filters. Retired commands, `vm.box`, legacy environment discovery, and platform-less snapshot archives are no longer supported.
 - `vm tools update` arguments select tools; repeated `--to` options select environments. Bare `vm packages release` uses the current managed checkout or registered canonical workspace.
 
@@ -18,6 +18,7 @@
 
 ### Fixed
 
+- Reinitializing a project recovers a deleted configuration, and Vibe startup rebuilds outdated or damaged cached base snapshots.
 - Environment removal preserves snapshots and persistent data unless deletion is explicit, completes configured database backups first, and deletes only exclusively owned storage.
 - Failed snapshot replacement preserves the previous snapshot; restored runtimes retain their original configuration identity so later starts detect drift. Volume archives remain private and owned by the invoking user on native Linux.
 - Package retries retain durable work and immutable publication state, report partial activation failures accurately, and preserve environment and volume identities during tool updates.

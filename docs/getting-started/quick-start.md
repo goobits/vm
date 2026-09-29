@@ -1,14 +1,16 @@
 # Quick Start
 
-Initialize a project, declare an environment, and start it:
+Initialize a project and enter its default development environment:
 
 ```bash
 vm init
-vm create dev --provider docker --image ubuntu:24.04
-vm start dev
+vm shell
 ```
 
-`create` records and provisions a stopped environment. `start` runs it. If a
+`init` defaults to the `vibe` preset and declares `dev` without provisioning.
+Select another preset with `vm init --preset base` or `vm init --preset vibe-tart`.
+`shell` provisions/starts the declared environment and connects; it never initializes
+a project. `create` records and provisions an additional stopped environment. `start` runs it. If a
 configured environment is missing at runtime, `start` provisions it from its
 declaration.
 
@@ -21,7 +23,7 @@ vm logs dev --follow
 vm copy --env dev host:./config.json env:/workspace/config.json
 ```
 
-`shell` requires a terminal and a running environment; `exec` requires a running
+`shell` requires a terminal and an initialized project; `exec` requires a running
 environment. Copy requires one `host:` and one `env:` path, and `--overwrite`
 when replacing an existing destination. Omit the name when the project
 has an unambiguous default environment.

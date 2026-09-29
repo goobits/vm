@@ -246,8 +246,8 @@ pub(super) fn require_project_config(config: &VmConfig) -> VmResult<()> {
             .is_none()
     {
         return Err(VmError::validation(
-            "An environment operation requires a project configuration",
-            Some("Run from a project containing vm.yaml or select one with --project"),
+            "Project not initialized",
+            Some("Run `vm init` or select an initialized project with --project"),
         ));
     }
     Ok(())
